@@ -197,20 +197,13 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     // EOS takes the CPU fused path (the combination validated against the
     // staged path); ideal-moist / shallow-water on CPU require an explicit
     // FUSED=on. CUDA tensors take the exact same decision as before.
-    // The fused kernel (CUDA and this CPU port alike) reconstructs with
-    // scale=false and has no shock limiter, whereas the staged path honors
-    // reconstruct.scale / reconstruct.shock. Selecting fused for such a case
-    // would silently change the physics, so refuse it outright -- including
-    // under an explicit FUSED=on -- and fall back to staged.
-    bool const recon_fusable =
-        !precon1->options->shock() && !precon23->options->shock() &&
-        !precon1->pinterp1->options->scale() &&
-        !precon23->pinterp1->options->scale() &&
-        !precon1->pinterp2->options->scale() &&
-        !precon23->pinterp2->options->scale();
-
+    // The CPU fused kernel honors reconstruct.scale (threaded through the
+    // physics params) and reconstruct.shock (all variables take the prim
+    // scheme, matching the staged path's interp1-for-everything routing), so
+    // those flags no longer force a fallback here. The CUDA kernel still
+    // ignores both -- its selection path below is deliberately unchanged.
     if (!supported && u.device().is_cpu() && !other.count("solid") && !psed &&
-        recon_fusable && pmb->pcoord->options->type() == "cartesian" &&
+        pmb->pcoord->options->type() == "cartesian" &&
         pmb->get_layout()->options->type() != "cubed-sphere") {
       char const* fused_env = std::getenv("FUSED");
       bool explicit_on = fused_env != nullptr &&
