@@ -304,18 +304,21 @@ torch::Tensor make_side_meta(CubedSphereLayoutImpl const& layout,
 
 torch::Tensor HydroImpl::_forward_fused(double dt, torch::Tensor u,
                                         Variables const& other) {
+  bool const on_cpu = u.device().is_cpu();
 #ifdef NOT_USE_CUDA
-  TORCH_CHECK(false,
-              "dynamics.fused-recon-riemann requires a CUDA-enabled build");
+  TORCH_CHECK(on_cpu,
+              "dynamics.fused-recon-riemann on CUDA tensors requires a "
+              "CUDA-enabled build");
 #endif
 
-  TORCH_CHECK(u.is_cuda(),
-              "dynamics.fused-recon-riemann requires CUDA tensors");
+  TORCH_CHECK(u.is_cuda() || on_cpu,
+              "dynamics.fused-recon-riemann requires CUDA or CPU tensors");
   TORCH_CHECK(other.count("hydro_w"),
               "dynamics.fused-recon-riemann requires hydro_w primitives");
   auto const& w = other.at("hydro_w");
-  TORCH_CHECK(w.is_cuda(),
-              "dynamics.fused-recon-riemann requires CUDA primitive tensors");
+  TORCH_CHECK(w.device() == u.device(),
+              "dynamics.fused-recon-riemann requires hydro_w on the same "
+              "device as hydro_u");
   TORCH_CHECK(w.is_contiguous() && u.is_contiguous(),
               "dynamics.fused-recon-riemann requires contiguous hydro tensors");
   TORCH_CHECK(_flux1.is_contiguous() &&
@@ -343,6 +346,9 @@ torch::Tensor HydroImpl::_forward_fused(double dt, torch::Tensor u,
 
   auto playout = pmb->get_layout();
   bool cubed_sphere_layout = playout->options->type() == "cubed-sphere";
+  TORCH_CHECK(!(on_cpu && cubed_sphere_layout),
+              "dynamics.fused-recon-riemann on CPU does not support "
+              "cubed-sphere layouts (the seam exchange is CUDA-only)");
   if (!cubed_sphere_layout) {
     TORCH_CHECK(pmb->pcoord->options->type() == "cartesian",
                 "dynamics.fused-recon-riemann currently supports cartesian "
@@ -435,28 +441,42 @@ torch::Tensor HydroImpl::_forward_fused(double dt, torch::Tensor u,
   FusedMetricParams metric_params{
       cubed_sphere_layout, face, x2v, x2f, x3v, x3f};
 
+  // device dispatch: CUDA tensors take exactly the same kernel launches as
+  // before; CPU tensors go to the host port of the same kernel
+  auto run_fused = [&](torch::Tensor const& flx,
+                       FusedReconRiemannParams const& p) {
+    if (on_cpu) {
+      fused_recon_riemann_cpu(w, flx, p);
+      return;
+    }
+#ifndef NOT_USE_CUDA
+    fused_recon_riemann_cuda(w, flx, p);
+#else
+    TORCH_CHECK(false, "unreachable: CUDA tensors in a non-CUDA build");
+#endif
+  };
+
   if (u.size(3) > 1 && !options->disable_flux_x1()) {
-    fused_recon_riemann_cuda(
-        w, _flux1,
-        FusedReconRiemannParams{
-            /*dim=*/3, make_physics_params(recon1_prim, recon1_vel),
-            FusedX1RevisionParams{revise_x1_lr, dx1f, rho_grav},
-            metric_params});
+    run_fused(_flux1,
+              FusedReconRiemannParams{
+                  /*dim=*/3, make_physics_params(recon1_prim, recon1_vel),
+                  FusedX1RevisionParams{revise_x1_lr, dx1f, rho_grav},
+                  metric_params});
   }
   if (u.size(3) > 1 && psed) {
     psed->forward(w, _flux1);
   }
   if (u.size(2) > 1 && !options->disable_flux_x2()) {
-    fused_recon_riemann_cuda(
-        w, _flux2,
+    run_fused(
+        _flux2,
         FusedReconRiemannParams{
             /*dim=*/2, make_physics_params(recon23_prim, recon23_vel),
             FusedX1RevisionParams{false, torch::Tensor(), torch::Tensor()},
             metric_params});
   }
   if (u.size(1) > 1 && !options->disable_flux_x3()) {
-    fused_recon_riemann_cuda(
-        w, _flux3,
+    run_fused(
+        _flux3,
         FusedReconRiemannParams{
             /*dim=*/1, make_physics_params(recon23_prim, recon23_vel),
             FusedX1RevisionParams{false, torch::Tensor(), torch::Tensor()},
