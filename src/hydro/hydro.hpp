@@ -150,6 +150,10 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
                                Variables const& other);
 
   torch::Tensor _flux1, _flux2, _flux3, _div, _imp;
+
+  //! persistent staged-path scratch (allocated lazily; avoids per-stage
+  //! zeros_like allocations)
+  torch::Tensor _rho_grav, _du;
 };
 
 TORCH_MODULE(Hydro);
