@@ -1,3 +1,8 @@
+// C/C++
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+
 // yaml
 #include <yaml-cpp/yaml.h>
 
@@ -176,6 +181,50 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
                     .build();
 
     int err = at::native::call_fix_vapor(cons.device().type(), iter);
+    if (err != 0 && std::getenv("SNAPY_LIMITER_DEBUG")) {
+      // Locate the columns fix_vapor cannot repair: a column fails when the
+      // dry density is non-positive anywhere in it, or when its cumulative
+      // vapor mass is non-positive down to the bottom (see fix_vapor_impl).
+      auto vap = cons.index(interior).narrow(0, ICY, nvapor).to(torch::kCPU);
+      auto maj = cons.index(interior)[IDN].to(torch::kCPU);  // (k,j,i)
+      auto vap_sum = vap.sum(-1);                            // (n,k,j)
+      auto maj_min = std::get<0>(maj.min(-1)).unsqueeze(0);  // (1,k,j)
+      auto bad =
+          ((vap_sum <= 0.) | (maj_min <= 0.).expand_as(vap_sum)).nonzero();
+      auto bad_a = bad.accessor<int64_t, 2>();
+      int rank = std::getenv("RANK") ? atoi(std::getenv("RANK")) : 0;
+      int64_t nj = vap.size(-2);
+      for (int64_t r = 0; r < std::min<int64_t>(bad.size(0), 16); ++r) {
+        int64_t n = bad_a[r][0], k = bad_a[r][1], j = bad_a[r][2];
+        auto col = vap[n][k][j];
+        printf(
+            "[LIMITER_DEBUG rank %d] col n=%ld k=%ld j=%ld (nj=%ld, edge=%d): "
+            "major_min=%.6e vap_sum=%.6e vap_min=%.6e vap_max=%.6e\n",
+            rank, (long)n, (long)k, (long)j, (long)nj,
+            (j == 0 || j == nj - 1) ? 1 : 0,
+            maj[k][j].min().item().toDouble(), col.sum().item().toDouble(),
+            col.min().item().toDouble(), col.max().item().toDouble());
+      }
+      printf("[LIMITER_DEBUG rank %d] total offending columns: %lld\n", rank,
+             (long long)bad.size(0));
+      // Ghost-content probe: dump IDN and IPR along x2 (ghosts + interior) at
+      // three x1 rows. Ghost values here still carry the init-exchange fill.
+      auto cc = cons.to(torch::kCPU);
+      int64_t nc2 = cc.size(2), nc1 = cc.size(3), ng = nghost;
+      int64_t rows[3] = {ng + 2, nc1 / 2, nc1 - ng - 5};
+      for (int64_t ri = 0; ri < 3; ++ri) {
+        int64_t i = rows[ri];
+        printf("[LIMITER_DEBUG rank %d] i_arr=%ld IDN along j:", rank, (long)i);
+        for (int64_t j = 0; j < nc2; ++j)
+          printf(" %.3e", cc[IDN][0][j][i].item().toDouble());
+        printf("\n[LIMITER_DEBUG rank %d] i_arr=%ld IPR along j:", rank,
+               (long)i);
+        for (int64_t j = 0; j < nc2; ++j)
+          printf(" %.3e", cc[IPR][0][j][i].item().toDouble());
+        printf("\n");
+      }
+      fflush(stdout);
+    }
     TORCH_CHECK(err == 0,
                 "[EquationOfState] apply_conserved_limiter_: "
                 "Failed to fix vapor mass fractions.");
