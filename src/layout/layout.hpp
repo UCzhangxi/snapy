@@ -265,6 +265,8 @@ class LayoutImpl {
   std::vector<Coord3> _coords3;
   std::vector<int> _rankof;
   MeshBlockImpl* _owner = nullptr;
+  //! exchange round id for the SNAPY_EXCHANGE_DEBUG tracer (set in serialize)
+  long _xdbg_round = 0;
 };
 using Layout = std::shared_ptr<LayoutImpl>;
 

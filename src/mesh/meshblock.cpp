@@ -574,11 +574,39 @@ void MeshBlockImpl::finalize_exchange(Variables &vars, SyncOptions const &opts,
   _playout->finalize(this, vars, opts, works);
 }
 
+namespace {
+// SNAPY_STATE_DEBUG probe: interior x2-uniformity of IDN/IPR at three heights.
+// A fresh x2-uniform IC must keep (max-min)==0 across interior j forever; the
+// first probe point where it breaks names the operation that corrupts C1 runs.
+inline void xstate_probe(char const *tag, int cycle, int stage,
+                         torch::Tensor const &u, int nghost) {
+  static bool on = std::getenv("SNAPY_STATE_DEBUG") != nullptr;
+  if (!on || !u.defined() || u.dim() != 4) return;
+  int rank = std::getenv("RANK") ? atoi(std::getenv("RANK")) : 0;
+  int64_t nc2 = u.size(2), nc1 = u.size(3);
+  auto ui = u.narrow(2, nghost, nc2 - 2 * nghost).to(torch::kCPU);
+  int64_t rows[3] = {nghost + 2, nc1 / 2, nc1 - nghost - 5};
+  for (int v : {0 /*IDN*/, 4 /*IPR*/}) {
+    printf("[SDBG r%d cyc=%d stg=%d %s v=%d spread:", rank, cycle, stage, tag,
+           v);
+    for (int64_t ri = 0; ri < 3; ++ri) {
+      auto col = ui[v][0].select(-1, rows[ri]);
+      printf(" %.3e", col.max().item().toDouble() -
+                          col.min().item().toDouble());
+    }
+    printf("]\n");
+  }
+  fflush(stdout);
+}
+}  // namespace
+
 void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
   TORCH_CHECK(stage >= 0 && stage < pintg->stages.size(),
               "Invalid stage: ", stage);
 
   auto hydro_u = vars.at("hydro_u");
+  xstate_probe("entry", cycle, stage, hydro_u,
+               options->coord()->nghost());
   auto scalar_s =
       vars.count("scalar_s") ? vars.at("scalar_s") : torch::Tensor();
 
@@ -672,8 +700,13 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
   }
 
   // -------- (4) multi-stage averaging --------
+  xstate_probe("pre-avg(du)", cycle, stage, fut_hydro_du,
+               options->coord()->nghost());
   hydro_u.set_(pintg->forward(stage, _hydro_u0, _hydro_u1, fut_hydro_du));
+  xstate_probe("post-avg", cycle, stage, hydro_u, options->coord()->nghost());
   phydro->peos->apply_conserved_limiter_(hydro_u);
+  xstate_probe("post-limiter", cycle, stage, hydro_u,
+               options->coord()->nghost());
 
   if (options->verbose()) {
     auto end = std::chrono::high_resolution_clock::now();
@@ -768,6 +801,8 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
                      /*warm_start=*/true);
 
     hydro_u.narrow(0, ICY, ny) = yfrac * rho;
+    xstate_probe("post-satadj", cycle, stage, hydro_u,
+                 options->coord()->nghost());
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> elapsed = end - start;

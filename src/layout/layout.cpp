@@ -2,7 +2,10 @@
 #include <sys/utsname.h>
 #include <yaml-cpp/yaml.h>
 
+#include <atomic>
 #include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <map>
 #include <random>
@@ -358,10 +361,43 @@ void LayoutImpl::_copy_local_exchange_buffers(
   }
 }
 
+namespace {
+// SNAPY_EXCHANGE_DEBUG tracer: one global round counter (bumped per serialize)
+// and a checksum printer. Multisets of SENT vs CONSUMED sums per round expose
+// lost/stale/unfilled buffers without bid-mapping bookkeeping.
+std::atomic<long> g_xdbg_round{0};
+inline bool xdbg_on() {
+  static bool on = std::getenv("SNAPY_EXCHANGE_DEBUG") != nullptr;
+  return on;
+}
+inline void xdbg_sum(int rank, long round, int type, char const* what, int dy,
+                     int dx, int dz, std::vector<torch::Tensor> const& bufs) {
+  for (size_t n = 0; n < bufs.size(); ++n) {
+    double s = bufs[n].defined() && bufs[n].numel() > 0
+                   ? bufs[n].sum().item().toDouble()
+                   : -1.0;
+    long numel = bufs[n].defined() ? bufs[n].numel() : -1;
+    printf("[XDBG r%d round=%ld type=%d %s off=(%d,%d,%d) n=%zu numel=%ld "
+           "sum=%.17e]\n",
+           rank, round, type, what, dy, dx, dz, n, numel, s);
+  }
+  fflush(stdout);
+}
+inline void xdbg_note(int rank, long round, int type, char const* what, int dy,
+                      int dx, int dz) {
+  printf("[XDBG r%d round=%ld type=%d %s off=(%d,%d,%d)]\n", rank, round, type,
+         what, dy, dx, dz);
+  fflush(stdout);
+}
+}  // namespace
+
 void LayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
                            SyncOptions const& opts) {
   if (options->verbose()) {
     SINFO(Layout) << "serializing data into send buffers\n";
+  }
+  if (xdbg_on()) {
+    _xdbg_round = ++g_xdbg_round;
   }
 
   // Get my logical location
@@ -404,6 +440,9 @@ void LayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
               torch::empty_like(pmb->send_bufs[bid][count]);
           count++;
         }
+        if (xdbg_on())
+          xdbg_sum(options->rank(), _xdbg_round, opts.type(), "PACK", dy, dx,
+                   dz, pmb->send_bufs[bid]);
       }
 }
 
@@ -489,10 +528,14 @@ void LayoutImpl::exchange_remote(MeshBlockImpl const* pmb,
           remote_ops.push_back({this, remote_process, local_block,
                                 remote_local_block, r, send_id, recv_id, offset,
                                 peer_offset});
+          if (xdbg_on())
+            xdbg_note(rank, _xdbg_round, opts.type(), "POST", dy, dx, dz);
         } else if (nb == rank) {  // self-send
           int r1 = get_buffer_id(std::tuple<int, int, int>(-dy, -dx, -dz));
           for (int n = 0; n < pmb->recv_bufs[r].size(); ++n)
             pmb->recv_bufs[r1][n].copy_(pmb->send_bufs[r][n]);
+          if (xdbg_on())
+            xdbg_note(rank, _xdbg_round, opts.type(), "SELFCOPY", dy, dx, dz);
         }
       }
 
@@ -561,6 +604,9 @@ void LayoutImpl::deserialize(MeshBlockImpl const* pmb, Variables& vars,
 
         // Copy data from receive buffer to mesh ghost zones
         int bid = get_buffer_id(offset);
+        if (xdbg_on())
+          xdbg_sum(options->rank(), _xdbg_round, opts.type(), "CONSUME", dy, dx,
+                   dz, pmb->recv_bufs[bid]);
         int count = 0;
         for (auto& [name, var] : vars) {
           var.index_put_(sub, pmb->recv_bufs[bid][count++]);
