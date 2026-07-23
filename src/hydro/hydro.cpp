@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <kintera/utils/format.hpp>
 
 // C/C++
@@ -216,6 +217,8 @@ void HydroImpl::_apply_implicit_correction(torch::Tensor& du,
 
 void HydroImpl::_revise_x1inner_lr(torch::Tensor const& wl,
                                    torch::Tensor const& wr) {
+  if (getenv("SNAPY_NO_WB"))
+    return;  // EXPERIMENT: disable hydrostatic wall well-balancing
   int is = pmb->pcoord->il();
   wl[IPR].narrow(-1, is, 1) = wr[IPR].narrow(-1, is, 1);
   wl[IDN].narrow(-1, is, 1) = wr[IDN].narrow(-1, is, 1);
@@ -223,12 +226,16 @@ void HydroImpl::_revise_x1inner_lr(torch::Tensor const& wl,
 
 void HydroImpl::_revise_x1outer_lr(torch::Tensor const& wl,
                                    torch::Tensor const& wr) {
+  if (getenv("SNAPY_NO_WB"))
+    return;  // EXPERIMENT: disable hydrostatic wall well-balancing
   int ie = pmb->pcoord->iu();
   wr[IPR].narrow(-1, ie + 1, 1) = wl[IPR].narrow(-1, ie + 1, 1);
   wr[IDN].narrow(-1, ie + 1, 1) = wl[IDN].narrow(-1, ie + 1, 1);
 }
 
 void HydroImpl::_revise_x1inner_ghost(torch::Tensor const& w) {
+  if (getenv("SNAPY_NO_WB"))
+    return;  // EXPERIMENT: disable hydrostatic wall well-balancing
   auto pcoord = pmb->pcoord;
   int is = pcoord->il();
   auto grav = -options->grav()->grav1();
@@ -249,6 +256,8 @@ void HydroImpl::_revise_x1inner_ghost(torch::Tensor const& w) {
 }
 
 void HydroImpl::_revise_x1outer_ghost(torch::Tensor const& w) {
+  if (getenv("SNAPY_NO_WB"))
+    return;  // EXPERIMENT: disable hydrostatic wall well-balancing
   auto pcoord = pmb->pcoord;
   int ie = pcoord->iu();
   auto grav = -options->grav()->grav1();
