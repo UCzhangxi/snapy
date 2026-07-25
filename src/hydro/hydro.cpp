@@ -300,8 +300,38 @@ std::vector<torch::Tensor> HydroImpl::_hydro_ref_x1(
       (w[IPR].select(-1, iu) * torch::exp(-g * 0.5 * dx1f[iu] / RdT_top))
           .unsqueeze(-1);                          // [nc3,nc2,1]
   auto cum_iu = cum.select(-1, iu).unsqueeze(-1);  // [nc3,nc2,1]
-  auto psf_lo = anchor + cum_iu - cum + dp;  // pressure at lower face of cell i
-  auto psf_hi = psf_lo - dp;                 // pressure at upper face of cell i
+
+  // Global x1 reference across a vertical (nb1>1) decomposition: make the
+  // hydrostatic reference continuous over the x1 process seams. The block
+  // owning x1-outer anchors at the true domain top; every block below receives
+  // the running seam-face pressure from the block above and passes on that
+  // value plus its own interior hydrostatic drop (= its bottom-face pressure).
+  // A serial top->bottom scan along the x1 process column. nb1 == 1 (no x1
+  // neighbor) => A == anchor, bit-identical to the single-block reference.
+  auto A = anchor;
+  auto layout = pmb->get_layout();
+  if (layout && layout->has_process_group() && !layout->options->periodic_z() &&
+      layout->options->pz() >
+          1) {  // pz==nb1: relay only across a SPLIT x1 column (else unmatched
+                // send/recv at nb1=1)
+    auto iloc = layout->loc_of(layout->options->rank());
+    int above = layout->neighbor_rank(iloc, {0, 0, 1});   // toward x1-outer
+    int below = layout->neighbor_rank(iloc, {0, 0, -1});  // toward x1-inner
+    constexpr int kWbRefTag = 0x7715;
+    if (above >= 0) {
+      std::vector<torch::Tensor> rbuf = {torch::empty_like(anchor)};
+      layout->comm->recv(rbuf, above, kWbRefTag)->wait();
+      A = rbuf[0];
+    }
+    if (below >= 0) {
+      std::vector<torch::Tensor> sbuf = {
+          A + dp.narrow(-1, is, iu - is + 1).sum(-1, /*keepdim=*/true)};
+      layout->comm->send(sbuf, below, kWbRefTag)->wait();
+    }
+  }
+
+  auto psf_lo = A + cum_iu - cum + dp;  // pressure at lower face of cell i
+  auto psf_hi = psf_lo - dp;            // pressure at upper face of cell i
 
   // In an extreme domain the hydrostatic continuation through the outer
   // ghost cells could reach <= 0 and poison the near-boundary stencils with
