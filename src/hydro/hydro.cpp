@@ -320,7 +320,14 @@ HydroImpl::_hydro_ref_x1(torch::Tensor const& w) const {
     // see decomp_identity gate 2026-08-05). The block owning the physical
     // bottom computes (kbot, gamma) exactly as the nb1=1 path would; every
     // block above receives and forwards the same slabs.
-    if (below >= 0) {
+    if (kbot_cached_.defined()) {
+      // OPT-A: relayed on an earlier call -- skip the whole bottom->top chain.
+      // Device-safe: kbot_cached_ was built from `w`, so it already lives on
+      // the same device (CPU or CUDA) and the kernels take it as a plain
+      // pointer.
+      kbot = kbot_cached_;
+      gam_global = gam_cached_;
+    } else if (below >= 0) {
       // ONE tensor per message: ProcessGroupGloo::send rejects a multi-tensor
       // vector (ucx accepts it, which is why the ucx-only gate missed this).
       // Pack (kbot, gam) along the last axis, exactly as the seam-flux exchange
@@ -338,10 +345,14 @@ HydroImpl::_hydro_ref_x1(torch::Tensor const& w) const {
               w[IDN].narrow(-1, is_loc, 1).pow(gam_global))
                  .contiguous();
     }
-    if (above >= 0) {
+    if (above >= 0 && !kbot_cached_.defined()) {
       std::vector<torch::Tensor> sbuf = {
           torch::cat({kbot, gam_global}, -1).contiguous()};
       layout->comm->send(sbuf, above, kWbKbotTag)->wait();
+    }
+    if (!kbot_cached_.defined()) {
+      kbot_cached_ = kbot;
+      gam_cached_ = gam_global;
     }
 
     if (above >= 0) {

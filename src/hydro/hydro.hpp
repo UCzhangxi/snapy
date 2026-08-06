@@ -160,6 +160,15 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
   //! x1 grid uniformity (-1 unknown, 0 non-uniform, 1 uniform), probed once;
   //! selects the six-face vs log-mean cell-pressure reference
   mutable int x1_uniform_ = -1;
+  // OPT-A (xiz/wb-nb1-seamref-fast): cache the relayed global isentrope.
+  // kbot/gam are the DENSITY REFERENCE anchor, not state: the reference only
+  // has to remove the bulk vertical structure, and the WB design explicitly
+  // does not want it tracking the flow ("a state-tracking per-cell reference
+  // would absorb the buoyancy anomalies the Riemann solver needs"). Relaying it
+  // every step costs a full nb1-deep serial chain per step on top of the anchor
+  // chain. Relay once, reuse.
+  mutable torch::Tensor kbot_cached_;
+  mutable torch::Tensor gam_cached_;
 
   torch::Tensor _flux1, _flux2, _flux3, _face_pressure1, _div;
   torch::Tensor _positivity_hits;
