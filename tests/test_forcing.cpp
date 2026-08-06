@@ -159,6 +159,12 @@ TEST(forcing_options, reject_invalid_values) {
       YAML::Load("relax-bot-comp: {tau: 1., species: [vapor], xfrac: [1.1]}")));
   EXPECT_ANY_THROW(RelaxBotTempOptionsImpl::from_yaml(
       YAML::Load("relax-bot-temp: {tau: 0., btemp: 300.}")));
+  // btemp has no meaningful default: omitting it must fail, not silently pick
+  // a bottom boundary temperature for the user.
+  EXPECT_ANY_THROW(RelaxBotTempOptionsImpl::from_yaml(
+      YAML::Load("relax-bot-temp: {tau: 1.}")));
+  EXPECT_ANY_THROW(RelaxBotTempOptionsImpl::from_yaml(
+      YAML::Load("relax-bot-temp: {tau: 1., btemp: -1.}")));
   EXPECT_ANY_THROW(RelaxBotVeloOptionsImpl::from_yaml(
       YAML::Load("relax-bot-velo: {tau: 0.}")));
   EXPECT_ANY_THROW(BodyHeatOptionsImpl::from_yaml(

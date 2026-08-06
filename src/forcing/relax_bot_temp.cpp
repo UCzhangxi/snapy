@@ -19,10 +19,19 @@ RelaxBotTempOptions RelaxBotTempOptionsImpl::from_yaml(
   auto op = RelaxBotTempOptionsImpl::create();
 
   op->tau() = node["tau"].as<double>(0.0);
-  op->btemp() = node["btemp"].as<double>(300.0);
+
+  // btemp is the bottom-boundary temperature the relaxation drives toward;
+  // there is no meaningful default for it. Silently falling back to a fixed
+  // value turns a missing key into a wrong boundary condition that runs to
+  // completion, so require it explicitly, as tau already is.
+  TORCH_CHECK(node["btemp"],
+              "RelaxBotTempOptions: btemp is required (no default).");
+  op->btemp() = node["btemp"].as<double>();
 
   TORCH_CHECK(op->tau() > 0.,
               "RelaxBotTempOptions: tau must be greater than zero.");
+  TORCH_CHECK(op->btemp() > 0.,
+              "RelaxBotTempOptions: btemp must be greater than zero.");
 
   return op;
 }
