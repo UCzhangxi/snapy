@@ -22,6 +22,14 @@ TopSpongeLyrOptions TopSpongeLyrOptionsImpl::from_yaml(
   op->tau() = node["tau"].as<double>(0.0);
   op->width() = node["width"].as<double>(0.0);
 
+  // Both are divisors in forward(): the damping rate is 1/tau and the ramp is
+  // normalised by width. Leaving either at zero yields a non-finite tendency
+  // on the first step rather than a disabled sponge, so reject it here.
+  TORCH_CHECK(op->tau() > 0.,
+              "TopSpongeLyrOptions: tau must be greater than zero.");
+  TORCH_CHECK(op->width() > 0.,
+              "TopSpongeLyrOptions: width must be greater than zero.");
+
   return op;
 }
 

@@ -169,6 +169,16 @@ TEST(forcing_options, reject_invalid_values) {
       YAML::Load("relax-bot-velo: {tau: 0.}")));
   EXPECT_ANY_THROW(BodyHeatOptionsImpl::from_yaml(
       YAML::Load("body-heat: {pmin: 2., pmax: 1.}")));
+  // tau and width are divisors in the sponge tendency; zero is not "disabled",
+  // it is a non-finite update.
+  EXPECT_ANY_THROW(TopSpongeLyrOptionsImpl::from_yaml(
+      YAML::Load("top-sponge-lyr: {width: 1.e3}")));
+  EXPECT_ANY_THROW(TopSpongeLyrOptionsImpl::from_yaml(
+      YAML::Load("top-sponge-lyr: {tau: 1.e4}")));
+  EXPECT_ANY_THROW(BotSpongeLyrOptionsImpl::from_yaml(
+      YAML::Load("bot-sponge-lyr: {width: 1.e3}")));
+  EXPECT_ANY_THROW(BotSpongeLyrOptionsImpl::from_yaml(
+      YAML::Load("bot-sponge-lyr: {tau: 1.e4}")));
 }
 
 TEST(forcing_options, reject_unknown_composition_species) {
