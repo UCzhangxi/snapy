@@ -48,19 +48,6 @@ std::shared_ptr<MeshBlockImpl> make_periodic_block(int nx1) {
   return std::make_shared<MeshBlockImpl>(options);
 }
 
-std::shared_ptr<MeshBlockImpl> make_x2_wall_block() {
-  auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
-  options->coord()->global_nx2() = 6;
-  options->coord()->nx2() = 6;
-  options->coord()->global_x2max() = 6.;
-  options->coord()->x2max() = 6.;
-  options->bfuncs().push_back(get_bc_func().at("reflecting_inner"));
-  options->bfuncs().push_back(get_bc_func().at("reflecting_outer"));
-  options->bcnames().push_back("reflecting_inner");
-  options->bcnames().push_back("reflecting_outer");
-  return std::make_shared<MeshBlockImpl>(options);
-}
-
 torch::Tensor make_primitive(std::shared_ptr<MeshBlockImpl> const& block,
                              torch::Device device, torch::Dtype dtype) {
   auto coord = block->pcoord;
@@ -246,16 +233,17 @@ TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost) {
 
 // The same construction along x2, so that face_coefficient runs with the face
 // axis in the middle of the tensor rather than last. Density and temperature
-// are uniform along x1, so the x1 direction contributes nothing.
+// are uniform along x1, so that direction contributes nothing.
 TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost_in_x2) {
-  auto block = make_x2_wall_block();
+  auto block = std::make_shared<MeshBlockImpl>(
+      MeshBlockOptionsImpl::from_yaml("test_diffusion_2d.yaml"));
   block->to(device, dtype);
   auto coord = block->pcoord;
   auto w = torch::zeros(
       {5, coord->options->nc3(), coord->options->nc2(), coord->options->nc1()},
       torch::device(device).dtype(dtype));
   auto y = coord->x2v.to(device, dtype).view({1, -1, 1});
-  auto temp = kTemp0 + kTempSlope * y;
+  auto temp = (kTemp0 + kTempSlope * y).expand_as(w[IDN]).contiguous();
   w[IDN] = kRho0 + kRhoSlope * y;
   {
     BoundaryFuncOptions bops;
