@@ -67,18 +67,29 @@ void bind_mesh(py::module& m) {
                   "functions.");
             }
 
+            int face = -1;
             if (dx3 == 0 && dx2 == 0 && dx1 == -1) {
-              self->bfuncs()[0] = func;
+              face = 0;
             } else if (dx3 == 0 && dx2 == 0 && dx1 == 1) {
-              self->bfuncs()[1] = func;
+              face = 1;
             } else if (dx3 == 0 && dx2 == -1 && dx1 == 0) {
-              self->bfuncs()[2] = func;
+              face = 2;
             } else if (dx3 == 0 && dx2 == 1 && dx1 == 0) {
-              self->bfuncs()[3] = func;
+              face = 3;
             } else if (dx3 == -1 && dx2 == 0 && dx1 == 0) {
-              self->bfuncs()[4] = func;
+              face = 4;
             } else if (dx3 == 1 && dx2 == 0 && dx1 == 0) {
-              self->bfuncs()[5] = func;
+              face = 5;
+            }
+            if (face < 0) return;
+
+            self->bfuncs()[face] = func;
+            // The name must not outlive the function it described: a stale
+            // name would let is_wall_boundary classify a caller-supplied
+            // function it has never seen. Set bcnames explicitly to opt back
+            // in.
+            if (static_cast<size_t>(face) < self->bcnames().size()) {
+              self->bcnames()[face] = "";
             }
           },
           py::arg("dx3"), py::arg("dx2"), py::arg("dx1"), py::arg("func"))
@@ -93,6 +104,7 @@ void bind_mesh(py::module& m) {
       .ADD_OPTION(snap::ScalarOptions, snap::MeshBlockOptionsImpl, scalar)
       .ADD_OPTION(snap::InternalBoundaryOptions, snap::MeshBlockOptionsImpl, ib)
       .ADD_OPTION(std::vector<bcfunc_t>, snap::MeshBlockOptionsImpl, bfuncs)
+      .ADD_OPTION(std::vector<std::string>, snap::MeshBlockOptionsImpl, bcnames)
       .ADD_OPTION(snap::LayoutOptions, snap::MeshBlockOptionsImpl, layout);
 
   pyMeshOptions.def(py::init<>())

@@ -227,10 +227,18 @@ bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
   auto i = static_cast<size_t>(face);
   if (i >= bfuncs().size() || bfuncs()[i] == nullptr) return false;
 
-  // A periodic face installs a boundary function, so it is a physical boundary,
-  // but its ghost holds the true state of the wrapped neighbour. It is not a
-  // wall.
-  return i < bcnames().size() && bcnames()[i].rfind("periodic", 0) != 0;
+  // bcnames is written beside bfuncs. If the two disagree in length the block
+  // was assembled outside from_yaml and no face can be classified; say no.
+  if (bcnames().size() != bfuncs().size()) return false;
+
+  // A whitelist, deliberately. Only these fill the ghost with a state that does
+  // NOT stand for the fluid at the boundary face: reflecting mirrors the
+  // interior, solid writes a constant. Every other boundary function must keep
+  // the two-cell average -- periodic's ghost is a true neighbour, outflow's
+  // zero-gradient ghost IS that condition's statement about the face, and
+  // custom is written by user code this cannot interpret.
+  auto const &name = bcnames()[i];
+  return name.rfind("reflecting", 0) == 0 || name.rfind("solid", 0) == 0;
 }
 
 std::string MeshBlockOptionsImpl::device_str() const {

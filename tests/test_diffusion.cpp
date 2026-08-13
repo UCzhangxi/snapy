@@ -48,6 +48,19 @@ std::shared_ptr<MeshBlockImpl> make_periodic_block(int nx1) {
   return std::make_shared<MeshBlockImpl>(options);
 }
 
+std::shared_ptr<MeshBlockImpl> make_x2_wall_block() {
+  auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
+  options->coord()->global_nx2() = 6;
+  options->coord()->nx2() = 6;
+  options->coord()->global_x2max() = 6.;
+  options->coord()->x2max() = 6.;
+  options->bfuncs().push_back(get_bc_func().at("reflecting_inner"));
+  options->bfuncs().push_back(get_bc_func().at("reflecting_outer"));
+  options->bcnames().push_back("reflecting_inner");
+  options->bcnames().push_back("reflecting_outer");
+  return std::make_shared<MeshBlockImpl>(options);
+}
+
 torch::Tensor make_primitive(std::shared_ptr<MeshBlockImpl> const& block,
                              torch::Device device, torch::Dtype dtype) {
   auto coord = block->pcoord;
@@ -231,6 +244,41 @@ TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost) {
       << "du[IPR] over the interior: " << got;
 }
 
+// The same construction along x2, so that face_coefficient runs with the face
+// axis in the middle of the tensor rather than last. Density and temperature
+// are uniform along x1, so the x1 direction contributes nothing.
+TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost_in_x2) {
+  auto block = make_x2_wall_block();
+  block->to(device, dtype);
+  auto coord = block->pcoord;
+  auto w = torch::zeros(
+      {5, coord->options->nc3(), coord->options->nc2(), coord->options->nc1()},
+      torch::device(device).dtype(dtype));
+  auto y = coord->x2v.to(device, dtype).view({1, -1, 1});
+  auto temp = kTemp0 + kTempSlope * y;
+  w[IDN] = kRho0 + kRhoSlope * y;
+  {
+    BoundaryFuncOptions bops;
+    bops.type(kPrimitive).nghost(coord->options->nghost());
+    get_bc_func().at("reflecting_inner")(w, 2, bops);
+    get_bc_func().at("reflecting_outer")(w, 2, bops);
+  }
+  auto Rd = 8.31446261815324 / block->phydro->peos->options->weight();
+  w[IPR] = w[IDN] * Rd * temp;
+
+  auto du = torch::zeros_like(w);
+  block->phydro->pdiffusion->forward(du, w, temp, 0.1);
+
+  auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
+  auto got = du[IPR].index(interior);
+  auto cv_ref = block->phydro->peos->species_cv_ref();
+  auto expected = 0.1 * block->phydro->pdiffusion->options->kappa_iso() *
+                  cv_ref * kTempSlope * kRhoSlope;
+  EXPECT_TRUE(
+      torch::allclose(got, torch::full_like(got, expected), 1.e-5, 1.e-5))
+      << "du[IPR] over the interior: " << got;
+}
+
 // The same state under a periodic x1: the ghost is then the true wrapped
 // neighbour, so the two-cell average is correct and the wall extrapolation
 // must NOT fire. The deliberately off-profile ghost makes the two answers
@@ -251,18 +299,36 @@ TEST_P(DeviceTest, periodic_x1_face_is_not_extrapolated) {
   auto full = 0.1 * block->phydro->pdiffusion->options->kappa_iso() * cv_ref *
               kTempSlope * kRhoSlope;
   // mirrored ghost => the wrap face average sits half a slope short
-  EXPECT_NEAR(du[IPR][0][0][nghost].item<double>(), 0.5 * full, 1.e-5);
+  EXPECT_NEAR(du[IPR][0][0][nghost].item<double>(), 0.5 * full, 1.e-4 * full);
 }
 
-TEST(diffusion_options, periodic_face_is_not_a_wall) {
+// Only reflecting and solid fill the ghost with a state that does not stand for
+// the fluid at the face. Everything else -- including a caller-supplied
+// function whose name was never recorded -- must keep the two-cell average.
+TEST(diffusion_options, only_reflecting_and_solid_count_as_walls) {
   auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
   EXPECT_TRUE(options->is_wall_boundary(0, 0, -1));
   EXPECT_TRUE(options->is_wall_boundary(0, 0, 1));
 
-  make_x1_periodic(options);
+  for (std::string name : {"periodic", "outflow", "custom"}) {
+    options->bfuncs()[BoundaryFace::kInnerX1] =
+        get_bc_func().at(name + "_inner");
+    options->bcnames()[BoundaryFace::kInnerX1] = name + "_inner";
+    EXPECT_FALSE(options->is_wall_boundary(0, 0, -1)) << name;
+    EXPECT_TRUE(options->is_physical_boundary(0, 0, -1)) << name;
+  }
+
+  options->bfuncs()[BoundaryFace::kInnerX1] = get_bc_func().at("solid_inner");
+  options->bcnames()[BoundaryFace::kInnerX1] = "solid_inner";
+  EXPECT_TRUE(options->is_wall_boundary(0, 0, -1));
+
+  // an unnamed function, e.g. one installed from Python, is not a wall
+  options->bcnames()[BoundaryFace::kInnerX1] = "";
   EXPECT_FALSE(options->is_wall_boundary(0, 0, -1));
+
+  // and neither is anything once the two records disagree in length
+  options->bcnames().clear();
   EXPECT_FALSE(options->is_wall_boundary(0, 0, 1));
-  EXPECT_TRUE(options->is_physical_boundary(0, 0, -1));
 }
 
 // ISSUES S39. InternalBoundary fills solid cells with placeholder primitives
@@ -274,6 +340,10 @@ TEST_P(DeviceTest, solid_interface_carries_no_diffusive_flux) {
   auto block = make_block();
   block->to(device, dtype);
   auto w = make_primitive(block, device, dtype);
+  // a uniform TANGENTIAL wind: mark_prim_solid_ zeroes it inside the solid, so
+  // the solid/fluid faces also carry a shear the viscous branch must refuse.
+  // v1 stays zero, so div_vel is identically zero and cannot confound this.
+  w[IVY] = 3.0;
 
   auto solid = torch::zeros(
       {block->pcoord->options->nc3(), block->pcoord->options->nc2(),
@@ -290,9 +360,11 @@ TEST_P(DeviceTest, solid_interface_carries_no_diffusive_flux) {
   block->phydro->pdiffusion->forward(du, w, temp, 0.1);
 
   auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
-  auto got = du[IPR].index(interior);
-  EXPECT_TRUE(torch::allclose(got, torch::zeros_like(got), 1.e-8, 1.e-8))
-      << "du[IPR] over the interior: " << got;
+  for (int n = 0; n < 5; ++n) {
+    auto got = du[n].index(interior);
+    EXPECT_TRUE(torch::allclose(got, torch::zeros_like(got), 1.e-8, 1.e-8))
+        << "du[" << n << "] over the interior: " << got;
+  }
 }
 
 TEST_P(DeviceTest, timestep_uses_largest_diffusivity) {
