@@ -181,6 +181,11 @@ class DiffusionImpl : public torch::nn::Cloneable<DiffusionImpl> {
   //! non-owning reference to parent
   HydroImpl const* phydro = nullptr;
 
+  //! immersed-solid mask for the current step, undefined if the problem has
+  //! none. The shared forcing signature carries no Variables, so Hydro hands
+  //! it over here before calling forward().
+  torch::Tensor solid;
+
   explicit DiffusionImpl(DiffusionOptions const& options_,
                          torch::nn::Module* p = nullptr);
   void reset() override;

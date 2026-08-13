@@ -53,6 +53,11 @@ struct MeshBlockOptionsImpl {
 
   bool is_physical_boundary(int dy, int dx, int dz) const;
 
+  //! true if the face carries a physical wall, i.e. a boundary function whose
+  //! ghost is NOT a real neighbour state. Periodic is a physical boundary by
+  //! is_physical_boundary but is not a wall.
+  bool is_wall_boundary(int dy, int dx, int dz) const;
+
   std::string device_str() const;
 
   //! verbose
@@ -72,6 +77,9 @@ struct MeshBlockOptionsImpl {
 
   //! boundary functions
   ADD_ARG(std::vector<bcfunc_t>, bfuncs);
+
+  //! name of each installed boundary function, parallel to bfuncs
+  ADD_ARG(std::vector<std::string>, bcnames);
 
   //! distribution layout
   ADD_ARG(LayoutOptions, layout) = nullptr;

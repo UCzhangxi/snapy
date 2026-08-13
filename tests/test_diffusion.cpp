@@ -12,6 +12,7 @@
 #include <snap/snap.h>
 
 #include <snap/bc/bc_func.hpp>
+#include <snap/bc/internal_boundary.hpp>
 #include <snap/forcing/forcing.hpp>
 #include <snap/mesh/meshblock.hpp>
 
@@ -27,6 +28,15 @@ std::shared_ptr<MeshBlockImpl> make_block() {
       MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml"));
 }
 
+void make_x1_periodic(MeshBlockOptions const& options) {
+  options->bfuncs()[BoundaryFace::kInnerX1] =
+      get_bc_func().at("periodic_inner");
+  options->bfuncs()[BoundaryFace::kOuterX1] =
+      get_bc_func().at("periodic_outer");
+  options->bcnames()[BoundaryFace::kInnerX1] = "periodic_inner";
+  options->bcnames()[BoundaryFace::kOuterX1] = "periodic_outer";
+}
+
 std::shared_ptr<MeshBlockImpl> make_periodic_block(int nx1) {
   auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
   options->coord()->global_nx1() = nx1;
@@ -34,6 +44,7 @@ std::shared_ptr<MeshBlockImpl> make_periodic_block(int nx1) {
   options->coord()->global_x1max() = 2. * M_PI;
   options->coord()->x1max() = 2. * M_PI;
   options->hydro()->diffusion()->kappa_iso() = 0.;
+  make_x1_periodic(options);
   return std::make_shared<MeshBlockImpl>(options);
 }
 
@@ -53,6 +64,38 @@ void fill_periodic_x1(torch::Tensor const& var, int nghost) {
   options.type(kPrimitive).nghost(nghost);
   get_bc_func().at("periodic_inner")(var, 3, options);
   get_bc_func().at("periodic_outer")(var, 3, options);
+}
+
+void fill_reflecting_x1(torch::Tensor const& var, int nghost) {
+  BoundaryFuncOptions options;
+  options.type(kPrimitive).nghost(nghost);
+  get_bc_func().at("reflecting_inner")(var, 3, options);
+  get_bc_func().at("reflecting_outer")(var, 3, options);
+}
+
+//! Density linear in x1 with slope kRhoSlope, then reflected so that the x1
+//! ghosts hold the MIRROR of the first active cell instead of the value the
+//! linear profile has there -- exactly what `reflecting` installs in a
+//! stratified atmosphere. Temperature is linear over ALL cells, ghosts
+//! included, so dT/dn is the same at every face and the conductive flux is
+//! proportional to the face density alone.
+constexpr double kRho0 = 1.0, kRhoSlope = 0.2, kTemp0 = 300.0,
+                 kTempSlope = 10.0;
+
+torch::Tensor make_linear_state(std::shared_ptr<MeshBlockImpl> const& block,
+                                torch::Device device, torch::Dtype dtype,
+                                torch::Tensor* temp) {
+  auto coord = block->pcoord;
+  auto w = torch::zeros(
+      {5, coord->options->nc3(), coord->options->nc2(), coord->options->nc1()},
+      torch::device(device).dtype(dtype));
+  auto x = coord->x1v.to(device, dtype).view({1, 1, -1});
+  *temp = kTemp0 + kTempSlope * x;
+  w[IDN] = kRho0 + kRhoSlope * x;
+  fill_reflecting_x1(w, coord->options->nghost());
+  auto Rd = 8.31446261815324 / block->phydro->peos->options->weight();
+  w[IPR] = w[IDN] * Rd * (*temp);
+  return w;
 }
 
 }  // namespace
@@ -162,6 +205,94 @@ TEST_P(DeviceTest, viscous_sine_mode_matches_analytic_decay) {
   auto expected = torch::sin(x) * std::exp(-nu * time);
   EXPECT_TRUE(torch::allclose(w[IVY].index(interior), expected.index(interior),
                               3.e-4, 3.e-4));
+}
+
+// ISSUES S39. On a linear density profile the two-cell average is exact on
+// every INTERIOR face, so a uniform dT/dn gives the same tendency in every
+// interior cell -- unless the wall face reads the ghost, which the reflecting
+// fill has put off the profile. Reading the ghost halves the tendency in the
+// two wall cells while leaving the interior right: the A11 signature.
+TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost) {
+  auto block = make_block();
+  block->to(device, dtype);
+  torch::Tensor temp;
+  auto w = make_linear_state(block, device, dtype, &temp);
+  auto du = torch::zeros_like(w);
+
+  block->phydro->pdiffusion->forward(du, w, temp, 0.1);
+
+  auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
+  auto got = du[IPR].index(interior);
+  auto cv_ref = block->phydro->peos->species_cv_ref();
+  auto expected = 0.1 * block->phydro->pdiffusion->options->kappa_iso() *
+                  cv_ref * kTempSlope * kRhoSlope;
+  EXPECT_TRUE(
+      torch::allclose(got, torch::full_like(got, expected), 1.e-5, 1.e-5))
+      << "du[IPR] over the interior: " << got;
+}
+
+// The same state under a periodic x1: the ghost is then the true wrapped
+// neighbour, so the two-cell average is correct and the wall extrapolation
+// must NOT fire. The deliberately off-profile ghost makes the two answers
+// differ, so this discriminates.
+TEST_P(DeviceTest, periodic_x1_face_is_not_extrapolated) {
+  auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
+  make_x1_periodic(options);
+  auto block = std::make_shared<MeshBlockImpl>(options);
+  block->to(device, dtype);
+  torch::Tensor temp;
+  auto w = make_linear_state(block, device, dtype, &temp);
+  auto du = torch::zeros_like(w);
+
+  block->phydro->pdiffusion->forward(du, w, temp, 0.1);
+
+  int nghost = block->pcoord->options->nghost();
+  auto cv_ref = block->phydro->peos->species_cv_ref();
+  auto full = 0.1 * block->phydro->pdiffusion->options->kappa_iso() * cv_ref *
+              kTempSlope * kRhoSlope;
+  // mirrored ghost => the wrap face average sits half a slope short
+  EXPECT_NEAR(du[IPR][0][0][nghost].item<double>(), 0.5 * full, 1.e-5);
+}
+
+TEST(diffusion_options, periodic_face_is_not_a_wall) {
+  auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
+  EXPECT_TRUE(options->is_wall_boundary(0, 0, -1));
+  EXPECT_TRUE(options->is_wall_boundary(0, 0, 1));
+
+  make_x1_periodic(options);
+  EXPECT_FALSE(options->is_wall_boundary(0, 0, -1));
+  EXPECT_FALSE(options->is_wall_boundary(0, 0, 1));
+  EXPECT_TRUE(options->is_physical_boundary(0, 0, -1));
+}
+
+// ISSUES S39. InternalBoundary fills solid cells with placeholder primitives
+// (solid-density 1e3, solid-pressure 1e9) so the Riemann path treats them as a
+// wall. A uniform fluid has zero diffusive tendency everywhere; if the operator
+// reads those placeholders it injects a huge spurious flux into the fluid cells
+// flanking the solid.
+TEST_P(DeviceTest, solid_interface_carries_no_diffusive_flux) {
+  auto block = make_block();
+  block->to(device, dtype);
+  auto w = make_primitive(block, device, dtype);
+
+  auto solid = torch::zeros(
+      {block->pcoord->options->nc3(), block->pcoord->options->nc2(),
+       block->pcoord->options->nc1()},
+      torch::device(device).dtype(torch::kBool));
+  int nghost = block->pcoord->options->nghost();
+  solid.narrow(2, nghost + 2, 2).fill_(true);
+
+  block->pib->mark_prim_solid_(w, solid);
+  auto temp = block->phydro->peos->compute("W->T", {w});
+  block->phydro->pdiffusion->solid = solid;
+
+  auto du = torch::zeros_like(w);
+  block->phydro->pdiffusion->forward(du, w, temp, 0.1);
+
+  auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
+  auto got = du[IPR].index(interior);
+  EXPECT_TRUE(torch::allclose(got, torch::zeros_like(got), 1.e-8, 1.e-8))
+      << "du[IPR] over the interior: " << got;
 }
 
 TEST_P(DeviceTest, timestep_uses_largest_diffusivity) {

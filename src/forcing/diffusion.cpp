@@ -102,6 +102,57 @@ torch::Tensor face_average(torch::Tensor value, int idir, Region start,
                 region_slice(value, lower, lower_end));
 }
 
+//! Linear extrapolation of `value` onto a physical wall face from the two
+//! nearest ACTIVE cells. Weights come from the actual cell widths, so a
+//! stretched mesh is handled correctly. Falls back to the nearest active cell
+//! if the extrapolation is non-positive; that value also reads no ghost.
+torch::Tensor extrapolate_to_wall(torch::Tensor value, Coordinate const& coord,
+                                  int idir, Region start, Region end,
+                                  bool upper) {
+  auto dim = kSpatialDims[idir] - 1;
+  auto near = start;
+  auto near_end = end;
+  auto next = start;
+  auto next_end = end;
+  near[dim] = upper ? end[dim] - 2 : start[dim];
+  next[dim] = upper ? end[dim] - 3 : start[dim] + 1;
+  near_end[dim] = near[dim] + 1;
+  next_end[dim] = next[dim] + 1;
+
+  auto width = cell_width(coord, idir);
+  auto wnear = spacing_slice(width, idir, near, near_end);
+  auto wnext = spacing_slice(width, idir, next, next_end);
+  auto t = wnear / (wnear + wnext);
+
+  auto vnear = region_slice(value, near, near_end);
+  auto vnext = region_slice(value, next, next_end);
+  auto wall = (1. + t) * vnear - t * vnext;
+  return torch::where(wall > 0., wall, vnear);
+}
+
+//! Face-centred diffusion coefficient. Interior faces take the two-cell
+//! average; a physical wall face is extrapolated from active cells instead,
+//! because the ghost there is filled by a boundary condition to serve a
+//! different operator and is not the physical state at the wall (ISSUES S39).
+torch::Tensor face_coefficient(torch::Tensor value, Coordinate const& coord,
+                               int idir, Region start, Region end,
+                               bool wall_lower, bool wall_upper) {
+  auto out = face_average(value, idir, start, end);
+  auto dim = kSpatialDims[idir] - 1;
+  auto nface = end[dim] - start[dim];
+  if (nface < 3) return out;  // fewer than two active cells to extrapolate from
+
+  if (wall_lower) {
+    out.narrow(dim, 0, 1).copy_(
+        extrapolate_to_wall(value, coord, idir, start, end, false));
+  }
+  if (wall_upper) {
+    out.narrow(dim, nface - 1, 1)
+        .copy_(extrapolate_to_wall(value, coord, idir, start, end, true));
+  }
+  return out;
+}
+
 bool active(Coordinate const& coord, int idir) {
   if (idir == 0) return coord->options->nc1() > 1;
   if (idir == 1) return coord->options->nc2() > 1;
@@ -194,7 +245,32 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
     ++face_end[dim];
     auto face_index = region_index(face_start, face_end);
     auto flux = torch::zeros_like(w);
-    auto rho_face = face_average(w[IDN], idir, face_start, face_end);
+
+    int dy = idir == 2 ? 1 : 0;
+    int dx = idir == 1 ? 1 : 0;
+    int dz = idir == 0 ? 1 : 0;
+    bool wall_lower = pmb->options->is_wall_boundary(-dy, -dx, -dz);
+    bool wall_upper = pmb->options->is_wall_boundary(dy, dx, dz);
+
+    // A face with a solid cell on either side is an impermeable, adiabatic
+    // internal wall: it carries no diffusive flux. Without this the operator
+    // would build its coefficient from the InternalBoundary placeholder
+    // primitives (solid-density 1e3, solid-pressure 1e9), which are chosen to
+    // make the Riemann path treat the solid as a wall and are not a physical
+    // state (ISSUES S39).
+    torch::Tensor face_open;
+    if (solid.defined()) {
+      auto lower = face_start;
+      auto lower_end = face_end;
+      --lower[dim];
+      --lower_end[dim];
+      face_open = torch::logical_not(region_slice(solid, face_start, face_end) |
+                                     region_slice(solid, lower, lower_end))
+                      .to(w.options());
+    }
+
+    auto rho_face = face_coefficient(w[IDN], coord, idir, face_start, face_end,
+                                     wall_lower, wall_upper);
 
     if (options->nu_iso() > 0.) {
       auto div_face = face_average(div_vel, idir, face_start, face_end);
@@ -215,6 +291,7 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
         }
 
         auto momentum_flux = -options->nu_iso() * rho_face * stress;
+        if (face_open.defined()) momentum_flux = momentum_flux * face_open;
         flux[IVX + ivar].index(face_index).copy_(momentum_flux);
         flux[IPR].index(face_index) +=
             face_average(w[IVX + ivar], idir, face_start, face_end) *
@@ -225,10 +302,13 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
     if (options->kappa_iso() > 0.) {
       // W->T is in kelvin, so convert thermal diffusivity to conductivity
       // using the local mixture volumetric heat capacity.
-      flux[IPR].index(face_index) -=
+      auto heat_flux =
           options->kappa_iso() *
-          face_average(rho_cv, idir, face_start, face_end) *
+          face_coefficient(rho_cv, coord, idir, face_start, face_end,
+                           wall_lower, wall_upper) *
           face_normal_derivative(temp, coord, idir, face_start, face_end);
+      if (face_open.defined()) heat_flux = heat_flux * face_open;
+      flux[IPR].index(face_index) -= heat_flux;
     }
     fluxes[idir] = flux;
   }

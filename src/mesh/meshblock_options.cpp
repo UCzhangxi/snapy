@@ -101,6 +101,7 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
                 "Boundary function '", ix1, "' is not defined.");
 
     op->bfuncs().push_back(get_bc_func()[ix1]);
+    op->bcnames().push_back(ix1);
 
     if (verbose) {
       SINFO(MeshBlockOptions) << "x1-inner BC: " << ix1 << std::endl;
@@ -117,6 +118,7 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
                 "Boundary function '", ox1, "' is not defined.");
 
     op->bfuncs().push_back(get_bc_func()[ox1]);
+    op->bcnames().push_back(ox1);
 
     if (verbose) {
       SINFO(MeshBlockOptions) << "x1-outer BC: " << ox1 << std::endl;
@@ -124,6 +126,8 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
   } else if (op->coord()->nc2() > 1 || op->coord()->nc3() > 1) {
     op->bfuncs().push_back(nullptr);
     op->bfuncs().push_back(nullptr);
+    op->bcnames().push_back("");
+    op->bcnames().push_back("");
   }
 
   if (op->coord()->nc2() > 1) {
@@ -136,6 +140,7 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
                 "Boundary function '", ix2, "' is not defined.");
 
     op->bfuncs().push_back(get_bc_func()[ix2]);
+    op->bcnames().push_back(ix2);
 
     if (verbose) {
       SINFO(MeshBlockOptions) << "x2-inner BC: " << ix2 << std::endl;
@@ -150,6 +155,7 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
                 "Boundary function '", ox2, "' is not defined.");
 
     op->bfuncs().push_back(get_bc_func()[ox2]);
+    op->bcnames().push_back(ox2);
 
     if (verbose) {
       SINFO(MeshBlockOptions) << "x2-outer BC: " << ox2 << std::endl;
@@ -157,6 +163,8 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
   } else if (op->coord()->nc3() > 1) {
     op->bfuncs().push_back(nullptr);
     op->bfuncs().push_back(nullptr);
+    op->bcnames().push_back("");
+    op->bcnames().push_back("");
   }
 
   if (op->coord()->nc3() > 1) {
@@ -169,6 +177,7 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
                 "Boundary function '", ix3, "' is not defined.");
 
     op->bfuncs().push_back(get_bc_func()[ix3]);
+    op->bcnames().push_back(ix3);
 
     if (verbose) {
       SINFO(MeshBlockOptions) << "x3-inner BC: " << ix3 << std::endl;
@@ -183,6 +192,7 @@ MeshBlockOptions MeshBlockOptionsImpl::from_yaml(std::string input_file,
                 "Boundary function '", ox3, "' is not defined.");
 
     op->bfuncs().push_back(get_bc_func()[ox3]);
+    op->bcnames().push_back(ox3);
 
     if (verbose) {
       SINFO(MeshBlockOptions) << "x3-outer BC: " << ox3 << std::endl;
@@ -202,6 +212,25 @@ bool MeshBlockOptionsImpl::is_physical_boundary(int dy, int dx, int dz) const {
   if (dz == -1) return bfuncs()[BoundaryFace::kInnerX1] != nullptr;
   if (dz == 1) return bfuncs()[BoundaryFace::kOuterX1] != nullptr;
   return false;
+}
+
+bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
+  int face = BoundaryFace::kUnknown;
+  if (dy == -1) face = BoundaryFace::kInnerX3;
+  if (dy == 1) face = BoundaryFace::kOuterX3;
+  if (dx == -1) face = BoundaryFace::kInnerX2;
+  if (dx == 1) face = BoundaryFace::kOuterX2;
+  if (dz == -1) face = BoundaryFace::kInnerX1;
+  if (dz == 1) face = BoundaryFace::kOuterX1;
+  if (face == BoundaryFace::kUnknown) return false;
+
+  auto i = static_cast<size_t>(face);
+  if (i >= bfuncs().size() || bfuncs()[i] == nullptr) return false;
+
+  // A periodic face installs a boundary function, so it is a physical boundary,
+  // but its ghost holds the true state of the wrapped neighbour. It is not a
+  // wall.
+  return i < bcnames().size() && bcnames()[i].rfind("periodic", 0) != 0;
 }
 
 std::string MeshBlockOptionsImpl::device_str() const {

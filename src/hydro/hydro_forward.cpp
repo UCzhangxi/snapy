@@ -360,6 +360,9 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   du.index(interior) = -dt * _div.index(interior);
 
   auto temp = peos->compute("W->T", {w});
+  if (pdiffusion) {
+    pdiffusion->solid = has_solid ? other.at("solid") : torch::Tensor();
+  }
   for (auto& f : forcings) f.forward(du, w, temp, dt);
 
   // apply hydrostatic correction
