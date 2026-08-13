@@ -228,17 +228,25 @@ bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
   if (i >= bfuncs().size() || bfuncs()[i] == nullptr) return false;
 
   // bcnames is written beside bfuncs. If the two disagree in length the block
-  // was assembled outside from_yaml and no face can be classified; say no.
-  if (bcnames().size() != bfuncs().size()) return false;
+  // was assembled outside from_yaml and no face can be classified.
+  if (bcnames().size() != bfuncs().size()) {
+    TORCH_WARN_ONCE(
+        "[MeshBlockOptions] bfuncs is set but bcnames is not, so no face can "
+        "be "
+        "classified as a wall and diffusion falls back to averaging the ghost "
+        "at physical boundaries (ISSUES S39). Set bcnames alongside bfuncs.");
+    return false;
+  }
 
-  // A whitelist, deliberately. Only these fill the ghost with a state that does
-  // NOT stand for the fluid at the boundary face: reflecting mirrors the
-  // interior, solid writes a constant. Every other boundary function must keep
+  // A whitelist, deliberately. `reflecting` is the only boundary function whose
+  // ghost the operator may extrapolate past: it mirrors the interior, so the
+  // ghost is a physical state sitting at the wrong place. Everything else keeps
   // the two-cell average -- periodic's ghost is a true neighbour, outflow's
-  // zero-gradient ghost IS that condition's statement about the face, and
-  // custom is written by user code this cannot interpret.
-  auto const &name = bcnames()[i];
-  return name.rfind("reflecting", 0) == 0 || name.rfind("solid", 0) == 0;
+  // zero-gradient ghost IS that condition's statement about the face, custom is
+  // written by user code this cannot interpret, and `solid` writes a bare 1
+  // into every variable, which makes the GRADIENT nonsense too; fixing the
+  // coefficient alone would not rescue that face.
+  return bcnames()[i].rfind("reflecting", 0) == 0;
 }
 
 std::string MeshBlockOptionsImpl::device_str() const {

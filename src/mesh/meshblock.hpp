@@ -81,6 +81,15 @@ struct MeshBlockOptionsImpl {
   //! name of each installed boundary function, parallel to bfuncs
   ADD_ARG(std::vector<std::string>, bcnames);
 
+  //! Replace every boundary function at once. The names describe the functions
+  //! they were parsed with, so this invalidates all of them; set bcnames
+  //! afterwards to opt a face back into wall treatment.
+  MeshBlockOptionsImpl& set_bfuncs(std::vector<bcfunc_t> const& funcs) {
+    bfuncs() = funcs;
+    bcnames().assign(funcs.size(), "");
+    return *this;
+  }
+
   //! distribution layout
   ADD_ARG(LayoutOptions, layout) = nullptr;
 };

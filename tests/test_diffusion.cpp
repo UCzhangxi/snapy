@@ -290,10 +290,11 @@ TEST_P(DeviceTest, periodic_x1_face_is_not_extrapolated) {
   EXPECT_NEAR(du[IPR][0][0][nghost].item<double>(), 0.5 * full, 1.e-4 * full);
 }
 
-// Only reflecting and solid fill the ghost with a state that does not stand for
-// the fluid at the face. Everything else -- including a caller-supplied
-// function whose name was never recorded -- must keep the two-cell average.
-TEST(diffusion_options, only_reflecting_and_solid_count_as_walls) {
+// Only reflecting fills the ghost with a physical state sitting at the wrong
+// place, which is the one case the wall branch may extrapolate past. Everything
+// else -- including a caller-supplied function whose name was never recorded --
+// must keep the two-cell average.
+TEST(diffusion_options, only_reflecting_counts_as_a_wall) {
   auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
   EXPECT_TRUE(options->is_wall_boundary(0, 0, -1));
   EXPECT_TRUE(options->is_wall_boundary(0, 0, 1));
@@ -306,9 +307,11 @@ TEST(diffusion_options, only_reflecting_and_solid_count_as_walls) {
     EXPECT_TRUE(options->is_physical_boundary(0, 0, -1)) << name;
   }
 
+  // `solid` writes a bare 1 into every variable, so its GRADIENT is nonsense
+  // too and a coefficient fix would not rescue the face
   options->bfuncs()[BoundaryFace::kInnerX1] = get_bc_func().at("solid_inner");
   options->bcnames()[BoundaryFace::kInnerX1] = "solid_inner";
-  EXPECT_TRUE(options->is_wall_boundary(0, 0, -1));
+  EXPECT_FALSE(options->is_wall_boundary(0, 0, -1));
 
   // an unnamed function, e.g. one installed from Python, is not a wall
   options->bcnames()[BoundaryFace::kInnerX1] = "";
@@ -352,6 +355,59 @@ TEST_P(DeviceTest, solid_interface_carries_no_diffusive_flux) {
     auto got = du[n].index(interior);
     EXPECT_TRUE(torch::allclose(got, torch::zeros_like(got), 1.e-8, 1.e-8))
         << "du[" << n << "] over the interior: " << got;
+  }
+}
+
+// ISSUES S39. The property the wall branch asserts is that the coefficient
+// reads no ghost, so the wall flux must not depend on the ghost DENSITY at all.
+// Two states differing ONLY in that ghost must give the same tendency.
+//
+// This is the only gate here that reaches the VISCOUS wall coefficient, which
+// is the branch that is live in production: at a reflecting wall the mirror
+// makes dT/dn vanish, so the conductive coefficient multiplies zero and a
+// conduction-only gate can be satisfied by code that still reads the ghost for
+// the momentum flux. The normal velocity is mirrored ODD here, so the wall
+// carries a real stress and rho_face genuinely matters.
+TEST_P(DeviceTest, wall_flux_does_not_depend_on_the_ghost_density) {
+  auto arm = [&](bool ghost_on_profile) {
+    auto block = make_block();
+    block->to(device, dtype);
+    auto coord = block->pcoord;
+    int ng = coord->options->nghost();
+    int nc1 = coord->options->nc1();
+    auto w =
+        torch::zeros({5, coord->options->nc3(), coord->options->nc2(), nc1},
+                     torch::device(device).dtype(dtype));
+    auto x = coord->x1v.to(device, dtype).view({1, 1, -1});
+    auto profile = kRho0 + kRhoSlope * x;
+    auto temp = kTemp0 + kTempSlope * x;
+
+    w[IDN] = profile;
+    w[IVX] = 1.0;               // reflected ODD below: a live wall stress
+    fill_reflecting_x1(w, ng);  // rho ghost becomes the mirror
+    if (ghost_on_profile) {     // ... or the linear continuation instead
+      w[IDN].narrow(-1, 0, ng).copy_(profile.narrow(-1, 0, ng));
+      w[IDN].narrow(-1, nc1 - ng, ng).copy_(profile.narrow(-1, nc1 - ng, ng));
+    }
+    // pressure from the PROFILE in both arms, so the ghost density is the only
+    // difference between them
+    auto Rd = 8.31446261815324 / block->phydro->peos->options->weight();
+    w[IPR] = profile * Rd * temp;
+
+    auto du = torch::zeros_like(w);
+    block->phydro->pdiffusion->forward(du, w, temp, 0.1);
+    return du;
+  };
+
+  auto mirrored = arm(false);
+  auto continued = arm(true);
+  auto block = make_block();
+  auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
+  for (int n = 0; n < 5; ++n) {
+    auto a = mirrored[n].index(interior);
+    auto b = continued[n].index(interior);
+    EXPECT_TRUE(torch::allclose(a, b, 1.e-10, 1.e-10))
+        << "du[" << n << "] moved with the ghost density: " << a - b;
   }
 }
 

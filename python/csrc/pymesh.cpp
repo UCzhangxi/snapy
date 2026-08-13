@@ -103,7 +103,12 @@ void bind_mesh(py::module& m) {
       .ADD_OPTION(snap::HydroOptions, snap::MeshBlockOptionsImpl, hydro)
       .ADD_OPTION(snap::ScalarOptions, snap::MeshBlockOptionsImpl, scalar)
       .ADD_OPTION(snap::InternalBoundaryOptions, snap::MeshBlockOptionsImpl, ib)
-      .ADD_OPTION(std::vector<bcfunc_t>, snap::MeshBlockOptionsImpl, bfuncs)
+      .def("bfuncs", (std::vector<bcfunc_t> const& (
+                         snap::MeshBlockOptionsImpl::*)() const) &
+                         snap::MeshBlockOptionsImpl::bfuncs)
+      // NOT ADD_OPTION: the bulk setter must invalidate bcnames, or a caller
+      // can install unknown functions and keep the parsed wall names.
+      .def("bfuncs", &snap::MeshBlockOptionsImpl::set_bfuncs)
       .ADD_OPTION(std::vector<std::string>, snap::MeshBlockOptionsImpl, bcnames)
       .ADD_OPTION(snap::LayoutOptions, snap::MeshBlockOptionsImpl, layout);
 
