@@ -100,20 +100,7 @@ class MeshBlockOptions:
     @overload
     def bfuncs(self) -> List[bcfunc_t]: ...
     @overload
-    def bfuncs(self, value: List[bcfunc_t]) -> "MeshBlockOptions":
-        """Replace every boundary function. This CLEARS every entry of
-        bcnames, since the names describe the functions they were parsed with;
-        use set_bfunc(..., name=...) to declare one afterwards."""
-        ...
-
-    @overload
-    def bcnames(self) -> List[str]: ...
-    @overload
-    def bcnames(self, value: List[str]) -> "MeshBlockOptions":
-        """Name of each installed boundary function, parallel to bfuncs.
-        Only "reflecting_inner"/"reflecting_outer" opt an x1 face into the
-        one-sided wall diffusion coefficient."""
-        ...
+    def bfuncs(self, value: List[bcfunc_t]) -> "MeshBlockOptions": ...
 
     @overload
     def layout(self) -> LayoutOptions: ...

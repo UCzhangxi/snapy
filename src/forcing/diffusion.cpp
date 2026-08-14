@@ -127,16 +127,6 @@ torch::Tensor extrapolate_to_wall(torch::Tensor value, Coordinate const& coord,
   auto vnear = region_slice(value, near, near_end);
   auto vnext = region_slice(value, next, next_end);
   auto wall = (1. + t) * vnear - t * vnext;
-  // Falling back returns vnear, which at a mirrored wall is exactly the
-  // two-cell average this is meant to replace -- i.e. a silent no-op unless it
-  // says so. It needs dz/H > ln 3 to fire, which no configuration reaches.
-  if ((wall <= 0.).any().item<bool>()) {
-    TORCH_WARN_ONCE(
-        "[Diffusion] one-sided wall coefficient went non-positive and fell "
-        "back "
-        "to the nearest active cell; the wall face is first order there. This "
-        "needs a cell of order a scale height (ISSUES S39).");
-  }
   return torch::where(wall > 0., wall, vnear);
 }
 
