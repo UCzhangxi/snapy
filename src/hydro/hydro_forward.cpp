@@ -372,9 +372,6 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       "placeholders, which the diffusion operator would read as fluid.");
 
   auto temp = peos->compute("W->T", {w});
-  if (pdiffusion) {
-    pdiffusion->solid = has_solid ? other.at("solid") : torch::Tensor();
-  }
   for (auto& f : forcings) f.forward(du, w, temp, dt);
 
   // apply hydrostatic correction
