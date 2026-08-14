@@ -198,6 +198,22 @@ void DiffusionImpl::reset() {
   TORCH_CHECK(options->kappa_iso() == 0. || phydro->peos->species_cv_ref() > 0.,
               "[Diffusion] Isotropic heat conduction requires an EOS with a "
               "positive reference specific heat at constant volume.");
+
+  // `solid` as an EXTERNAL boundary writes a bare 1 into every variable, so
+  // both the face coefficient AND the gradient it multiplies are meaningless
+  // there. No face treatment rescues that -- the internal solid mask, which
+  // closes such faces, is a different mechanism -- so refuse the combination.
+  for (auto const& name : phydro->pmb->options->bcnames()) {
+    TORCH_CHECK(
+        !enabled || name.rfind("solid", 0) != 0,
+        "[Diffusion] boundary function '", name,
+        "' fills the ghost with a constant 1, which makes both the face "
+        "coefficient and the gradient meaningless; diffusion cannot be "
+        "used against it.");
+  }
+
+  // not a registered buffer, so nothing else clears it
+  solid = torch::Tensor();
 }
 
 torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,

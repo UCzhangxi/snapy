@@ -402,6 +402,12 @@ TEST_P(DeviceTest, wall_flux_does_not_depend_on_the_ghost_density) {
   auto mirrored = arm(false);
   auto continued = arm(true);
   auto block = make_block();
+  int ng = block->pcoord->options->nghost();
+  // The quantity under test must be NONZERO, or this gate degenerates exactly
+  // the way the conduction-only gates did: equality of two arms is satisfied
+  // trivially by anything that makes the wall flux vanish.
+  EXPECT_GT(std::abs(mirrored[IVX][0][0][ng].item<double>()), 1.e-6)
+      << "the wall viscous tendency is zero, so this gate proves nothing";
   auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
   for (int n = 0; n < 5; ++n) {
     auto a = mirrored[n].index(interior);

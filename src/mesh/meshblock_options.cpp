@@ -227,14 +227,15 @@ bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
   auto i = static_cast<size_t>(face);
   if (i >= bfuncs().size() || bfuncs()[i] == nullptr) return false;
 
-  // bcnames is written beside bfuncs. If the two disagree in length the block
-  // was assembled outside from_yaml and no face can be classified.
-  if (bcnames().size() != bfuncs().size()) {
+  // A boundary function with no recorded name cannot be classified. That is
+  // the reachable silent-disable path -- set_bfuncs pads bcnames with empty
+  // strings, so a length mismatch is not what a caller actually hits.
+  if (i >= bcnames().size() || bcnames()[i].empty()) {
     TORCH_WARN_ONCE(
-        "[MeshBlockOptions] bfuncs is set but bcnames is not, so no face can "
-        "be "
-        "classified as a wall and diffusion falls back to averaging the ghost "
-        "at physical boundaries (ISSUES S39). Set bcnames alongside bfuncs.");
+        "[MeshBlockOptions] a boundary function is installed with no recorded "
+        "name, so it cannot be classified as a wall and diffusion falls back "
+        "to "
+        "averaging the ghost there (ISSUES S39). Set bcnames beside bfuncs.");
     return false;
   }
 
@@ -246,7 +247,8 @@ bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
   // written by user code this cannot interpret, and `solid` writes a bare 1
   // into every variable, which makes the GRADIENT nonsense too; fixing the
   // coefficient alone would not rescue that face.
-  return bcnames()[i].rfind("reflecting", 0) == 0;
+  auto const &name = bcnames()[i];
+  return name == "reflecting_inner" || name == "reflecting_outer";
 }
 
 std::string MeshBlockOptionsImpl::device_str() const {
