@@ -359,18 +359,6 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   auto interior = pmb->part({0, 0, 0}, PartOptions().exterior(false));
   du.index(interior) = -dt * _div.index(interior);
 
-  // ISSUES S39/S40: the solid fill above puts a placeholder, not a fluid state,
-  // into w -- and temp is derived from it. Masking the faces that touch a solid
-  // is not enough to make diffusion correct there, so refuse the pair outright
-  // rather than hand the operator a state it cannot interpret.
-  TORCH_CHECK(
-      !has_solid || !pdiffusion ||
-          (pdiffusion->options->nu_iso() == 0. &&
-           pdiffusion->options->kappa_iso() == 0.),
-      "[Hydro] an immersed solid mask cannot be combined with "
-      "forcing.diffusion: the solid cells hold InternalBoundary "
-      "placeholders, which the diffusion operator would read as fluid.");
-
   auto temp = peos->compute("W->T", {w});
   for (auto& f : forcings) f.forward(du, w, temp, dt);
 

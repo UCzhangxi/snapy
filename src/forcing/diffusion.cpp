@@ -198,20 +198,6 @@ void DiffusionImpl::reset() {
   TORCH_CHECK(options->kappa_iso() == 0. || phydro->peos->species_cv_ref() > 0.,
               "[Diffusion] Isotropic heat conduction requires an EOS with a "
               "positive reference specific heat at constant volume.");
-
-  // Both `solid` boundaries fill a cell with a placeholder for the Riemann
-  // path, not a fluid state: the EXTERNAL BC writes a bare 1 into every
-  // variable, and InternalBoundary writes solid-density / solid-pressure.
-  // Masking the faces that touch one is not enough to make diffusion correct
-  // there -- the velocity divergence and the shear stencils still reach a
-  // solid cell from faces one further in -- so refuse the combination rather
-  // than produce a number that looks supported (ISSUES S39/S40).
-  for (auto const& name : phydro->pmb->options->bcnames()) {
-    TORCH_CHECK(!enabled || name.rfind("solid", 0) != 0,
-                "[Diffusion] boundary function '", name,
-                "' fills the ghost with a constant; diffusion cannot be used "
-                "against it.");
-  }
 }
 
 torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,

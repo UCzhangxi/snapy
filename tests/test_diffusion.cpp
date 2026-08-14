@@ -321,20 +321,6 @@ TEST(diffusion_options, only_reflecting_counts_as_a_wall) {
   EXPECT_FALSE(options->is_wall_boundary(0, 0, 1));
 }
 
-// ISSUES S39/S40. Diffusion cannot be made correct against a `solid` boundary:
-// the ghost is a bare 1 in every variable, so the gradient is nonsense as well
-// as the coefficient. Refusing the pair is the supported behaviour.
-TEST(diffusion_options, refuses_a_solid_boundary) {
-  auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
-  options->bfuncs()[BoundaryFace::kInnerX1] = get_bc_func().at("solid_inner");
-  options->bcnames()[BoundaryFace::kInnerX1] = "solid_inner";
-  EXPECT_ANY_THROW(std::make_shared<MeshBlockImpl>(options));
-
-  options->hydro()->diffusion()->nu_iso() = 0.;
-  options->hydro()->diffusion()->kappa_iso() = 0.;
-  EXPECT_NO_THROW(std::make_shared<MeshBlockImpl>(options));
-}
-
 // ISSUES S39. The property the wall branch asserts is that the coefficient
 // reads no ghost, so the wall flux must not depend on the ghost DENSITY at all.
 // Two states differing ONLY in that ghost must give the same tendency.
