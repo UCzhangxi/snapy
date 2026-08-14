@@ -198,20 +198,40 @@ CoordinateImpl::CoordinateImpl(const CoordinateOptions& options_,
 
   auto const& op = options;
 
-  auto dx = (op->x1max() - op->x1min()) / op->nx1();
-  auto x1min = op->nx1() > 1 ? op->x1min() - op->nghost() * dx : op->x1min();
-  auto x1max = op->nx1() > 1 ? op->x1max() + op->nghost() * dx : op->x1max();
-  x1f = torch::linspace(x1min, x1max, op->nc1() + 1, torch::kFloat64);
+  // Slice ONE global face array per axis rather than building a per-block one.
+  // Building the faces from the block's own [xmin, xmax] makes the SAME global
+  // face come out of different arithmetic in different decompositions, and even
+  // out of two different blocks that share it: at C64 nb2=4, 15 of 71 x2 faces
+  // were internally inconsistent and 26 differed from the nb2=2 grid, each by
+  // exactly 1 ULP. Every metric term is a function of these coordinates, and
+  // the geometric source coefficients amplify that ULP by ~7 orders, which is
+  // the seed of the S45 layout-reproducibility residual. Sliced from a global
+  // array, a face has one value whoever owns it.
+  x1f = block_faces_(op->global_x1min(), op->global_x1max(), op->global_nx1(),
+                     op->nx1(), op->ix1(), op->nghost());
+  x2f = block_faces_(op->global_x2min(), op->global_x2max(), op->global_nx2(),
+                     op->nx2(), op->ix2(), op->nghost());
+  x3f = block_faces_(op->global_x3min(), op->global_x3max(), op->global_nx3(),
+                     op->nx3(), op->ix3(), op->nghost());
+}
 
-  dx = (op->x2max() - op->x2min()) / op->nx2();
-  auto x2min = op->nx2() > 1 ? op->x2min() - op->nghost() * dx : op->x2min();
-  auto x2max = op->nx2() > 1 ? op->x2max() + op->nghost() * dx : op->x2max();
-  x2f = torch::linspace(x2min, x2max, op->nc2() + 1, torch::kFloat64);
+torch::Tensor CoordinateImpl::block_faces_(double gmin, double gmax, int gnx,
+                                           int nx, int ix, int nghost) {
+  auto dx = (gmax - gmin) / gnx;
 
-  dx = (op->x3max() - op->x3min()) / op->nx3();
-  auto x3min = op->nx3() > 1 ? op->x3min() - op->nghost() * dx : op->x3min();
-  auto x3max = op->nx3() > 1 ? op->x3max() + op->nghost() * dx : op->x3max();
-  x3f = torch::linspace(x3min, x3max, op->nc3() + 1, torch::kFloat64);
+  if (nx <= 1) {  // degenerate axis: one cell, no ghost layers
+    // sliced from the global grid like every other axis: gmin + gnx*dx need
+    // not round to gmax
+    return torch::linspace(gmin, gmax, gnx + 1, torch::kFloat64)
+        .narrow(0, ix, 2)
+        .clone();
+  }
+
+  // Global face g (g = -nghost .. gnx + nghost) sits at array index g + nghost;
+  // this block's first face is global face ix - nghost.
+  auto all = torch::linspace(gmin - nghost * dx, gmax + nghost * dx,
+                             gnx + 2 * nghost + 1, torch::kFloat64);
+  return all.narrow(0, ix, nx + 2 * nghost + 1).clone();
 }
 
 void CoordinateImpl::reset_coordinates(std::array<MeshGenerator, 3> meshgens) {
