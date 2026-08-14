@@ -214,6 +214,13 @@ bool MeshBlockOptionsImpl::is_physical_boundary(int dy, int dx, int dz) const {
   return false;
 }
 
+MeshBlockOptionsImpl &MeshBlockOptionsImpl::set_bfuncs(
+    std::vector<bcfunc_t> const &funcs) {
+  bfuncs() = funcs;
+  bcnames().assign(funcs.size(), "");
+  return *this;
+}
+
 bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
   int face = BoundaryFace::kUnknown;
   if (dy == -1) face = BoundaryFace::kInnerX3;
