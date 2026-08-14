@@ -12,7 +12,6 @@
 #include <snap/snap.h>
 
 #include <snap/bc/bc_func.hpp>
-#include <snap/bc/internal_boundary.hpp>
 #include <snap/forcing/forcing.hpp>
 #include <snap/mesh/meshblock.hpp>
 
@@ -322,40 +321,18 @@ TEST(diffusion_options, only_reflecting_counts_as_a_wall) {
   EXPECT_FALSE(options->is_wall_boundary(0, 0, 1));
 }
 
-// ISSUES S39. InternalBoundary fills solid cells with placeholder primitives
-// (solid-density 1e3, solid-pressure 1e9) so the Riemann path treats them as a
-// wall. A uniform fluid has zero diffusive tendency everywhere; if the operator
-// reads those placeholders it injects a huge spurious flux into the fluid cells
-// flanking the solid.
-TEST_P(DeviceTest, solid_interface_carries_no_diffusive_flux) {
-  auto block = make_block();
-  block->to(device, dtype);
-  auto w = make_primitive(block, device, dtype);
-  // a uniform TANGENTIAL wind: mark_prim_solid_ zeroes it inside the solid, so
-  // the solid/fluid faces also carry a shear the viscous branch must refuse.
-  // v1 stays zero, so div_vel is identically zero and cannot confound this.
-  w[IVY] = 3.0;
+// ISSUES S39/S40. Diffusion cannot be made correct against a `solid` boundary:
+// the ghost is a bare 1 in every variable, so the gradient is nonsense as well
+// as the coefficient. Refusing the pair is the supported behaviour.
+TEST(diffusion_options, refuses_a_solid_boundary) {
+  auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion.yaml");
+  options->bfuncs()[BoundaryFace::kInnerX1] = get_bc_func().at("solid_inner");
+  options->bcnames()[BoundaryFace::kInnerX1] = "solid_inner";
+  EXPECT_ANY_THROW(std::make_shared<MeshBlockImpl>(options));
 
-  auto solid = torch::zeros(
-      {block->pcoord->options->nc3(), block->pcoord->options->nc2(),
-       block->pcoord->options->nc1()},
-      torch::device(device).dtype(torch::kBool));
-  int nghost = block->pcoord->options->nghost();
-  solid.narrow(2, nghost + 2, 2).fill_(true);
-
-  block->pib->mark_prim_solid_(w, solid);
-  auto temp = block->phydro->peos->compute("W->T", {w});
-  block->phydro->pdiffusion->solid = solid;
-
-  auto du = torch::zeros_like(w);
-  block->phydro->pdiffusion->forward(du, w, temp, 0.1);
-
-  auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
-  for (int n = 0; n < 5; ++n) {
-    auto got = du[n].index(interior);
-    EXPECT_TRUE(torch::allclose(got, torch::zeros_like(got), 1.e-8, 1.e-8))
-        << "du[" << n << "] over the interior: " << got;
-  }
+  options->hydro()->diffusion()->nu_iso() = 0.;
+  options->hydro()->diffusion()->kappa_iso() = 0.;
+  EXPECT_NO_THROW(std::make_shared<MeshBlockImpl>(options));
 }
 
 // ISSUES S39. The property the wall branch asserts is that the coefficient

@@ -199,21 +199,19 @@ void DiffusionImpl::reset() {
               "[Diffusion] Isotropic heat conduction requires an EOS with a "
               "positive reference specific heat at constant volume.");
 
-  // `solid` as an EXTERNAL boundary writes a bare 1 into every variable, so
-  // both the face coefficient AND the gradient it multiplies are meaningless
-  // there. No face treatment rescues that -- the internal solid mask, which
-  // closes such faces, is a different mechanism -- so refuse the combination.
+  // Both `solid` boundaries fill a cell with a placeholder for the Riemann
+  // path, not a fluid state: the EXTERNAL BC writes a bare 1 into every
+  // variable, and InternalBoundary writes solid-density / solid-pressure.
+  // Masking the faces that touch one is not enough to make diffusion correct
+  // there -- the velocity divergence and the shear stencils still reach a
+  // solid cell from faces one further in -- so refuse the combination rather
+  // than produce a number that looks supported (ISSUES S39/S40).
   for (auto const& name : phydro->pmb->options->bcnames()) {
-    TORCH_CHECK(
-        !enabled || name.rfind("solid", 0) != 0,
-        "[Diffusion] boundary function '", name,
-        "' fills the ghost with a constant 1, which makes both the face "
-        "coefficient and the gradient meaningless; diffusion cannot be "
-        "used against it.");
+    TORCH_CHECK(!enabled || name.rfind("solid", 0) != 0,
+                "[Diffusion] boundary function '", name,
+                "' fills the ghost with a constant; diffusion cannot be used "
+                "against it.");
   }
-
-  // not a registered buffer, so nothing else clears it
-  solid = torch::Tensor();
 }
 
 torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
@@ -268,23 +266,6 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
     bool wall_lower = pmb->options->is_wall_boundary(-dy, -dx, -dz);
     bool wall_upper = pmb->options->is_wall_boundary(dy, dx, dz);
 
-    // A face with a solid cell on either side is an impermeable, adiabatic
-    // internal wall: it carries no diffusive flux. Without this the operator
-    // would build its coefficient from the InternalBoundary placeholder
-    // primitives (solid-density 1e3, solid-pressure 1e9), which are chosen to
-    // make the Riemann path treat the solid as a wall and are not a physical
-    // state (ISSUES S39).
-    torch::Tensor face_open;
-    if (solid.defined()) {
-      auto lower = face_start;
-      auto lower_end = face_end;
-      --lower[dim];
-      --lower_end[dim];
-      face_open = torch::logical_not(region_slice(solid, face_start, face_end) |
-                                     region_slice(solid, lower, lower_end))
-                      .to(w.options());
-    }
-
     auto rho_face = face_coefficient(w[IDN], coord, idir, face_start, face_end,
                                      wall_lower, wall_upper);
 
@@ -307,7 +288,6 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
         }
 
         auto momentum_flux = -options->nu_iso() * rho_face * stress;
-        if (face_open.defined()) momentum_flux = momentum_flux * face_open;
         flux[IVX + ivar].index(face_index).copy_(momentum_flux);
         flux[IPR].index(face_index) +=
             face_average(w[IVX + ivar], idir, face_start, face_end) *
@@ -323,7 +303,6 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
           face_coefficient(rho_cv, coord, idir, face_start, face_end,
                            wall_lower, wall_upper) *
           face_normal_derivative(temp, coord, idir, face_start, face_end);
-      if (face_open.defined()) heat_flux = heat_flux * face_open;
       flux[IPR].index(face_index) -= heat_flux;
     }
     fluxes[idir] = flux;
