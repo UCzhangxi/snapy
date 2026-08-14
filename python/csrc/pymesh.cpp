@@ -92,7 +92,8 @@ void bind_mesh(py::module& m) {
               self->bcnames()[face] = "";
             }
           },
-          py::arg("dx3"), py::arg("dx2"), py::arg("dx1"), py::arg("func"))
+          py::arg("dx3"), py::arg("dx2"), py::arg("dx1"), py::arg("func"),
+          py::arg("name") = "")
       .ADD_OPTION(bool, snap::MeshBlockOptionsImpl, verbose)
       .ADD_OPTION(std::string, snap::MeshBlockOptionsImpl, basename)
       .ADD_OPTION(std::string, snap::MeshBlockOptionsImpl, output_dir)

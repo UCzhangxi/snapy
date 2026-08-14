@@ -230,10 +230,11 @@ TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost) {
       << "du[IPR] over the interior: " << got;
 }
 
-// The same construction along x2, so that face_coefficient runs with the face
-// axis in the middle of the tensor rather than last. Density and temperature
-// are uniform along x1, so that direction contributes nothing.
-TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost_in_x2) {
+// x1 ONLY, deliberately. The same construction along x2 must therefore give the
+// two-cell-average answer, not the extrapolated one: at a lateral `reflecting`
+// face the mirror may be a genuine symmetry, where the average is the better
+// estimate. This pins the decision rather than leaving it to inspection.
+TEST_P(DeviceTest, x2_wall_is_not_one_sided) {
   auto block = std::make_shared<MeshBlockImpl>(
       MeshBlockOptionsImpl::from_yaml("test_diffusion_2d.yaml"));
   block->to(device, dtype);
@@ -256,14 +257,12 @@ TEST_P(DeviceTest, wall_face_coefficient_reads_no_ghost_in_x2) {
   auto du = torch::zeros_like(w);
   block->phydro->pdiffusion->forward(du, w, temp, 0.1);
 
-  auto interior = block->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
-  auto got = du[IPR].index(interior);
+  int ng = coord->options->nghost();
   auto cv_ref = block->phydro->peos->species_cv_ref();
-  auto expected = 0.1 * block->phydro->pdiffusion->options->kappa_iso() *
-                  cv_ref * kTempSlope * kRhoSlope;
-  EXPECT_TRUE(
-      torch::allclose(got, torch::full_like(got, expected), 1.e-5, 1.e-5))
-      << "du[IPR] over the interior: " << got;
+  auto full = 0.1 * block->phydro->pdiffusion->options->kappa_iso() * cv_ref *
+              kTempSlope * kRhoSlope;
+  // mirrored ghost, two-cell average => the wall row sits half a slope short
+  EXPECT_NEAR(du[IPR][0][ng][ng].item<double>(), 0.5 * full, 1.e-4 * full);
 }
 
 // The same state under a periodic x1: the ghost is then the true wrapped
@@ -314,6 +313,12 @@ TEST(diffusion_options, only_reflecting_counts_as_a_wall) {
 
   // an unnamed function, e.g. one installed from Python, is not a wall
   options->bcnames()[BoundaryFace::kInnerX1] = "";
+  EXPECT_FALSE(options->is_wall_boundary(0, 0, -1));
+
+  // a name that merely BEGINS with the whitelisted one is not it either
+  options->bfuncs()[BoundaryFace::kInnerX1] =
+      get_bc_func().at("reflecting_inner");
+  options->bcnames()[BoundaryFace::kInnerX1] = "reflecting_sponge_inner";
   EXPECT_FALSE(options->is_wall_boundary(0, 0, -1));
 
   // and neither is anything once the two records disagree in length

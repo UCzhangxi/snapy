@@ -127,6 +127,16 @@ torch::Tensor extrapolate_to_wall(torch::Tensor value, Coordinate const& coord,
   auto vnear = region_slice(value, near, near_end);
   auto vnext = region_slice(value, next, next_end);
   auto wall = (1. + t) * vnear - t * vnext;
+  // Falling back returns vnear, which at a mirrored wall is exactly the
+  // two-cell average this is meant to replace -- i.e. a silent no-op unless it
+  // says so. It needs dz/H > ln 3 to fire, which no configuration reaches.
+  if ((wall <= 0.).any().item<bool>()) {
+    TORCH_WARN_ONCE(
+        "[Diffusion] one-sided wall coefficient went non-positive and fell "
+        "back "
+        "to the nearest active cell; the wall face is first order there. This "
+        "needs a cell of order a scale height (ISSUES S39).");
+  }
   return torch::where(wall > 0., wall, vnear);
 }
 
@@ -246,11 +256,16 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
     auto face_index = region_index(face_start, face_end);
     auto flux = torch::zeros_like(w);
 
-    int dy = idir == 2 ? 1 : 0;
-    int dx = idir == 1 ? 1 : 0;
-    int dz = idir == 0 ? 1 : 0;
-    bool wall_lower = pmb->options->is_wall_boundary(-dy, -dx, -dz);
-    bool wall_upper = pmb->options->is_wall_boundary(dy, dx, dz);
+    // x1 ONLY. One-siding is right where the wall cuts a MONOTONE profile,
+    // which in this code is the vertical: gravity is grav1, the well-balanced
+    // reconstruction is x1, the bottom anchoring is x1. A lateral `reflecting`
+    // face is as likely to be a symmetry plane, where the field really is even,
+    // the mirror is not a device, and the two-cell average is the BETTER
+    // estimate -- both second order, but the one-sided form has 3x the error
+    // constant. `reflecting` is also the DEFAULT for every unspecified face, so
+    // extending this to x2/x3 would opt configurations in silently.
+    bool wall_lower = idir == 0 && pmb->options->is_wall_boundary(0, 0, -1);
+    bool wall_upper = idir == 0 && pmb->options->is_wall_boundary(0, 0, 1);
 
     auto rho_face = face_coefficient(w[IDN], coord, idir, face_start, face_end,
                                      wall_lower, wall_upper);

@@ -129,30 +129,39 @@ void MeshBlockImpl::reset() {
     auto [lx2, lx3, lx1] = _playout->loc_of(rank);
 
     // x1-dir
+    // bcnames is parallel to bfuncs; a seam must not keep the name it was
+    // parsed with, or a reader that forgets the nullptr check would classify an
+    // internal face as a wall and one-side across it (ISSUES S39).
     if ((lx1 != 0) || options->layout()->periodic_z()) {
       options->bfuncs()[BoundaryFace::kInnerX1] = nullptr;
+      options->bcnames()[BoundaryFace::kInnerX1] = "";
     }
 
     if ((lx1 != pz - 1) || options->layout()->periodic_z()) {
       options->bfuncs()[BoundaryFace::kOuterX1] = nullptr;
+      options->bcnames()[BoundaryFace::kOuterX1] = "";
     }
 
     // x2-dir
     if ((lx2 != 0) || options->layout()->periodic_x()) {
       options->bfuncs()[BoundaryFace::kInnerX2] = nullptr;
+      options->bcnames()[BoundaryFace::kInnerX2] = "";
     }
 
     if ((lx2 != px - 1) || options->layout()->periodic_x()) {
       options->bfuncs()[BoundaryFace::kOuterX2] = nullptr;
+      options->bcnames()[BoundaryFace::kOuterX2] = "";
     }
 
     // x3-dir
     if ((lx3 != 0) || options->layout()->periodic_y()) {
       options->bfuncs()[BoundaryFace::kInnerX3] = nullptr;
+      options->bcnames()[BoundaryFace::kInnerX3] = "";
     }
 
     if ((lx3 != py - 1) || options->layout()->periodic_y()) {
       options->bfuncs()[BoundaryFace::kOuterX3] = nullptr;
+      options->bcnames()[BoundaryFace::kOuterX3] = "";
     }
 
     if (options->verbose()) {

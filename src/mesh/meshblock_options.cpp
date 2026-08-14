@@ -242,7 +242,8 @@ bool MeshBlockOptionsImpl::is_wall_boundary(int dy, int dx, int dz) const {
         "[MeshBlockOptions] a boundary function is installed with no recorded "
         "name, so it cannot be classified as a wall and diffusion falls back "
         "to "
-        "averaging the ghost there (ISSUES S39). Set bcnames beside bfuncs.");
+        "averaging the ghost there. Pass `name` to set_bfunc to declare what "
+        "was installed.");
     return false;
   }
 
