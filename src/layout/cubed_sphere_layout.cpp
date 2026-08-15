@@ -48,8 +48,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <mutex>
 #include <sstream>
+#include <string>
 
 // fmt
 #include <fmt/format.h>
@@ -952,6 +954,41 @@ void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
         }
       }
     }
+
+  // ---- DIAGNOSTIC PROBE (branch xiz/cs-corner-probe -- NOT for merge)
+  // ------------------ SNAP_POISON=corner|edge|interior writes NaN into the
+  // named cells at the END of the cubed-sphere sync: AFTER every exchange,
+  // interp_ghost and the velocity transform, and BEFORE the fluxes are built.
+  // NaN reaching the answer => those cells are READ. mode=edge is the POSITIVE
+  // CONTROL: an edge ghost is certainly consumed by the reconstruction, so it
+  // MUST produce NaN or the probe itself is broken.
+  if (const char* _pz = std::getenv("SNAP_POISON")) {
+    const std::string _mode(_pz);
+    const int _ng = pmb->options->coord()->nghost();
+    const double _qn = std::numeric_limits<double>::quiet_NaN();
+    using torch::indexing::Ellipsis;
+    using torch::indexing::Slice;
+    for (auto& [_nm, _v] : vars) {
+      if (_v.dim() < 3) continue;
+      const int _n3 = _v.size(-3), _n2 = _v.size(-2);
+      if (_n3 <= 2 * _ng || _n2 <= 2 * _ng) continue;
+      const Slice _b3[2] = {Slice(0, _ng), Slice(_n3 - _ng, _n3)};
+      const Slice _b2[2] = {Slice(0, _ng), Slice(_n2 - _ng, _n2)};
+      if (_mode == "corner") {
+        for (int _a = 0; _a < 2; ++_a)
+          for (int _b = 0; _b < 2; ++_b)
+            _v.index_put_({Ellipsis, _b3[_a], _b2[_b], Slice()}, _qn);
+      } else if (_mode == "edge") {
+        for (int _a = 0; _a < 2; ++_a)
+          _v.index_put_({Ellipsis, _b3[_a], Slice(_ng, _n2 - _ng), Slice()},
+                        _qn);
+      } else if (_mode == "interior") {
+        _v.index_put_({Ellipsis, Slice(_n3 / 2, _n3 / 2 + 1),
+                       Slice(_n2 / 2, _n2 / 2 + 1), Slice()},
+                      _qn);
+      }
+    }
+  }
 }
 
 void CubedSphereLayoutImpl::exchange_remote(MeshBlockImpl const* pmb,
