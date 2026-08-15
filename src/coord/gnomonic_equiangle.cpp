@@ -1,6 +1,9 @@
 // torch
 #include <ATen/TensorIterator.h>
 
+#include <cstdio>
+#include <cstdlib>
+
 // snap
 #include <snap/snap.h>
 
@@ -213,16 +216,54 @@ void GnomonicEquiangleImpl::interp_ghost(
   // must match the widening done by CubedSphereLayout::{serialize,deserialize}
   auto margin = cs_interp_margin(options->nghost());
 
+  // DIAGNOSTIC (SNAP_DUMP_STRIP=<var index>): print the interpolation SOURCE
+  // strip and the resulting ghost row, tagged with the block's global
+  // tangential offset, so the two can be compared across decompositions at
+  // matching GLOBAL index. The recipe (which global source index) is
+  // layout-independent by construction -- usrc is built over the whole panel --
+  // so any disagreement here is in the packed DATA, not the gather.
+  const char* _ds = std::getenv("SNAP_DUMP_STRIP");
+  auto _dump = [&](const char* tag, torch::Tensor t, int off, int nrm) {
+    if (!_ds) return;
+    int _v = std::atoi(_ds);
+    if (t.size(0) <= _v) return;
+    int _x1 = t.size(-1) / 2;
+    auto _r = t.index({_v, 0, torch::indexing::Slice(), _x1})
+                  .contiguous()
+                  .to(torch::kFloat64)
+                  .cpu();
+    auto* _p = _r.data_ptr<double>();
+    std::printf(
+        "STRIP %s rank=%d dy=%d dx=%d margin=%d off=%d nrm=%d n=%ld vals:", tag,
+        pmb->options->layout()->rank(), dy, dx, margin, off, nrm,
+        (long)_r.numel());
+    for (int _k = 0; _k < _r.numel(); ++_k) std::printf(" %.17g", _p[_k]);
+    std::printf("\n");
+    std::fflush(stdout);
+  };
+  int _rank = pmb->options->layout()->rank();
+  auto _loc = pmb->get_layout()->loc_of(_rank);
+  int _offx = options->nx2() * std::get<0>(_loc);
+  int _offy = options->nx3() * std::get<1>(_loc);
+
   if (dy != 0 && dx == 0) {
     auto sub1 = pmb->part(
         offset, PartOptions().exterior(true).extend_x2(margin).ndim(var.dim()));
-    var.index(sub) = _interp_ghost_BT(var.index(sub1), dy > 0);
+    auto _in = var.index(sub1);
+    auto _out = _interp_ghost_BT(_in, dy > 0);
+    _dump("IN_BT", _in, _offx, 2);
+    _dump("OUT_BT", _out, _offx, 2);
+    var.index(sub) = _out;
   }
 
   if (dx != 0 && dy == 0) {
     auto sub1 = pmb->part(
         offset, PartOptions().exterior(true).extend_x3(margin).ndim(var.dim()));
-    var.index(sub) = _interp_ghost_LR(var.index(sub1), dx > 0);
+    auto _in = var.index(sub1);
+    auto _out = _interp_ghost_LR(_in, dx > 0);
+    _dump("IN_LR", _in.transpose(-3, -2), _offy, 3);
+    _dump("OUT_LR", _out.transpose(-3, -2), _offy, 3);
+    var.index(sub) = _out;
   }
 }
 
