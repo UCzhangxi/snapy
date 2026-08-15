@@ -796,6 +796,37 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
 void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
                                         Variables& vars,
                                         SyncOptions const& opts) const {
+  // ---- DIAGNOSTIC: PRE-position poison (env SNAP_POISON_PRE=corner)
+  // -------------------- Fires at the TOP of deserialize, BEFORE any unpack or
+  // interp_ghost. The other probe (SNAP_POISON, at the END) only tests whether
+  // the FLUXES consume a cell; this one tests whether interp_ghost CONSUMES it
+  // as interpolation margin, which is the suspected path: the gather takes
+  // floor(u) AND floor(u)+1, so a block's last tangential cell reaches into the
+  // corner region.
+  if (const char* _pz2 = std::getenv("SNAP_POISON_PRE")) {
+    const std::string _m2(_pz2);
+    const int _ng2 = pmb->options->coord()->nghost();
+    const double _qn2 = std::numeric_limits<double>::quiet_NaN();
+    using torch::indexing::Ellipsis;
+    using torch::indexing::Slice;
+    for (auto& [_nm2, _v2] : vars) {
+      if (_v2.dim() < 3) continue;
+      const int _a3 = _v2.size(-3), _a2 = _v2.size(-2);
+      if (_a3 <= 2 * _ng2 || _a2 <= 2 * _ng2) continue;
+      const Slice _c3[2] = {Slice(0, _ng2), Slice(_a3 - _ng2, _a3)};
+      const Slice _c2[2] = {Slice(0, _ng2), Slice(_a2 - _ng2, _a2)};
+      if (_m2 == "corner") {
+        for (int _x = 0; _x < 2; ++_x)
+          for (int _y = 0; _y < 2; ++_y)
+            _v2.index_put_({Ellipsis, _c3[_x], _c2[_y], Slice()}, _qn2);
+      } else if (_m2 == "edge") {
+        for (int _x = 0; _x < 2; ++_x)
+          _v2.index_put_({Ellipsis, _c3[_x], Slice(_ng2, _a2 - _ng2), Slice()},
+                         _qn2);
+      }
+    }
+  }
+
   if (options->verbose()) {
     SINFO(CubedSphereLayout) << "deserializing data from receive buffers\n";
   }
