@@ -17,6 +17,30 @@
 
 namespace snap {
 
+//! \brief S44 instrumentation: L1 norm of one row of a block. Hand-rolled
+//! rather than Eigen's .norm() so it is guaranteed device-callable and
+//! sqrt-free.
+template <typename T, int N>
+inline DISPATCH_MACRO double S44RowAbs(const Eigen::Matrix<T, N, N>& m, int r) {
+  double s = 0.0;
+  for (int j = 0; j < N; ++j) s += fabs((double)m(r, j));
+  return s;
+}
+
+template <typename T, int N>
+inline DISPATCH_MACRO double S44MatAbs(const Eigen::Matrix<T, N, N>& m) {
+  double s = 0.0;
+  for (int r = 0; r < N; ++r) s += S44RowAbs<T, N>(m, r);
+  return s;
+}
+
+template <typename T, int N>
+inline DISPATCH_MACRO double S44VecAbs(const Eigen::Matrix<T, N, 1>& v) {
+  double s = 0.0;
+  for (int r = 0; r < N; ++r) s += fabs((double)v(r));
+  return s;
+}
+
 template <typename T, int N>
 void DISPATCH_MACRO ForwardSweep(Eigen::Matrix<T, N, N>* a,
                                  Eigen::Matrix<T, N, N>* b,
@@ -56,7 +80,17 @@ void DISPATCH_MACRO ForwardSweep(Eigen::Matrix<T, N, N>* a,
   if constexpr (N > 4) {
     A = a[il];
     for (int n = 0; n < N; ++n) indx[n] = n;
-    ludcmp(A, indx);
+    int sing = -1;
+    ludcmp(A, indx, &sing);
+    if (sing >= 0) {
+      // S44: the FIRST block of the column already degenerates -- no recursion
+      // has happened yet, so this would indict the assembly, not the sweep.
+      printf(
+          "[S44-SWEEP] SEED level=%d il=%d iu=%d dir=%d dt=%.8e sing_row=%d "
+          "|a|=%.8e |rhs|=%.8e\n",
+          il, il, iu, dir, dt, sing, S44MatAbs<T, N>(a[il]),
+          S44VecAbs<T, N>(rhs));
+    }
     solved.template leftCols<N>() = c[il];
     solved.col(N) = rhs;
     lubksb(A, indx, solved);
@@ -86,12 +120,35 @@ void DISPATCH_MACRO ForwardSweep(Eigen::Matrix<T, N, N>* a,
       rhs(4) = DU(IPR, i) / dt;
     }
 
-    a[i] -= b[i] * a[i - 1];
+    // S44 instrumentation: keep the two operands of the elimination so a
+    // failure downstream can be attributed to the block as assembled (a_pre)
+    // or to the recursion term (bprod). Catastrophic cancellation shows up as
+    // |A| << |a_pre| ~ |bprod| row by row.
+    Eigen::Matrix<T, N, N> a_pre = a[i];
+    Eigen::Matrix<T, N, N> bprod = b[i] * a[i - 1];
+
+    a[i] -= bprod;
 
     if constexpr (N > 4) {
       A = a[i];
       for (int n = 0; n < N; ++n) indx[n] = n;
-      ludcmp(A, indx);
+      int sing = -1;
+      ludcmp(A, indx, &sing);
+      if (sing >= 0) {
+        printf(
+            "[S44-SWEEP] level=%d il=%d iu=%d dir=%d dt=%.8e sing_row=%d "
+            "|a_pre|=%.8e |bprod|=%.8e |A|=%.8e |b|=%.8e |a_prev|=%.8e "
+            "|rhs|=%.8e |delta_prev|=%.8e\n",
+            i, il, iu, dir, dt, sing, S44MatAbs<T, N>(a_pre),
+            S44MatAbs<T, N>(bprod), S44MatAbs<T, N>(a[i]),
+            S44MatAbs<T, N>(b[i]), S44MatAbs<T, N>(a[i - 1]),
+            S44VecAbs<T, N>(rhs), S44VecAbs<T, N>(delta[i - 1]));
+        for (int r = 0; r < N; ++r) {
+          printf("[S44-SWEEP]   row=%d |a_pre|=%.8e |bprod|=%.8e |A|=%.8e\n", r,
+                 S44RowAbs<T, N>(a_pre, r), S44RowAbs<T, N>(bprod, r),
+                 S44RowAbs<T, N>(a[i], r));
+        }
+      }
       solved.template leftCols<N>() = c[i];
       solved.col(N) = rhs - b[i] * delta[i - 1];
       lubksb(A, indx, solved);
@@ -99,6 +156,20 @@ void DISPATCH_MACRO ForwardSweep(Eigen::Matrix<T, N, N>* a,
       delta[i] = solved.col(N);
     } else {  // small matrix
       a[i] = a[i].inverse().eval();
+      // S44: the 3x3 partial path dies SILENTLY -- Eigen's .inverse() reports
+      // nothing on a degenerate block. Report it once per block.
+      bool bad = false;
+      for (int r = 0; r < N && !bad; ++r)
+        for (int cc = 0; cc < N && !bad; ++cc) {
+          T v = a[i](r, cc);
+          if (v != v || (v - v) != (T)0) bad = true;
+        }
+      if (bad) {
+        printf(
+            "[S44-INV] level=%d il=%d iu=%d dir=%d dt=%.8e nonfinite after "
+            "inverse |a_pre|=%.8e |bprod|=%.8e\n",
+            i, il, iu, dir, dt, S44MatAbs<T, N>(a_pre), S44MatAbs<T, N>(bprod));
+      }
       delta[i] = a[i] * (rhs - b[i] * delta[i - 1]);
       a[i] = a[i] * c[i];
     }
