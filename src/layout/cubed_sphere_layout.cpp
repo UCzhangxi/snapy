@@ -666,6 +666,23 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
         part_opts.depth(1).exterior(dy > 0);
       }
 
+      // When the receiver will INTERPOLATE, send a tangentially wider strip:
+      // its interpolation source slides along the edge (cs_interp_margin) and
+      // on a subdivided panel that runs past the matching block. The
+      // intra-panel pass above has already filled this block's own tangential
+      // halo, so the extra cells are local -- no new connectivity.
+      // deserialize() widens identically so the buffers still match, and blocks
+      // are square (px == py) so the rev/flip/transpose relabelling is
+      // unchanged.
+      if (opts.interpolate()) {
+        int margin = cs_interp_margin(pmb->options->coord()->nghost());
+        if (dy != 0 && dx == 0) {
+          part_opts.extend_x2(margin);
+        } else if (dx != 0 && dy == 0) {
+          part_opts.extend_x3(margin);
+        }
+      }
+
       auto sub = pmb->part(offset, part_opts);
       auto sub3 = pmb->part(offset, part_opts.ndim(3));
 
@@ -873,6 +890,27 @@ void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
       auto sub = pmb->part(offset, part_opts);
       auto sub3 = pmb->part(offset, part_opts.ndim(3));
 
+      // Wide landing zone for the raw copy, mirroring serialize()'s wider send
+      // strip. The velocity transform below deliberately stays on the NARROW
+      // `sub`: the extra cells are only interpolation SOURCE for interp_ghost,
+      // never ghost values in their own right, and interp_ghost runs while the
+      // whole strip is still in the neighbour's frame.
+      auto part_opts_w = PartOptions().exterior(true);
+      if (opts.dim() == SyncOptions::DIM2) {
+        part_opts_w.depth(1).exterior(dx > 0);
+      } else if (opts.dim() == SyncOptions::DIM3) {
+        part_opts_w.depth(1).exterior(dy > 0);
+      }
+      if (opts.interpolate()) {
+        int margin = cs_interp_margin(pmb->options->coord()->nghost());
+        if (dy != 0 && dx == 0) {
+          part_opts_w.extend_x2(margin);
+        } else if (dx != 0 && dy == 0) {
+          part_opts_w.extend_x3(margin);
+        }
+      }
+      auto sub_w = pmb->part(offset, part_opts_w);
+
       auto alpha = mesh[1].index(sub3);
       auto beta = mesh[0].index(sub3);
 
@@ -889,7 +927,7 @@ void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
             continue;
         }
 
-        var.index_put_(sub, pmb->recv_bufs[bid][count++]);
+        var.index_put_(sub_w, pmb->recv_bufs[bid][count++]);
         if (opts.interpolate()) {
           pcoord->interp_ghost(var, offset);
         }

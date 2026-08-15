@@ -155,14 +155,27 @@ void GnomonicEquiangleImpl::reset() {
   offset_x = op->nx2() * rx;
   offset_y = op->nx3() * ry;
 
-  // register local ghost cell usrc
+  // register local ghost cell usrc.
+  // The strip these indices address is widened by cs_interp_margin() on each
+  // side (see CubedSphereLayout::{serialize,deserialize} and interp_ghost
+  // below), so rebase by that -- NOT by interp_order/2, which only ever covered
+  // a seam at beta = 0.
+  int margin = cs_interp_margin(op->nghost());
+  TORCH_CHECK(options->interp_order() <= 2 || pmb->options->layout()->px() == 1,
+              "GnomonicEquiangle: interp_order > 2 is not supported on a "
+              "SUBDIVIDED cubed-sphere "
+              "panel (px > 1). The stencil would need nghost + interp_order/2 "
+              "- 1 tangential cells "
+              "beyond the block, which is more than its halo carries. Use "
+              "interp_order: 2, or px: 1.");
+
   usrc_BT =
       register_buffer("usrc_BT", usrc.narrow(-1, offset_x, op->nx2()).clone());
-  usrc_BT += options->interp_order() / 2 - offset_x;
+  usrc_BT += margin - offset_x;
 
   usrc_LR = register_buffer(
       "usrc_LR", usrc.narrow(-1, offset_y, op->nx3()).transpose(0, 1));
-  usrc_LR += options->interp_order() / 2 - offset_y;
+  usrc_LR += margin - offset_y;
 }
 
 torch::Tensor GnomonicEquiangleImpl::center_width2() const {
@@ -197,17 +210,18 @@ void GnomonicEquiangleImpl::interp_ghost(
     torch::Tensor var, std::tuple<int, int, int> const& offset) const {
   auto [dy, dx, dz] = offset;
   auto sub = pmb->part(offset, PartOptions().exterior(true).ndim(var.dim()));
-  auto order = options->interp_order() / 2;
+  // must match the widening done by CubedSphereLayout::{serialize,deserialize}
+  auto margin = cs_interp_margin(options->nghost());
 
   if (dy != 0 && dx == 0) {
     auto sub1 = pmb->part(
-        offset, PartOptions().exterior(true).extend_x2(order).ndim(var.dim()));
+        offset, PartOptions().exterior(true).extend_x2(margin).ndim(var.dim()));
     var.index(sub) = _interp_ghost_BT(var.index(sub1), dy > 0);
   }
 
   if (dx != 0 && dy == 0) {
     auto sub1 = pmb->part(
-        offset, PartOptions().exterior(true).extend_x3(order).ndim(var.dim()));
+        offset, PartOptions().exterior(true).extend_x3(margin).ndim(var.dim()));
     var.index(sub) = _interp_ghost_LR(var.index(sub1), dx > 0);
   }
 }
