@@ -77,6 +77,23 @@ inline DISPATCH_MACRO int ludcmp(Eigen::Matrix<T, N, N, Eigen::RowMajor> &a,
       printf("[S44-PIVOT] j=%d scaled_pivot=%.6e a_jj=%.6e\n", j, (double)big,
              (double)a(j, j));
     }
+    // [S44-FIX] Relative pivot guard. Without this, a tiny-but-nonzero pivot
+    // passes the `big == 0.0` test far above (which only catches a fully ZERO
+    // row) and this division amplifies by 1/pivot with no bound and no way to
+    // report. Measured in the ISSI-HJ hot-Jupiter case: scaled pivots down
+    // to 4.6e-51 on the night-side panel, ~10 per cycle, producing a 1e16x
+    // energy blow-up in one cell and killing the run. vv[j] = 1/max|row j|, so
+    // 1/vv[j] is that row's natural scale; clamp |a(j,j)| to kPivEps times it,
+    // preserving sign. The implicit correction for a degenerate row is
+    // ill-determined anyway -- bounding it keeps the solve stable instead of
+    // explosive.
+    const T kPivEps = static_cast<T>(1.0e-12);
+    if (vv[j] > 0) {
+      T pivmin = kPivEps / vv[j];
+      if (fabs(a(j, j)) < pivmin) {
+        a(j, j) = (a(j, j) < 0) ? -pivmin : pivmin;
+      }
+    }
     if (j != N - 1) {
       dum = (1.0 / a(j, j));
       for (i = j + 1; i < N; i++) a(i, j) *= dum;
