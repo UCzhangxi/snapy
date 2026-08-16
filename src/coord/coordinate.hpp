@@ -1,6 +1,7 @@
 #pragma once
 
 // C/C++
+#include <cmath>
 #include <functional>
 #include <iosfwd>
 
@@ -61,6 +62,29 @@ struct CoordinateOptionsImpl {
 
   void repartition(LayoutOptions const& layout);
 
+  //! Cell width taken from the GLOBAL grid, never from this block's own bounds.
+  /*!
+   * A block that forms its own `(x2max - x2min) / nx2` computes a cell width
+   * that depends on how the mesh was decomposed: two decompositions then
+   * disagree about the same physical cell by ~1 ULP, and every metric term
+   * built on it inherits that (ISSUES S45). The global expression is the same
+   * arithmetic for every block and every decomposition.
+   */
+  double dx1() const {
+    return (global_x1max() - global_x1min()) / global_nx1();
+  }
+  double dx2() const {
+    return (global_x2max() - global_x2min()) / global_nx2();
+  }
+  double dx3() const {
+    return (global_x3max() - global_x3min()) / global_nx3();
+  }
+
+  //! Index of this block's FIRST INTERIOR CELL in the global grid.
+  int ix1() const { return _offset(x1min() - global_x1min(), dx1()); }
+  int ix2() const { return _offset(x2min() - global_x2min(), dx2()); }
+  int ix3() const { return _offset(x3min() - global_x3min(), dx3()); }
+
   ADD_ARG(std::string, type) = "cartesian";
   ADD_ARG(double, global_x1min) = 0.;
   ADD_ARG(double, global_x2min) = 0.;
@@ -82,6 +106,13 @@ struct CoordinateOptionsImpl {
   ADD_ARG(int, nx3) = 1;
   ADD_ARG(int, nghost) = 1;
   ADD_ARG(int, interp_order) = 2;
+
+ private:
+  //! `repartition` places a block at an exact multiple of the cell width, so
+  //! the quotient is an integer up to round-off; round rather than truncate.
+  static int _offset(double span, double dx) {
+    return dx == 0. ? 0 : static_cast<int>(std::lround(span / dx));
+  }
 };
 using CoordinateOptions = std::shared_ptr<CoordinateOptionsImpl>;
 
@@ -142,6 +173,10 @@ class CoordinateImpl {
 
   void print(std::ostream& stream) const;
   virtual void reset_coordinates(std::array<MeshGenerator, 3> meshgens);
+
+  //! This block's slice of the global face array for one axis (ISSUES S45).
+  static torch::Tensor block_faces_(double gmin, double gmax, int gnx, int nx,
+                                    int ix, int nghost);
 
   //! module methods
   virtual torch::Tensor center_width1() const;
