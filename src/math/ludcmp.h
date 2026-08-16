@@ -66,6 +66,17 @@ inline DISPATCH_MACRO int ludcmp(Eigen::Matrix<T, N, N, Eigen::RowMajor> &a,
       vv[imax] = vv[j];
     }
     indx[j] = imax;
+    // [S44-PIVOT] instrumentation (2026-08-16, branch xiz/s44-pivot; NOT FOR
+    // SCIENCE). `big` here is the row-SCALED magnitude of the chosen pivot, so
+    // it is O(1) for a well-conditioned row and collapses toward 0 as the
+    // matrix becomes near-singular. The only existing guard is `big == 0.0` (a
+    // fully ZERO row) many lines above; a tiny-but-nonzero pivot passes it and
+    // then hits `1.0 / a(j,j)` below with no test and no way to report -- which
+    // is exactly a silent 1/pivot amplification.
+    if (big < 1.0e-10) {
+      printf("[S44-PIVOT] j=%d scaled_pivot=%.6e a_jj=%.6e\n", j, (double)big,
+             (double)a(j, j));
+    }
     if (j != N - 1) {
       dum = (1.0 / a(j, j));
       for (i = j + 1; i < N; i++) a(i, j) *= dum;
