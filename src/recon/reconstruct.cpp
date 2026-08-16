@@ -94,6 +94,21 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
 
   if (options->shock()) {
     _apply_inplace(dim, il, iu, w, pinterp1, result);
+    // [S44] The shock path used to return here, BYPASSING the positivity clamps
+    // applied on the non-shock path below. With `limiter: true` set in the
+    // config those clamps were simply unreachable, so a reconstructed FACE
+    // state could carry non-positive density or pressure into the Riemann solve
+    // wherever a steep gradient sits in low-density gas -- and the cell-level
+    // density-floor/pressure-floor cannot catch that, because they clamp CELLS,
+    // not reconstructed faces. Apply the same clamps here before returning.
+    auto eos_s =
+        phydro ? phydro->options->eos() : EquationOfStateOptionsImpl::create();
+    if (eos_s->limiter() && floor) {
+      result.select(1, IDN).clamp_min_(eos_s->density_floor());
+      if (result.size(1) > IPR) {
+        result.select(1, IPR).clamp_min_(eos_s->pressure_floor());
+      }
+    }
     return result;
   }
 
