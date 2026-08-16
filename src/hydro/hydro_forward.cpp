@@ -224,7 +224,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   //// ------------ (3.A) Calculate dimension 2 LR states ------------ ////
   torch::Tensor wtmp2, wtmp3;
   SyncOptions sync_opts;
-  sync_opts.cross_panel_only(true).interpolate(false).type(kPrimitive);
+  sync_opts.cross_panel_only(true).interpolate(false).fill_corner(false).type(
+      kPrimitive);
   std::vector<CommWorkPtr> works2, works3;
   Variables send_vars2, send_vars3;
 
