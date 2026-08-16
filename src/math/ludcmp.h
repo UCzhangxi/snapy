@@ -77,6 +77,20 @@ inline DISPATCH_MACRO int ludcmp(Eigen::Matrix<T, N, N, Eigen::RowMajor> &a,
       printf("[S44-PIVOT] j=%d scaled_pivot=%.6e a_jj=%.6e\n", j, (double)big,
              (double)a(j, j));
     }
+    // [S44-FIX v3] Guard on the SCALED pivot `big` (= vv[i]*|sum|, the
+    // row-normalised pivot magnitude the diagnostic prints), NOT on |a(j,j)|
+    // against vv[j]: vv[j] is stale after the row swap above (NR assigns
+    // vv[imax]=vv[j] and leaves vv[j]), so the earlier attempt tested the wrong
+    // quantity. Calibration from the measured population on the failing ISSI-HJ
+    // case: scaled pivots 1e-20..1e-10 are ROUTINE (2010 events) and must be
+    // left alone -- clamping at 1e-4 killed the run instantly (191182 events).
+    // The pathological tail is <1e-30 (354 events, min 4.6e-51). Clamp only
+    // that tail, bounding the 1/pivot amplification at ~1e30 instead of 1e51.
+    const T kPivScaled = static_cast<T>(1.0e-30);
+    if (big < kPivScaled && big > 0) {
+      T scale = (vv[j] > 0) ? (kPivScaled / vv[j]) : kPivScaled;
+      if (fabs(a(j, j)) < scale) a(j, j) = (a(j, j) < 0) ? -scale : scale;
+    }
     if (j != N - 1) {
       dum = (1.0 / a(j, j));
       for (i = j + 1; i < N; i++) a(i, j) *= dum;
