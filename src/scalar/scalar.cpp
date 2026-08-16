@@ -68,8 +68,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   torch::Tensor rtmp2, rtmp3;
   Variables send_vars2, send_vars3;
   SyncOptions sync_opts;
-  sync_opts.cross_panel_only(true).interpolate(false).fill_corner(false).type(
-      kScalar);
+  sync_opts.cross_panel_only(true).interpolate(false).type(kScalar);
   std::vector<CommWorkPtr> works2, works3;
 
   if (_flux2.defined()) {

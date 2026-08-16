@@ -189,10 +189,6 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   void advance_local(Variables& vars, double dt, int stage);
   void exchange(Variables& vars, SyncOptions const& opts) const;
 
-  //! one communication round; `exchange` splits an interpolating cubed-sphere
-  //! sync into two of these (S45)
-  void _exchange_once(Variables& vars, SyncOptions const& opts) const;
-
   //! Serialize state into MeshBlock-owned buffers without launching comms yet.
   void begin_exchange(Variables& vars, SyncOptions const& opts) const;
 
@@ -242,6 +238,10 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   double _init_from_restart(Variables& vars, std::string fname);
 
  private:
+  //! one communication round; `exchange` splits a subdivided cubed-sphere
+  //! sync into two of these (S45)
+  void _exchange_once(Variables& vars, SyncOptions const& opts) const;
+
   //! clock and cycle at time start
   clock_t _time_start;
   int _cycle_start = 0;

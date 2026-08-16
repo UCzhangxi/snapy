@@ -220,8 +220,11 @@ torch::Tensor CoordinateImpl::block_faces_(double gmin, double gmax, int gnx,
   auto dx = (gmax - gmin) / gnx;
 
   if (nx <= 1) {  // degenerate axis: one cell, no ghost layers
-    return torch::linspace(gmin + ix * dx, gmin + (ix + 1) * dx, 2,
-                           torch::kFloat64);
+    // sliced from the global grid like every other axis: gmin + gnx*dx need
+    // not round to gmax
+    return torch::linspace(gmin, gmax, gnx + 1, torch::kFloat64)
+        .narrow(0, ix, 2)
+        .clone();
   }
 
   // Global face g (g = -nghost .. gnx + nghost) sits at array index g + nghost;

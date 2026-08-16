@@ -413,8 +413,7 @@ void LayoutImpl::_copy_local_exchange_buffers(
           int nb = layout->neighbor_rank(iloc, offset);
           if (nb < 0 || nb == rank) continue;
 
-          // Only this phase's peers. Neither flag is ever set on a
-          // non-cubed-sphere layout, so this is inert there.
+          // this phase's peers only (cubed sphere; inert elsewhere)
           if (opts.cross_panel_only() || opts.intra_panel_only()) {
             bool same_panel =
                 std::get<2>(iloc) == std::get<2>(layout->loc_of(nb));
@@ -732,12 +731,10 @@ void LayoutImpl::finalize(MeshBlockImpl const* pmb, Variables& vars,
   // Deserialize received data into ghost zones
   deserialize(pmb, vars, opts);
 
-  // Fill corners. They are SYNTHESIZED by averaging the edge ghost strips, so
-  // they are only valid once every strip of this ghost sync has landed -- which
-  // in the two-phase cubed-sphere sync is the end of the cross-panel phase, not
-  // of the intra-panel one. `fill_corner` says so explicitly; it used to be
-  // derived as `!cross_panel_only`, which cannot express that.
-  if (opts.skip_corner() && opts.fill_corner()) {
+  // Corners are synthesized from the edge strips, so neither half of a split
+  // sync may do it; `exchange` calls fill_corners once, after both.
+  if (opts.skip_corner() && !opts.cross_panel_only() &&
+      !opts.intra_panel_only()) {
     fill_corners(pmb, vars);
   }
 

@@ -162,24 +162,16 @@ void GnomonicEquiangleImpl::reset() {
   // below), so rebase by that -- NOT by interp_order/2, which only ever covered
   // a seam at beta = 0.
   int margin = cs_interp_margin(op->nghost());
-  TORCH_CHECK(options->interp_order() <= 2 || pmb->options->layout()->px() == 1,
-              "GnomonicEquiangle: interp_order > 2 is not supported on a "
-              "SUBDIVIDED cubed-sphere "
-              "panel (px > 1). The stencil would need nghost + interp_order/2 "
-              "- 1 tangential cells "
-              "beyond the block, which is more than its halo carries. Use "
-              "interp_order: 2, or px: 1.");
+  // interp_order > 2 reaches u0-1, one cell beyond what the exchange
+  // carries, at every px -- so px == 1 is not an escape.
+  TORCH_CHECK(options->interp_order() <= 2,
+              "GnomonicEquiangle: interp_order > 2 needs more tangential "
+              "margin than the cross-panel exchange carries; use "
+              "interp_order: 2.");
 
-  // Keep the GLOBAL source coordinate in the buffer and carry the block's shift
-  // as an INTEGER. Folding `margin - offset` into the double here -- which is
-  // what this used to do -- makes the stored value decomposition dependent:
-  // `offset` differs per block, so the same global entry can land in a
-  // different binade and round on a different grid. Measured at C64: entry
-  // (g=0, j=30) stored 33.036339353639576 at nb2=2 and 17.036339353639573 at
-  // nb2=4, moving the interpolation weight by 3.6e-15 -- enough to make the
-  // ghost, and everything downstream of it, differ between decompositions
-  // (ISSUES S45). floor() is taken on the global value and the shift added to
-  // the integer index, which is exact.
+  // Keep the GLOBAL source coordinate and carry the block's shift as an
+  // INTEGER: folding `margin - offset` into the double makes the stored value
+  // depend on the decomposition, since `offset` differs per block. (S45)
   usrc_BT =
       register_buffer("usrc_BT", usrc.narrow(-1, offset_x, op->nx2()).clone());
   usrc_shift_BT = margin - offset_x;

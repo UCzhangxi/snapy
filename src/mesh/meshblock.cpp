@@ -590,39 +590,19 @@ void MeshBlockImpl::forward(Variables &vars, double dt, int stage) {
 }
 
 void MeshBlockImpl::exchange(Variables &vars, SyncOptions const &opts) const {
-  // On the cubed sphere an INTERPOLATING full sync must run in TWO PHASES
-  // (S45). The cross-panel strip is packed EXTENDED into this block's own
-  // tangential halo by `cs_interp_margin`, because the interpolation source
-  // slides along the edge and, on a subdivided panel, runs past the matching
-  // block. Those margin cells must therefore already hold the CURRENT state --
-  // and one round cannot deliver that: serialize()'s intra-panel loop only
-  // fills SEND buffers, and halos are not written until deserialize(), after
-  // the communication. Packing both in one round consequently ships
-  // one-sync-stale margin cells, and every cross-panel ghost whose
-  // interpolation source slides across an intra-panel block seam is built from
-  // them (measured: 144 differing ghost positions at nb2=1-vs-2, 240 at 2-vs-4,
-  // exactly where the slide formula predicts).
-  //
-  // Phase 1 lands the intra-panel halo; phase 2 then packs a fresh strip and
-  // interpolates. The dependency is inherent -- the cross-panel SEND payload
-  // needs data that arrives in the intra-panel RECV -- so the extra round is
-  // not avoidable, but it carries no extra message volume: those messages were
-  // already being sent, just in the same round. At nb2=nb3=1 there is no
-  // intra-panel neighbour, so phase 1 packs and sends nothing and phase 2 is
-  // exactly the old single phase; that path is bit-identical by construction.
-  //
-  // Doing this here, rather than at the call sites, covers every interpolating
-  // sync there is: the per-stage ghost exchange, both initialization paths, the
-  // Mesh-level exchange, and the two flux-positivity theta syncs.
+  // A subdivided cubed-sphere panel packs its cross-panel strip EXTENDED into
+  // its own tangential halo (cs_interp_margin), and that halo is only written
+  // by deserialize(). So the intra-panel round must COMPLETE before the
+  // cross-panel round packs, which one round cannot do. Corners are synthesized
+  // from the edge strips, so they come after both. (S45)
+  auto const &lo = *options->layout();
   if (opts.interpolate() && !opts.intra_panel_only() &&
-      !opts.cross_panel_only() && options->layout()->type() == "cubed-sphere") {
-    SyncOptions intra_opts = opts;
-    intra_opts.intra_panel_only(true).interpolate(false).fill_corner(false);
-    _exchange_once(vars, intra_opts);
-
-    SyncOptions cross_opts = opts;
-    cross_opts.cross_panel_only(true);
-    _exchange_once(vars, cross_opts);
+      !opts.cross_panel_only() && lo.type() == "cubed-sphere" &&
+      (lo.px() > 1 || lo.py() > 1)) {
+    SyncOptions intra = opts, cross = opts;
+    _exchange_once(vars, intra.intra_panel_only(true).interpolate(false));
+    _exchange_once(vars, cross.cross_panel_only(true));
+    if (opts.skip_corner()) _playout->fill_corners(this, vars);
     return;
   }
 

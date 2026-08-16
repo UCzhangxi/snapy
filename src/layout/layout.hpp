@@ -144,16 +144,11 @@ struct SyncOptions {
   int dy_min() const { return dim() == DIM2 || dim() == DIM1 ? 0 : -1; }
   int dy_max() const { return dim() == DIM2 || dim() == DIM1 ? 0 : 1; }
 
-  //! pack and land ONLY the intra-panel neighbours -- phase 1 of the
-  //! two-phase cubed-sphere ghost sync (S45); the mirror of
-  //! `cross_panel_only`, and inert on every other layout
+  //! phase 1 of the two-phase cubed-sphere ghost sync; mirror of
+  //! `cross_panel_only` (S45)
   ADD_ARG(bool, intra_panel_only) = false;
   ADD_ARG(bool, cross_panel_only) = false;
   ADD_ARG(bool, skip_corner) = true;
-  //! synthesize the inter-panel corners from the edge ghost strips when this
-  //! sync completes. They are only valid once EVERY edge strip has landed, so
-  //! in the two-phase sync this belongs to the cross-panel phase alone.
-  ADD_ARG(bool, fill_corner) = true;
   ADD_ARG(bool, interpolate) = false;
   ADD_ARG(int, type) = kConserved;
   ADD_ARG(int, dim) = 0;
