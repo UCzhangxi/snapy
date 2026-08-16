@@ -170,13 +170,23 @@ void GnomonicEquiangleImpl::reset() {
               "beyond the block, which is more than its halo carries. Use "
               "interp_order: 2, or px: 1.");
 
+  // Keep the GLOBAL source coordinate in the buffer and carry the block's shift
+  // as an INTEGER. Folding `margin - offset` into the double here -- which is
+  // what this used to do -- makes the stored value decomposition dependent:
+  // `offset` differs per block, so the same global entry can land in a
+  // different binade and round on a different grid. Measured at C64: entry
+  // (g=0, j=30) stored 33.036339353639576 at nb2=2 and 17.036339353639573 at
+  // nb2=4, moving the interpolation weight by 3.6e-15 -- enough to make the
+  // ghost, and everything downstream of it, differ between decompositions
+  // (ISSUES S45). floor() is taken on the global value and the shift added to
+  // the integer index, which is exact.
   usrc_BT =
       register_buffer("usrc_BT", usrc.narrow(-1, offset_x, op->nx2()).clone());
-  usrc_BT += margin - offset_x;
+  usrc_shift_BT = margin - offset_x;
 
   usrc_LR = register_buffer(
-      "usrc_LR", usrc.narrow(-1, offset_y, op->nx3()).transpose(0, 1));
-  usrc_LR += margin - offset_y;
+      "usrc_LR", usrc.narrow(-1, offset_y, op->nx3()).transpose(0, 1).clone());
+  usrc_shift_LR = margin - offset_y;
 }
 
 torch::Tensor GnomonicEquiangleImpl::center_width2() const {
@@ -447,9 +457,12 @@ torch::Tensor GnomonicEquiangleImpl::_interp_ghost_LR(torch::Tensor buf,
     vec.insert(vec.begin(), 1);
   }
 
-  auto u0 = usrc_t.floor().to(torch::kInt64).view(vec);
+  // weight from the GLOBAL coordinate; block shift applied to the integer index
+  // only
+  auto u0f = usrc_t.floor();
+  auto x = (usrc_t - u0f).view(vec);
+  auto u0 = u0f.to(torch::kInt64).view(vec) + usrc_shift_LR;
   auto u1 = u0 + 1;
-  auto x = usrc_t.view(vec) - u0;
 
   // set the correct output dimensions
   vec.back() = buf.size(-1);
@@ -485,9 +498,12 @@ torch::Tensor GnomonicEquiangleImpl::_interp_ghost_BT(torch::Tensor buf,
     vec.insert(vec.begin(), 1);
   }
 
-  auto u0 = usrc_t.floor().to(torch::kInt64).view(vec);
+  // weight from the GLOBAL coordinate; block shift applied to the integer index
+  // only
+  auto u0f = usrc_t.floor();
+  auto x = (usrc_t - u0f).view(vec);
+  auto u0 = u0f.to(torch::kInt64).view(vec) + usrc_shift_BT;
   auto u1 = u0 + 1;
-  auto x = usrc_t.view(vec) - u0;
 
   // set the correct output dimensions
   vec.back() = buf.size(-1);
