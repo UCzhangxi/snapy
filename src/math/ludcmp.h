@@ -87,7 +87,7 @@ inline DISPATCH_MACRO int ludcmp(Eigen::Matrix<T, N, N, Eigen::RowMajor> &a,
     // preserving sign. The implicit correction for a degenerate row is
     // ill-determined anyway -- bounding it keeps the solve stable instead of
     // explosive.
-    const T kPivEps = static_cast<T>(1.0e-12);
+    const T kPivEps = static_cast<T>(1.0e-4);
     if (vv[j] > 0) {
       T pivmin = kPivEps / vv[j];
       if (fabs(a(j, j)) < pivmin) {
