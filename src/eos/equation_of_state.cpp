@@ -1,5 +1,8 @@
 // C/C++
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
 
 // yaml
 #include <yaml-cpp/yaml.h>
@@ -187,6 +190,51 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
     auto ke = 0.5 * (mom * cons.narrow(0, IVX, 3)).sum(0) / rho;
     auto min_temp = options->temperature_floor() * torch::ones_like(ke);
     auto min_ie = compute("UT->I", {cons, min_temp});
+
+    // ---- S44 PROBE (DIAGNOSTIC -- DO NOT MERGE) --------------------------
+    // This clamp is snapy's ONLY conserved-energy guard. Setting
+    // equation-of-state.temperature-floor to 20 / 300 / 700 K gave
+    // BIT-IDENTICAL ISSI runs, so it never binds -- yet rank 4 reports min_T
+    // = 1.6e-39 K and a face temperature of -6.5e79. Both cannot be true. The
+    // suspicion is that min_ie = compute("UT->I", {cons, min_temp}) takes the
+    // (already corrupted) cons as input, so it returns ~0 or non-finite exactly
+    // on the cells this guard exists to catch -- i.e. the guard silently
+    // disables itself. Print from EVERY rank: SINFO is hard-gated to rank 0,
+    // which is the dayside panel that never fails, and reading rank 0 alone is
+    // how three sessions were misled. RANK comes from the launcher env, not
+    // snapy internals.
+    {
+      static thread_local long long np_calls = 0;
+      static thread_local long long np_bind = 0;
+      static thread_local long long np_bad = 0;
+      static thread_local double np_min_ie = 1e300;
+      static thread_local double np_min_eint = 1e300;
+      static thread_local int np_rank =
+          std::getenv("RANK") ? std::atoi(std::getenv("RANK")) : -1;
+      ++np_calls;
+      auto eint = cons[IPR] - ke;  // internal energy BEFORE the clamp
+      long long nbind = (cons[IPR] < ke + min_ie).sum().item<long long>();
+      long long nbad = (~torch::isfinite(min_ie)).sum().item<long long>();
+      auto fi = min_ie.masked_select(torch::isfinite(min_ie));
+      auto fe = eint.masked_select(torch::isfinite(eint));
+      double mie = fi.numel() ? fi.min().item<double>() : NAN;
+      double men = fe.numel() ? fe.min().item<double>() : NAN;
+      np_bind += nbind;
+      np_bad += nbad;
+      if (mie < np_min_ie) np_min_ie = mie;
+      if (men < np_min_eint) np_min_eint = men;
+      if (nbind > 0 || nbad > 0 || men <= 0.0 || np_calls % 500 == 0) {
+        std::cout << "[S44-LIM] rank=" << np_rank << " call=" << np_calls
+                  << " Tfloor=" << options->temperature_floor()
+                  << " nbind=" << nbind << " (tot " << np_bind << ")"
+                  << " n_nonfinite_min_ie=" << nbad << " (tot " << np_bad << ")"
+                  << " min_ie=" << mie << " (seen " << np_min_ie << ")"
+                  << " min_eint_preclamp=" << men << " (seen " << np_min_eint
+                  << ")" << std::endl;
+      }
+    }
+    // ---- end S44 PROBE ---------------------------------------------------
+
     cons[IPR].clamp_min_(ke + min_ie);
   }
 
