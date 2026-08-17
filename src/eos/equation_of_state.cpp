@@ -204,17 +204,17 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
     // how three sessions were misled. RANK comes from the launcher env, not
     // snapy internals.
     {
-      static thread_local long long np_calls = 0;
-      static thread_local long long np_bind = 0;
-      static thread_local long long np_bad = 0;
+      static thread_local int64_t np_calls = 0;
+      static thread_local int64_t np_bind = 0;
+      static thread_local int64_t np_bad = 0;
       static thread_local double np_min_ie = 1e300;
       static thread_local double np_min_eint = 1e300;
       static thread_local int np_rank =
           std::getenv("RANK") ? std::atoi(std::getenv("RANK")) : -1;
       ++np_calls;
       auto eint = cons[IPR] - ke;  // internal energy BEFORE the clamp
-      long long nbind = (cons[IPR] < ke + min_ie).sum().item<long long>();
-      long long nbad = (~torch::isfinite(min_ie)).sum().item<long long>();
+      int64_t nbind = (cons[IPR] < ke + min_ie).sum().item<int64_t>();
+      int64_t nbad = (~torch::isfinite(min_ie)).sum().item<int64_t>();
       auto fi = min_ie.masked_select(torch::isfinite(min_ie));
       auto fe = eint.masked_select(torch::isfinite(eint));
       double mie = fi.numel() ? fi.min().item<double>() : NAN;
