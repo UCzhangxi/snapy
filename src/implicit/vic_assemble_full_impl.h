@@ -72,6 +72,14 @@ void DISPATCH_MACRO vic_assemble_full_impl(
 
   Ap.noalias() = Rmat * Lambda.asDiagonal() * Rimat;
 
+  // At a reflecting lid the first-order Roe closure under-represents the
+  // dissipation the explicit reconstruction's mirror-ghost wall applies to the
+  // last cell's normal momentum (measured ~4.6x, ISSUES S44); below ~4x the
+  // corrected map carries an unstable lid mode at dt >> dt_acoustic, above it
+  // the map is insensitive to the factor. Scale the wall-face diffusion into
+  // that saturated regime.
+  if (i == ie && last_block && !periodic) Ap *= 8.;
+
   T const& area_i = AREA(i);
   T const& area_ip1 = AREA(i + 1);
   T half_inv_vol = 0.5 / VOL(i);
