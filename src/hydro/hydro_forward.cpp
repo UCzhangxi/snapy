@@ -112,8 +112,20 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
       auto dl = wtmp[ILT][IDN] + dsf;
       auto dr = wtmp[IRT][IDN] + dsf;
-      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, dsf));
-      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, dsf));
+      // Positivity fallback = the adjacent cell's density, not dsf: a
+      // reference that overestimates density aloft (a bottom-anchored
+      // isentrope did, by orders of magnitude) turns every floor event at a
+      // reflecting top wall into a large spurious wall impedance.
+      // Shift by one along x1 with EDGE REPLICATION, not torch::roll: roll is
+      // circular, so at index 0 it would substitute the density from the TOP
+      // of the column. That word is not consumed today (physical faces run
+      // il..iu+1 with il = nghost), but a wraparound inside a positivity
+      // fallback becomes live the moment a caller changes the range.
+      auto n1 = density.size(-1);
+      auto rho_below = torch::cat(
+          {density.narrow(-1, 0, 1), density.narrow(-1, 0, n1 - 1)}, -1);
+      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
+      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {
