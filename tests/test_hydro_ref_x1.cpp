@@ -110,9 +110,10 @@ RefOutput tensor_reference(torch::Tensor const& w, torch::Tensor const& dx1f,
                                 dp / torch::log(ratio)));
   }
 
-  auto rho_over_p = rho / w[snap::IPR];
-  out.dref.copy_(out.pref * rho_over_p);
-  out.dsf.copy_(out.psf_lo * rho_over_p);
+  auto kbot = w[snap::IPR].select(-1, is).unsqueeze(-1) /
+              rho.select(-1, is).unsqueeze(-1).pow(gam);
+  out.dref.copy_((out.pref / kbot).pow(1.0 / gam));
+  out.dsf.copy_((out.psf_lo / kbot).pow(1.0 / gam));
   return out;
 }
 
