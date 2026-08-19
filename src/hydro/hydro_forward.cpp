@@ -112,8 +112,16 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
       auto dl = wtmp[ILT][IDN] + dsf;
       auto dr = wtmp[IRT][IDN] + dsf;
-      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, dsf));
-      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, dsf));
+      // Positivity fallback = the adjacent cell's density, not dsf: the
+      // bottom-anchored isentrope overestimates density by orders of
+      // magnitude on a stratified column (200x at 120 levels), and dsf at
+      // the reflecting top wall -- where the mirror-ghost kink makes the
+      // reconstruction overshoot every step -- inflated the wall impedance
+      // ~14x. That single face is the extent-scaling S44 wall, in both the
+      // explicit and implicit modes.
+      auto rho_below = torch::roll(density, 1, -1);
+      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
+      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {
