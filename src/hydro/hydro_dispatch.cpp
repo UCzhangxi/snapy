@@ -110,11 +110,9 @@ void hydro_ref_x1_mps(torch::Tensor const& w, torch::Tensor const& dx1f,
                             dp / torch::log(ratio)));
   }
 
-  auto kbot = kbot_in.defined() ? kbot_in
-                                : w[IPR].select(-1, is).unsqueeze(-1) /
-                                      rho.select(-1, is).unsqueeze(-1).pow(gam);
-  dref.copy_((pref / kbot).pow(1.0 / gam));
-  dsf.copy_((psf_lo / kbot).pow(1.0 / gam));
+  auto rho_over_p = rho / w[IPR];
+  dref.copy_(pref * rho_over_p);
+  dsf.copy_(psf_lo * rho_over_p);
 }
 
 }  // namespace snap

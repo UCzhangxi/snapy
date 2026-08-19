@@ -58,13 +58,9 @@ inline DISPATCH_MACRO void hydro_ref_x1_scan_impl(
   }
 
   T gamma = gam[column];
-  // kbot_in (relayed from the block owning the PHYSICAL bottom, hydro.cpp)
-  // makes the density reference a SINGLE global isentrope across an x1 (nb1>1)
-  // decomposition. The block-local fallback is the nb1=1 path, bit-unchanged.
-  // A per-block kbot made adjacent blocks decompose rho against different
-  // isentropes, so the two sides of every x1 seam reconstructed different
-  // face states -- one of the two defects behind the decomposition-dependent
-  // convective vigor.
+  // kbot is vestigial: the density reference is local (rho/p-scaled, see
+  // hydro_ref_x1_cell_impl), so nothing consumes it. The relay plumbing in
+  // hydro.cpp is retained; removing it is a separate cleanup.
   if (kbot_in) {
     *kbot = kbot_in[column];
   } else {
@@ -135,8 +131,14 @@ inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
   }
 
   pref[flat + i] = cell_pref;
-  dref[flat + i] = pow(cell_pref / kbot, inv_gamma);
-  dsf[flat + i] = pow(lo / kbot, inv_gamma);
+  // A bottom-anchored isentrope overestimates the density reference by orders
+  // of magnitude on a stratified column, so rho - dref cancels destructively
+  // and the face restore pins the top-wall density to the reference (ISSUES
+  // S44). The cell's own rho/p keeps rho' = rho*p'/p small at every
+  // height.
+  T rho_over_p = w[IDN * ncells + flat + i] / w[IPR * ncells + flat + i];
+  dref[flat + i] = cell_pref * rho_over_p;
+  dsf[flat + i] = lo * rho_over_p;
 }
 
 template <typename T>
