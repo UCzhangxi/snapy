@@ -313,13 +313,10 @@ HydroImpl::_hydro_ref_x1(torch::Tensor const& w) const {
     constexpr int kWbRefTag = 0x7715;
     constexpr int kWbKbotTag = 0x7716;
 
-    // Global (kbot, gamma) relay, bottom -> top. The density reference must be
-    // ONE isentrope for the whole column: with a block-local kbot, adjacent
-    // blocks decompose rho against different references and the two sides of
-    // every x1 seam reconstruct different face states, making the dynamics
-    // nb1-dependent. The block owning the physical bottom computes
-    // (kbot, gamma) exactly as the nb1=1 path would; every block above
-    // receives and forwards the same slabs.
+    // Global (kbot, gamma) relay, bottom -> top -- vestigial: the density
+    // reference is now local algebra on (w, pref) (hydro_ref_x1_impl.h), so
+    // kbot is relayed but no longer consumed. Symmetric on both seam sides
+    // and harmless; removal is a separate cleanup.
     if (below >= 0) {
       // ONE tensor per message: ProcessGroupGloo::send rejects a multi-tensor
       // vector (ucx accepts it, which is why the ucx-only gate missed this).
