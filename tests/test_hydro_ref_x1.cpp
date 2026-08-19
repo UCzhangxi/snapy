@@ -110,10 +110,19 @@ RefOutput tensor_reference(torch::Tensor const& w, torch::Tensor const& dx1f,
                                 dp / torch::log(ratio)));
   }
 
-  auto kbot = w[snap::IPR].select(-1, is).unsqueeze(-1) /
-              rho.select(-1, is).unsqueeze(-1).pow(gam);
-  out.dref.copy_((out.pref / kbot).pow(1.0 / gam));
-  out.dsf.copy_((out.psf_lo / kbot).pow(1.0 / gam));
+  auto rop = rho / w[snap::IPR];
+  auto lo_edge = rop.narrow(-1, 0, 1);
+  auto hi_edge = rop.narrow(-1, nc1 - 1, 1);
+  auto pad = torch::cat({lo_edge, lo_edge, rop, hi_edge, hi_edge}, -1);
+  auto rs = (pad.narrow(-1, 0, nc1) + 4. * pad.narrow(-1, 1, nc1) +
+             6. * pad.narrow(-1, 2, nc1) + 4. * pad.narrow(-1, 3, nc1) +
+             pad.narrow(-1, 4, nc1)) /
+            16.;
+  auto rf = rs.clone();
+  rf.narrow(-1, 1, nc1 - 1)
+      .copy_(0.5 * (rs.narrow(-1, 0, nc1 - 1) + rs.narrow(-1, 1, nc1 - 1)));
+  out.dref.copy_(out.pref * rs);
+  out.dsf.copy_(out.psf_lo * rf);
   return out;
 }
 

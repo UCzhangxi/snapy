@@ -58,13 +58,9 @@ inline DISPATCH_MACRO void hydro_ref_x1_scan_impl(
   }
 
   T gamma = gam[column];
-  // kbot_in (relayed from the block owning the PHYSICAL bottom, hydro.cpp)
-  // makes the density reference a SINGLE global isentrope across an x1 (nb1>1)
-  // decomposition. The block-local fallback is the nb1=1 path, bit-unchanged.
-  // A per-block kbot made adjacent blocks decompose rho against different
-  // isentropes, so the two sides of every x1 seam reconstructed different
-  // face states -- one of the two defects behind the decomposition-dependent
-  // convective vigor.
+  // kbot is vestigial: the density reference is local (smoothed rho/p, see
+  // hydro_ref_x1_rop_smooth), so nothing consumes it. The relay plumbing in
+  // hydro.cpp is retained; removing it is a separate cleanup.
   if (kbot_in) {
     *kbot = kbot_in[column];
   } else {
@@ -73,6 +69,24 @@ inline DISPATCH_MACRO void hydro_ref_x1_scan_impl(
     *kbot = pres_bot / pow(rho_bot, gamma);
   }
   *inv_gamma = T(1) / gamma;
+}
+
+//! rho/p smoothed by a clamped 5-point binomial along x1: the reference must
+//! track the column profile at LARGE scales only. An unsmoothed local rho/p
+//! makes rho' degenerate with the pressure perturbation, so entropy/buoyancy
+//! anomalies bypass the high-order reconstruction (measured fatal on the
+//! certified 84-level run); the bottom-anchored isentrope errs by orders of
+//! magnitude on a stratified column (ISSUES S44).
+template <typename T>
+inline DISPATCH_MACRO T hydro_ref_x1_rop_smooth(T const* w, int ncells,
+                                                int flat, int nc1, int i) {
+  T v[5];
+  for (int m = -2; m <= 2; ++m) {
+    int j = i + m;
+    j = j < 0 ? 0 : (j >= nc1 ? nc1 - 1 : j);
+    v[m + 2] = w[IDN * ncells + flat + j] / w[IPR * ncells + flat + j];
+  }
+  return (v[0] + T(4) * v[1] + T(6) * v[2] + T(4) * v[3] + v[4]) / T(16);
 }
 
 template <typename T>
@@ -135,8 +149,12 @@ inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
   }
 
   pref[flat + i] = cell_pref;
-  dref[flat + i] = pow(cell_pref / kbot, inv_gamma);
-  dsf[flat + i] = pow(lo / kbot, inv_gamma);
+  T rs = hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i);
+  T rf = i > 0 ? T(0.5) *
+                     (hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i - 1) + rs)
+               : rs;
+  dref[flat + i] = cell_pref * rs;
+  dsf[flat + i] = lo * rf;
 }
 
 template <typename T>
