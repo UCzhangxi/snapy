@@ -110,11 +110,19 @@ void hydro_ref_x1_mps(torch::Tensor const& w, torch::Tensor const& dx1f,
                             dp / torch::log(ratio)));
   }
 
-  auto kbot = kbot_in.defined() ? kbot_in
-                                : w[IPR].select(-1, is).unsqueeze(-1) /
-                                      rho.select(-1, is).unsqueeze(-1).pow(gam);
-  dref.copy_((pref / kbot).pow(1.0 / gam));
-  dsf.copy_((psf_lo / kbot).pow(1.0 / gam));
+  auto rop = rho / w[IPR];
+  auto lo_edge = rop.narrow(-1, 0, 1);
+  auto hi_edge = rop.narrow(-1, nc1 - 1, 1);
+  auto pad = torch::cat({lo_edge, lo_edge, rop, hi_edge, hi_edge}, -1);
+  auto rs = (pad.narrow(-1, 0, nc1) + 4. * pad.narrow(-1, 1, nc1) +
+             6. * pad.narrow(-1, 2, nc1) + 4. * pad.narrow(-1, 3, nc1) +
+             pad.narrow(-1, 4, nc1)) /
+            16.;
+  auto rf = rs.clone();
+  rf.narrow(-1, 1, nc1 - 1)
+      .copy_(0.5 * (rs.narrow(-1, 0, nc1 - 1) + rs.narrow(-1, 1, nc1 - 1)));
+  dref.copy_(pref * rs);
+  dsf.copy_(psf_lo * rf);
 }
 
 }  // namespace snap
