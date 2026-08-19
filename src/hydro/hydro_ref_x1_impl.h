@@ -100,53 +100,14 @@ inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
   T hi = psf_hi[flat + i];
   T cell_pref = T(0.5) * (lo + hi);
 
-  if (uniform) {
-    constexpr double w6[6] = {11. / 1440., -31. / 480., 401. / 720.,
-                              401. / 720., -31. / 480., 11. / 1440.};
-    if (i >= 2 && i < nc1 - 2) {
-      T six = T(0);
-      for (int m = 0; m < 6; ++m) {
-        six +=
-            T(w6[m]) * hydro_ref_x1_face(psf_lo, psf_hi, flat, i - 2 + m, nc1);
-      }
-      T lower = lo < hi ? lo : hi;
-      T upper = lo > hi ? lo : hi;
-      if (six >= lower && six <= upper) cell_pref = six;
-    }
-
-    constexpr double w6e[2][6] = {
-        {95. / 288., 1427. / 1440., -133. / 240., 241. / 720., -173. / 1440.,
-         3. / 160.},
-        {-3. / 160., 637. / 1440., 511. / 720., -43. / 240., 77. / 1440.,
-         -11. / 1440.},
-    };
-    if (!phys_in && i < 2) {
-      T val = T(0);
-      for (int m = 0; m < 6; ++m) {
-        val += T(w6e[i][m]) * hydro_ref_x1_face(psf_lo, psf_hi, flat, m, nc1);
-      }
-      T lower = lo < hi ? lo : hi;
-      T upper = lo > hi ? lo : hi;
-      if (val >= lower && val <= upper) cell_pref = val;
-    }
-    if (!phys_out && i >= nc1 - 2) {
-      int sigma = i - (nc1 - 5);
-      int row = 4 - sigma;
-      T val = T(0);
-      for (int m = 0; m < 6; ++m) {
-        val += T(w6e[row][5 - m]) *
-               hydro_ref_x1_face(psf_lo, psf_hi, flat, nc1 - 5 + m, nc1);
-      }
-      T lower = lo < hi ? lo : hi;
-      T upper = lo > hi ? lo : hi;
-      if (val >= lower && val <= upper) cell_pref = val;
-    }
-  } else {
-    T dp = grav * w[IDN * ncells + flat + i] * dx1f[i];
-    T ratio = lo / hi;
-    cell_pref =
-        fabs(ratio - T(1)) < T(1.e-6) ? T(0.5) * (lo + hi) : dp / log(ratio);
-  }
+  // Log-mean cell average on every grid: exact for an exponential (locally
+  // isothermal) column, where the degree-5 face quadrature it replaces
+  // carries an O((dz/H)^6) residual that seeds the S44 modes (measured
+  // cross-code, athena/ExoCubed A1/B1 inventory).
+  T dp = grav * w[IDN * ncells + flat + i] * dx1f[i];
+  T ratio = lo / hi;
+  cell_pref =
+      fabs(ratio - T(1)) < T(1.e-6) ? T(0.5) * (lo + hi) : dp / log(ratio);
 
   pref[flat + i] = cell_pref;
   T rs = hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i);

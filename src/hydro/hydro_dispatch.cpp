@@ -61,54 +61,9 @@ void hydro_ref_x1_mps(torch::Tensor const& w, torch::Tensor const& dx1f,
   psf_lo.clamp_min_(std::numeric_limits<double>::min());
   psf_hi.clamp_min_(std::numeric_limits<double>::min());
 
-  if (uniform) {
-    pref.copy_(0.5 * (psf_lo + psf_hi));
-    auto faces = torch::cat({psf_lo, psf_hi.narrow(-1, nc1 - 1, 1)}, -1);
-    constexpr double w6[6] = {11. / 1440., -31. / 480., 401. / 720.,
-                              401. / 720., -31. / 480., 11. / 1440.};
-    auto six = w6[0] * faces.narrow(-1, 0, nc1 - 4);
-    for (int k = 1; k < 6; ++k) {
-      six += w6[k] * faces.narrow(-1, k, nc1 - 4);
-    }
-    auto lo = torch::minimum(psf_lo, psf_hi).narrow(-1, 2, nc1 - 4);
-    auto hi = torch::maximum(psf_lo, psf_hi).narrow(-1, 2, nc1 - 4);
-    auto mid = pref.narrow(-1, 2, nc1 - 4);
-    mid.copy_(torch::where((six >= lo) & (six <= hi), six, mid));
-
-    constexpr double w6e[2][6] = {
-        {95. / 288., 1427. / 1440., -133. / 240., 241. / 720., -173. / 1440.,
-         3. / 160.},
-        {-3. / 160., 637. / 1440., 511. / 720., -43. / 240., 77. / 1440.,
-         -11. / 1440.},
-    };
-    if (!phys_in) {
-      for (int j : {0, 1}) {
-        auto val = w6e[j][0] * faces.select(-1, 0);
-        for (int m = 1; m < 6; ++m) val += w6e[j][m] * faces.select(-1, m);
-        auto flo = torch::minimum(psf_lo.select(-1, j), psf_hi.select(-1, j));
-        auto fhi = torch::maximum(psf_lo.select(-1, j), psf_hi.select(-1, j));
-        auto cur = pref.select(-1, j);
-        cur.copy_(torch::where((val >= flo) & (val <= fhi), val, cur));
-      }
-    }
-    if (!phys_out) {
-      for (int j : {nc1 - 2, nc1 - 1}) {
-        int sigma = j - (nc1 - 5);
-        auto val = w6e[4 - sigma][5] * faces.select(-1, nc1 - 5);
-        for (int m = 1; m < 6; ++m) {
-          val += w6e[4 - sigma][5 - m] * faces.select(-1, nc1 - 5 + m);
-        }
-        auto flo = torch::minimum(psf_lo.select(-1, j), psf_hi.select(-1, j));
-        auto fhi = torch::maximum(psf_lo.select(-1, j), psf_hi.select(-1, j));
-        auto cur = pref.select(-1, j);
-        cur.copy_(torch::where((val >= flo) & (val <= fhi), val, cur));
-      }
-    }
-  } else {
-    auto ratio = psf_lo / psf_hi;
-    pref.copy_(torch::where((ratio - 1.).abs() < 1e-6, 0.5 * (psf_lo + psf_hi),
-                            dp / torch::log(ratio)));
-  }
+  auto ratio = psf_lo / psf_hi;
+  pref.copy_(torch::where((ratio - 1.).abs() < 1e-6, 0.5 * (psf_lo + psf_hi),
+                          dp / torch::log(ratio)));
 
   auto rop = rho / w[IPR];
   auto lo_edge = rop.narrow(-1, 0, 1);
