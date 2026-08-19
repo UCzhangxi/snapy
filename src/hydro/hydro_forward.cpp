@@ -112,8 +112,23 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
       auto dl = wtmp[ILT][IDN] + dsf;
       auto dr = wtmp[IRT][IDN] + dsf;
-      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, dsf));
-      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, dsf));
+      // Positivity fallback = the adjacent cell's density, not dsf: the
+      // bottom-anchored isentrope overestimates density by orders of
+      // magnitude on a stratified column (200x at 120 levels), and dsf at
+      // the reflecting top wall -- where the mirror-ghost kink makes the
+      // reconstruction overshoot every step -- inflated the wall impedance
+      // ~14x. That single face is the extent-scaling S44 wall, in both the
+      // explicit and implicit modes.
+      // Shift by one along x1 with EDGE REPLICATION, not torch::roll: roll is
+      // circular, so at index 0 it would substitute the density from the TOP
+      // of the column. That word is not consumed today (physical faces run
+      // il..iu+1 with il = nghost), but a wraparound inside a positivity
+      // fallback becomes live the moment a caller changes the range.
+      auto n1 = density.size(-1);
+      auto rho_below = torch::cat(
+          {density.narrow(-1, 0, 1), density.narrow(-1, 0, n1 - 1)}, -1);
+      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
+      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {
