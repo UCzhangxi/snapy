@@ -142,6 +142,18 @@ double HydroImpl::max_time_step(torch::Tensor w, torch::Tensor solid) const {
       dt_min[0] = (pmb->pcoord->center_width1() / (w[IVX].abs() + cs))
                       .index(sub3)
                       .min();
+    } else if (cs.size(2) > 1) {
+      // x1 implicit (S46): the implicit solve removes the x1 ACOUSTIC dt
+      // bound, but x1 ADVECTION still rides the explicit fluxes and its CFL
+      // bound must survive.  Effective bound = dx1/|v1| (athena parity,
+      // new_blockdt.cpp:96; validated on the ISSI 2D day-night box, where a
+      // 5-layer-sponge run that dies at 0.93 d without it certifies 5 d with
+      // it).  The caller multiplies by cfl, so divide it back out here.  At
+      // rest |v1| = 0 gives inf: the bound simply never binds.
+      double cfl_impl = pmb->pintg ? pmb->pintg->options->cfl() : 1.0;
+      dt_min[0] =
+          (pmb->pcoord->center_width1() / w[IVX].abs()).index(sub3).min() /
+          cfl_impl;
     }
 
     if ((cs.size(1) > 1) && (!((icorr->scheme() >> 1) & 1))) {
