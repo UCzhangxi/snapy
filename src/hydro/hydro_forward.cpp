@@ -1,5 +1,6 @@
 // C/C++
 #include <chrono>
+#include <cstdlib>
 
 // snap
 #include <snap/snap.h>
@@ -386,7 +387,21 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
   //// ------------ (7) Perform implicit correction ------------ ////
   if (picorr) {
-    _apply_implicit_correction(du, w, dt, other);
+    // S46 stage-dt A/B: athena assembles the vertical-implicit correction with
+    // the STAGE-weighted dt (beta*dt; implicit_hydro_tasks.cpp:253), snapy with
+    // the FULL dt at every stage.  Equivalent for linear operators,
+    // inequivalent for the dt-nonlinear correction -- possibly the codes'
+    // wall-mode threshold difference.  Env SNAPY_VIC_STAGE_DT enables athena
+    // parity (SSP-RK3 betas; guarded to 3-stage integrators).
+    double dt_corr = dt;
+    static const bool vic_stage_dt =
+        std::getenv("SNAPY_VIC_STAGE_DT") != nullptr;
+    if (vic_stage_dt && vic_stage >= 0 && vic_stage < 3 &&
+        pmb->pintg->stages.size() == 3) {
+      static const double beta[3] = {1.0, 0.25, 2.0 / 3.0};
+      dt_corr *= beta[vic_stage];
+    }
+    _apply_implicit_correction(du, w, dt_corr, other);
 
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();
