@@ -90,7 +90,10 @@ void DISPATCH_MACRO vic_assemble_partial_impl(
   Eigenvector(Rmat, Rimat, prim, cs, gm1, dir);
   Ap.noalias() = Rmat * Lambda.asDiagonal() * Rimat;
   // Same reflecting-lid diffusion scaling as vic_assemble_full_impl.h (S44).
-  if (i == ie && last_block) Ap *= 8.;
+  // S44 lid A/B: the ad-hoc 8x wall-face diffusion is REMOVED on this
+  // branch (measured inert at rest on the fixed reference; this build is
+  // the dynamic A/B the retirement decision needs).  Stock: Ap *= 8.
+  // if (i == ie && last_block) Ap *= 8.;
   Ap2 << Ap(IDN, IDN), Ap(IDN, IVX), Ap(IDN, IPR),  //
       Ap(IVX, IDN), Ap(IVX, IVX), Ap(IVX, IPR),     //
       Ap(IPR, IDN), Ap(IPR, IVX), Ap(IPR, IPR);

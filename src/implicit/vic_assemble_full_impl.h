@@ -78,7 +78,10 @@ void DISPATCH_MACRO vic_assemble_full_impl(
   // guillot, ISSUES S44); below ~4x the corrected map carries an unstable lid
   // mode, above it the map is insensitive to the factor (4/6/16/100 agree to
   // 3 digits). Scale the wall-face diffusion into that saturated regime.
-  if (i == ie && last_block && !periodic) Ap *= 8.;
+  // S44 lid A/B: the ad-hoc 8x wall-face diffusion is REMOVED on this
+  // branch (measured inert at rest on the fixed reference; this build is
+  // the dynamic A/B the retirement decision needs).  Stock: Ap *= 8.
+  // if (i == ie && last_block && !periodic) Ap *= 8.;
 
   T const& area_i = AREA(i);
   T const& area_ip1 = AREA(i + 1);
