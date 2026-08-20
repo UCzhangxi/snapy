@@ -1,5 +1,6 @@
 // C/C++
 #include <chrono>
+#include <cstdlib>
 
 // snap
 #include <snap/snap.h>
@@ -73,6 +74,17 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     torch::Tensor wtmp;
     if (wb_x1) {
       auto [psf_lo, pref, dsf, dref] = _hydro_ref_x1(w);
+      // S44 remedy A/B (ExoCubed's remedy): reconstruct the FULL density --
+      // no density decomposition; the pressure decomposition is unchanged.
+      // Engaged by env SNAPY_X1_NO_DENSITY_DECOMP so ONE build serves both
+      // arms of the discrimination (rest gates cannot rank the remedies;
+      // see ISSUES S44 / S44_KNOWLEDGE #3).
+      static const bool no_ddecomp =
+          std::getenv("SNAPY_X1_NO_DENSITY_DECOMP") != nullptr;
+      if (no_ddecomp) {
+        dref.zero_();
+        dsf.zero_();
+      }
       auto pressure = w[IPR].clone();
       auto density = w[IDN].clone();
 
