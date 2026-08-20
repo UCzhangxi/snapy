@@ -3,6 +3,9 @@
 // C/C++
 #include <algorithm>
 
+// C/C++
+#include <cstdlib>
+
 // snap
 #include <snap/snap.h>
 
@@ -186,6 +189,7 @@ torch::Tensor HydroImpl::implicit_mass_correction() const {
 
 torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
                                                     torch::Tensor const& w,
+                                                    torch::Tensor const& u,
                                                     double dt,
                                                     Variables const& other) {
   if (!picorr) return torch::Tensor();
@@ -215,12 +219,44 @@ torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
   } else {
     gamma = peos->compute("W->A", {wi});
   }
+  // S46 Picard experiment (SNAPY_VIC_PICARD=<n>): the correction linearizes
+  // about the PRE-STEP state; its O(dt^2) frozen-state error grows with the
+  // effective implicit dt and is implicated in the standing wall mode
+  // (REPORT 16.6; athena's stage-weighted dt, which shrinks the same error,
+  // extends life 0.75 -> 1.03 d).  Each sweep rebuilds the trial state
+  // u + du with the SAME eos call the main path uses, re-linearizes, and
+  // re-solves the ORIGINAL increment.  Unset: bit-identical.
+  static const int npicard = [] {
+    const char* e = std::getenv("SNAPY_VIC_PICARD");
+    return e ? std::atoi(e) : 0;
+  }();
+  torch::Tensor du_orig;
+  if (npicard > 0 && options->eos()->type() != "aneos") {
+    du[IPR].add_(peos->internal_energy_offset(du));  // undo for clean clone
+    du_orig = du.clone();
+    du[IPR].sub_(peos->internal_energy_offset(du));
+  }
+
   auto correction = picorr->forward(du, wi, gamma, dt);
   du[IPR].add_(peos->internal_energy_offset(du));
   // picorr measured its delta after removing the EOS reference energy.
   // Diagnostics expose a conserved-state delta, so restore that reference
   // contribution using the corrected density and species tendencies.
   correction[IPR].add_(peos->internal_energy_offset(correction));
+
+  if (du_orig.defined()) {
+    for (int it = 0; it < npicard; ++it) {
+      auto u_trial = u + du;  // du = corrected increment (conserved)
+      auto w_trial = w.clone();
+      peos->forward(u_trial, w_trial);  // same contract as the main path
+      du.copy_(du_orig);
+      du[IPR].sub_(peos->internal_energy_offset(du));
+      auto gamma2 = peos->compute("W->A", {w_trial});
+      correction = picorr->forward(du, w_trial, gamma2, dt);
+      du[IPR].add_(peos->internal_energy_offset(du));
+      correction[IPR].add_(peos->internal_energy_offset(correction));
+    }
+  }
 
   return correction;
 }
