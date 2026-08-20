@@ -72,7 +72,17 @@ void DISPATCH_MACRO RoeAverage(T* prim, T gm1, T* wl, T* wr) {
 template <typename T>
 inline void DISPATCH_MACRO Eigenvalue(Eigen::Matrix<T, 5, 1>& Lambda, T u,
                                       T cs) {
-  Lambda << fabs(u - cs), fabs(u), fabs(u + cs), fabs(u), fabs(u);
+  // The correction operator (I/dt + L) must stay invertible for ANY state the
+  // dynamics can produce: with the Roe spectrum, the |u|-waves vanish near
+  // stagnation and the advective Jacobian blocks can locally dominate the
+  // dissipation, letting an eigenvalue of L reach -1/dt (the solve's pole --
+  // observed as `ludcmp` singularities at the moment the day-night box dies).
+  // Bound every field by the maximum wave speed (Rusanov) IN THE CORRECTION
+  // ONLY: the explicit fluxes are untouched, the extra implicit damping acts
+  // on the increment, and the block-tridiagonal system gains the diagonal
+  // dominance that keeps it away from the pole at every dt.
+  T lmax = fabs(u) + cs;
+  Lambda << lmax, lmax, lmax, lmax, lmax;
 }
 
 template <typename T>
