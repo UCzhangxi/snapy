@@ -137,11 +137,25 @@ double HydroImpl::max_time_step(torch::Tensor w, torch::Tensor solid) const {
   auto icorr = options->icorr();
 
   if (icorr) {
-    if ((cs.size(2) > 1) &&
-        (!(icorr->scheme() & 1) || (cs.size(0) == 1 && cs.size(1) == 1))) {
-      dt_min[0] = (pmb->pcoord->center_width1() / (w[IVX].abs() + cs))
-                      .index(sub3)
-                      .min();
+    if (cs.size(2) > 1) {
+      if (!(icorr->scheme() & 1) || (cs.size(0) == 1 && cs.size(1) == 1)) {
+        dt_min[0] = (pmb->pcoord->center_width1() / (w[IVX].abs() + cs))
+                        .index(sub3)
+                        .min();
+      } else {
+        // x1 is implicit: the solve removes the ACOUSTIC x1 bound, but x1
+        // advection still rides the explicit RK stages, so its bound must
+        // remain (athena/ExoCubed parity, new_blockdt.cpp): effective
+        // dt <= dx1/|v1| per cell.  The block-level cfl multiplier
+        // (meshblock.cpp max_time_step) is divided out here so the
+        // advective constraint sits at CFL 1.0 exactly as in athena,
+        // instead of the x1 term being dropped entirely.
+        double cfl = pmb->pintg->options->cfl();
+        dt_min[0] =
+            (pmb->pcoord->center_width1() / (cfl * w[IVX].abs() + 1.e-30))
+                .index(sub3)
+                .min();
+      }
     }
 
     if ((cs.size(1) > 1) && (!((icorr->scheme() >> 1) & 1))) {
