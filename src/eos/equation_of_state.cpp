@@ -36,9 +36,9 @@ namespace snap {
 namespace {
 
 struct EosMeters {
-  LevelMeter nan_{"eos.nan_erased"};
-  LevelMeter dfl_{"eos.density_floor"};
-  LevelMeter efl_{"eos.energy_floor(20K)"};
+  LevelMeter nan_{"eos.nan_erased[x2/x3 ghosts excluded]"};
+  LevelMeter dfl_{"eos.density_floor[x2/x3 ghosts excluded]"};
+  LevelMeter efl_{"eos.energy_floor(20K)[x2/x3 ghosts excluded]"};
   int64_t calls = 0;
 };
 
@@ -202,6 +202,22 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
   if (!options->limiter()) return;  // no limiter
 
   const bool meter = snapy_meter_on();
+  // Drop the x2/x3 ghost columns: they are periodic copies here, so counting
+  // them multiplies one real firing by (1 + 2*nghost/nx2) and makes an
+  // all-ghost event look like an interior one. The x1 ghosts are KEPT -- the
+  // per-level histogram labels them, and whether the lid ghosts fire is itself
+  // a question.
+  auto eos_interior = [&](torch::Tensor b) {
+    if (pcoord->kl() > 0) b.slice(0, 0, pcoord->kl()).zero_();
+    if (pcoord->ku() + 1 < b.size(0)) b.slice(0, pcoord->ku() + 1).zero_();
+    if (pcoord->jl() > 0) b.slice(1, 0, pcoord->jl()).zero_();
+    if (pcoord->ju() + 1 < b.size(1)) b.slice(1, pcoord->ju() + 1).zero_();
+    return b;
+  };
+  auto eos_crop = [&](torch::Tensor t) {
+    return t.slice(0, pcoord->kl(), pcoord->ku() + 1)
+        .slice(1, pcoord->jl(), pcoord->ju() + 1);
+  };
   torch::Tensor nanmask;
   if (meter) {
     auto& m = eos_meters();
@@ -210,13 +226,13 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
     for (auto* p : {&m.nan_, &m.dfl_, &m.efl_})
       p->geometry(pcoord->il(), pcoord->iu());
     nanmask = torch::isnan(cons).any(0);
-    m.nan_.add(nanmask);
+    m.nan_.add(eos_interior(nanmask.clone()));
     // Count the density clamp the way it actually FIRES: the NaN sweep below
     // sets a NaN density to 0 and the clamp then lifts it to the floor, which
     // is a repair -- but `NaN < floor` is false, so the naive predicate misses
     // exactly the cells that matter during a blow-up.
-    m.dfl_.add((cons[IDN] < options->density_floor()) |
-               torch::isnan(cons[IDN]));
+    m.dfl_.add(eos_interior((cons[IDN] < options->density_floor()) |
+                            torch::isnan(cons[IDN])));
   }
 
   cons.masked_fill_(torch::isnan(cons), 0.);
@@ -253,9 +269,10 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
       // "the 20 K floor fired here" when the cell was never cold, it was dead.
       // `min_e` itself can be non-finite once a species sum drives rho <= 0
       // (the ICY rows are repaired only further down), so require it finite.
-      m.efl_.add((cons[IPR] < min_e) & torch::isfinite(min_e) &
-                 torch::logical_not(nanmask));
-      m.efl_.worst(cons[IPR], min_e, pcoord->il(), pcoord->iu());
+      m.efl_.add(eos_interior((cons[IPR] < min_e) & torch::isfinite(min_e) &
+                              torch::logical_not(nanmask)));
+      m.efl_.worst(eos_crop(cons[IPR]), eos_crop(min_e), pcoord->il(),
+                   pcoord->iu());
       if (m.calls % 200 == 0) {
         std::cout << "[METER] apply_conserved_limiter_ calls=" << m.calls
                   << "\n";
