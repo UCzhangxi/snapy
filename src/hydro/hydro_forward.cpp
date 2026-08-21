@@ -205,7 +205,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         mcount[1] += per_level(pr <= 0.);
         mcount[2] += per_level(dl <= 0.);
         mcount[3] += per_level(dr <= 0.);
-        if (++mcalls % 3000 == 0) {
+        if (++mcalls % 200 == 0) {
           auto tot = mcount.sum(1);
           std::cout << "[METER] calls=" << mcalls
                     << " totals pl/pr/dl/dr = " << tot[0].item<int64_t>() << "/"
