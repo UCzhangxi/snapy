@@ -1,5 +1,6 @@
 // C/C++
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 
@@ -13,6 +14,12 @@
 #include "hydro.hpp"
 
 namespace snap {
+
+// [SCAFFOLDING] statics for the WB x1 face-fallback meter's FINAL report.
+namespace {
+torch::Tensor* wb_final = nullptr;
+int64_t wb_calls = 0;
+}  // namespace
 
 torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                                  Variables const& other) {
@@ -205,6 +212,33 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         mcount[1] += per_level(pr <= 0.);
         mcount[2] += per_level(dl <= 0.);
         mcount[3] += per_level(dr <= 0.);
+        // A final report matters more than the periodic one: the h150 death is
+        // at call ~2013 and the last periodic print was at 2000, so the fatal
+        // cycle's fallbacks were never reported (S49).
+        static bool wb_atexit = false;
+        if (!wb_atexit) {
+          wb_atexit = true;
+          std::atexit([]() {
+            if (!wb_final || !wb_final->defined()) return;
+            std::cout << "[METER] FINAL wb-x1 face fallbacks, calls="
+                      << wb_calls << "\n";
+            const char* nm[4] = {"pl", "pr", "dl", "dr"};
+            for (int c = 0; c < 4; ++c) {
+              auto row = (*wb_final)[c];
+              std::cout << "[METER]  FINAL " << nm[c]
+                        << " total=" << row.sum().item<int64_t>()
+                        << " by level:";
+              for (int i = 0; i < row.size(0); ++i) {
+                auto v = row[i].item<int64_t>();
+                if (v > 0) std::cout << " " << i << ":" << v;
+              }
+              std::cout << "\n";
+            }
+            std::cout.flush();
+          });
+        }
+        wb_final = &mcount;
+        wb_calls = mcalls;
         if (++mcalls % 200 == 0) {
           auto tot = mcount.sum(1);
           std::cout << "[METER] calls=" << mcalls

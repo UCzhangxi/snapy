@@ -153,6 +153,17 @@ void ReconstructImpl::reset() {
 }
 
 torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
+  // The per-level histogram is over x1 (the LAST tensor axis) whatever `dim` is
+  // being reconstructed, so the interior/ghost split must use the x1 bounds --
+  // NOT this function's along-`dim` il/iu, which for DIM2 gave
+  // "interior 3..131" against a 156-level histogram and would mislabel a real
+  // firing above level 131 as a ghost.
+  int x1l = 0, x1u = (int)w.size(-1) - 1;
+  if (phydro != nullptr && phydro->pmb != nullptr &&
+      phydro->pmb->pcoord != nullptr) {
+    x1l = phydro->pmb->pcoord->il();
+    x1u = phydro->pmb->pcoord->iu();
+  }
   auto vec = w.sizes().vec();
   vec.insert(vec.begin(), 2);
 
@@ -185,11 +196,11 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
       if (snapy_meter_on()) {
         auto& m = recon_meters();
         m.calls++;
-        m.dn(dim).geometry(il, iu);
+        m.dn(dim).geometry(x1l, x1u);
         m.dn(dim).add(recon_interior(
             result.select(1, IDN) < eos_shock->density_floor(), dim, il, iu));
         if (result.size(1) > IPR) {
-          m.pr(dim).geometry(il, iu);
+          m.pr(dim).geometry(x1l, x1u);
           m.pr(dim).add(recon_interior(
               result.select(1, IPR) < eos_shock->pressure_floor(), dim, il,
               iu));
@@ -239,7 +250,7 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
     if (snapy_meter_on()) {
       auto& m = recon_meters();
       m.calls++;
-      m.dn(dim).geometry(il, iu);
+      m.dn(dim).geometry(x1l, x1u);
       m.dn(dim).add(recon_interior(result.select(1, IDN) < eos->density_floor(),
                                    dim, il, iu));
       if (m.calls % 600 == 0) recon_meter_report_now();
@@ -254,7 +265,7 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
   if (eos->limiter() && floor && result.size(1) > IPR) {
     if (snapy_meter_on()) {
       auto& mp = recon_meters().pr(dim);
-      mp.geometry(il, iu);
+      mp.geometry(x1l, x1u);
       mp.add(recon_interior(result.select(1, IPR) < eos->pressure_floor(), dim,
                             il, iu));
     }
