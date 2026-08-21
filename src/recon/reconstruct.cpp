@@ -4,12 +4,67 @@
 // snap
 #include <snap/snap.h>
 
+#include <map>
 #include <snap/eos/equation_of_state.hpp>
 #include <snap/hydro/hydro.hpp>
+#include <snap/utils/level_meter.hpp>
 
 #include "reconstruct.hpp"
 
 namespace snap {
+
+// [SCAFFOLDING] SNAPY_METER: per-level tally of the reconstructed FACE floors,
+// keyed by direction. DIFF_MAP L3 says snapy hands the Riemann solver a 1e-20
+// vacuum face where ExoCubed uses a donor cell; nothing has ever counted
+// whether that happens, or where. x1 on the well-balanced path passes
+// floor=false, so any counts here are x2/x3. `result` is (LR, nvar, n3, n2,
+// n1), so a per-level count sums BOTH the left and the right face state.
+// Diagnostic build only.
+namespace {
+
+struct ReconMeters {
+  std::map<int, LevelMeter> dn_;
+  std::map<int, LevelMeter> pr_;
+  int64_t calls = 0;
+  LevelMeter& dn(int dim) {
+    auto it = dn_.find(dim);
+    if (it == dn_.end())
+      it = dn_.emplace(dim, LevelMeter("recon.dim" + std::to_string(dim) +
+                                       ".face_density_floor"))
+               .first;
+    return it->second;
+  }
+  LevelMeter& pr(int dim) {
+    auto it = pr_.find(dim);
+    if (it == pr_.end())
+      it = pr_.emplace(dim, LevelMeter("recon.dim" + std::to_string(dim) +
+                                       ".face_pressure_floor"))
+               .first;
+    return it->second;
+  }
+};
+
+ReconMeters* g_recon_meters = nullptr;
+
+void recon_meter_report() {
+  if (g_recon_meters == nullptr || g_recon_meters->calls == 0) return;
+  std::cout << "[METER] FINAL reconstruct floored calls="
+            << g_recon_meters->calls << "\n";
+  for (auto& kv : g_recon_meters->dn_) kv.second.report("FINAL ");
+  for (auto& kv : g_recon_meters->pr_) kv.second.report("FINAL ");
+  std::cout.flush();
+}
+
+ReconMeters& recon_meters() {
+  if (g_recon_meters == nullptr) {
+    g_recon_meters = new ReconMeters();  // leaked on purpose; atexit prints
+    std::atexit(recon_meter_report);
+  }
+  return *g_recon_meters;
+}
+
+}  // namespace
+
 ReconstructOptions ReconstructOptionsImpl::from_yaml(
     std::string const& filename, std::string const& section) {
   auto op = ReconstructOptionsImpl::create();
@@ -102,6 +157,14 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
     auto eos_shock =
         phydro ? phydro->options->eos() : EquationOfStateOptionsImpl::create();
     if (eos_shock->limiter() && floor) {
+      if (snapy_meter_on()) {
+        auto& m = recon_meters();
+        m.calls++;
+        m.dn(dim).add(result.select(1, IDN) < eos_shock->density_floor());
+        if (result.size(1) > IPR) {
+          m.pr(dim).add(result.select(1, IPR) < eos_shock->pressure_floor());
+        }
+      }
       result.select(1, IDN).clamp_min_(eos_shock->density_floor());
       if (result.size(1) > IPR) {
         result.select(1, IPR).clamp_min_(eos_shock->pressure_floor());
@@ -142,6 +205,11 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
   _apply_inplace(dim, il, iu, w.narrow(0, IDN, 1), pinterp1,
                  result.narrow(1, IDN, 1));
   if (eos->limiter() && floor) {
+    if (snapy_meter_on()) {
+      auto& m = recon_meters();
+      m.calls++;
+      m.dn(dim).add(result.select(1, IDN) < eos->density_floor());
+    }
     result.select(1, IDN).clamp_min_(eos->density_floor());
   }
 
@@ -150,6 +218,9 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
   _apply_inplace(dim, il, iu, w.narrow(0, IVX, len), pinterp2,
                  result.narrow(1, IVX, len));
   if (eos->limiter() && floor && result.size(1) > IPR) {
+    if (snapy_meter_on()) {
+      recon_meters().pr(dim).add(result.select(1, IPR) < eos->pressure_floor());
+    }
     result.select(1, IPR).clamp_min_(eos->pressure_floor());
   }
 

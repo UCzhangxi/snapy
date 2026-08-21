@@ -13,6 +13,7 @@
 #include <snap/coord/coord_utils.hpp>
 #include <snap/hydro/hydro.hpp>
 #include <snap/mesh/meshblock.hpp>
+#include <snap/utils/level_meter.hpp>
 #include <snap/utils/log.hpp>
 
 #include "aneos.hpp"
@@ -25,6 +26,43 @@
 #include "shallow_water.hpp"
 
 namespace snap {
+
+// [SCAFFOLDING] SNAPY_METER: per-level tally of the conserved limiter's three
+// SILENT repairs -- the NaN sweep, the density floor and the energy (20 K
+// temperature) floor. S49's cell black box caught the h150/5-layer death cell
+// at EXACTLY the 20 K floor one RK stage before the abort, at level 105 of 150;
+// this is what turns "a silent repair fired in the interior" from one observed
+// cell into a per-level count. Diagnostic build only, NOT for upstream.
+namespace {
+
+struct EosMeters {
+  LevelMeter nan_{"eos.nan_erased"};
+  LevelMeter dfl_{"eos.density_floor"};
+  LevelMeter efl_{"eos.energy_floor(20K)"};
+  int64_t calls = 0;
+};
+
+EosMeters* g_eos_meters = nullptr;
+
+void eos_meter_report() {
+  if (g_eos_meters == nullptr || g_eos_meters->calls == 0) return;
+  std::cout << "[METER] FINAL apply_conserved_limiter_ calls="
+            << g_eos_meters->calls << "\n";
+  g_eos_meters->nan_.report("FINAL ");
+  g_eos_meters->dfl_.report("FINAL ");
+  g_eos_meters->efl_.report("FINAL ");
+  std::cout.flush();
+}
+
+EosMeters& eos_meters() {
+  if (g_eos_meters == nullptr) {
+    g_eos_meters = new EosMeters();  // leaked on purpose; printed by atexit
+    std::atexit(eos_meter_report);
+  }
+  return *g_eos_meters;
+}
+
+}  // namespace
 
 EquationOfStateOptions EquationOfStateOptionsImpl::from_yaml(
     std::string const& filename, bool verbose) {
@@ -162,6 +200,15 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
   auto pcoord = pmb->pcoord;
 
   if (!options->limiter()) return;  // no limiter
+
+  const bool meter = snapy_meter_on();
+  if (meter) {
+    auto& m = eos_meters();
+    m.calls++;
+    m.nan_.add(torch::isnan(cons).any(0));
+    m.dfl_.add(cons[IDN] < options->density_floor());
+  }
+
   cons.masked_fill_(torch::isnan(cons), 0.);
   cons[IDN].clamp_min_(options->density_floor());
 
@@ -187,7 +234,21 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
     auto ke = 0.5 * (mom * cons.narrow(0, IVX, 3)).sum(0) / rho;
     auto min_temp = options->temperature_floor() * torch::ones_like(ke);
     auto min_ie = compute("UT->I", {cons, min_temp});
-    cons[IPR].clamp_min_(ke + min_ie);
+    auto min_e = ke + min_ie;
+    if (meter) {
+      auto& m = eos_meters();
+      m.efl_.add(cons[IPR] < min_e);
+      m.efl_.worst(cons[IPR], min_e);
+      if (m.calls % 200 == 0) {
+        std::cout << "[METER] apply_conserved_limiter_ calls=" << m.calls
+                  << "\n";
+        m.nan_.report("");
+        m.dfl_.report("");
+        m.efl_.report("");
+        std::cout.flush();
+      }
+    }
+    cons[IPR].clamp_min_(min_e);
   }
 
   if (options->thermo() && ny > 0) {
