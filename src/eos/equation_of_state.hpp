@@ -156,12 +156,30 @@ class EquationOfStateImpl {
   //! floor injected the energy back, adjacent cells reached 9000 K, and
   //! `redo` stayed 0 for the whole run. This flag lets the redo see it.
   int limiter_fired() const { return limiter_fired_; }
-  void clear_limiter_fired() { limiter_fired_ = 0; }
+  int limiter_fired_level() const { return limiter_fired_level_; }
+  void clear_limiter_fired() {
+    limiter_fired_ = 0;
+    limiter_fired_level_ = -1;
+  }
+
+  //! Count limiter activations only while armed.
+  //!
+  //! apply_conserved_limiter_ is ALSO called at the head of every RK stage --
+  //! hydro_forward.cpp:28 `peos->forward(u, w)` -> _cons2prim ->
+  //! ideal_moist.cpp:165 -- i.e. on the state BEFORE dt has been used for
+  //! anything. Counting that call would make the redo predicate dt-independent:
+  //! every retry would re-fire identically, dt would halve to the floor and the
+  //! runner would abort, reporting a deliberate halving as a physical dt
+  //! collapse. Only the post-update call (meshblock.cpp, right after the
+  //! multi-stage average) says anything about the step that was just taken.
+  void arm_limiter_count(bool on) { count_limiter_ = on; }
 
   //! \brief Apply the primitive variable limiter in place.
   virtual void apply_primitive_limiter_(torch::Tensor const& prim);
 
   int limiter_fired_ = 0;
+  int limiter_fired_level_ = -1;
+  bool count_limiter_ = false;
 
  private:
   //! Parent vapor slots and normalized stoichiometric mass fractions by cloud.

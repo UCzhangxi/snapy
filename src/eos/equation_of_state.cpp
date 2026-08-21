@@ -1,5 +1,6 @@
 // C/C++
 #include <algorithm>
+#include <cstdlib>
 
 // yaml
 #include <yaml-cpp/yaml.h>
@@ -287,16 +288,43 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
     // floor inject the energy. Excluding the top n levels is deliberate -- the
     // lid drains legitimately, and a redo triggered there would stall a healthy
     // run. Costs one reduction + one sync per call, only when enabled.
-    static const char* redo_env = std::getenv("SNAPY_REDO_ON_LIMITER");
-    if (redo_env != nullptr) {
-      static const int skiptop = std::atoi(redo_env);
+    if (count_limiter_ && std::getenv("SNAPY_REDO_ON_LIMITER") != nullptr) {
+      // SNAPY_REDO_SKIPTOP excludes the top n INTERIOR levels: the lid drains
+      // legitimately, and a redo triggered there would stall a healthy run.
+      // A SEPARATE variable on purpose -- overloading the on/off switch with a
+      // count makes `SNAPY_REDO_ON_LIMITER=1`, the natural spelling of "true",
+      // silently mean "on but blind to the topmost level".
+      const char* sk = std::getenv("SNAPY_REDO_SKIPTOP");
+      static const int skiptop = (sk != nullptr) ? std::atoi(sk) : 0;
       int hi = pcoord->iu() - (skiptop > 0 ? skiptop : 0);
+      static bool announced = false;
+      if (!announced) {
+        announced = true;
+        std::cout << "[REDO-LIMITER] armed: interior levels " << pcoord->il()
+                  << ".." << hi << " of " << pcoord->il() << ".."
+                  << pcoord->iu() << " (SNAPY_REDO_SKIPTOP=" << skiptop << ")"
+                  << (hi < pcoord->il() ? "  <-- EMPTY RANGE, OPTION IS INERT"
+                                        : "")
+                  << "; NOTE this decision is PER BLOCK and is not reduced "
+                     "across ranks -- single-rank runs only\n";
+        std::cout.flush();
+      }
       if (hi >= pcoord->il()) {
+        // NaN cells are deliberately included: the sweep above set them to 0,
+        // and a NaN is a reason to reject the step, not to paper over it.
         auto bad = (cons[IPR] < min_e) & torch::isfinite(min_e);
         bad = bad.slice(0, pcoord->kl(), pcoord->ku() + 1)
                   .slice(1, pcoord->jl(), pcoord->ju() + 1)
                   .slice(2, pcoord->il(), hi + 1);
-        if (bad.any().item<bool>()) limiter_fired_ += 1;
+        auto per_level = bad.to(torch::kInt64);
+        while (per_level.dim() > 1) per_level = per_level.sum(0);
+        auto tot = per_level.sum().item<int64_t>();
+        if (tot > 0) {
+          limiter_fired_ += static_cast<int>(tot);
+          limiter_fired_level_ =
+              pcoord->il() +
+              static_cast<int>(per_level.argmax().item<int64_t>());
+        }
       }
     }
     cons[IPR].clamp_min_(min_e);

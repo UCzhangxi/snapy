@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+#include <string>
 
 // snap
 #include <snap/input/read_restart_file.hpp>
@@ -752,7 +753,12 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
 
   // -------- (4) multi-stage averaging --------
   hydro_u.set_(pintg->forward(stage, _hydro_u0, hydro_u, fut_hydro_du));
+  // [SCAFFOLDING] Only THIS limiter call reflects the step that was just taken;
+  // the one at the head of every RK stage (hydro_forward.cpp:28 -> _cons2prim)
+  // sees the pre-update state, which no dt reduction can change.
+  phydro->peos->arm_limiter_count(true);
   phydro->peos->apply_conserved_limiter_(hydro_u);
+  phydro->peos->arm_limiter_count(false);
 
   if (options->verbose()) {
     auto end = std::chrono::high_resolution_clock::now();
@@ -1077,16 +1083,24 @@ int MeshBlockImpl::check_redo(Variables &vars) {
   // comment above records. Reject the step on the limiter's own activation
   // instead.
   bool redo_limiter = false;
+  int limiter_cells = 0, limiter_level = -1;
   if (std::getenv("SNAPY_REDO_ON_LIMITER") != nullptr) {
-    redo_limiter = phydro->peos->limiter_fired() > 0;
+    limiter_cells = phydro->peos->limiter_fired();
+    limiter_level = phydro->peos->limiter_fired_level();
+    redo_limiter = limiter_cells > 0;
     phydro->peos->clear_limiter_fired();
   }
 
   if (redo_rho || redo_pres || redo_limiter) {
-    SINFO(MeshBlock) << (redo_limiter
-                             ? "Conserved limiter repaired an interior cell."
-                             : "Negative density/pressure detected.")
-                     << " Redoing the step with smaller dt." << std::endl;
+    SINFO(MeshBlock) << "Redoing the step with smaller dt. [rho<=0: "
+                     << (redo_rho ? "yes" : "no")
+                     << "] [P<=0: " << (redo_pres ? "yes" : "no")
+                     << "] [conserved limiter: "
+                     << (redo_limiter ? std::to_string(limiter_cells) +
+                                            " interior cells, worst level " +
+                                            std::to_string(limiter_level)
+                                      : std::string("no"))
+                     << "]" << std::endl;
     pintg->current_redo += 1;
     if (pintg->current_redo > pintg->options->max_redo()) {
       SINFO(MeshBlock)
