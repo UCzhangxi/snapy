@@ -8,12 +8,16 @@
 // every step" and "it never fires in the interior" have both been asserted and
 // neither measured.
 //
-// This is a DIAGNOSTIC BUILD ONLY: gated on the SNAPY_METER env var, allocates
-// on first use, and costs one device->host reduction per metered predicate per
-// call. NOT for upstream.
+// DIAGNOSTIC BUILD ONLY: gated on the SNAPY_METER env var, allocates on first
+// use, and costs a device->host reduction per metered predicate per call. NOT
+// upstream.
 //
-// Every tensor snapy meters here is laid out with x1 (the vertical level) LAST,
-// so "per level" is always "reduce every dim but the last".
+// Every tensor metered here is laid out with x1 (the vertical level) LAST,
+// whatever direction is being reconstructed, so "per level" is always "reduce
+// every dim but the last". LEVEL INDICES ARE ABSOLUTE TENSOR INDICES AND
+// INCLUDE THE GHOSTS -- report() prints il/iu and splits the total into
+// interior and ghost, because "did it fire in the INTERIOR" is the entire
+// question.
 
 #include <torch/torch.h>
 
@@ -28,12 +32,24 @@ inline bool snapy_meter_on() {
   return on;
 }
 
+inline std::string snapy_meter_rank() {
+  static const std::string r =
+      std::getenv("RANK") ? std::getenv("RANK") : std::string("0");
+  return r;
+}
+
 //! Per-level counter for one boolean predicate.
 class LevelMeter {
  public:
   explicit LevelMeter(std::string name) : name_(std::move(name)) {}
 
-  //! Accumulate `bad` (any shape, x1 last). Cheap no-op if the meter is off.
+  //! Record the interior bounds so report() can split interior from ghost.
+  void geometry(int il, int iu) {
+    il_ = il;
+    iu_ = iu;
+  }
+
+  //! Accumulate `bad` (any shape, x1 last).
   void add(torch::Tensor const& bad) {
     if (!bad.defined()) return;
     auto f = bad.to(torch::kInt64);
@@ -42,27 +58,52 @@ class LevelMeter {
     if (!count_.defined()) {
       count_ = torch::zeros({f.size(0)},
                             torch::TensorOptions().dtype(torch::kInt64));
+    } else if (count_.size(0) != f.size(0)) {
+      std::cout << "[METER] " << name_ << " SHAPE CHANGED " << count_.size(0)
+                << " -> " << f.size(0) << "; meter abandoned\n";
+      broken_ = true;
     }
+    if (broken_) return;
     count_ += f;
     total_ += f.sum().item<int64_t>();
   }
 
-  //! Track the worst relative excursion below a floor: (floor - x)/|floor|.
-  void worst(torch::Tensor const& x, torch::Tensor const& floor) {
-    if (!x.defined() || !floor.defined()) return;
-    auto r = ((floor - x) / floor.abs().clamp_min(1e-300)).max().item<double>();
-    if (r > worst_) worst_ = r;
+  //! Worst relative excursion below `floor`, INTERIOR ONLY, with its level.
+  //! A NaN anywhere is reported separately instead of silently losing the max.
+  void worst(torch::Tensor const& x, torch::Tensor const& floor, int il,
+             int iu) {
+    if (!x.defined() || !floor.defined() || iu < il) return;
+    auto n = iu - il + 1;
+    auto d = ((floor - x) / floor.abs().clamp_min(1e-300)).narrow(-1, il, n);
+    if (torch::isnan(d).any().item<bool>()) nan_seen_ = true;
+    auto flat = torch::nan_to_num(d, -1e300, 1e300, -1e300).reshape(-1);
+    auto idx = flat.argmax().item<int64_t>();
+    auto v = flat[idx].item<double>();
+    if (v > worst_) {
+      worst_ = v;
+      worst_lev_ = il + static_cast<int>(idx % n);
+    }
   }
 
   int64_t total() const { return total_; }
 
   void report(std::string const& prefix) const {
-    if (total_ == 0) {
-      std::cout << "[METER] " << prefix << name_ << " NEVER FIRED\n";
+    auto tag = "[METER] rank=" + snapy_meter_rank() + " " + prefix + name_;
+    if (total_ == 0 || !count_.defined()) {
+      std::cout << tag << " NEVER FIRED\n";
       return;
     }
-    std::cout << "[METER] " << prefix << name_ << " total=" << total_;
-    if (worst_ > -1e299) std::cout << " worst_rel_deficit=" << worst_;
+    int64_t nin = 0;
+    for (int64_t i = 0; i < count_.size(0); ++i)
+      if (i >= il_ && i <= iu_) nin += count_[i].item<int64_t>();
+    std::cout << tag << " total=" << total_ << " INTERIOR=" << nin
+              << " ghost=" << (total_ - nin) << " (levels are ABSOLUTE tensor "
+              << "indices 0.." << count_.size(0) - 1 << ", interior " << il_
+              << ".." << iu_ << ")";
+    if (worst_ > -1e299)
+      std::cout << " worst_rel_deficit=" << worst_ << " at level "
+                << worst_lev_;
+    if (nan_seen_) std::cout << " [NaN seen in the deficit field]";
     std::cout << " by level:";
     for (int64_t i = 0; i < count_.size(0); ++i) {
       auto v = count_[i].item<int64_t>();
@@ -75,7 +116,11 @@ class LevelMeter {
   std::string name_;
   torch::Tensor count_;
   int64_t total_ = 0;
+  int il_ = 0, iu_ = 1 << 30;
   double worst_ = -1e300;
+  int worst_lev_ = -1;
+  bool nan_seen_ = false;
+  bool broken_ = false;
 };
 
 }  // namespace snap

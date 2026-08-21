@@ -202,11 +202,21 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
   if (!options->limiter()) return;  // no limiter
 
   const bool meter = snapy_meter_on();
+  torch::Tensor nanmask;
   if (meter) {
     auto& m = eos_meters();
     m.calls++;
-    m.nan_.add(torch::isnan(cons).any(0));
-    m.dfl_.add(cons[IDN] < options->density_floor());
+    // Geometry so the report can separate an INTERIOR firing from a ghost one.
+    for (auto* p : {&m.nan_, &m.dfl_, &m.efl_})
+      p->geometry(pcoord->il(), pcoord->iu());
+    nanmask = torch::isnan(cons).any(0);
+    m.nan_.add(nanmask);
+    // Count the density clamp the way it actually FIRES: the NaN sweep below
+    // sets a NaN density to 0 and the clamp then lifts it to the floor, which
+    // is a repair -- but `NaN < floor` is false, so the naive predicate misses
+    // exactly the cells that matter during a blow-up.
+    m.dfl_.add((cons[IDN] < options->density_floor()) |
+               torch::isnan(cons[IDN]));
   }
 
   cons.masked_fill_(torch::isnan(cons), 0.);
@@ -237,8 +247,15 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
     auto min_e = ke + min_ie;
     if (meter) {
       auto& m = eos_meters();
-      m.efl_.add(cons[IPR] < min_e);
-      m.efl_.worst(cons[IPR], min_e);
+      // Exclude cells the NaN sweep already zeroed: `0 < min_e` is true for
+      // every one of them, so without this the energy-floor count is dominated
+      // by NaN fallout that eos.nan_erased has ALREADY counted -- reported as
+      // "the 20 K floor fired here" when the cell was never cold, it was dead.
+      // `min_e` itself can be non-finite once a species sum drives rho <= 0
+      // (the ICY rows are repaired only further down), so require it finite.
+      m.efl_.add((cons[IPR] < min_e) & torch::isfinite(min_e) &
+                 torch::logical_not(nanmask));
+      m.efl_.worst(cons[IPR], min_e, pcoord->il(), pcoord->iu());
       if (m.calls % 200 == 0) {
         std::cout << "[METER] apply_conserved_limiter_ calls=" << m.calls
                   << "\n";

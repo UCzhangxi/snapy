@@ -22,6 +22,24 @@ namespace snap {
 // Diagnostic build only.
 namespace {
 
+inline const char* recon_dim_name(int dim) {
+  // layout.hpp:136 -- DIM1 = 3, DIM2 = 2, DIM3 = 1. The raw value reads
+  // BACKWARDS as a direction name, so never print it.
+  return dim == 3 ? "x1" : dim == 2 ? "x2" : dim == 1 ? "x3" : "x?";
+}
+
+//! Blank the slices _apply_inplace fills by broadcasting the edge value: they
+//! are never handed to the Riemann solver, and counting them replicates one
+//! real firing nghost+1 times.
+inline torch::Tensor recon_interior(torch::Tensor bad, int dim, int il,
+                                    int iu) {
+  // `bad` is result.select(1, IDN) => (LR, n3, n2, n1); dropping nvar and
+  // prepending LR leaves w-dim d at the same index for d in {1,2,3}.
+  if (il > 0) bad.slice(dim, 0, il).zero_();
+  if (iu + 1 < bad.size(dim)) bad.slice(dim, iu + 1).zero_();
+  return bad;
+}
+
 struct ReconMeters {
   std::map<int, LevelMeter> dn_;
   std::map<int, LevelMeter> pr_;
@@ -29,16 +47,18 @@ struct ReconMeters {
   LevelMeter& dn(int dim) {
     auto it = dn_.find(dim);
     if (it == dn_.end())
-      it = dn_.emplace(dim, LevelMeter("recon.dim" + std::to_string(dim) +
-                                       ".face_density_floor"))
+      it = dn_.emplace(dim,
+                       LevelMeter(std::string("recon.") + recon_dim_name(dim) +
+                                  ".face_density_floor"))
                .first;
     return it->second;
   }
   LevelMeter& pr(int dim) {
     auto it = pr_.find(dim);
     if (it == pr_.end())
-      it = pr_.emplace(dim, LevelMeter("recon.dim" + std::to_string(dim) +
-                                       ".face_pressure_floor"))
+      it = pr_.emplace(dim,
+                       LevelMeter(std::string("recon.") + recon_dim_name(dim) +
+                                  ".face_pressure_floor"))
                .first;
     return it->second;
   }
@@ -46,14 +66,19 @@ struct ReconMeters {
 
 ReconMeters* g_recon_meters = nullptr;
 
-void recon_meter_report() {
+void recon_meter_report_prefix(const char* prefix) {
   if (g_recon_meters == nullptr || g_recon_meters->calls == 0) return;
-  std::cout << "[METER] FINAL reconstruct floored calls="
-            << g_recon_meters->calls << "\n";
-  for (auto& kv : g_recon_meters->dn_) kv.second.report("FINAL ");
-  for (auto& kv : g_recon_meters->pr_) kv.second.report("FINAL ");
+  std::cout << "[METER] rank=" << snapy_meter_rank() << " " << prefix
+            << "reconstruct floored calls=" << g_recon_meters->calls << "\n";
+  for (auto& kv : g_recon_meters->dn_) kv.second.report(prefix);
+  for (auto& kv : g_recon_meters->pr_) kv.second.report(prefix);
   std::cout.flush();
 }
+
+// atexit does NOT run on abort()/TORCH_CHECK/MPI_Abort -- exactly the endings
+// this instrument exists for -- so also print periodically.
+void recon_meter_report() { recon_meter_report_prefix("FINAL "); }
+void recon_meter_report_now() { recon_meter_report_prefix(""); }
 
 ReconMeters& recon_meters() {
   if (g_recon_meters == nullptr) {
@@ -160,10 +185,16 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
       if (snapy_meter_on()) {
         auto& m = recon_meters();
         m.calls++;
-        m.dn(dim).add(result.select(1, IDN) < eos_shock->density_floor());
+        m.dn(dim).geometry(il, iu);
+        m.dn(dim).add(recon_interior(
+            result.select(1, IDN) < eos_shock->density_floor(), dim, il, iu));
         if (result.size(1) > IPR) {
-          m.pr(dim).add(result.select(1, IPR) < eos_shock->pressure_floor());
+          m.pr(dim).geometry(il, iu);
+          m.pr(dim).add(recon_interior(
+              result.select(1, IPR) < eos_shock->pressure_floor(), dim, il,
+              iu));
         }
+        if (m.calls % 600 == 0) recon_meter_report_now();
       }
       result.select(1, IDN).clamp_min_(eos_shock->density_floor());
       if (result.size(1) > IPR) {
@@ -208,7 +239,10 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
     if (snapy_meter_on()) {
       auto& m = recon_meters();
       m.calls++;
-      m.dn(dim).add(result.select(1, IDN) < eos->density_floor());
+      m.dn(dim).geometry(il, iu);
+      m.dn(dim).add(recon_interior(result.select(1, IDN) < eos->density_floor(),
+                                   dim, il, iu));
+      if (m.calls % 600 == 0) recon_meter_report_now();
     }
     result.select(1, IDN).clamp_min_(eos->density_floor());
   }
@@ -219,7 +253,10 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
                  result.narrow(1, IVX, len));
   if (eos->limiter() && floor && result.size(1) > IPR) {
     if (snapy_meter_on()) {
-      recon_meters().pr(dim).add(result.select(1, IPR) < eos->pressure_floor());
+      auto& mp = recon_meters().pr(dim);
+      mp.geometry(il, iu);
+      mp.add(recon_interior(result.select(1, IPR) < eos->pressure_floor(), dim,
+                            il, iu));
     }
     result.select(1, IPR).clamp_min_(eos->pressure_floor());
   }
