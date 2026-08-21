@@ -77,23 +77,82 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       auto pressure = w[IPR].clone();
       auto density = w[IDN].clone();
 
-      w[IPR] -= pref;
-      w[IDN] -= dref;
+      // Wall-ghost perturbation parity at physical x1 walls (S46). Stock
+      // (upstream WB fix c27e7ca/#191): EVEN for both fields, p'(is-m) =
+      // p'(is+m-1) and rho' likewise. Physically rho' is MIXED: its acoustic
+      // part (p'/cs^2) is even like p', but its buoyancy/entropy part must be
+      // ODD -- a rigid wall forces displacement xi = 0, so a buoyancy anomaly
+      // cannot rest on the wall face. ExoCubed fills rho' all-ODD
+      // (decomposition/apply_boundary_condition.cpp). At rest the
+      // perturbations vanish identically, so every mode is bit-identical on a
+      // balanced column.
+      //   (default)               rho' even (stock)
+      //   SNAPY_WB_GHOST_RHO_ODD  rho' odd (ExoCubed parity)
+      //   SNAPY_WB_GHOST_SPLIT    rho'_g = 2 p'_m/cs^2 - rho'_m (even
+      //                           acoustic + odd entropy; cs^2 = gam*pref/dref
+      //                           at the mirror cell)
+      static const int wb_ghost_mode = []() {
+        if (std::getenv("SNAPY_WB_GHOST_RHO_ODD")) return 1;
+        if (std::getenv("SNAPY_WB_GHOST_SPLIT")) return 2;
+        return 0;
+      }();
+      static bool wb_ghost_logged = false;
+      if (wb_ghost_mode && !wb_ghost_logged) {
+        SINFO(Hydro) << "WB wall-ghost rho' parity mode " << wb_ghost_mode
+                     << (wb_ghost_mode == 1 ? " (odd)" : " (split)") << "\n";
+        wb_ghost_logged = true;
+      }
 
-      // Even-parity ghost perturbations at the walls: p'(is-m) =
-      // p'(is+m-1), rho' likewise. Only apply this at physical x1 walls.
       int ng = pmb->pcoord->options->nghost();
       int is = pmb->pcoord->il();
       int iu = pmb->pcoord->iu();
-      for (int c : {(int)IPR, (int)IDN}) {
-        if (phys_x1inner) {
-          w[c].narrow(-1, is - ng, ng).copy_(w[c].narrow(-1, is, ng).flip(-1));
-        }
 
-        if (phys_x1outer) {
-          w[c].narrow(-1, iu + 1, ng)
-              .copy_(w[c].narrow(-1, iu + 1 - ng, ng).flip(-1));
+      // Split mode needs gamma at the mirror rows; compute it from the FULL
+      // primitive state (perturbations would corrupt a composition/T-dependent
+      // EOS), i.e. before the reference subtraction below.
+      torch::Tensor gam_in, gam_out;
+      if (wb_ghost_mode == 2) {
+        if (phys_x1inner) {
+          gam_in = peos->compute("W->A", {w.narrow(-1, is, ng)});
         }
+        if (phys_x1outer) {
+          gam_out = peos->compute("W->A", {w.narrow(-1, iu + 1 - ng, ng)});
+        }
+      }
+
+      w[IPR] -= pref;
+      w[IDN] -= dref;
+
+      // p' is even in every mode.
+      if (phys_x1inner) {
+        w[IPR]
+            .narrow(-1, is - ng, ng)
+            .copy_(w[IPR].narrow(-1, is, ng).flip(-1));
+      }
+      if (phys_x1outer) {
+        w[IPR]
+            .narrow(-1, iu + 1, ng)
+            .copy_(w[IPR].narrow(-1, iu + 1 - ng, ng).flip(-1));
+      }
+
+      // rho' ghost values from the mirror rows, by mode.
+      auto rho_ghost = [&](int mstart, torch::Tensor const& gam) {
+        auto rmir = w[IDN].narrow(-1, mstart, ng);
+        if (wb_ghost_mode == 1) return -rmir;
+        if (wb_ghost_mode == 2) {
+          auto cs2 =
+              gam * pref.narrow(-1, mstart, ng) / dref.narrow(-1, mstart, ng);
+          return 2. * w[IPR].narrow(-1, mstart, ng) / cs2 - rmir;
+        }
+        return rmir;
+      };
+      if (phys_x1inner) {
+        w[IDN].narrow(-1, is - ng, ng).copy_(rho_ghost(is, gam_in).flip(-1));
+      }
+      if (phys_x1outer) {
+        w[IDN]
+            .narrow(-1, iu + 1, ng)
+            .copy_(rho_ghost(iu + 1 - ng, gam_out).flip(-1));
       }
 
       // floor=false: reconstruction-stage floors would clamp legitimately
