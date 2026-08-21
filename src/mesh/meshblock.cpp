@@ -1,4 +1,5 @@
 // C/C++
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
@@ -1070,11 +1071,22 @@ int MeshBlockImpl::check_redo(Variables &vars) {
     redo_pres = w.index(interior)[IPR].min().item<double>() <= 0.;
   }
 
-  if (redo_rho || redo_pres) {
-    SINFO(MeshBlock)
-        << "Negative density/pressure detected. Redoing the step with "
-           "smaller dt."
-        << std::endl;
+  // [SCAFFOLDING] SNAPY_REDO_ON_LIMITER: the two tests above are no-ops under
+  // `limiter: true` -- apply_conserved_limiter_ (line 754, after EVERY RK
+  // stage) has already clamped IDN and IPR strictly positive, which is what the
+  // comment above records. Reject the step on the limiter's own activation
+  // instead.
+  bool redo_limiter = false;
+  if (std::getenv("SNAPY_REDO_ON_LIMITER") != nullptr) {
+    redo_limiter = phydro->peos->limiter_fired() > 0;
+    phydro->peos->clear_limiter_fired();
+  }
+
+  if (redo_rho || redo_pres || redo_limiter) {
+    SINFO(MeshBlock) << (redo_limiter
+                             ? "Conserved limiter repaired an interior cell."
+                             : "Negative density/pressure detected.")
+                     << " Redoing the step with smaller dt." << std::endl;
     pintg->current_redo += 1;
     if (pintg->current_redo > pintg->options->max_redo()) {
       SINFO(MeshBlock)

@@ -144,8 +144,24 @@ class EquationOfStateImpl {
   //! \brief Apply the conserved variable limiter in place.
   virtual void apply_conserved_limiter_(torch::Tensor const& cons);
 
+  //! [SCAFFOLDING, SNAPY_REDO_ON_LIMITER] Did the conserved limiter repair an
+  //! INTERIOR cell since this was last cleared?
+  //!
+  //! check_redo tests `hydro_u[IDN].min() <= 0` and `hydro_u[IPR].min() <= 0`,
+  //! but apply_conserved_limiter_ runs first (meshblock.cpp:754, after EVERY RK
+  //! stage) and clamps both strictly positive -- so with `limiter: true` the
+  //! step-rejection mechanism is structurally unable to fire. snapy's own
+  //! comment at meshblock.cpp:1057-1062 says as much. Measured consequence
+  //! (ISSI h150, S49): four cells hit the 20 K energy floor in ONE cycle, the
+  //! floor injected the energy back, adjacent cells reached 9000 K, and
+  //! `redo` stayed 0 for the whole run. This flag lets the redo see it.
+  int limiter_fired() const { return limiter_fired_; }
+  void clear_limiter_fired() { limiter_fired_ = 0; }
+
   //! \brief Apply the primitive variable limiter in place.
   virtual void apply_primitive_limiter_(torch::Tensor const& prim);
+
+  int limiter_fired_ = 0;
 
  private:
   //! Parent vapor slots and normalized stoichiometric mass fractions by cloud.

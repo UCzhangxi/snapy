@@ -282,6 +282,23 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons) {
         std::cout.flush();
       }
     }
+    // [SCAFFOLDING] SNAPY_REDO_ON_LIMITER=<n_top_levels_excluded>: record an
+    // INTERIOR repair so check_redo can reject the step instead of letting the
+    // floor inject the energy. Excluding the top n levels is deliberate -- the
+    // lid drains legitimately, and a redo triggered there would stall a healthy
+    // run. Costs one reduction + one sync per call, only when enabled.
+    static const char* redo_env = std::getenv("SNAPY_REDO_ON_LIMITER");
+    if (redo_env != nullptr) {
+      static const int skiptop = std::atoi(redo_env);
+      int hi = pcoord->iu() - (skiptop > 0 ? skiptop : 0);
+      if (hi >= pcoord->il()) {
+        auto bad = (cons[IPR] < min_e) & torch::isfinite(min_e);
+        bad = bad.slice(0, pcoord->kl(), pcoord->ku() + 1)
+                  .slice(1, pcoord->jl(), pcoord->ju() + 1)
+                  .slice(2, pcoord->il(), hi + 1);
+        if (bad.any().item<bool>()) limiter_fired_ += 1;
+      }
+    }
     cons[IPR].clamp_min_(min_e);
   }
 
