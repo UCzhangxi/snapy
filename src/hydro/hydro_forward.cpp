@@ -1,6 +1,7 @@
 // C/C++
 #include <chrono>
 #include <cstdlib>
+#include <iostream>
 
 // snap
 #include <snap/snap.h>
@@ -182,6 +183,52 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       auto rho_below = torch::roll(density, 1, -1);
       wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
       wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+
+      // [METER] SNAPY_METER=1: count, PER X1 LEVEL, how often each WB face
+      // fallback substitutes the reference/donor for the reconstructed value.
+      // Diagnostic scaffolding for the h150/h180 extent question -- NOT for
+      // upstream. Nothing in either code counts these today, so "the floor
+      // fires at the lid every step" has never been measured either way.
+      static const bool wb_meter = std::getenv("SNAPY_METER") != nullptr;
+      if (wb_meter) {
+        static torch::Tensor mcount;  // [4, nc1] : pl, pr, dl, dr
+        static int64_t mcalls = 0;
+        auto opts =
+            torch::TensorOptions().dtype(torch::kInt64).device(torch::kCPU);
+        if (!mcount.defined()) mcount = torch::zeros({4, pl.size(-1)}, opts);
+        auto per_level = [](torch::Tensor const& bad) {
+          auto f = bad.to(torch::kInt64);
+          while (f.dim() > 1) f = f.sum(0);
+          return f.to(torch::kCPU);
+        };
+        mcount[0] += per_level(pl <= 0.);
+        mcount[1] += per_level(pr <= 0.);
+        mcount[2] += per_level(dl <= 0.);
+        mcount[3] += per_level(dr <= 0.);
+        if (++mcalls % 3000 == 0) {
+          auto tot = mcount.sum(1);
+          std::cout << "[METER] calls=" << mcalls
+                    << " totals pl/pr/dl/dr = " << tot[0].item<int64_t>() << "/"
+                    << tot[1].item<int64_t>() << "/" << tot[2].item<int64_t>()
+                    << "/" << tot[3].item<int64_t>() << "\n";
+          for (int c = 0; c < 4; ++c) {
+            auto row = mcount[c];
+            if (row.sum().item<int64_t>() == 0) continue;
+            std::cout << "[METER]  "
+                      << (c == 0   ? "pl"
+                          : c == 1 ? "pr"
+                          : c == 2 ? "dl"
+                                   : "dr")
+                      << " by level:";
+            for (int i = 0; i < row.size(0); ++i) {
+              auto v = row[i].item<int64_t>();
+              if (v > 0) std::cout << " " << i << ":" << v;
+            }
+            std::cout << "\n";
+          }
+          std::cout.flush();
+        }
+      }
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {
