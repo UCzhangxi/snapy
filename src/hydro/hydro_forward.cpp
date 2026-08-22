@@ -1,5 +1,6 @@
 // C/C++
 #include <chrono>
+#include <cstdlib>
 
 // snap
 #include <snap/snap.h>
@@ -110,18 +111,47 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       wtmp[ILT][IPR].copy_(torch::where(pl > 0., pl, psf_lo));
       wtmp[IRT][IPR].copy_(torch::where(pr > 0., pr, psf_lo));
 
-      auto dl = wtmp[ILT][IDN] + dsf;
-      auto dr = wtmp[IRT][IDN] + dsf;
-      // Positivity fallback = the adjacent cell's density, not dsf: the
-      // bottom-anchored isentrope overestimates density by orders of
-      // magnitude on a stratified column (200x at 120 levels), and dsf at
-      // the reflecting top wall -- where the mirror-ghost kink makes the
-      // reconstruction overshoot every step -- inflated the wall impedance
-      // ~14x. That single face is the extent-scaling S44 wall, in both the
-      // explicit and implicit modes.
       auto rho_below = torch::roll(density, 1, -1);
-      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
-      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+
+      // S52 A/B: build the x1 face density ExoCubed's way instead of restoring
+      // a reconstructed rho'.  ExoCubed decomposes PRESSURE ONLY and derives
+      //     rho_face = rho_donor * (p_face / p_donor)^(1/gamma)
+      // from the already-restored face pressure, along an isentrope anchored on
+      // the donor cell (change_to_perturbation.cpp:173-184; the density it
+      // reconstructs with PLM is overwritten and discarded).  Donor of ILT[f]
+      // is cell f-1, of IRT[f] is cell f -- the same mapping the fallback above
+      // already uses.  Positive by construction and independent of any
+      // reference-density field, so it cannot suffer the (rho' + dsf)
+      // cancellation; that is why ExoCubed's fix_reconstruct_x1 is empty.
+      // Well-balancing is unaffected: it lives entirely in the pressure
+      // reference (psf_lo(i) - psf_hi(i) = g*rho(i)*dx1f(i) is an algebraic
+      // identity) and a stationary contact carries no mass flux whatever the
+      // face density jump.
+      // Env-gated so ONE build serves both arms; unset, this is bit-identical
+      // to the clean base.
+      static const bool exo_face_rho =
+          std::getenv("SNAPY_X1_FACE_RHO_ISENTROPIC") != nullptr;
+      if (exo_face_rho) {
+        auto inv_gamma = 1. / peos->compute("W->A", {w});
+        auto pres_below = torch::roll(pressure, 1, -1);
+        auto invg_below = torch::roll(inv_gamma, 1, -1);
+        wtmp[ILT][IDN].copy_(rho_below *
+                             (wtmp[ILT][IPR] / pres_below).pow(invg_below));
+        wtmp[IRT][IDN].copy_(density *
+                             (wtmp[IRT][IPR] / pressure).pow(inv_gamma));
+      } else {
+        auto dl = wtmp[ILT][IDN] + dsf;
+        auto dr = wtmp[IRT][IDN] + dsf;
+        // Positivity fallback = the adjacent cell's density, not dsf: the
+        // bottom-anchored isentrope overestimates density by orders of
+        // magnitude on a stratified column (200x at 120 levels), and dsf at
+        // the reflecting top wall -- where the mirror-ghost kink makes the
+        // reconstruction overshoot every step -- inflated the wall impedance
+        // ~14x. That single face is the extent-scaling S44 wall, in both the
+        // explicit and implicit modes.
+        wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
+        wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+      }
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {
