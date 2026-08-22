@@ -7,6 +7,7 @@
 #include <map>
 #include <snap/eos/equation_of_state.hpp>
 #include <snap/hydro/hydro.hpp>
+#include <snap/mesh/meshblock.hpp>
 #include <snap/utils/level_meter.hpp>
 
 #include "reconstruct.hpp"
