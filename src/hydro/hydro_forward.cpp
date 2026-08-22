@@ -212,6 +212,38 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         mcount[1] += per_level(pr <= 0.);
         mcount[2] += per_level(dl <= 0.);
         mcount[3] += per_level(dr <= 0.);
+
+        // [METER] CAUSE-OR-SYMPTOM: report each INTERIOR firing the moment it
+        // happens. The aggregate table cannot tell a face that went bad in RK
+        // stage 0 (a cause) from one that went bad in stage 2 (wreckage from an
+        // update that had already emptied the cell). This call counter advances
+        // once per RK stage, so call index -> (cycle, stage) is exact when no
+        // step is redone. Ghost x1 columns are zeroed so the lid does not drown
+        // the interior signal.
+        {
+          auto report = [&](const char* nm, torch::Tensor const& bad) {
+            auto bi = bad.to(torch::kCPU).to(torch::kInt64);
+            if (is > 0) bi.narrow(-1, 0, is).zero_();
+            if (iu + 1 < bi.size(-1))
+              bi.narrow(-1, iu + 1, bi.size(-1) - iu - 1).zero_();
+            if (bi.sum().item<int64_t>() == 0) return;
+            auto nz = torch::nonzero(bi);
+            std::cout << "[METER] WBX1-INTERIOR call=" << (mcalls + 1) << " "
+                      << nm << " n=" << nz.size(0) << " at";
+            for (int64_t r = 0; r < nz.size(0) && r < 16; ++r) {
+              auto row = nz[r];
+              std::cout << " (j=" << row[row.size(0) - 2].item<int64_t>()
+                        << ",lev=" << row[row.size(0) - 1].item<int64_t>()
+                        << ")";
+            }
+            std::cout << "\n";
+            std::cout.flush();
+          };
+          report("pl", pl <= 0.);
+          report("pr", pr <= 0.);
+          report("dl", dl <= 0.);
+          report("dr", dr <= 0.);
+        }
         // A final report matters more than the periodic one: the h150 death is
         // at call ~2013 and the last periodic print was at 2000, so the fatal
         // cycle's fallbacks were never reported (S49).
