@@ -655,6 +655,7 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
 
   // -------- (3) launch all jobs --------
   // (3.A) hydro forward
+  phydro->vic_stage = stage;  // [S54] for the env-gated stage-dt parity test
   fut_hydro_du = phydro->forward(dt, hydro_u, vars);
   if (options->verbose()) {
     auto end = std::chrono::high_resolution_clock::now();

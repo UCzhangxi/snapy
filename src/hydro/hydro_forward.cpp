@@ -1,11 +1,13 @@
 // C/C++
 #include <chrono>
+#include <cstdlib>
 
 // snap
 #include <snap/snap.h>
 
 #include <snap/mesh/meshblock.hpp>
 #include <snap/utils/log.hpp>
+#include <snap/utils/tvd_meter.hpp>
 
 #include "flux_positivity.hpp"
 #include "hydro.hpp"
@@ -122,6 +124,34 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       auto rho_below = torch::roll(density, 1, -1);
       wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
       wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+
+      // ---- [S54] instrumentation. NON-ACTING; gated on SNAPY_TVD_METER. ----
+      // (a) do the four positivity FALLBACKS actually fire, and at which level?
+      //     The `where` above substitutes when the sum is NOT > 0.
+      // (b) is the DELIVERED face state -- what the Riemann solver consumes,
+      //     reference restored, fallbacks applied -- inside the range of the
+      //     two cells it sits between?  TvdMeter answers this for the raw
+      //     operator on the PERTURBATION; this answers it for the full
+      //     variable.
+      if (tvd_meter_on()) {
+        FaceMeter::tally_levels("x1.fallback.pres.L", pl <= 0.);
+        FaceMeter::tally_levels("x1.fallback.pres.R", pr <= 0.);
+        FaceMeter::tally_levels("x1.fallback.dens.L", dl <= 0.);
+        FaceMeter::tally_levels("x1.fallback.dens.R", dr <= 0.);
+
+        // physical faces i = is .. iu+1; face i sits between cells i-1 and i.
+        int64_t nf = iu + 1 - is + 1;
+        if (is >= 1 && iu + 1 < pressure.size(-1)) {
+          for (int c : {(int)IPR, (int)IDN}) {
+            auto const& full = (c == (int)IPR) ? pressure : density;
+            FaceMeter::tally(c == (int)IPR ? "x1.pres" : "x1.dens",
+                             full.narrow(-1, is - 1, nf),
+                             full.narrow(-1, is, nf),
+                             wtmp[ILT][c].narrow(-1, is, nf),
+                             wtmp[IRT][c].narrow(-1, is, nf));
+          }
+        }
+      }
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {
@@ -386,7 +416,32 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
   //// ------------ (7) Perform implicit correction ------------ ////
   if (picorr) {
-    _apply_implicit_correction(du, w, dt, other);
+    // [S54] STAGE-DT PARITY, env-gated on SNAPY_VIC_STAGE_DT.
+    //
+    // ExoCubed/athena assemble the vertical-implicit correction with the
+    // STAGE-weighted dt (beta*dt); snapy uses the FULL dt at every stage --
+    // MeshBlockImpl::advance_local receives `stage` but never passes it to
+    // HydroImpl::forward, and the RK weight is applied only afterwards by the
+    // harp integrator (integrator.cpp:119, wght2 = {1, 1/4, 2/3}).
+    //
+    //   ExoCubed : delta = (I + beta*dt*J')^-1 * (beta*dt*L),  u += delta
+    //   snapy    : delta = (I +      dt*J')^-1 * (     dt*L),  u += beta*delta
+    //
+    // The RHS scalings are equivalent (the solve is linear in its RHS); the
+    // OPERATOR is not. At stage 1 (beta = 1/4) snapy's I/dt regularisation is
+    // 4x too weak. Scale ONLY the dt handed to the correction -- leave du,
+    // the flux divergence and the forcings at the full dt, or this becomes a
+    // different operator. Verified against S55's independent ExoCubed
+    // transplant (2026-08-23): removing beta from ExoCubed's implicit dt kills
+    // its completing 5-day PLM run at 4.33 d, deterministically.
+    double dt_corr = dt;
+    static const bool vic_stage_dt =
+        std::getenv("SNAPY_VIC_STAGE_DT") != nullptr;
+    if (vic_stage_dt && vic_stage >= 0 && vic_stage < 3 &&
+        pmb->pintg->stages.size() == 3) {
+      dt_corr *= pmb->pintg->stages[vic_stage].wght2();
+    }
+    _apply_implicit_correction(du, w, dt_corr, other);
 
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();

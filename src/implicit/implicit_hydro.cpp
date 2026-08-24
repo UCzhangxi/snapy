@@ -7,9 +7,11 @@
 // snap
 #include <snap/snap.h>
 
+#include <cstdlib>
 #include <snap/coord/coord_utils.hpp>
 #include <snap/hydro/hydro.hpp>
 #include <snap/mesh/meshblock.hpp>
+#include <snap/utils/tvd_meter.hpp>
 
 #include "implicit_dispatch.hpp"
 #include "implicit_hydro.hpp"
@@ -175,6 +177,88 @@ torch::Tensor ImplicitHydroImpl::forward(torch::Tensor du, torch::Tensor w,
     at::native::vic_solve_partial(du.device().type(), iter, dt, grav1, 0);
     at::native::vic_redistribute_partial(du.device().type(), iter, dt, grav1,
                                          0);
+  }
+
+  // ---- [S54] vic_redistribute AUDIT. NON-ACTING; gated on SNAPY_TVD_METER.
+  // ---- With ny = 0 (this deck: one species, kinetics off) the entire
+  // vic_redistribute pipeline reduces ALGEBRAICALLY to
+  //
+  //     DU(IDN,i) = delta_i(0) - R * rho_i / sum_j(rho_j V_j)
+  //
+  // whenever the availability clamp (vic_redistribute_impl.h:106-107) never
+  // truncates a transfer.  R = sum_i phi_i is the column residual, the net mass
+  // the implicit solve asked for that a closed column cannot represent as a
+  // face flux; snapy removes it mass-weighted, ExoCubed keeps it.
+  //
+  // Therefore  k_i := (DU(IDN,i) - delta_i(0)) / rho_i  is CONSTANT down a
+  // column if and only if the clamp is dormant, and its constant value is
+  // -R/sum(m).  So ONE read-only comparison measures both unknowns at once:
+  // deviation from constancy  => the clamp fired (and where);
+  // the constant itself       => the size of R.
+  //
+  // ExoCubed writes du_(IDN) = delta_i(0) flat (forward_backward.hpp:106), so
+  // "clamp dormant AND R == 0" means the two codes are IDENTICAL here and the
+  // stage comes off the suspect list by algebra rather than by an ablation.
+  // [S54] EXOCUBED-PARITY DENSITY UPDATE, env-gated on SNAPY_VIC_EXO_DENSITY.
+  //
+  // In THIS deck the whole vic_redistribute apparatus has exactly one
+  // observable effect, and all three of its other legs are measured inert:
+  //   * species routing  -- ny = 0 (one species, kinetics off), pass 3b no-ops;
+  //   * residual removal -- R measured at 1.4e-16 of column mass, i.e. zero;
+  //   * face-transfer export -- MASS(IVX+dir) is read ONLY under
+  //     `if (pscalar->nvar() > 0)` (meshblock.cpp:670-687), and this deck has
+  //     no passive scalars.
+  // What remains is the availability clamp (vic_redistribute_impl.h:106-107).
+  // So overwriting the density row with delta_i(0) is simultaneously "disable
+  // the clamp", "disable vic_redistribute", and "do exactly what ExoCubed does"
+  // (forward_backward.hpp:106). One line, three experiments.
+  if ((options->scheme() >> 3) & 1) {
+    torch::NoGradGuard nograd;
+    int m = options->size();
+    auto dui = du.index(interior);
+    auto wint = w.index(interior);
+    auto voli = pcoord->cell_volume().unsqueeze(0).contiguous().index(interior);
+    auto dn = dui.narrow(0, IDN, 1);
+    auto rho = wint.narrow(0, IDN, 1);
+    auto d0 =
+        _delta.view({_delta.size(0), _delta.size(1), _delta.size(2), -1, m})
+            .select(-1, 0);
+    static const bool exo_density =
+        std::getenv("SNAPY_VIC_EXO_DENSITY") != nullptr;
+    if (tvd_meter_on()) {
+      // R measured DIRECTLY (independent of any constancy assumption):
+      //   R = sum_i (delta_i(0) - du_explicit_i) * V_i          [mass/step]
+      // _du0 is du saved before the solve (:131); the frame projection at
+      // :138-139 touches IVX..IVZ only, so the IDN row is untouched.
+      auto du0dn = _du0.index(interior).narrow(0, IDN, 1);
+      auto sum_m = (rho * voli).sum(-1, true);
+      auto Rcol = ((d0 - du0dn) * voli).sum(-1, true);
+      FaceMeter::note_max("vic.|R|", Rcol.abs().max().item<double>());
+      FaceMeter::note_max("vic.|R|/summ",
+                          (Rcol.abs() / sum_m).max().item<double>());
+
+      // ⚠ SECOND CORRECTION TO THIS TEST. Once R is MEASURED to be zero to
+      // round-off (1.4e-16 of column mass), the identity collapses from
+      //   "k_i := (DU(IDN,i) - delta_i(0))/rho_i is CONSTANT down the column"
+      // to the far simpler
+      //   "DU(IDN,i) == delta_i(0)  exactly, cell by cell".
+      // A constancy test is then degenerate: k is identically zero, so any
+      // normalisation by k's own spread is 0/0 and reports round-off as signal.
+      // (That is what the previous two versions did -- first against a column
+      // mean, then against max|k|.) The right question with R = 0 is simply
+      // HOW BIG the discrepancy is, measured against the implicit increment it
+      // is supposed to equal.
+      auto absdiff = (dn - d0).abs();
+      auto rel = absdiff / d0.abs().clamp_min(1e-300);
+      FaceMeter::tally_levels("vic.clamp.any", rel > 1e-10);
+      FaceMeter::tally_levels("vic.clamp.material", rel > 1e-2);
+      FaceMeter::note_max("vic.max_rel_dn_vs_delta", rel.max().item<double>());
+      // physical magnitude: relative density change per step that the clamp
+      // moved
+      FaceMeter::note_max("vic.max|dn-delta|/rho",
+                          (absdiff / rho).max().item<double>());
+    }
+    if (exo_density) du.index(interior).narrow(0, IDN, 1).copy_(d0);
   }
 
   /// (3) De-project from local orthonormal frame

@@ -78,6 +78,10 @@ using Variables = std::map<std::string, torch::Tensor>;
 
 class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
  public:
+  //! RK stage currently being integrated (set by MeshBlock::advance_local).
+  //! Used ONLY by the env-gated S54 stage-dt parity experiment in forward().
+  int vic_stage = -1;
+
   //! \brief Create and register a `Hydro` module
   /*!
    * This function registers the created module as a submodule
