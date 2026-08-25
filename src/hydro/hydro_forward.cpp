@@ -434,9 +434,22 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     // different operator. Verified against S55's independent ExoCubed
     // transplant (2026-08-23): removing beta from ExoCubed's implicit dt kills
     // its completing 5-day PLM run at 4.33 d, deterministically.
+    // [S56] ADOPTED 2026-08-24: the stage weight is now applied by DEFAULT.
+    // This is a correctness fix, not a tuning knob -- the implicit correction
+    // is NONLINEAR in dt, so applying beta after the solve (snapy's old
+    // behaviour) is not the same operator as applying it inside
+    // (athena/ExoCubed). At stage 1, beta = 1/4, snapy's I/dt regularisation
+    // was 4x too weak. Both directions confirm it: removing beta from ExoCubed
+    // kills its completing run at 4.33 d, and in snapy this is the only parity
+    // term with a directional signal (c56 bisect: dropping it gives 2/10
+    // completions vs the set's 4/10, shorter on 7 of 8 decided pairs, sign p =
+    // 0.07). Cost: none measurable -- completing runs take 4472-4518 cycles
+    // with it and 4465-4494 without, i.e. under 1 %. It changes the operator,
+    // not the timestep. Escape hatch: SNAPY_VIC_FULL_DT=1 restores the old
+    // full-dt behaviour.
     double dt_corr = dt;
     static const bool vic_stage_dt =
-        std::getenv("SNAPY_VIC_STAGE_DT") != nullptr;
+        std::getenv("SNAPY_VIC_FULL_DT") == nullptr;
     if (vic_stage_dt && vic_stage >= 0 && vic_stage < 3 &&
         pmb->pintg->stages.size() == 3) {
       dt_corr *= pmb->pintg->stages[vic_stage].wght2();

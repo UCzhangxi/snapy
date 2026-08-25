@@ -73,7 +73,8 @@ torch::Tensor RelaxBotTempImpl::forward(torch::Tensor du, torch::Tensor w,
   // (half-cell) -- i.e. the boundary the protocol specifies is left ~33 K hot,
   // which is 4.7 % in sigma*T^4 at the level where the interior flux enters.
   //
-  // Gated on SNAPY_RELAX_BOT_FACE: when set, control the FACE temperature
+  // DEFAULT since S56 (escape hatch SNAPY_RELAX_BOT_CENTRE): control the FACE
+  // temperature
   //   T_face = 1.5*T0 - 0.5*T1   (linear extrapolation over the half cell)
   // instead of T0. Only cell 0 is nudged, and d(T_face)/d(T0) = 1.5, so the
   // gain is divided by 1.5 to keep the same effective relaxation time on the
@@ -86,7 +87,19 @@ torch::Tensor RelaxBotTempImpl::forward(torch::Tensor du, torch::Tensor w,
   // LOCATION was wrong. ⚠ ExoCubed has the identical mislocation
   // (hjupiter.cpp:128-133) -- this is not a cross-code parity term, it is a
   // shared departure from the protocol.
-  static const bool face_mode = std::getenv("SNAPY_RELAX_BOT_FACE") != nullptr;
+  // [S56] ADOPTED 2026-08-24: the face is now the DEFAULT. The ISSI protocol
+  // prescribes T at a pressure level, which in a finite-volume code is a face,
+  // and the lower face already carries the prescribed pressure (100 bar at the
+  // face -> 96.66 bar predicted at the first cell centre; measured 96.69).
+  // Controlling the centre instead dragged the boundary 33 K above the
+  // prescribed value over 5 days. Escape hatch: SNAPY_RELAX_BOT_CENTRE=1
+  // restores the old behaviour. Paired A/B, 10 shared ICs (c56 relaxab): face
+  // 2/10 completions vs centre 4/10, McNemar p = 0.69, sign test p = 0.34 --
+  // NOT distinguishable, and it goes both ways (the face arm rescues ICs 6 and
+  // 9, which the centre arm kills). So this is a correctness change with no
+  // demonstrated stability cost, not a free win.
+  static const bool face_mode =
+      std::getenv("SNAPY_RELAX_BOT_CENTRE") == nullptr;
   auto target = temp_bot;
   double gain = 1.0;
   if (face_mode) {
@@ -100,9 +113,11 @@ torch::Tensor RelaxBotTempImpl::forward(torch::Tensor du, torch::Tensor w,
     // sets 3. Shape query only -- no device sync.
     TORCH_CHECK(
         t2.size(-1) >= 2,
-        "[RelaxBotTemp] SNAPY_RELAX_BOT_FACE needs two interior cells at "
+        "[RelaxBotTemp] face-targeted bottom BC needs two interior cells at "
         "the lower boundary; got ",
-        t2.size(-1), ". Set nghost >= 2.");
+        t2.size(-1),
+        ". Set nghost >= 2, or SNAPY_RELAX_BOT_CENTRE=1 for the old centre "
+        "BC.");
     auto T0 = t2.narrow(-1, 0, 1);
     auto T1 = t2.narrow(-1, 1, 1);
     target = 1.5 * T0 - 0.5 * T1;
