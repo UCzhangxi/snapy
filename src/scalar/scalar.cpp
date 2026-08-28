@@ -74,19 +74,12 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   if (_flux2.defined()) {
     rtmp2 = precon->forward(r, DIM2);
     if (playout->options->type() == "cubed-sphere") {
-      // [S55] Ship the two reconstructed states as DIRECTION-SUFFIXED keys,
-      // exactly as the hydro does (hydro_forward.cpp:274-275). The ':' suffix
-      // drives the directional partial send/recv in
-      // CubedSphereLayoutImpl::serialize / deserialize
-      // (cubed_sphere_layout.cpp:719-724 send, :932-937 recv), whose
-      // deliberately MIRRORED skip rules are what resolve the L/R roles across
-      // a panel edge. Shipped as ONE un-suffixed key, both halves travelled
-      // both ways and took no directional branch, so at a `flip_flag` seam --
-      // an edge joining two sides of the same outward-normal sign,
-      // (my_side%2)==(nb_side%2) at cubed_sphere_layout.cpp:711, i.e. 1T-3R,
-      // 2T-3T, 2B-5B, 4B-5L -- L and R arrived swapped and the upwind solver
-      // (riemann_solver.cpp:44) selected the DOWNWIND state: an anti-upwind,
-      // one-cell-wide, exactly-conservative mode.
+      // Ship the two reconstructed states under DIRECTION-SUFFIXED keys, as the
+      // hydro does (hydro_forward.cpp). The ':' suffix selects the directional
+      // partial send/recv in CubedSphereLayoutImpl::serialize/deserialize,
+      // whose mirrored skip rules resolve the L/R roles across a panel edge;
+      // one un-suffixed key took no directional branch and swapped them at a
+      // flip_flag seam, making the upwind solver pick the downwind state.
       send_vars2["scalar_wl:+"] = rtmp2[ILT];
       send_vars2["scalar_wr:-"] = rtmp2[IRT];
       pmb->begin_exchange(send_vars2, sync_opts.dim(DIM2));
@@ -96,7 +89,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   if (_flux3.defined()) {
     rtmp3 = precon->forward(r, DIM3);
     if (playout->options->type() == "cubed-sphere") {
-      // [S55] see the DIM2 comment above.
+      // See the DIM2 comment above.
       send_vars3["scalar_wl:+"] = rtmp3[ILT];
       send_vars3["scalar_wr:-"] = rtmp3[IRT];
       pmb->begin_exchange(send_vars3, sync_opts.dim(DIM3));
