@@ -53,6 +53,15 @@ void PNetcdfOutput::write_output_file(MeshBlockImpl* pmb_in,
                                       double current_time, bool final_write) {
   if (final_write) return;
 
+  // ISSUES S38: this writer is float-only (every nc*_def_var below is
+  // NC_FLOAT). Fail loudly rather than hand back a float file that the caller
+  // believes is float64 -- silently measuring conservation off a truncated file
+  // is exactly the failure S38 exists to prevent.
+  TORCH_CHECK(!options->double_precision(),
+              "PNetcdfOutput: double_precision is not implemented for the "
+              "parallel-netcdf writer; it would silently write NC_FLOAT. Use "
+              "file_type: netcdf for double-precision output.");
+
   auto pmb = LoadOutputData(pmb_in, vars);
   auto layout = pmb->get_layout();
   auto layout_options = layout->options;
