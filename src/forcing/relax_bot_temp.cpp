@@ -131,7 +131,12 @@ torch::Tensor RelaxBotTempImpl::forward(torch::Tensor du, torch::Tensor w,
       // convention fails loudly here instead of silently extrapolating the
       // wrong way.
       double t0 = T0.mean().item<double>(), t1 = T1.mean().item<double>();
-      TORCH_CHECK(t0 > t1,
+      // `>=`, not `>`: an ISOTHERMAL column is legal and gives t0 == t1
+      // exactly, where the extrapolation 1.5*T0 - 0.5*T1 == T0 is correct.
+      // Only a strictly COLDER deeper cell indicates a flipped convention.
+      // A strict `>` threw on the upstream forcing.relax_bottom_temperature
+      // unit test, whose fixture is isothermal (found by running ctest, S72).
+      TORCH_CHECK(t0 >= t1,
                   "[RelaxBotTemp] index convention violated: offset 0 of the "
                   "lower-boundary slice (T=",
                   t0,
