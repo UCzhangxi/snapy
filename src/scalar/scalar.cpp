@@ -74,8 +74,14 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   if (_flux2.defined()) {
     rtmp2 = precon->forward(r, DIM2);
     if (playout->options->type() == "cubed-sphere") {
-      send_vars2["scalar_rlr"] =
-          rtmp2.view({2 * nvar(), rtmp2.size(2), rtmp2.size(3), rtmp2.size(4)});
+      // Ship the two reconstructed states under DIRECTION-SUFFIXED keys, as the
+      // hydro does (hydro_forward.cpp). The ':' suffix selects the directional
+      // partial send/recv in CubedSphereLayoutImpl::serialize/deserialize,
+      // whose mirrored skip rules resolve the L/R roles across a panel edge;
+      // one un-suffixed key took no directional branch and swapped them at a
+      // flip_flag seam, making the upwind solver pick the downwind state.
+      send_vars2["scalar_wl:+"] = rtmp2[ILT];
+      send_vars2["scalar_wr:-"] = rtmp2[IRT];
       pmb->begin_exchange(send_vars2, sync_opts.dim(DIM2));
     }
   }
@@ -83,8 +89,9 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   if (_flux3.defined()) {
     rtmp3 = precon->forward(r, DIM3);
     if (playout->options->type() == "cubed-sphere") {
-      send_vars3["scalar_rlr"] =
-          rtmp3.view({2 * nvar(), rtmp3.size(2), rtmp3.size(3), rtmp3.size(4)});
+      // See the DIM2 comment above.
+      send_vars3["scalar_wl:+"] = rtmp3[ILT];
+      send_vars3["scalar_wr:-"] = rtmp3[IRT];
       pmb->begin_exchange(send_vars3, sync_opts.dim(DIM3));
     }
   }
