@@ -1,5 +1,6 @@
 // C/C++
 #include <array>
+#include <cmath>
 
 // external
 #include <gtest/gtest.h>
@@ -236,6 +237,60 @@ TEST(forcing, relax_bottom_temperature) {
   expected[IPR].index_put_(
       bot, 0.25 * w[IDN].index(bot) * cv.index(bot) * (350. - temp.index(bot)));
   EXPECT_TRUE(torch::allclose(du, expected));
+}
+
+// [S56] The sponge drag is built from CONTRAVARIANT primitives but `du` holds
+// COVARIANT momenta, so the force must be lowered before it is added. This is
+// direction-only and therefore scale-free: it does not replicate the module's
+// `scale` profile, it just asserts that the applied force is antiparallel to
+// the LOWERED momentum rather than to the raw contravariant velocity. The two
+// coincide wherever cos_theta == 0 -- a panel centre -- so the check is made at
+// the cell of largest |cos_theta|, and it also asserts that the pre-fix answer
+// would have been measurably different there.
+TEST(forcing, cubed_sphere_sponge_drag_is_covariant) {
+  for (int face = 0; face < 6; ++face) {
+    auto block = make_cubed_sphere_block(face, "ideal-gas");
+    auto coord = block->pcoord;
+    auto w = torch::zeros({block->phydro->peos->nvar(), coord->options->nc3(),
+                           coord->options->nc2(), coord->options->nc1()},
+                          torch::kFloat64);
+    w[IDN].fill_(1.7);
+    w[IVX].fill_(0.5);
+    w[IVY].fill_(-2.1);
+    w[IVZ].fill_(0.8);
+    if (w.size(0) > IPR) w[IPR].fill_(1.e5);
+
+    auto du = torch::zeros_like(w);
+    auto op = TopSpongeLyrOptionsImpl::from_yaml(
+        YAML::Load("top-sponge-lyr: {tau: 100.0, width: 1.0e30}"));
+    TopSpongeLyr(op, block->phydro.get())->forward(du, w, torch::Tensor(), 1.);
+
+    // the covariant momentum, i.e. the direction the drag must oppose
+    auto mom = torch::zeros({3, coord->options->nc3(), coord->options->nc2(),
+                             coord->options->nc1()},
+                            torch::kFloat64);
+    mom.copy_(w.narrow(0, IVX, 3));
+    coord_vec_lower_(mom, coord->cosine_cell_kj);
+
+    // pick the cell where the metric is most off-diagonal
+    auto cth = coord->cosine_cell_kj.expand_as(w[IDN]);
+    auto idx = cth.abs().argmax();
+    ASSERT_NE(cth.flatten()[idx].item<double>(), 0.)
+        << "face " << face << ": no off-diagonal cell to test";
+
+    auto d2 = du[IVY].flatten()[idx].item<double>();
+    auto d3 = du[IVZ].flatten()[idx].item<double>();
+    auto m2 = mom[VEL2].flatten()[idx].item<double>();
+    auto m3 = mom[VEL3].flatten()[idx].item<double>();
+    // antiparallel to the covariant momentum: the cross product vanishes
+    EXPECT_NEAR(d2 * m3 - d3 * m2, 0., 1.e-12 * std::abs(d2 * m3))
+        << "face " << face;
+    // and the pre-fix (contravariant) direction is genuinely different here,
+    // so a regression cannot pass this test by coincidence
+    auto v2 = w[IVY].flatten()[idx].item<double>();
+    auto v3 = w[IVZ].flatten()[idx].item<double>();
+    EXPECT_GT(std::abs(d2 * v3 - d3 * v2), 1.e-10) << "face " << face;
+  }
 }
 
 TEST(forcing, relax_bottom_velocity) {
