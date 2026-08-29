@@ -6,6 +6,7 @@
 
 #include <snap/mesh/meshblock.hpp>
 #include <snap/utils/log.hpp>
+#include <snap/utils/tvd_meter.hpp>
 
 #include "flux_positivity.hpp"
 #include "hydro.hpp"
@@ -129,6 +130,28 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
           {density.narrow(-1, 0, 1), density.narrow(-1, 0, n1 - 1)}, -1);
       wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
       wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+
+      // [S54-TVD] Non-acting: counts how often the positivity fallbacks above
+      // actually fire, resolved BY LEVEL, and tallies where the raw
+      // reconstruction broke monotonicity. Reads only; writes nothing back.
+      if (tvd_meter_on()) {
+        FaceMeter::tally_levels("x1.fallback.pres.L", pl <= 0.);
+        FaceMeter::tally_levels("x1.fallback.pres.R", pr <= 0.);
+        FaceMeter::tally_levels("x1.fallback.dens.L", dl <= 0.);
+        FaceMeter::tally_levels("x1.fallback.dens.R", dr <= 0.);
+
+        int64_t nf = iu + 1 - is + 1;
+        if (is >= 1 && iu + 1 < pressure.size(-1)) {
+          for (int c : {(int)IPR, (int)IDN}) {
+            auto const& full = (c == (int)IPR) ? pressure : density;
+            FaceMeter::tally(c == (int)IPR ? "x1.pres" : "x1.dens",
+                             full.narrow(-1, is - 1, nf),
+                             full.narrow(-1, is, nf),
+                             wtmp[ILT][c].narrow(-1, is, nf),
+                             wtmp[IRT][c].narrow(-1, is, nf));
+          }
+        }
+      }
     } else {
       wtmp = precon1->forward(w, DIM1);
       if (grav1) {

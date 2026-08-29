@@ -6,6 +6,7 @@
 
 #include <snap/eos/equation_of_state.hpp>
 #include <snap/hydro/hydro.hpp>
+#include <snap/utils/tvd_meter.hpp>
 
 #include "reconstruct.hpp"
 
@@ -44,13 +45,18 @@ ReconstructOptions ReconstructOptionsImpl::from_yaml(
  *                      il          iu
  */
 void _apply_inplace(int dim, int il, int iu, const torch::Tensor& w,
-                    Interp& pinterp, torch::Tensor wlr) {
+                    Interp& pinterp, torch::Tensor wlr, int var_offset = 0) {
   if (il > iu) return;
 
   auto outl = wlr[IRT].slice(dim, il - 1, iu + 1);
   auto outr = wlr[ILT].slice(dim, il, iu + 2);
 
   pinterp->forward(w, dim, outl, outr);
+
+  // [S54-TVD] non-acting monotonicity tally on the RAW operator output, before
+  // any caller-side floor, wall revision or WB reference restore. See
+  // snap/utils/tvd_meter.hpp for the alignment argument.
+  TvdMeter::tally(dim, var_offset, w, outl, outr);
 
   // populate dummy regions
   wlr[IRT].slice(dim, 0, il) = wlr[IRT].select(dim, il).unsqueeze(dim);
@@ -87,13 +93,14 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
   TORCH_CHECK(il <= iu, "il > iu");
 
   if (phydro == nullptr) {
-    _apply_inplace(dim, il, iu, w, pinterp1, result);
+    _apply_inplace(dim, il, iu, w, pinterp1, result, IDN);
     result.clamp_min_(0.);
     return result;
   }
 
   if (options->shock()) {
-    _apply_inplace(dim, il, iu, w, pinterp1, result);
+    _apply_inplace(dim, il, iu, w, pinterp1, result, IDN);
+    TvdMeter::tick();
     return result;
   }
 
@@ -127,7 +134,7 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
 
   // density
   _apply_inplace(dim, il, iu, w.narrow(0, IDN, 1), pinterp1,
-                 result.narrow(1, IDN, 1));
+                 result.narrow(1, IDN, 1), IDN);
   if (eos->limiter() && floor) {
     result.select(1, IDN).clamp_min_(eos->density_floor());
   }
@@ -135,21 +142,25 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
   // velocity/pressure
   int len = std::min((int)IPR, nvar - 1);
   _apply_inplace(dim, il, iu, w.narrow(0, IVX, len), pinterp2,
-                 result.narrow(1, IVX, len));
+                 result.narrow(1, IVX, len), IVX);
   if (eos->limiter() && floor && result.size(1) > IPR) {
     result.select(1, IPR).clamp_min_(eos->pressure_floor());
   }
 
   int ny = nvar - 5;
-  if (ny <= 0) return result;
+  if (ny <= 0) {
+    TvdMeter::tick();
+    return result;
+  }
 
   // others
   _apply_inplace(dim, il, iu, w.narrow(0, ICY, ny), pinterp1,
-                 result.narrow(1, ICY, ny));
+                 result.narrow(1, ICY, ny), ICY);
   if (eos->limiter()) {
     result.narrow(1, ICY, ny).clamp_min_(0.);
   }
 
+  TvdMeter::tick();
   return result;
 }
 
