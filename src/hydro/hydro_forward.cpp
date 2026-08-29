@@ -393,7 +393,37 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
   //// ------------ (7) Perform implicit correction ------------ ////
   if (picorr) {
-    _apply_implicit_correction(du, w, dt, other);
+    // The implicit correction is NONLINEAR in dt, so the RK stage weight must
+    // be applied INSIDE the solve, not to the solve's result:
+    //   athena/ExoCubed : delta = (I + b*dt*J')^-1 * (b*dt*L),  u += delta
+    //   snapy (before)  : delta = (I +   dt*J')^-1 * (  dt*L),  u += b*delta
+    // The two RHS scalings are equivalent because the solve is linear in its
+    // RHS; the OPERATOR is not. At stage 1 of rk3, b = 1/4, so the I/dt
+    // regularisation was 4x too weak.
+    //
+    // Scale ONLY the dt handed to the correction. du, the flux divergence and
+    // the forcings stay at the full dt, or this becomes a different operator.
+    // Applied for the 3-stage integrator the hot-Jupiter cards use, matching
+    // the behaviour already in production. Deliberately NOT generalised to
+    // other integrators: that would change rk1/rk2 results for no benefit on
+    // any card in service.
+    double dt_corr = dt;
+    if (pmb->pintg->stages.size() == 3) {
+      if (rk_stage >= 0 && rk_stage < pmb->pintg->stages.size()) {
+        dt_corr *= pmb->pintg->stages[rk_stage].wght2();
+      } else {
+        // Loud, but not fatal: some callers drive HydroImpl::forward directly
+        // without the stage loop (tests/test_forcing.cpp), and those must keep
+        // working. A silent fallback here would restore the full-dt operator
+        // this commit exists to remove, so say so.
+        TORCH_WARN_ONCE(
+            "[Hydro] rk_stage was not published before the implicit "
+            "correction, so it is running with the FULL dt -- the operator "
+            "this fix replaces. MeshBlockImpl::advance_local publishes it; a "
+            "caller invoking HydroImpl::forward directly will see this.");
+      }
+    }
+    _apply_implicit_correction(du, w, dt_corr, other);
 
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();
