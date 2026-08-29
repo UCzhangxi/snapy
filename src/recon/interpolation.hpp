@@ -248,6 +248,31 @@ class Weno5InterpImpl : public torch::nn::Cloneable<Weno5InterpImpl>,
   void right(torch::Tensor w, int dim, torch::Tensor const& out) override;
 };
 TORCH_MODULE(Weno5Interp);
+
+//! WENO5 interface value with the Suresh-Huynh monotonicity-preserving
+//! constraint.
+class MP5InterpImpl : public torch::nn::Cloneable<MP5InterpImpl>,
+                      public InterpImpl {
+ public:
+  Weno5Interp pweno = nullptr;
+
+  MP5InterpImpl() {
+    options->type("mp5");
+    reset();
+  }
+
+  explicit MP5InterpImpl(InterpOptions const& options_) : InterpImpl(options_) {
+    reset();
+  }
+  void reset() override;
+  using InterpImpl::forward;
+
+  int stencils() const override { return 5; }
+
+  void left(torch::Tensor w, int dim, torch::Tensor const& out) override;
+  void right(torch::Tensor w, int dim, torch::Tensor const& out) override;
+};
+TORCH_MODULE(MP5Interp);
 }  // namespace snap
 
 #undef ADD_ARG

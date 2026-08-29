@@ -26,6 +26,12 @@ Interp InterpImpl::create(InterpOptions const& opts, torch::nn::Module* p,
     } else {
       TORCH_CHECK(false, "Interp: unknown name " + name);
     }
+  } else if (opts->type() == "mp5") {
+    // Unlike "weno5", interp2 is not Center5Interp: the constraint must hold on
+    // whichever module is used. For hydro that also swaps a centred
+    // interpolation for an upwind-biased one, a larger change than adding the
+    // constraint.
+    return p->register_module(name, MP5Interp(opts));
   } else if (opts->type() == "weno5") {
     if (name.back() == '1') {
       return p->register_module(name, Weno5Interp(opts));
