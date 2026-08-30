@@ -148,11 +148,22 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   }
 
   // r <= b is positivity of the complement b*rho - s, whose flux is b*F_mass -
-  // F_s. Reusing the same theta keeps one factor per face, so the scaling stays
-  // exactly conservative, and it blends F_s toward b*F_mass -- the donor-cell
-  // flux of a tracer sitting at the bound. Blending toward zero instead would
-  // stop a plateau advecting.
+  // F_s, so the same limiter applies to it -- a SECOND theta, not the one
+  // above. Scaling the complement blends F_s toward b*F_mass, the donor-cell
+  // flux of a tracer at the bound; scaling F_s toward zero would bound it too
+  // but stop a plateau advecting.
+  //
+  // ⚠ This weakens the lower bound above from unconditional to conditional on
+  // the mass Courant number staying below 1: past that, theta can leave a cell
+  // exporting tracer it does not have. The premise also assumes rho moves by
+  // -dt*div(F_mass) alone, which the implicit vertical correction and any
+  // forcing writing du[IDN] both break.
   if (options->upper_bound() >= 0.) {
+    TORCH_CHECK(
+        pmb->phydro->options->eos()->limiter(),
+        "[Scalar] upper-bound needs the eos limiter: it bounds r from above by "
+        "the positivity of the complement, and enforcing one side alone leaves "
+        "the other unbounded");
     auto b = options->upper_bound();
     auto mf = [&](int dim) {
       return (dim == DIM1   ? pmb->phydro->flux1()
