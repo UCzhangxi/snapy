@@ -124,9 +124,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   // Tracer flux positivity limiter: same scheme (and same rationale) as the
   // hydro species channels -- see flux_positivity.hpp and hydro_forward.cpp
   // step (4.C). It follows the existing EOS limiter setting.
-  if (pmb->phydro->options->eos()->limiter()) {
-    auto theta = flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt);
-
+  auto sync_theta = [&](torch::Tensor theta) {
     Variables tvars;
     tvars["scalar_theta"] = theta;
     SyncOptions theta_opts;
@@ -140,8 +138,40 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
       if (pmb->options->bfuncs()[i] == nullptr) continue;
       pmb->options->bfuncs()[i](theta, 3 - i / 2, bops);
     }
+    return theta;
+  };
 
+  if (pmb->phydro->options->eos()->limiter()) {
+    auto theta = sync_theta(
+        flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt));
     flux_positivity_scale_(theta, _flux1, _flux2, _flux3, pcoord);
+  }
+
+  // r <= b is positivity of the complement b*rho - s, whose flux is b*F_mass -
+  // F_s. Reusing the same theta keeps one factor per face, so the scaling stays
+  // exactly conservative, and it blends F_s toward b*F_mass -- the donor-cell
+  // flux of a tracer sitting at the bound. Blending toward zero instead would
+  // stop a plateau advecting.
+  if (options->upper_bound() >= 0.) {
+    auto b = options->upper_bound();
+    auto mf = [&](int dim) {
+      return (dim == DIM1   ? pmb->phydro->flux1()
+              : dim == DIM2 ? pmb->phydro->flux2()
+                            : pmb->phydro->flux3())[IDN]
+          .unsqueeze(0);
+    };
+    torch::Tensor g1, g2, g3;
+    if (_flux1.defined()) g1 = b * mf(DIM1) - _flux1;
+    if (_flux2.defined()) g2 = b * mf(DIM2) - _flux2;
+    if (_flux3.defined()) g3 = b * mf(DIM3) - _flux3;
+
+    auto theta =
+        sync_theta(flux_positivity_theta(b * rho - u, g1, g2, g3, pcoord, dt));
+    flux_positivity_scale_(theta, g1, g2, g3, pcoord);
+
+    if (_flux1.defined()) _flux1.set_(b * mf(DIM1) - g1);
+    if (_flux2.defined()) _flux2.set_(b * mf(DIM2) - g2);
+    if (_flux3.defined()) _flux3.set_(b * mf(DIM3) - g3);
   }
 
   _div.set_(pcoord->divergence(_flux1, _flux2, _flux3));
