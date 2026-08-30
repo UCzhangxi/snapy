@@ -20,6 +20,17 @@ void ScalarImpl::reset() {
   TORCH_CHECK(options->riemann()->type() == "upwind",
               "[Scalar] Passive scalars currently require the upwind solver");
 
+  // Zero is rejected rather than read as "off": it would pin every tracer to
+  // zero and freeze transport, and it is far likelier to have meant "off".
+  TORCH_CHECK(options->upper_bound() != 0.,
+              "[Scalar] upper-bound = 0 pins the tracer to zero and freezes "
+              "transport; use a negative value to disable the bound");
+  TORCH_CHECK(
+      options->upper_bound() <= 0. || pmb->phydro->options->eos()->limiter(),
+      "[Scalar] upper-bound needs the eos limiter: it bounds r from "
+      "above by the positivity of the complement, and enforcing one "
+      "side alone leaves the other unbounded");
+
   pcoord = pmb->pcoord;
   precon = ReconstructImpl::create(options->recon(), this);
   priemann = RiemannSolverImpl::create(options->riemann(), this);
@@ -158,12 +169,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   // exporting tracer it does not have. The premise also assumes rho moves by
   // -dt*div(F_mass) alone, which the implicit vertical correction and any
   // forcing writing du[IDN] both break.
-  if (options->upper_bound() >= 0.) {
-    TORCH_CHECK(
-        pmb->phydro->options->eos()->limiter(),
-        "[Scalar] upper-bound needs the eos limiter: it bounds r from above by "
-        "the positivity of the complement, and enforcing one side alone leaves "
-        "the other unbounded");
+  if (options->upper_bound() > 0.) {
     auto b = options->upper_bound();
     auto mf = [&](int dim) {
       return (dim == DIM1   ? pmb->phydro->flux1()
@@ -171,18 +177,23 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
                             : pmb->phydro->flux3())[IDN]
           .unsqueeze(0);
     };
-    torch::Tensor g1, g2, g3;
-    if (_flux1.defined()) g1 = b * mf(DIM1) - _flux1;
-    if (_flux2.defined()) g2 = b * mf(DIM2) - _flux2;
-    if (_flux3.defined()) g3 = b * mf(DIM3) - _flux3;
+    torch::Tensor g1, g2, g3, h1, h2, h3;
+    if (_flux1.defined()) h1 = (g1 = b * mf(DIM1) - _flux1).clone();
+    if (_flux2.defined()) h2 = (g2 = b * mf(DIM2) - _flux2).clone();
+    if (_flux3.defined()) h3 = (g3 = b * mf(DIM3) - _flux3).clone();
 
     auto theta =
         sync_theta(flux_positivity_theta(b * rho - u, g1, g2, g3, pcoord, dt));
     flux_positivity_scale_(theta, g1, g2, g3, pcoord);
 
-    if (_flux1.defined()) _flux1.set_(b * mf(DIM1) - g1);
-    if (_flux2.defined()) _flux2.set_(b * mf(DIM2) - g2);
-    if (_flux3.defined()) _flux3.set_(b * mf(DIM3) - g3);
+    // Add the CHANGE, never recompute F_s = b*F_mass - g. The two are equal in
+    // algebra only: recomputing carries an error absolute in b*F_mass, so it
+    // perturbs EVERY face even where theta is 1, and in float32 it annihilates
+    // the flux of a species whose ratio is near the epsilon of b. This form is
+    // bitwise identity where nothing was limited.
+    if (_flux1.defined()) _flux1.add_(h1 - g1);
+    if (_flux2.defined()) _flux2.add_(h2 - g2);
+    if (_flux3.defined()) _flux3.add_(h3 - g3);
   }
 
   _div.set_(pcoord->divergence(_flux1, _flux2, _flux3));

@@ -1,6 +1,7 @@
 // C/C++
 #include <unistd.h>
 
+#include <algorithm>
 #include <fstream>
 
 // external
@@ -137,6 +138,7 @@ TEST_P(DeviceTest, scalar_upper_bound_holds_both_sides) {
   block->initialize(vars);
   auto s = vars.at("scalar_s");
   auto rho = vars.at("hydro_w")[IDN].unsqueeze(0);
+  auto s0 = s.clone();
 
   // The hydro is never advanced here, so give the tracer a mass flux to ride
   // on; a uniform one has zero divergence, which keeps rho consistent with
@@ -155,9 +157,35 @@ TEST_P(DeviceTest, scalar_upper_bound_holds_both_sides) {
     }
   }
   auto r = s / rho;
+  double tol = (dtype == torch::kFloat32) ? 1e-5 : 1e-12;
 
-  EXPECT_LE(r.max().template item<double>(), 1.0 + 1e-12);
-  EXPECT_GE(s.min().template item<double>(), -1e-12);
+  EXPECT_LE(r.max().template item<double>(), 1.0 + tol);
+  EXPECT_GE(s.min().template item<double>(), -tol);
+
+  // The two bounds above are satisfied by a limiter that does nothing at all:
+  // with theta identically zero every face flux collapses to b*F_mass, whose
+  // divergence vanishes on this uniform mass flux, so the field never moves and
+  // both assertions pass. Pin the content, not just the flag.
+  int ng = block->pcoord->options->nghost();
+  auto in = torch::indexing::Slice(ng, nc1 - ng);
+  auto hat = s.index({0, "...", in});
+  auto hat0 = s0.index({0, "...", in});
+
+  // (a) the top-hat advected at all -- this is what kills theta == 0.
+  EXPECT_GT((hat - hat0).abs().max().template item<double>(), tol);
+
+  // (b) and it went DOWNSTREAM, which diffusion alone would not do. The wind is
+  // +x1 at 1.0 for 12 steps of 2e-2.
+  auto x = torch::arange(hat.size(-1), hat.options());
+  auto centroid = [&](torch::Tensor f) {
+    return (f * x).sum().template item<double>() /
+           std::max(f.sum().template item<double>(), 1e-30);
+  };
+  EXPECT_GT(centroid(hat), centroid(hat0) + 1.0);
+
+  // (c) the second channel is uniform, so a correct scheme leaves it alone.
+  EXPECT_NEAR(s.index({1, "...", in}).min().template item<double>(),
+              s.index({1, "...", in}).max().template item<double>(), tol);
 }
 
 int main(int argc, char** argv) {
