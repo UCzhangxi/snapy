@@ -248,6 +248,25 @@ class Weno5InterpImpl : public torch::nn::Cloneable<Weno5InterpImpl>,
   void right(torch::Tensor w, int dim, torch::Tensor const& out) override;
 };
 TORCH_MODULE(Weno5Interp);
+
+//! Monotonicity-limited blend of the donor-cell, 3rd- and 5th-order interface
+//! values.
+class Mono5InterpImpl : public torch::nn::Cloneable<Mono5InterpImpl>,
+                        public InterpImpl {
+ public:
+  Mono5InterpImpl() { options->type("mono5"); }
+
+  explicit Mono5InterpImpl(InterpOptions const& options_)
+      : InterpImpl(options_) {}
+  void reset() override {}
+  using InterpImpl::forward;
+
+  int stencils() const override { return 5; }
+
+  void left(torch::Tensor w, int dim, torch::Tensor const& out) override;
+  void right(torch::Tensor w, int dim, torch::Tensor const& out) override;
+};
+TORCH_MODULE(Mono5Interp);
 }  // namespace snap
 
 #undef ADD_ARG

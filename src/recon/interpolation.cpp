@@ -26,6 +26,8 @@ Interp InterpImpl::create(InterpOptions const& opts, torch::nn::Module* p,
     } else {
       TORCH_CHECK(false, "Interp: unknown name " + name);
     }
+  } else if (opts->type() == "mono5") {
+    return p->register_module(name, Mono5Interp(opts));
   } else if (opts->type() == "weno5") {
     if (name.back() == '1') {
       return p->register_module(name, Weno5Interp(opts));
