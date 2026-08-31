@@ -20,6 +20,17 @@ void ScalarImpl::reset() {
   TORCH_CHECK(options->riemann()->type() == "upwind",
               "[Scalar] Passive scalars currently require the upwind solver");
 
+  // Zero is rejected rather than read as "off": it would pin every tracer to
+  // zero and freeze transport, and it is far likelier to have meant "off".
+  TORCH_CHECK(options->upper_bound() != 0.,
+              "[Scalar] upper-bound = 0 pins the tracer to zero and freezes "
+              "transport; use a negative value to disable the bound");
+  TORCH_CHECK(
+      options->upper_bound() <= 0. || pmb->phydro->options->eos()->limiter(),
+      "[Scalar] upper-bound needs the eos limiter: it bounds r from "
+      "above by the positivity of the complement, and enforcing one "
+      "side alone leaves the other unbounded");
+
   pcoord = pmb->pcoord;
   precon = ReconstructImpl::create(options->recon(), this);
   priemann = RiemannSolverImpl::create(options->riemann(), this);
@@ -124,9 +135,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
   // Tracer flux positivity limiter: same scheme (and same rationale) as the
   // hydro species channels -- see flux_positivity.hpp and hydro_forward.cpp
   // step (4.C). It follows the existing EOS limiter setting.
-  if (pmb->phydro->options->eos()->limiter()) {
-    auto theta = flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt);
-
+  auto sync_theta = [&](torch::Tensor theta) {
     Variables tvars;
     tvars["scalar_theta"] = theta;
     SyncOptions theta_opts;
@@ -140,8 +149,51 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
       if (pmb->options->bfuncs()[i] == nullptr) continue;
       pmb->options->bfuncs()[i](theta, 3 - i / 2, bops);
     }
+    return theta;
+  };
 
+  if (pmb->phydro->options->eos()->limiter()) {
+    auto theta = sync_theta(
+        flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt));
     flux_positivity_scale_(theta, _flux1, _flux2, _flux3, pcoord);
+  }
+
+  // r <= b is positivity of the complement b*rho - s, whose flux is b*F_mass -
+  // F_s, so the same limiter applies to it -- a SECOND theta, not the one
+  // above. Scaling the complement blends F_s toward b*F_mass, the donor-cell
+  // flux of a tracer at the bound; scaling F_s toward zero would bound it too
+  // but stop a plateau advecting.
+  //
+  // ⚠ This weakens the lower bound above from unconditional to conditional on
+  // the mass Courant number staying below 1: past that, theta can leave a cell
+  // exporting tracer it does not have. The premise also assumes rho moves by
+  // -dt*div(F_mass) alone, which the implicit vertical correction and any
+  // forcing writing du[IDN] both break.
+  if (options->upper_bound() > 0.) {
+    auto b = options->upper_bound();
+    auto mf = [&](int dim) {
+      return (dim == DIM1   ? pmb->phydro->flux1()
+              : dim == DIM2 ? pmb->phydro->flux2()
+                            : pmb->phydro->flux3())[IDN]
+          .unsqueeze(0);
+    };
+    torch::Tensor g1, g2, g3, h1, h2, h3;
+    if (_flux1.defined()) h1 = (g1 = b * mf(DIM1) - _flux1).clone();
+    if (_flux2.defined()) h2 = (g2 = b * mf(DIM2) - _flux2).clone();
+    if (_flux3.defined()) h3 = (g3 = b * mf(DIM3) - _flux3).clone();
+
+    auto theta =
+        sync_theta(flux_positivity_theta(b * rho - u, g1, g2, g3, pcoord, dt));
+    flux_positivity_scale_(theta, g1, g2, g3, pcoord);
+
+    // Add the CHANGE, never recompute F_s = b*F_mass - g. The two are equal in
+    // algebra only: recomputing carries an error absolute in b*F_mass, so it
+    // perturbs EVERY face even where theta is 1, and in float32 it annihilates
+    // the flux of a species whose ratio is near the epsilon of b. This form is
+    // bitwise identity where nothing was limited.
+    if (_flux1.defined()) _flux1.add_(h1 - g1);
+    if (_flux2.defined()) _flux2.add_(h2 - g2);
+    if (_flux3.defined()) _flux3.add_(h3 - g3);
   }
 
   _div.set_(pcoord->divergence(_flux1, _flux2, _flux3));

@@ -37,7 +37,8 @@ struct ScalarOptionsImpl {
     os << "-- scalar options --\n";
     os << "* verbose = " << (verbose() ? "true" : "false") << "\n"
        << "* nvar = " << nvar() << "\n"
-       << "* names = " << fmt::format("{}", names()) << "\n";
+       << "* names = " << fmt::format("{}", names()) << "\n"
+       << "* upper-bound = " << upper_bound() << "\n";
     if (recon()) {
       recon()->report(os);
     }
@@ -63,6 +64,11 @@ struct ScalarOptionsImpl {
 
   //! Kinetics options
   ADD_ARG(kintera::KineticsOptions, kinetics) = nullptr;
+
+  //! Upper bound on the mixing ratio, enforced as positivity of the complement.
+  //! Negative disables it; there is no universal default because a passive
+  //! scalar need not be a fraction.
+  ADD_ARG(double, upper_bound) = -1.;
 
   //! submodules options
   ADD_ARG(ReconstructOptions, recon) = nullptr;
