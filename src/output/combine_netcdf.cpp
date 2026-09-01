@@ -122,6 +122,15 @@ void NetcdfOutput::combine_blocks(MeshBlockImpl* pmb, bool) {
     globfree(&glob_result);
   }
 
+  // Mirror of the barrier above: no rank may return before the combined file
+  // exists. Without this, non-root ranks leave while the root is still
+  // running the combine, so a caller that looks for the combined file right
+  // after the output call -- on any rank but the root -- races against its
+  // creation.
+  if (layout->has_process_group()) {
+    layout->comm->barrier();
+  }
+
 #endif  // NETCDFOUTPUT
 }
 }  // namespace snap
