@@ -57,6 +57,8 @@ void ScalarImpl::reset() {
                     : torch::Tensor());
   _div = register_buffer(
       "D", torch::zeros({nvar(), nc3, nc2, nc1}, torch::kFloat64));
+  _positivity_hits =
+      register_buffer("positivity_hits", torch::zeros({1}, torch::kInt64));
 }
 
 torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
@@ -139,7 +141,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
     Variables tvars;
     tvars["scalar_theta"] = theta;
     SyncOptions theta_opts;
-    theta_opts.interpolate(true).type(kScalar);
+    theta_opts.interpolate(false).type(kScalar);  // see hydro_forward.cpp 4.C
     pmb->exchange(tvars, theta_opts);
 
     BoundaryFuncOptions bops;
@@ -152,10 +154,11 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
     return theta;
   };
 
+  auto cells = pmb->part({0, 0, 0}, PartOptions().exterior(false));
   if (pmb->phydro->options->eos()->limiter()) {
-    auto theta = sync_theta(
-        flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt));
-    flux_positivity_scale_(theta, _flux1, _flux2, _flux3, pcoord);
+    auto theta = flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt);
+    _positivity_hits += (theta.index(cells) < 1.).sum();
+    flux_positivity_scale_(sync_theta(theta), _flux1, _flux2, _flux3, pcoord);
   }
 
   // r <= b is positivity of the complement b*rho - s, whose flux is b*F_mass -
@@ -182,9 +185,9 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
     if (_flux2.defined()) h2 = (g2 = b * mf(DIM2) - _flux2).clone();
     if (_flux3.defined()) h3 = (g3 = b * mf(DIM3) - _flux3).clone();
 
-    auto theta =
-        sync_theta(flux_positivity_theta(b * rho - u, g1, g2, g3, pcoord, dt));
-    flux_positivity_scale_(theta, g1, g2, g3, pcoord);
+    auto theta = flux_positivity_theta(b * rho - u, g1, g2, g3, pcoord, dt);
+    _positivity_hits += (theta.index(cells) < 1.).sum();
+    flux_positivity_scale_(sync_theta(theta), g1, g2, g3, pcoord);
 
     // Add the CHANGE, never recompute F_s = b*F_mass - g. The two are equal in
     // algebra only: recomputing carries an error absolute in b*F_mass, so it
