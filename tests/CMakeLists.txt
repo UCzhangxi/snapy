@@ -147,6 +147,33 @@ if (DEFINED KINTERA_DATA_DIR AND EXISTS "${KINTERA_DATA_DIR}/nasa9.dat")
             ${CMAKE_BINARY_DIR}/tests/nasa9.dat)
 endif()
 
+# ---- Python ctests: say WHICH snapy they test -------------------------------------------
+# `COMMAND ${Python3_EXECUTABLE} <test>.py` imports `snapy` through sys.path, so with nothing
+# set these exercise whatever snapy is INSTALLED, not the tree they were configured from --
+# a false RED when the branch is fine and the install is stale, and a false GREEN when the
+# branch is broken and the install is fine. cmake builds only the C++ libraries here (the
+# importable package comes from `pip install`), so there is nothing in the build tree to point
+# at by default; give the artifact under test explicitly:
+#     cmake -B build -DSNAPY_TEST_PYTHONPATH=/path/to/snapy-iso-<sha>
+set(SNAPY_TEST_PYTHONPATH "" CACHE PATH
+    "PYTHONPATH for the *_python ctests; empty means they test the INSTALLED snapy")
+set(SNAPY_PYTHON_TESTS
+    test_mesh_exchange_python
+    test_cubed_sphere_vertical_velocity_exchange_python
+    test_jit_user_forcing_python
+    test_eos_temp2inteng_python
+    test_flux_positivity_python
+    test_flux_positivity_cubedsphere_python)
+if(SNAPY_TEST_PYTHONPATH)
+  set_tests_properties(${SNAPY_PYTHON_TESTS} PROPERTIES
+                       ENVIRONMENT "PYTHONPATH=${SNAPY_TEST_PYTHONPATH}")
+  message(STATUS "python ctests import snapy from ${SNAPY_TEST_PYTHONPATH}")
+else()
+  message(WARNING
+    "SNAPY_TEST_PYTHONPATH is unset: the *_python ctests will import the INSTALLED snapy, "
+    "not this tree. Their verdicts do not constrain this branch.")
+endif()
+
 # ============= #
 # Example Tests #
 # ============= #
