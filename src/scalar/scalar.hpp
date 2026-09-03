@@ -105,6 +105,9 @@ class ScalarImpl : public torch::nn::Cloneable<ScalarImpl> {
   Reconstruct precon = nullptr;
   RiemannSolver priemann = nullptr;
   torch::Tensor _flux1, _flux2, _flux3, _div;
+  //! cumulative count of (cell, tracer) entries with positivity theta < 1
+  //! (tracer and its complement; diagnostic, EOS limiter on)
+  torch::Tensor _positivity_hits;
 
   kintera::ThermoX pthermo = nullptr;
   kintera::Kinetics pkinetics = nullptr;

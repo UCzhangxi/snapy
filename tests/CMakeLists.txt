@@ -113,6 +113,26 @@ set_tests_properties(test_eos_temp2inteng_python PROPERTIES
   LABELS "python;eos"
 )
 
+add_test(
+  NAME test_flux_positivity_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity.py
+)
+set_tests_properties(test_flux_positivity_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 300
+  LABELS "python;positivity"
+)
+
+add_test(
+  NAME test_flux_positivity_cubedsphere_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity_cubedsphere.py
+)
+set_tests_properties(test_flux_positivity_cubedsphere_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 300
+  LABELS "python;positivity;cubed-sphere"
+)
+
 file(GLOB inputs *.yaml *.py)
 # create tests folder if does not exist
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
