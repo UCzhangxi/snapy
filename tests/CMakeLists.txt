@@ -114,6 +114,16 @@ set_tests_properties(test_eos_temp2inteng_python PROPERTIES
 )
 
 add_test(
+  NAME test_fix_vapor_reports_failure_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_fix_vapor_reports_failure.py
+)
+set_tests_properties(test_fix_vapor_reports_failure_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;eos;positivity"
+)
+
+add_test(
   NAME test_flux_positivity_python
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity.py
 )
