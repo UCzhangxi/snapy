@@ -134,6 +134,16 @@ set_tests_properties(test_implicit_advection_cfl_python PROPERTIES
 )
 
 add_test(
+  NAME test_check_redo_floor_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_check_redo_floor.py
+)
+set_tests_properties(test_check_redo_floor_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;mesh;redo"
+)
+
+add_test(
   NAME test_flux_positivity_python
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity.py
 )
