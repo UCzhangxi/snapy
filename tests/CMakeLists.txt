@@ -124,6 +124,16 @@ set_tests_properties(test_fix_vapor_reports_failure_python PROPERTIES
 )
 
 add_test(
+  NAME test_implicit_advection_cfl_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_implicit_advection_cfl.py
+)
+set_tests_properties(test_implicit_advection_cfl_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;hydro;implicit"
+)
+
+add_test(
   NAME test_flux_positivity_python
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity.py
 )

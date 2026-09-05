@@ -21,7 +21,15 @@ ImplicitOptions ImplicitOptionsImpl::from_yaml(const std::string& filename,
   auto config = YAML::LoadFile(filename);
   if (!config["integration"]) return nullptr;
   if (!config["integration"]["implicit-scheme"]) return nullptr;
-  return from_yaml(config["integration"]["implicit-scheme"]);
+  auto op = from_yaml(config["integration"]["implicit-scheme"]);
+  if (op) {
+    op->advection_cfl(
+        config["integration"]["implicit-advection-cfl"].as<double>(1.0));
+    TORCH_CHECK(op->advection_cfl() > 0.,
+                "integration/implicit-advection-cfl must be > 0, got ",
+                op->advection_cfl(), " (use a large value to relax the bound)");
+  }
+  return op;
 }
 
 ImplicitOptions ImplicitOptionsImpl::from_yaml(const YAML::Node& node) {

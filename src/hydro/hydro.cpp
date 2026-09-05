@@ -137,23 +137,25 @@ double HydroImpl::max_time_step(torch::Tensor w, torch::Tensor solid) const {
   auto icorr = options->icorr();
 
   if (icorr) {
-    if ((cs.size(2) > 1) &&
-        (!(icorr->scheme() & 1) || (cs.size(0) == 1 && cs.size(1) == 1))) {
-      dt_min[0] = (pmb->pcoord->center_width1() / (w[IVX].abs() + cs))
-                      .index(sub3)
-                      .min();
+    auto adv = pmb->pintg->options->cfl() / icorr->advection_cfl();
+    if (cs.size(2) > 1) {
+      auto denom1 =
+          (!(icorr->scheme() & 1) || (cs.size(0) == 1 && cs.size(1) == 1))
+              ? (w[IVX].abs() + cs)
+              : w[IVX].abs() * adv;
+      dt_min[0] = (pmb->pcoord->center_width1() / denom1).index(sub3).min();
     }
 
-    if ((cs.size(1) > 1) && (!((icorr->scheme() >> 1) & 1))) {
-      dt_min[1] = (pmb->pcoord->center_width2() / (w[IVY].abs() + cs))
-                      .index(sub3)
-                      .min();
+    if (cs.size(1) > 1) {
+      auto denom2 = (!((icorr->scheme() >> 1) & 1)) ? (w[IVY].abs() + cs)
+                                                    : w[IVY].abs() * adv;
+      dt_min[1] = (pmb->pcoord->center_width2() / denom2).index(sub3).min();
     }
 
-    if ((cs.size(0) > 1) && (!((icorr->scheme() >> 2) & 1))) {
-      dt_min[2] = (pmb->pcoord->center_width3() / (w[IVZ].abs() + cs))
-                      .index(sub3)
-                      .min();
+    if (cs.size(0) > 1) {
+      auto denom3 = (!((icorr->scheme() >> 2) & 1)) ? (w[IVZ].abs() + cs)
+                                                    : w[IVZ].abs() * adv;
+      dt_min[2] = (pmb->pcoord->center_width3() / denom3).index(sub3).min();
     }
   } else {
     if (cs.size(2) > 1) {
