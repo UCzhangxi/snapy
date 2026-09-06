@@ -329,14 +329,16 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     auto f3 = _flux3.defined() ? _flux3.narrow(0, ICY, ny) : torch::Tensor();
 
     auto theta = flux_positivity_theta(uy, f1, f2, f3, pmb->pcoord, dt);
-    // census before the ghost fill: ghosts are exactly 1 here, so this counts
-    // interior (cell, species) entries only, with no double count across ranks
-    _positivity_hits += (theta < 1.).sum();
+    // census of interior (cell, species) entries, before the ghost fill
+    auto cells = pmb->part({0, 0, 0}, PartOptions().exterior(false));
+    _positivity_hits += (theta.index(cells) < 1.).sum();
 
+    // Raw copy, never interpolated: the donor of a panel-seam face is the
+    // neighbour's edge cell, and an interpolated ghost is not its factor.
     Variables tvars;
     tvars["hydro_theta"] = theta;
     SyncOptions topts;
-    topts.interpolate(true).type(kScalar);
+    topts.interpolate(false).type(kScalar);
     pmb->exchange(tvars, topts);
 
     BoundaryFuncOptions bops;
