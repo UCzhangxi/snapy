@@ -102,6 +102,16 @@ set_tests_properties(test_jit_user_forcing_python PROPERTIES
   LABELS "python;forcing"
 )
 
+add_test(
+  NAME test_local_horizontal_cells_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_local_horizontal_cells.py
+)
+set_tests_properties(test_local_horizontal_cells_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;mesh;coordinate"
+)
+
 file(GLOB inputs *.yaml *.py)
 # create tests folder if does not exist
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
