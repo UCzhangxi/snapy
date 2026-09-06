@@ -1046,7 +1046,7 @@ void MeshBlockImpl::finalize(Variables const &vars, double time) {
   }
 }
 
-int MeshBlockImpl::check_redo(Variables &vars) {
+bool MeshBlockImpl::floor_hit(Variables const &vars) {
   auto hydro_u = vars.at("hydro_u");
   auto interior = part({0, 0, 0}, PartOptions().exterior(false));
   TORCH_CHECK(vars.count("hydro_w"),
@@ -1054,16 +1054,12 @@ int MeshBlockImpl::check_redo(Variables &vars) {
   // hydro_w is one stage stale: test the primitives as they stand
   auto w = phydro->peos->forward(hydro_u.clone()).index(interior);
   auto const &eos = phydro->peos->options;
-  bool redo = w[IDN].min().item<double>() <= 1.001 * eos->density_floor() ||
-              w[IPR].min().item<double>() <= 1.001 * eos->pressure_floor();
+  return w[IDN].min().item<double>() <= 1.001 * eos->density_floor() ||
+         w[IPR].min().item<double>() <= 1.001 * eos->pressure_floor();
+}
 
-  auto flag = torch::tensor({redo ? 1. : 0.}, torch::dtype(torch::kFloat64));
-  std::vector<at::Tensor> flag_reduce = {flag};
-  if (_playout->has_process_group()) {
-    _playout->comm->allreduce(flag_reduce, c10d::ReduceOp::MAX);
-  }
-
-  if (flag_reduce[0].item<double>() > 0.) {
+int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {
+  if (redo) {
     SINFO(MeshBlock)
         << "Density/pressure at or below the floor. Redoing the step with "
            "smaller dt."
@@ -1092,6 +1088,17 @@ int MeshBlockImpl::check_redo(Variables &vars) {
   // good to go
   pintg->current_redo = 0;
   return 0;
+}
+
+int MeshBlockImpl::check_redo(Variables &vars) {
+  // dt is global, so the decision must be: MAX over every rank
+  auto flag =
+      torch::tensor({floor_hit(vars) ? 1. : 0.}, torch::dtype(torch::kFloat64));
+  std::vector<at::Tensor> flag_reduce = {flag};
+  if (_playout->has_process_group()) {
+    _playout->comm->allreduce(flag_reduce, c10d::ReduceOp::MAX);
+  }
+  return apply_redo(vars, flag_reduce[0].item<double>() > 0.);
 }
 
 double MeshBlockImpl::_init_from_restart(Variables &vars, std::string fname) {
