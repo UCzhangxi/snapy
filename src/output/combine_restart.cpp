@@ -161,6 +161,14 @@ void RestartOutput::combine_blocks(MeshBlockImpl* pmb, bool final_write) {
       }
     }
   }
+
+  // Mirror of the barrier above: no rank may return before the combined file
+  // exists. Without this, non-root ranks leave while the root is still
+  // bundling, so a caller that looks for the restart file right after the
+  // output call -- on any rank but the root -- races against its creation.
+  if (layout->has_process_group()) {
+    layout->comm->barrier();
+  }
 }
 
 }  // namespace snap
