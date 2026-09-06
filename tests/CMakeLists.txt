@@ -20,6 +20,7 @@ setup_test(test_cubed)
 setup_test(test_cubed_sphere)
 setup_test(test_coordinate)
 setup_test(test_hydrostatic)
+setup_test(test_hydro_options)
 setup_test(test_hydro_ref_x1)
 setup_test(test_output_dir)
 setup_test(test_netcdf_utils)
@@ -73,103 +74,36 @@ set_tests_properties(test_exchange.release PROPERTIES
     "BLOCKS_PER_PROCESS=3;EXPECT_LOCAL_NEIGHBOR=1;EXPECT_REMOTE_NEIGHBOR=1"
 )
 
-add_test(
-  NAME test_mesh_exchange_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_mesh_exchange.py
-)
-set_tests_properties(test_mesh_exchange_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  LABELS "python;exchange"
-)
+# Every python ctest goes through this, so it is enrolled for SNAPY_TEST_PYTHONPATH
+# (below); a test registered any other way imports whatever snapy is installed.
+function(snapy_add_python_test name)
+  cmake_parse_arguments(ARG "" "TIMEOUT" "LABELS" ${ARGN})
+  add_test(
+    NAME ${name}_python
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/${name}.py
+  )
+  set_tests_properties(${name}_python PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+    LABELS "${ARG_LABELS}"
+  )
+  if(ARG_TIMEOUT)
+    set_tests_properties(${name}_python PROPERTIES TIMEOUT ${ARG_TIMEOUT})
+  endif()
+  set_property(GLOBAL APPEND PROPERTY SNAPY_PYTHON_TESTS ${name}_python)
+endfunction()
 
-add_test(
-  NAME test_cubed_sphere_vertical_velocity_exchange_python
-  COMMAND ${Python3_EXECUTABLE}
-          ${CMAKE_CURRENT_SOURCE_DIR}/test_cubed_sphere_vertical_velocity_exchange.py
-)
-set_tests_properties(test_cubed_sphere_vertical_velocity_exchange_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  LABELS "python;exchange;cubed-sphere;diagnostic"
-)
-
-add_test(
-  NAME test_jit_user_forcing_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_jit_user_forcing.py
-)
-set_tests_properties(test_jit_user_forcing_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 30
-  LABELS "python;forcing"
-)
-
-add_test(
-  NAME test_eos_temp2inteng_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_eos_temp2inteng.py
-)
-set_tests_properties(test_eos_temp2inteng_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 60
-  LABELS "python;eos"
-)
-
-add_test(
-  NAME test_fix_vapor_reports_failure_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_fix_vapor_reports_failure.py
-)
-set_tests_properties(test_fix_vapor_reports_failure_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 60
-  LABELS "python;eos;positivity"
-)
-
-add_test(
-  NAME test_implicit_advection_cfl_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_implicit_advection_cfl.py
-)
-set_tests_properties(test_implicit_advection_cfl_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 60
-  LABELS "python;hydro;implicit"
-
-add_test(
-  NAME test_shear_cfl_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_shear_cfl.py
-)
-set_tests_properties(test_shear_cfl_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 60
-  LABELS "python;hydro;implicit"
-)
-
-add_test(
-  NAME test_check_redo_floor_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_check_redo_floor.py
-)
-set_tests_properties(test_check_redo_floor_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 60
-  LABELS "python;mesh;redo"
-)
-
-add_test(
-  NAME test_flux_positivity_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity.py
-)
-set_tests_properties(test_flux_positivity_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 300
-  LABELS "python;positivity"
-)
-
-add_test(
-  NAME test_flux_positivity_cubedsphere_python
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity_cubedsphere.py
-)
-set_tests_properties(test_flux_positivity_cubedsphere_python PROPERTIES
-  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
-  TIMEOUT 300
-  LABELS "python;positivity;cubed-sphere"
-)
+snapy_add_python_test(test_mesh_exchange LABELS "python;exchange")
+snapy_add_python_test(test_cubed_sphere_vertical_velocity_exchange
+                      LABELS "python;exchange;cubed-sphere;diagnostic")
+snapy_add_python_test(test_jit_user_forcing TIMEOUT 30 LABELS "python;forcing")
+snapy_add_python_test(test_eos_temp2inteng TIMEOUT 60 LABELS "python;eos")
+snapy_add_python_test(test_fix_vapor_reports_failure TIMEOUT 60 LABELS "python;eos;positivity")
+snapy_add_python_test(test_implicit_advection_cfl TIMEOUT 60 LABELS "python;hydro;implicit")
+snapy_add_python_test(test_shear_cfl TIMEOUT 60 LABELS "python;hydro;implicit")
+snapy_add_python_test(test_check_redo_floor TIMEOUT 60 LABELS "python;mesh;redo")
+snapy_add_python_test(test_flux_positivity TIMEOUT 300 LABELS "python;positivity")
+snapy_add_python_test(test_flux_positivity_cubedsphere TIMEOUT 300
+                      LABELS "python;positivity;cubed-sphere")
 
 file(GLOB inputs *.yaml *.py)
 # create tests folder if does not exist
@@ -183,6 +117,27 @@ if (DEFINED KINTERA_DATA_DIR AND EXISTS "${KINTERA_DATA_DIR}/nasa9.dat")
   execute_process(
     COMMAND ln -sf ${KINTERA_DATA_DIR}/nasa9.dat
             ${CMAKE_BINARY_DIR}/tests/nasa9.dat)
+endif()
+
+# ---- Python ctests: say WHICH snapy they test -------------------------------------------
+# `COMMAND ${Python3_EXECUTABLE} <test>.py` imports `snapy` through sys.path, so with nothing
+# set these exercise whatever snapy is INSTALLED, not the tree they were configured from --
+# a false RED when the branch is fine and the install is stale, and a false GREEN when the
+# branch is broken and the install is fine. cmake builds only the C++ libraries here (the
+# importable package comes from `pip install`), so there is nothing in the build tree to point
+# at by default; give the artifact under test explicitly:
+#     cmake -B build -DSNAPY_TEST_PYTHONPATH=/path/to/snapy-iso-<sha>
+set(SNAPY_TEST_PYTHONPATH "" CACHE PATH
+    "PYTHONPATH for the *_python ctests; empty means they test the INSTALLED snapy")
+get_property(SNAPY_PYTHON_TESTS GLOBAL PROPERTY SNAPY_PYTHON_TESTS)
+if(SNAPY_TEST_PYTHONPATH)
+  set_tests_properties(${SNAPY_PYTHON_TESTS} PROPERTIES
+                       ENVIRONMENT "PYTHONPATH=${SNAPY_TEST_PYTHONPATH}")
+  message(STATUS "python ctests import snapy from ${SNAPY_TEST_PYTHONPATH}")
+else()
+  message(WARNING
+    "SNAPY_TEST_PYTHONPATH is unset: the *_python ctests will import the INSTALLED snapy, "
+    "not this tree. Their verdicts do not constrain this branch.")
 endif()
 
 # ============= #
