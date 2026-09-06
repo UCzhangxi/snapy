@@ -1054,8 +1054,9 @@ bool MeshBlockImpl::floor_hit(Variables const &vars) {
   // hydro_w is one stage stale: test the primitives as they stand
   auto w = phydro->peos->forward(hydro_u.clone()).index(interior);
   auto const &eos = phydro->peos->options;
-  return w[IDN].min().item<double>() <= 1.001 * eos->density_floor() ||
-         w[IPR].min().item<double>() <= 1.001 * eos->pressure_floor();
+  // negated so a NaN, which fails every comparison, counts as a hit
+  return !(w[IDN].min().item<double>() > 1.001 * eos->density_floor()) ||
+         !(w[IPR].min().item<double>() > 1.001 * eos->pressure_floor());
 }
 
 int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {

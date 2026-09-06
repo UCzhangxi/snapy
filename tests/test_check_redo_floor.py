@@ -2,7 +2,8 @@
 """check_redo must reject a step that floored a cell and restore hydro_u AND hydro_w.
 
 The floor is planted in hydro_u only: a detector reading the (one stage stale) hydro_w
-would pass it. A second arm runs a six-block Mesh with the floor planted in ONE block:
+would pass it. With the limiter off nothing fills a NaN before the detector, and a NaN
+fails every comparison, so a second arm plants one. A third arm runs a six-block Mesh with the floor planted in ONE block:
 the decision is per process, so every block must roll back and the time step must halve.
 
   python test_check_redo_floor.py [--device cuda]
@@ -55,6 +56,44 @@ def block_arm(device, yaml_file):
         return "hydro_w not recomputed from the restored hydro_u"
     if block.check_redo(block_vars) != 0:
         return "restored state was rejected"
+    return None
+
+
+def nan_arm(device, yaml_file):
+    """Limiter off, so nothing fills a NaN before the detector sees it."""
+    from snapy import MeshBlock, MeshBlockOptions, kICY, kIDN, kIPR
+
+    with open(yaml_file) as f:
+        cfg = yaml.safe_load(f)
+    cfg["dynamics"]["equation-of-state"]["limiter"] = False
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, dir=os.getcwd()) as f:
+        yaml.safe_dump(cfg, f)
+        tmp = f.name
+    try:
+        block = MeshBlock(MeshBlockOptions.from_yaml(tmp))
+    finally:
+        os.unlink(tmp)
+    block.to(torch.device(device))
+
+    w = dict(block.named_buffers())["hydro.D"].clone().zero_()
+    w[kIDN] = 1.0
+    w[kIPR] = 1.0e5
+    w[kICY] = 1.0e-3
+    block_vars, _ = block.initialize({"hydro_w": w})
+    u0 = block_vars["hydro_u"].clone()
+    dt = block.max_time_step(block_vars)
+    for stage in range(len(block.intg.stages)):
+        block.forward(block_vars, dt, stage)
+    if block.check_redo(block_vars) != 0:
+        return "healthy step was rejected with the limiter off"
+
+    k, j, i = u0.size(1) // 2, u0.size(2) // 2, u0.size(3) // 2
+    block_vars["hydro_u"][kIDN, k, j, i] = float("nan")
+    err = block.check_redo(block_vars)
+    if err != 1:
+        return "a NaN density was not rejected (err=%d)" % err
+    if not torch.equal(block_vars["hydro_u"], u0):
+        return "hydro_u not restored after the NaN"
     return None
 
 
@@ -140,7 +179,8 @@ def main():
         return 0
 
     failures = []
-    for name, arm, yf in (("block", block_arm, args.yaml), ("mesh", mesh_arm, args.mesh_yaml)):
+    for name, arm, yf in (("block", block_arm, args.yaml), ("nan", nan_arm, args.yaml),
+                          ("mesh", mesh_arm, args.mesh_yaml)):
         msg = arm(args.device, yf)
         print("%-6s %s" % (name, "PASS" if msg is None else "FAIL: " + msg))
         if msg is not None:
