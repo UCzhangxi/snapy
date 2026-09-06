@@ -26,7 +26,8 @@ struct ImplicitOptionsImpl {
     os << "-- implicit hydro options --\n";
     os << "* type = " << type() << "\n"
        << "* scheme = " << scheme() << "\n"
-       << "* advection_cfl = " << advection_cfl() << "\n";
+       << "* advection_cfl = " << advection_cfl() << "\n"
+       << "* shear_cfl = " << shear_cfl() << "\n";
   }
 
   int size() const {
@@ -40,6 +41,7 @@ struct ImplicitOptionsImpl {
   std::string type() const;
   ADD_ARG(int, scheme) = 0;
   ADD_ARG(double, advection_cfl) = 1.0;
+  ADD_ARG(double, shear_cfl) = 0.0;
 };
 using ImplicitOptions = std::shared_ptr<ImplicitOptionsImpl>;
 

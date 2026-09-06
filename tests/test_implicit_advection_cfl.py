@@ -22,9 +22,9 @@ def time_step(base_yaml, device, scheme, advection_cfl, v1):
         config = yaml.safe_load(f)
     config["geometry"]["bounds"].update({"x1max": L1, "x2max": L2})
     config["geometry"]["cells"].update({"nx1": NX1, "nx2": NX2, "nx3": 1})
-    config["integration"].update(
-        {"cfl": 0.5, "implicit-scheme": scheme, "implicit-advection-cfl": advection_cfl}
-    )
+    config["integration"].update({"cfl": 0.5, "implicit-scheme": scheme})
+    if advection_cfl is not None:
+        config["integration"]["implicit-advection-cfl"] = advection_cfl
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, dir=os.getcwd()) as f:
         yaml.safe_dump(config, f)
         tmp = f.name
@@ -70,8 +70,14 @@ def main():
     dt, cs = time_step(args.yaml, args.device, 9, 1.0, 0.0)
     check("implicit x1 at rest -> explicit x2", dt, cfl * dx2 / cs)
     # explicit everywhere: the acoustic x1 bound is back
-    dt, cs = time_step(args.yaml, args.device, 0, 1.0, v1)
+    dt, cs = time_step(args.yaml, args.device, 0, None, v1)
     check("explicit x1", dt, cfl * dx1 / (v1 + cs))
+    # the knob without an implicit direction is a config error, not a silent no-op
+    try:
+        time_step(args.yaml, args.device, 0, 1.0, v1)
+        failures.append("implicit-advection-cfl accepted with implicit-scheme 0")
+    except RuntimeError:
+        print("%-34s raises, as it must" % "explicit x1 + advection_cfl key")
 
     if failures:
         print("FAIL (%s): %s" % (args.device, ", ".join(failures)))
