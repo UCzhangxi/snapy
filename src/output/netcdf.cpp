@@ -378,7 +378,7 @@ void NetcdfOutput::write_output_file(MeshBlockImpl *pmb_in,
   std::vector<float> fbuf(nc_dbl ? 0 : nbuf);
   auto as_float = [&](double const *buf) {
     // fbuf is sized 0 when nc_dbl, so every call site must sit in an `else` of
-    // `if (nc_dbl)`. All ten do today; assert it rather than rely on it,
+    // `if (nc_dbl)`. Every one does today; assert it rather than rely on it,
     // because a future call site outside that guard is a silent heap overflow
     // of nbuf floats, not a crash.
     TORCH_CHECK(fbuf.size() == nbuf,

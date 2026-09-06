@@ -673,14 +673,8 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
         part_opts.depth(1).exterior(dy > 0);
       }
 
-      // When the receiver will INTERPOLATE, send a tangentially wider strip:
-      // its interpolation source slides along the edge (cs_interp_margin) and
-      // on a subdivided panel that runs past the matching block. The
-      // intra-panel pass above has already filled this block's own tangential
-      // halo, so the extra cells are local -- no new connectivity.
-      // deserialize() widens identically so the buffers still match, and blocks
-      // are square (px == py) so the rev/flip/transpose relabelling is
-      // unchanged.
+      // interpolating receiver: widen by cs_interp_margin (halo is fresh only
+      // because phase 1 completed -- see the early return above)
       if (opts.interpolate()) {
         int margin = cs_interp_margin(pmb->options->coord()->nghost());
         if (dy != 0 && dx == 0) {
