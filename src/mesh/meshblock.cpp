@@ -1055,8 +1055,11 @@ bool MeshBlockImpl::floor_hit(Variables const &vars) {
   auto w = phydro->peos->forward(hydro_u.clone()).index(interior);
   auto const &eos = phydro->peos->options;
   // negated so a NaN, which fails every comparison, counts as a hit
-  return !(w[IDN].min().item<double>() > 1.001 * eos->density_floor()) ||
-         !(w[IPR].min().item<double>() > 1.001 * eos->pressure_floor());
+  bool hit = !(w[IDN].min().item<double>() > 1.001 * eos->density_floor());
+  if (w.size(0) > IPR) {  // shallow water carries no pressure row
+    hit = hit || !(w[IPR].min().item<double>() > 1.001 * eos->pressure_floor());
+  }
+  return hit;
 }
 
 int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {
