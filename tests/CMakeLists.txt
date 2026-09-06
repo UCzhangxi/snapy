@@ -203,7 +203,11 @@ set(SNAPY_PYTHON_TESTS
     test_jit_user_forcing_python
     test_eos_temp2inteng_python
     test_flux_positivity_python
-    test_flux_positivity_cubedsphere_python)
+    test_flux_positivity_cubedsphere_python
+    test_fix_vapor_reports_failure_python
+    test_implicit_advection_cfl_python
+    test_shear_cfl_python
+    test_check_redo_floor_python)
 if(SNAPY_TEST_PYTHONPATH)
   set_tests_properties(${SNAPY_PYTHON_TESTS} PROPERTIES
                        ENVIRONMENT "PYTHONPATH=${SNAPY_TEST_PYTHONPATH}")
