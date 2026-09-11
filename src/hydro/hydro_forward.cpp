@@ -162,8 +162,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       }
     }
 
-    // add sedimentation flux
-    if (psed) psed->forward(w, _flux1);
+    // sedimentation flux; skipped when x1 flux is off (_flux1 not rewritten)
+    if (psed && !options->disable_flux_x1()) psed->forward(w, _flux1);
 
     // Make internal x1 seam fluxes single-valued. The two ranks sharing an
     // internal x1 face each compute the face flux from their own
@@ -331,7 +331,10 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     auto theta = flux_positivity_theta(uy, f1, f2, f3, pmb->pcoord, dt);
     // census of interior (cell, species) entries, before the ghost fill
     auto cells = pmb->part({0, 0, 0}, PartOptions().exterior(false));
-    _positivity_hits += (theta.index(cells) < 1.).sum();
+    auto ti = theta.index(cells).to(torch::kFloat64);
+    _positivity_hits += (ti < 1.).sum();
+    _positivity_severe += (ti < 0.9).sum();
+    _positivity_min.copy_(torch::minimum(_positivity_min, ti.min()));
 
     // Raw copy, never interpolated: the donor of a panel-seam face is the
     // neighbour's edge cell, and an interpolated ghost is not its factor.
@@ -349,7 +352,17 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       pmb->options->bfuncs()[i](theta, 3 - i / 2, bops);
     }
 
+    // theta's depth is not its consequence: measure the flux it removes
+    auto f1_pre = f1.defined() ? f1.abs() : torch::Tensor();
+
     flux_positivity_scale_(theta, f1, f2, f3, pmb->pcoord);
+
+    if (f1_pre.defined()) {
+      // non-negative while every bfunc keeps the ghost theta in [0,1]
+      auto cut = f1_pre - f1.abs();
+      _lim_flux += f1_pre.index(cells).sum().to(torch::kFloat64);
+      _lim_cut += cut.index(cells).sum().to(torch::kFloat64);
+    }
 
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();
