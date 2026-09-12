@@ -153,6 +153,58 @@ torch::Tensor face_coefficient(torch::Tensor value, Coordinate const& coord,
   return out;
 }
 
+//! x1 profile at the faces of direction `idir`, broadcastable against a face
+//! field
+torch::Tensor scale_at_faces(torch::Tensor scale, int idir, Region const& start,
+                             Region const& end) {
+  if (idir != 0) return scale.slice(0, start[2], end[2]).view({1, 1, -1});
+  return (0.5 * (scale.slice(0, start[2], end[2]) +
+                 scale.slice(0, start[2] - 1, end[2] - 1)))
+      .view({1, 1, -1});
+}
+
+//! value times an x1 profile at the faces; a wall face extrapolates their
+//! product (athena)
+torch::Tensor face_scaled_coefficient(torch::Tensor value, torch::Tensor scale,
+                                      Coordinate const& coord, int idir,
+                                      Region start, Region end, bool wall_lower,
+                                      bool wall_upper) {
+  auto out = face_average(value, idir, start, end) *
+             scale_at_faces(scale, idir, start, end);
+  auto dim = kSpatialDims[idir] - 1;
+  auto nface = end[dim] - start[dim];
+  if (nface < 3 || (!wall_lower && !wall_upper)) return out;
+
+  auto product = value * scale.view({1, 1, -1});
+  if (wall_lower) {
+    out.narrow(dim, 0, 1).copy_(
+        extrapolate_to_wall(product, coord, idir, start, end, false));
+  }
+  if (wall_upper) {
+    out.narrow(dim, nface - 1, 1)
+        .copy_(extrapolate_to_wall(product, coord, idir, start, end, true));
+  }
+  return out;
+}
+
+//! Validate an x1 coefficient profile against the block it will be applied on.
+torch::Tensor checked_scale(torch::Tensor const& scale, char const* name,
+                            int64_t nc1, bool dynamic) {
+  if (!scale.defined()) return scale;
+  TORCH_CHECK(!dynamic, "[Diffusion] ", name,
+              " scales the kinematic coefficient and has no meaning with "
+              "dynamic: true.");
+  TORCH_CHECK(scale.dim() == 1 && scale.numel() == nc1, "[Diffusion] ", name,
+              " must be a 1-D profile over this block's nc1 = ", nc1,
+              " x1 cell centres, ghosts included; got ", scale.sizes());
+  TORCH_CHECK(scale.scalar_type() == torch::kFloat64, "[Diffusion] ", name,
+              " must be float64.");
+  TORCH_CHECK(scale.min().item<double>() > 0. &&
+                  torch::isfinite(scale).all().item<bool>(),
+              "[Diffusion] ", name, " must be finite and strictly positive.");
+  return scale.clone();
+}
+
 bool active(Coordinate const& coord, int idir) {
   if (idir == 0) return coord->options->nc1() > 1;
   if (idir == 1) return coord->options->nc2() > 1;
@@ -172,6 +224,7 @@ DiffusionOptions DiffusionOptionsImpl::from_yaml(YAML::Node const& forcing) {
   auto op = DiffusionOptionsImpl::create();
   op->nu_iso() = node["nu_iso"].as<double>(0.);
   op->kappa_iso() = node["kappa_iso"].as<double>(0.);
+  op->dynamic() = node["dynamic"].as<bool>(false);
   TORCH_CHECK(op->nu_iso() >= 0.,
               "DiffusionOptions: nu_iso must be non-negative.");
   TORCH_CHECK(op->kappa_iso() >= 0.,
@@ -198,12 +251,32 @@ void DiffusionImpl::reset() {
   TORCH_CHECK(options->kappa_iso() == 0. || phydro->peos->species_cv_ref() > 0.,
               "[Diffusion] Isotropic heat conduction requires an EOS with a "
               "positive reference specific heat at constant volume.");
+
+  auto nc1 = coord->options->nc1();
+  nu_scale_ = checked_scale(options->nu_scale_x1(), "nu_scale_x1", nc1,
+                            options->dynamic());
+  kappa_scale_ = checked_scale(options->kappa_scale_x1(), "kappa_scale_x1", nc1,
+                               options->dynamic());
 }
 
 torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
                                      torch::Tensor temp, double dt) {
   auto pmb = phydro->pmb;
   auto coord = pmb->pcoord;
+
+  // a profile set after construction never reached `reset`
+  TORCH_CHECK(options->nu_scale_x1().defined() == nu_scale_.defined() &&
+                  options->kappa_scale_x1().defined() == kappa_scale_.defined(),
+              "[Diffusion] an x1 coefficient profile must be set before the "
+              "MeshBlock is "
+              "constructed.");
+  if (nu_scale_.defined() && nu_scale_.device() != w.device()) {
+    nu_scale_ = nu_scale_.to(w.device());
+  }
+  if (kappa_scale_.defined() && kappa_scale_.device() != w.device()) {
+    kappa_scale_ = kappa_scale_.to(w.device());
+  }
+
   auto [cell_start, cell_end] = region_bounds(
       pmb->part({0, 0, 0}, PartOptions().exterior(false).ndim(3)));
   PartOptions div_options;
@@ -229,7 +302,7 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
       }
     }
   }
-  if (options->kappa_iso() > 0.) {
+  if (options->kappa_iso() > 0. && !options->dynamic()) {
     rho_cv = w[IDN] * phydro->peos->specific_heat_cv(w, temp);
   }
 
@@ -254,8 +327,16 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
     bool wall_lower = idir == 0 && pmb->options->is_wall_boundary(0, 0, -1);
     bool wall_upper = idir == 0 && pmb->options->is_wall_boundary(0, 0, 1);
 
-    auto rho_face = face_coefficient(w[IDN], coord, idir, face_start, face_end,
-                                     wall_lower, wall_upper);
+    // rho at the face, times the viscosity profile when one is given
+    torch::Tensor rho_face;
+    if (!options->dynamic()) {
+      rho_face = nu_scale_.defined()
+                     ? face_scaled_coefficient(w[IDN], nu_scale_, coord, idir,
+                                               face_start, face_end, wall_lower,
+                                               wall_upper)
+                     : face_coefficient(w[IDN], coord, idir, face_start,
+                                        face_end, wall_lower, wall_upper);
+    }
 
     if (options->nu_iso() > 0.) {
       auto div_face = face_average(div_vel, idir, face_start, face_end);
@@ -275,7 +356,9 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
                                                shear_start, shear_end));
         }
 
-        auto momentum_flux = -options->nu_iso() * rho_face * stress;
+        auto momentum_flux = options->dynamic()
+                                 ? -options->nu_iso() * stress
+                                 : -options->nu_iso() * rho_face * stress;
         flux[IVX + ivar].index(face_index).copy_(momentum_flux);
         flux[IPR].index(face_index) +=
             face_average(w[IVX + ivar], idir, face_start, face_end) *
@@ -284,13 +367,23 @@ torch::Tensor DiffusionImpl::forward(torch::Tensor du, torch::Tensor w,
     }
 
     if (options->kappa_iso() > 0.) {
-      // W->T is in kelvin, so convert thermal diffusivity to conductivity
-      // using the local mixture volumetric heat capacity.
-      flux[IPR].index(face_index) -=
-          options->kappa_iso() *
-          face_coefficient(rho_cv, coord, idir, face_start, face_end,
-                           wall_lower, wall_upper) *
+      auto dtdn =
           face_normal_derivative(temp, coord, idir, face_start, face_end);
+      if (options->dynamic()) {
+        flux[IPR].index(face_index) -= options->kappa_iso() * dtdn;
+      } else {
+        // W->T is in kelvin, so convert thermal diffusivity to conductivity
+        // using the local mixture volumetric heat capacity.
+        flux[IPR].index(face_index) -=
+            options->kappa_iso() *
+            (kappa_scale_.defined()
+                 ? face_scaled_coefficient(rho_cv, kappa_scale_, coord, idir,
+                                           face_start, face_end, wall_lower,
+                                           wall_upper)
+                 : face_coefficient(rho_cv, coord, idir, face_start, face_end,
+                                    wall_lower, wall_upper)) *
+            dtdn;
+      }
     }
     fluxes[idir] = flux;
   }
@@ -319,7 +412,19 @@ double DiffusionImpl::max_time_step(torch::Tensor w) const {
   }
 
   if (ndim == 0) return std::numeric_limits<double>::max();
-  auto coeff = std::max(options->nu_iso(), options->kappa_iso());
+  double coeff;
+  if (options->dynamic()) {
+    auto rho_min = w[IDN].index(interior).min().item<double>();
+    double cv = phydro->peos->species_cv_ref();
+    coeff = std::max(options->nu_iso() / rho_min,
+                     cv > 0. ? options->kappa_iso() / (rho_min * cv) : 0.);
+  } else {
+    double nu_max = options->nu_iso();
+    double kappa_max = options->kappa_iso();
+    if (nu_scale_.defined()) nu_max *= nu_scale_.max().item<double>();
+    if (kappa_scale_.defined()) kappa_max *= kappa_scale_.max().item<double>();
+    coeff = std::max(nu_max, kappa_max);
+  }
   if (coeff == 0.) return std::numeric_limits<double>::max();
   return dx_min * dx_min / (2. * ndim * coeff);
 }
