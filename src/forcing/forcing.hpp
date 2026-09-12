@@ -161,13 +161,30 @@ struct DiffusionOptionsImpl {
     return std::make_shared<DiffusionOptionsImpl>(*this);
   }
   void report(std::ostream& os) const {
+    auto show = [&os](char const* name, torch::Tensor const& s) {
+      os << "* " << name << " = ";
+      if (!s.defined()) {
+        os << "none (uniform)\n";
+      } else {
+        os << s.numel() << " cells, [" << s.min().item<double>() << ", "
+           << s.max().item<double>() << "]\n";
+      }
+    };
     os << "-- diffusion options --\n";
     os << "* nu_iso = " << nu_iso() << "\n"
-       << "* kappa_iso = " << kappa_iso() << "\n";
+       << "* kappa_iso = " << kappa_iso() << "\n"
+       << "* dynamic = " << (dynamic() ? "true" : "false") << "\n";
+    show("nu_scale_x1", nu_scale_x1());
+    show("kappa_scale_x1", kappa_scale_x1());
   }
 
   ADD_ARG(double, nu_iso) = 0.;
   ADD_ARG(double, kappa_iso) = 0.;
+  //! nu_iso/kappa_iso as dynamic coefficients: flux = -mu*stress, -k*grad T
+  ADD_ARG(bool, dynamic) = false;
+  //! x1 profiles over the block's nc1 cells, set before the MeshBlock is built
+  ADD_ARG(torch::Tensor, nu_scale_x1);
+  ADD_ARG(torch::Tensor, kappa_scale_x1);
 };
 using DiffusionOptions = std::shared_ptr<DiffusionOptionsImpl>;
 
@@ -188,6 +205,9 @@ class DiffusionImpl : public torch::nn::Cloneable<DiffusionImpl> {
   torch::Tensor forward(torch::Tensor du, torch::Tensor w, torch::Tensor temp,
                         double dt);
   double max_time_step(torch::Tensor w) const;
+
+ private:
+  torch::Tensor nu_scale_, kappa_scale_;
 };
 TORCH_MODULE(Diffusion);
 
