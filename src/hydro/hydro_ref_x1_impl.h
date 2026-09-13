@@ -86,8 +86,11 @@ inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
   int flat = column * nc1;
   int il = nc1 - 1 - iu;
   // the six-face stencil never crosses a physical wall (athena's clamp)
-  bool clamp_in = wall_clamp && phys_in && i >= il && i < il + 2;
-  bool clamp_out = wall_clamp && phys_out && i > iu - 2 && i <= iu;
+  bool wide = (iu - il + 1) >= 5;  // a one-sided row spans 6 faces; below that, 2-point mean
+  bool wall_in = wall_clamp && phys_in && i >= il && i < il + 2;
+  bool wall_out = wall_clamp && phys_out && i > iu - 2 && i <= iu;
+  bool clamp_in = wall_in && wide;
+  bool clamp_out = wall_out && wide;
   T lo = psf_lo[flat + i];
   T hi = psf_hi[flat + i];
   T cell_pref = T(0.5) * (lo + hi);
@@ -95,7 +98,7 @@ inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
   if (uniform) {
     constexpr double w6[6] = {11. / 1440., -31. / 480., 401. / 720.,
                               401. / 720., -31. / 480., 11. / 1440.};
-    if (i >= 2 && i < nc1 - 2 && !clamp_in && !clamp_out) {
+    if (i >= 2 && i < nc1 - 2 && !wall_in && !wall_out) {
       T six = T(0);
       for (int m = 0; m < 6; ++m) {
         six +=

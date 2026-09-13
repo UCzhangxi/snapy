@@ -80,7 +80,8 @@ void hydro_ref_x1_mps(torch::Tensor const& w, torch::Tensor const& dx1f,
          -11. / 1440.},
     };
     // S112: at a PHYSICAL wall the stencil never crosses it (athena's clamp)
-    if (wall_clamp && phys_in) {
+    bool wide = (iu - il + 1) >= 5;  // the one-sided rows span 6 faces
+    if (wall_clamp && wide && phys_in) {
       for (int j : {il, il + 1}) {
         int sigma = j - il;
         auto val = w6e[sigma][0] * faces.select(-1, il);
@@ -94,7 +95,17 @@ void hydro_ref_x1_mps(torch::Tensor const& w, torch::Tensor const& dx1f,
                          0.5 * (psf_lo.select(-1, j) + psf_hi.select(-1, j))));
       }
     }
-    if (wall_clamp && phys_out) {
+    if (wall_clamp && !wide && phys_in) {  // too thin for a one-sided row: 2-point mean
+      for (int j : {il, il + 1})
+        pref.select(-1, j).copy_(
+            0.5 * (psf_lo.select(-1, j) + psf_hi.select(-1, j)));
+    }
+    if (wall_clamp && !wide && phys_out) {
+      for (int j : {iu - 1, iu})
+        pref.select(-1, j).copy_(
+            0.5 * (psf_lo.select(-1, j) + psf_hi.select(-1, j)));
+    }
+    if (wall_clamp && wide && phys_out) {
       int s0 = iu + 1 - 5;
       for (int j : {iu - 1, iu}) {
         int row = 4 - (j - s0);

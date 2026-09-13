@@ -130,11 +130,11 @@ struct Inputs {
   torch::Tensor anchor;
 };
 
-Inputs make_inputs(torch::ScalarType dtype, bool uniform, bool with_anchor) {
+Inputs make_inputs(torch::ScalarType dtype, bool uniform, bool with_anchor,
+                   int nc1 = 10) {
   auto options = torch::TensorOptions().dtype(dtype).device(torch::kCPU);
   constexpr int nc3 = 2;
   constexpr int nc2 = 3;
-  constexpr int nc1 = 10;
   auto w = torch::zeros({snap::IPR + 1, nc3, nc2, nc1}, options);
   auto x = torch::arange(nc1, options).view({1, 1, nc1});
   auto column = torch::arange(nc3 * nc2, options).view({nc3, nc2, 1});
@@ -149,12 +149,33 @@ Inputs make_inputs(torch::ScalarType dtype, bool uniform, bool with_anchor) {
   return {w, dx1f, anchor};
 }
 
+constexpr int kIu = 7;      // nc1 = 10 -> il = 2, six interior cells (the `wide` path)
+
 void dispatch(Inputs const& in, RefOutput const& out, bool uniform,
-              bool phys_in, bool phys_out) {
+              bool phys_in, bool phys_out, bool wall_clamp = false,
+              int iu = kIu) {
   at::native::call_hydro_ref_x1(in.w.device().type(), in.w, in.dx1f, in.anchor,
                                 out.psf_lo, out.psf_hi, out.pref, out.dsf,
-                                out.dref, 7, 1.0, uniform, phys_in, phys_out,
-                                /*wall_clamp=*/false);
+                                out.dref, iu, 1.0, uniform, phys_in, phys_out,
+                                wall_clamp);
+}
+
+//! the cells a block owns: [il, iu]. tensor_reference has no clamped branch on
+//! purpose -- the clamp is tested by the PROPERTY below, not against a second
+//! copy of the same arithmetic.
+torch::Tensor interior(torch::Tensor const& t, int iu = kIu) {
+  int il = t.size(-1) - 1 - iu;
+  return t.narrow(-1, il, iu - il + 1);
+}
+
+//! scale rho and p in the GHOST cells only, leaving [il, iu] untouched
+Inputs with_perturbed_ghosts(Inputs const& in, double factor, int iu = kIu) {
+  auto w = in.w.clone();
+  int nc1 = w.size(-1);
+  int il = nc1 - 1 - iu;
+  w[snap::IDN].narrow(-1, 0, il).mul_(factor);
+  w[snap::IDN].narrow(-1, iu + 1, nc1 - 1 - iu).mul_(factor);
+  return {w, in.dx1f, in.anchor};
 }
 
 void expect_close(RefOutput const& actual, RefOutput const& expected,
@@ -183,24 +204,86 @@ TEST(HydroRefX1Dispatch, cpu_matches_tensor_reference) {
   }
 }
 
+// ISSUES S112/S114: at a PHYSICAL x1 wall the reference must be built from the
+// cells the block owns. Whatever a boundary function writes into the ghosts --
+// a reflecting mirror, a fixed-temperature fill -- is not a hydrostatic
+// continuation of the column, and a reference that reads it puts a standing
+// force on a resting atmosphere. The property, independent of how either side
+// computes it: perturb the ghosts, and every INTERIOR output must not move.
+TEST(HydroRefX1Dispatch, wall_clamp_keeps_the_interior_free_of_the_ghosts) {
+  for (bool uniform : {false, true}) {
+    auto base = make_inputs(torch::kFloat64, uniform, /*with_anchor=*/false);
+    auto moved = with_perturbed_ghosts(base, 1.3);
+
+    auto a = allocate_output(base.w);
+    auto b = allocate_output(moved.w);
+    dispatch(base, a, uniform, true, true, /*wall_clamp=*/true);
+    dispatch(moved, b, uniform, true, true, /*wall_clamp=*/true);
+
+    // pref/dsf/dref all read the ghosts without the clamp (the control below)
+    EXPECT_TRUE(torch::equal(interior(a.pref), interior(b.pref)));
+    EXPECT_TRUE(torch::equal(interior(a.dsf), interior(b.dsf)));
+    EXPECT_TRUE(torch::equal(interior(a.dref), interior(b.dref)));
+  }
+}
+
+// ...and the control, so the test above cannot pass on a build where the clamp
+// does nothing: with it OFF the same perturbation MUST reach the interior.
+TEST(HydroRefX1Dispatch, without_the_clamp_the_ghosts_do_reach_the_interior) {
+  auto base = make_inputs(torch::kFloat64, /*uniform=*/true, false);
+  auto moved = with_perturbed_ghosts(base, 1.3);
+
+  auto a = allocate_output(base.w);
+  auto b = allocate_output(moved.w);
+  dispatch(base, a, true, true, true, /*wall_clamp=*/false);
+  dispatch(moved, b, true, true, true, /*wall_clamp=*/false);
+
+  EXPECT_FALSE(torch::equal(interior(a.pref), interior(b.pref)));
+  EXPECT_FALSE(torch::equal(interior(a.dsf), interior(b.dsf)));
+  EXPECT_FALSE(torch::equal(interior(a.dref), interior(b.dref)));
+}
+
 TEST(HydroRefX1Dispatch, cuda_matches_cpu) {
   if (!torch::cuda::is_available()) {
     GTEST_SKIP() << "CUDA is not available";
   }
 
   for (bool uniform : {false, true}) {
-    auto cpu_in = make_inputs(torch::kFloat64, uniform, true);
-    auto expected = allocate_output(cpu_in.w);
-    dispatch(cpu_in, expected, uniform, false, false);
+    // clamp=false at a seam, then clamp=true at physical walls: the clamped
+    // rows are CUDA code too (same impl header, different launch)
+    for (bool physical : {false, true}) {
+      auto cpu_in = make_inputs(torch::kFloat64, uniform, !physical);
+      auto expected = allocate_output(cpu_in.w);
+      dispatch(cpu_in, expected, uniform, physical, physical, physical);
 
-    Inputs gpu_in = {cpu_in.w.to(torch::kCUDA), cpu_in.dx1f.to(torch::kCUDA),
-                     cpu_in.anchor.to(torch::kCUDA)};
-    auto actual = allocate_output(gpu_in.w);
-    dispatch(gpu_in, actual, uniform, false, false);
-    expect_close({actual.psf_lo.cpu(), actual.psf_hi.cpu(), actual.pref.cpu(),
-                  actual.dsf.cpu(), actual.dref.cpu()},
-                 expected, 2.e-12, 2.e-12);
+      Inputs gpu_in = {cpu_in.w.to(torch::kCUDA), cpu_in.dx1f.to(torch::kCUDA),
+                       cpu_in.anchor.defined() ? cpu_in.anchor.to(torch::kCUDA)
+                                               : cpu_in.anchor};
+      auto actual = allocate_output(gpu_in.w);
+      dispatch(gpu_in, actual, uniform, physical, physical, physical);
+      expect_close({actual.psf_lo.cpu(), actual.psf_hi.cpu(), actual.pref.cpu(),
+                    actual.dsf.cpu(), actual.dref.cpu()},
+                   expected, 2.e-12, 2.e-12);
+    }
   }
+}
+
+// A block too thin to carry a one-sided row (4 interior cells) must still keep the ghosts out
+// of its interior -- it falls back to the 2-point mean. This is the case the `wide` guard
+// exists for, and a version that lets the interior stencil run at the wall fails it.
+TEST(HydroRefX1Dispatch, a_thin_block_keeps_the_interior_free_of_the_ghosts) {
+  constexpr int nc1 = 8, iu = 5;  // il = 2, four interior cells
+  auto base = make_inputs(torch::kFloat64, /*uniform=*/true, false, nc1);
+  auto moved = with_perturbed_ghosts(base, 1.3, iu);
+
+  auto a = allocate_output(base.w);
+  auto b = allocate_output(moved.w);
+  dispatch(base, a, true, true, true, /*wall_clamp=*/true, iu);
+  dispatch(moved, b, true, true, true, /*wall_clamp=*/true, iu);
+
+  EXPECT_TRUE(torch::equal(interior(a.pref, iu), interior(b.pref, iu)));
+  EXPECT_TRUE(torch::equal(interior(a.dsf, iu), interior(b.dsf, iu)));
+  EXPECT_TRUE(torch::equal(interior(a.dref, iu), interior(b.dref, iu)));
 }
 
 }  // namespace
