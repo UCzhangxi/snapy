@@ -243,6 +243,9 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
    */
   double _init_from_restart(Variables& vars, std::string fname);
 
+  //! S115: put a fresh column in the scheme's own discrete hydrostatic balance
+  void _hydrostatic_init(Variables& vars);
+
  private:
   //! one communication round; `exchange` splits a subdivided cubed-sphere
   //! sync into two of these

@@ -50,6 +50,12 @@ struct HydroOptionsImpl {
   //! S112: keep the well-balanced x1 reference's stencils off the wall ghosts
   ADD_ARG(bool, wb_wall_clamp) = true;
 
+  //! S115: project the initial column onto the scheme's own discrete balance. OFF by
+  //! default: an IC that is deliberately NOT hydrostatic (straka's cold bubble is a density
+  //! anomaly at uniform pressure) would be silently rebalanced -- measured, straka's peak
+  //! |v1| moves 9.26 -> 10.29 m/s. Set it where the column is MEANT to rest.
+  ADD_ARG(bool, hydrostatic_init) = false;
+
   //! forcing options
   ADD_ARG(ConstGravityOptions, grav) = nullptr;
   ADD_ARG(CoriolisOptions, coriolis) = nullptr;
@@ -79,6 +85,8 @@ using HydroOptions = std::shared_ptr<HydroOptionsImpl>;
 using Variables = std::map<std::string, torch::Tensor>;
 
 class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
+  friend class MeshBlockImpl;  // _hydrostatic_init projects onto _hydro_ref_x1
+
  public:
   //! \brief Create and register a `Hydro` module
   /*!
@@ -154,18 +162,19 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
   int rk_stage = -1;
 
  protected:
-  void _revise_x1inner_ghost(torch::Tensor const& w);
-  void _revise_x1outer_ghost(torch::Tensor const& w);
-
-  void _revise_x1inner_lr(torch::Tensor const& wl, torch::Tensor const& wr);
-  void _revise_x1outer_lr(torch::Tensor const& wl, torch::Tensor const& wt);
-
   // Per-column hydrostatic references for the well-balanced x1
   // reconstruction: {psf_lo (face pressure), pref (cell pressure), dsf (face
   // density), dref (cell density)}, rebuilt from the current field on every
   // call.
   std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
   _hydro_ref_x1(torch::Tensor const& w) const;
+
+  void _revise_x1inner_ghost(torch::Tensor const& w);
+  void _revise_x1outer_ghost(torch::Tensor const& w);
+
+  void _revise_x1inner_lr(torch::Tensor const& wl, torch::Tensor const& wr);
+  void _revise_x1outer_lr(torch::Tensor const& wl, torch::Tensor const& wt);
+
   torch::Tensor _apply_implicit_correction(torch::Tensor& du,
                                            torch::Tensor const& w, double dt,
                                            Variables const& other);

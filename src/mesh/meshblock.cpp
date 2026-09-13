@@ -386,6 +386,7 @@ double MeshBlockImpl::initialize(Variables &vars, char const *restart_file) {
     exchange(sync_vars, sync_opts);
   }
 
+  _hydrostatic_init(vars);
   finalize_initialization(vars);
 
   return 0.;  // default start time is 0.0
@@ -466,7 +467,98 @@ void MeshBlockImpl::initialize_under_mesh(Variables &vars) {
     exchange(scalar_vars, scalar_opts);
   }
 
+  _hydrostatic_init(vars);
   finalize_initialization(vars);
+}
+
+// S115: a marched initial column is not in the scheme's discrete balance -- the hydrostatic
+// ODE is integrated to O(dz^2), and a well-balanced scheme turns that error into a standing
+// force. Iterate p <- pref(p) + C holding p/rho, the temperature, fixed per cell.
+void MeshBlockImpl::_hydrostatic_init(Variables &vars) {
+  auto hop = phydro->options;
+  auto w = vars.at("hydro_w");
+  // p/rho pins the temperature only for an ideal mixture, and the reference wants g as a
+  // downward magnitude
+  if (!hop->hydrostatic_init() || w.size(0) <= IPR || !hop->grav() ||
+      hop->grav()->grav1() >= 0 || (hop->eos()->type() != "ideal-gas" &&
+                                    hop->eos()->type() != "ideal-moist"))
+    return;
+
+  int il = pcoord->il();
+  int nx1 = pcoord->iu() - il + 1;
+  double g = -hop->grav()->grav1();
+  auto layout = get_layout();
+  bool split = layout && !layout->options->periodic_z() &&
+               layout->options->pz() > 1;
+  bool relay = split && layout->has_process_group();
+  bool lockstep = layout && (layout->has_process_group() ||
+                             layout->options->blocks_per_process() > 1);
+  if (split && !relay) {  // no relay: the reference itself is block-local, nothing to converge to
+    SINFO(MeshBlock) << "hydrostatic_init: skipped -- an x1-split column needs one block "
+                        "per process in x1" << std::endl;
+    return;
+  }
+  int above = -1, below = -1;
+  if (relay) {
+    auto iloc = layout->loc_of(layout->options->rank());
+    above = layout->neighbor_rank(iloc, {0, 0, 1});
+    below = layout->neighbor_rank(iloc, {0, 0, -1});
+  }
+  constexpr int kHseGaugeTag = 0x7719;
+
+  auto rt = (w[IPR] / w[IDN]).narrow(-1, il, nx1).clone();
+  auto wgt = (g * pcoord->dx1f).narrow(-1, il, nx1);
+  double rtol = split ? 1e-5 : 1e-10;  // a split column stalls at the seam offset
+  double err = 0.;
+  int it = 0;
+  for (; it < 120; ++it) {
+    auto pref = std::get<1>(phydro->_hydro_ref_x1(w));
+    auto pp = w[IPR] - pref;
+    // one gauge for the whole column, read at its top and relayed down the x1 ranks
+    auto c = pp.narrow(-1, il + nx1 - 1, 1).contiguous();
+    if (above >= 0) {
+      std::vector<torch::Tensor> rb = {torch::empty_like(c)};
+      layout->comm->recv(rb, above, kHseGaugeTag)->wait();
+      c = rb[0];
+    }
+    if (below >= 0) {
+      std::vector<torch::Tensor> sb = {c};
+      layout->comm->send(sb, below, kHseGaugeTag)->wait();
+    }
+    err = ((pp - c).narrow(-1, il, nx1).abs() /
+           (w[IDN].narrow(-1, il, nx1) * wgt))
+              .max()
+              .item<double>();
+    // a converged rank must keep sweeping with the others: both the reference relay and
+    // the exchange below are collective, and the update is a no-op once p = pref + C
+    if (err < rtol && !lockstep) break;
+    w[IPR].narrow(-1, il, nx1).copy_((pref + c).narrow(-1, il, nx1));
+    w[IDN].narrow(-1, il, nx1).copy_(w[IPR].narrow(-1, il, nx1) / rt);
+    initialize_local(vars);
+    SyncOptions sync_opts;
+    sync_opts.interpolate(true).type(kPrimitive);
+    Variables sync_vars;
+    sync_vars["hydro_w"] = w;
+    exchange(sync_vars, sync_opts);
+  }
+
+  // one verdict per rank; skipped at blocks_per_process > 1, where this runs per block on a
+  // worker thread and concurrent collectives on one group are not ordered
+  if (layout && layout->has_process_group() &&
+      layout->options->blocks_per_process() == 1) {
+    std::vector<torch::Tensor> e = {torch::tensor({err}, torch::kFloat64)};
+    c10d::AllreduceOptions op;
+    op.reduceOp = c10d::ReduceOp::MAX;
+    layout->comm->allreduce(e, op.reduceOp);
+    err = e[0].item<double>();
+  }
+  TORCH_CHECK(err < rtol, "hydrostatic_init: no discrete balance after ", it,
+              " sweeps; |a|/g bound ", err, " > ", rtol,
+              ". Set dynamics/hydrostatic-init=false to start unbalanced.");
+  if (hop->verbose()) {
+    SINFO(MeshBlock) << "hydrostatic_init: " << it << " sweeps, |a|/g < " << err
+                     << std::endl;
+  }
 }
 
 void MeshBlockImpl::finalize_initialization(Variables &vars) {
