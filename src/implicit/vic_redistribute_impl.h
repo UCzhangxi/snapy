@@ -60,7 +60,7 @@ void DISPATCH_MACRO vic_backward_substitute(Eigen::Matrix<T, N, N>* a,
 //                       (consumed by the passive-scalar update in meshblock)
 //   MASS(ICY+n, i)    : the species increment [density/step] that
 //                       vic_redistribute_cell applies
-//   MASS(IPR, i)      : temporary phi storage, cleared before returning
+//   MASS(IPR, i)      : 1 where pass 3a's dry-gas clamp emptied donor cell i
 // Assumes the whole column lives on this rank (implicit is nb1 = 1 by
 // decision; no distributed-column support planned).
 template <typename T, int N>
@@ -103,8 +103,14 @@ void DISPATCH_MACRO vic_constituent_column(T* du, T* w, T* mass_fix,
 
     T Mf = MASS(IVX + dir, i + 1);
     T q = Mf > 0 ? Mf * dryfrac : Mf * dryfrac_up;
-    if (q > avail) q = avail;
-    if (q < -avail_up) q = -avail_up;
+    if (q > avail) {
+      q = avail;
+      if (Mf > 0) MASS(IPR, i) = 1;
+    }
+    if (q < -avail_up) {
+      q = -avail_up;
+      if (Mf < 0) MASS(IPR, i + 1) = 1;
+    }
 
     MASS(IDN, i) -= q / VOL(i);
     MASS(IDN, i + 1) += q / VOL(i + 1);

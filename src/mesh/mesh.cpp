@@ -457,7 +457,8 @@ int MeshImpl::check_redo(MeshVariables& vars) {
   // one decision per process: a floor in any block rolls back every block
   bool hit = false;
   for (int i = 0; i < blocks.size(); ++i) {
-    hit = blocks[i]->floor_hit(vars[i]) || hit;
+    hit =
+        blocks[i]->floor_hit(vars[i]) || blocks[i]->vic_dry_clamp_hit() || hit;
   }
   auto flag = torch::tensor({hit ? 1. : 0.}, torch::dtype(torch::kFloat64));
   std::vector<at::Tensor> flag_reduce = {flag};
