@@ -61,6 +61,8 @@ void DISPATCH_MACRO vic_backward_substitute(Eigen::Matrix<T, N, N>* a,
 //   MASS(ICY+n, i)    : the species increment [density/step] that
 //                       vic_redistribute_cell applies
 //   MASS(IPR, i)      : 1 where pass 3a's dry-gas clamp emptied donor cell i
+//   MASS(IVY, i)      : mass moved through the face below cell i after the
+//                       clamps, dry + species (so dir must be 0)
 // Assumes the whole column lives on this rank (implicit is nb1 = 1 by
 // decision; no distributed-column support planned).
 template <typename T, int N>
@@ -114,6 +116,7 @@ void DISPATCH_MACRO vic_constituent_column(T* du, T* w, T* mass_fix,
 
     MASS(IDN, i) -= q / VOL(i);
     MASS(IDN, i + 1) += q / VOL(i + 1);
+    MASS(IVY, i + 1) = q;
     avail = avail_up + q;
     dryfrac = dryfrac_up;
   }
@@ -135,6 +138,7 @@ void DISPATCH_MACRO vic_constituent_column(T* du, T* w, T* mass_fix,
 
       MASS(ICY + n, i) -= q / VOL(i);
       MASS(ICY + n, i + 1) += q / VOL(i + 1);
+      MASS(IVY, i + 1) += q;
       avail = avail_up + q;
     }
   }

@@ -128,6 +128,7 @@ TEST(vic_redistribution, dry_only_transport_is_conservative_and_clamped) {
   EXPECT_NEAR(mass_fix[snap::IDN * stride1], -0.25, 1.e-12);
   EXPECT_NEAR(mass_fix[snap::IDN * stride1 + 1], 0.25, 1.e-12);
   EXPECT_EQ(mass_fix[snap::IPR * stride1], 1.);
+  EXPECT_NEAR(mass_fix[snap::IVY * stride1 + 1], 0.25, 1.e-12);
   EXPECT_EQ(mass_fix[snap::IPR * stride1 + 1], 0.);
   EXPECT_NEAR(column_integral(du, vol, snap::IDN, stride1, 0, 1),
               column_integral(original, vol, snap::IDN, stride1, 0, 1), 1.e-12);
