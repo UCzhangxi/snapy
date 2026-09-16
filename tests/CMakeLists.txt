@@ -105,6 +105,7 @@ snapy_add_python_test(test_shear_cfl TIMEOUT 60 LABELS "python;hydro;implicit")
 snapy_add_python_test(test_check_redo_floor TIMEOUT 60 LABELS "python;mesh;redo")
 snapy_add_python_test(test_flux_positivity TIMEOUT 300 LABELS "python;positivity")
 snapy_add_python_test(test_tracer_dry_convention TIMEOUT 120 LABELS "python;scalar;implicit;forcing")
+snapy_add_python_test(test_eos_species_registry TIMEOUT 120 LABELS "python;eos")
 snapy_add_python_test(test_flux_positivity_cubedsphere TIMEOUT 300
                       LABELS "python;positivity;cubed-sphere")
 
