@@ -231,6 +231,9 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! true if a fresh primitive of `hydro_u` sits at or below a floor
   bool floor_hit(Variables const& vars);
 
+  //! true if the VIC dry-gas clamp emptied a cell during this step
+  bool vic_dry_clamp_hit() const;
+
   //! roll back (redo) or accept (!redo) the step; the decision is the caller's
   int apply_redo(Variables& vars, bool redo);
 

@@ -651,6 +651,7 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
   // -------- (1) save initial state --------
   if (stage == 0) {
     _hydro_u0.copy_(hydro_u);
+    if (phydro->picorr) phydro->picorr->reset_dry_clamp_step();
 
     if (pscalar->nvar() > 0) {
       _scalar_s0.copy_(scalar_s);
@@ -1119,11 +1120,15 @@ bool MeshBlockImpl::floor_hit(Variables const &vars) {
   return hit;
 }
 
+bool MeshBlockImpl::vic_dry_clamp_hit() const {
+  return phydro->picorr && phydro->picorr->dry_clamp_step().item<double>() > 0.;
+}
+
 int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {
   if (redo) {
     SINFO(MeshBlock)
-        << "Density/pressure at or below the floor. Redoing the step with "
-           "smaller dt."
+        << "Density/pressure at or below the floor, or the VIC dry-gas clamp "
+           "emptied a cell. Redoing the step with smaller dt."
         << std::endl;
     pintg->current_redo += 1;
     if (pintg->current_redo > pintg->options->max_redo()) {
@@ -1154,7 +1159,8 @@ int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {
 int MeshBlockImpl::check_redo(Variables &vars) {
   // dt is global, so the decision must be: MAX over every rank
   auto flag =
-      torch::tensor({floor_hit(vars) ? 1. : 0.}, torch::dtype(torch::kFloat64));
+      torch::tensor({(floor_hit(vars) || vic_dry_clamp_hit()) ? 1. : 0.},
+                    torch::dtype(torch::kFloat64));
   std::vector<at::Tensor> flag_reduce = {flag};
   if (_playout->has_process_group()) {
     _playout->comm->allreduce(flag_reduce, c10d::ReduceOp::MAX);
