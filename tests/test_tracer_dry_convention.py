@@ -9,8 +9,12 @@ operator that moves or converts dry air. Three arms on a warm unsaturated moist 
   relax    relax-bot-comp converts dry air to vapour in the bottom cell; the tracer riding
            that dry air goes with it (r was left to drift).
 
-Each arm also checks that its operator actually did something big enough that the old
-behaviour would have been visible at >= 1000x the tolerance, so a pass is never vacuous.
+Each arm also checks that its operator actually did something large (an overestimate of the old
+error >= 1000x the tolerance; the measured old error was ~40x smaller than that estimate), so a pass
+is never vacuous. A combined arm runs production's scheme 9 with relax-bot-comp and the limiter on.
+
+Limit: a UNIFORM tracer checks that tracer and dry air stay consistent; it cannot see a wrong donor
+or upwind choice in tracer transport.
 
   python test_tracer_dry_convention.py [--device cuda] [--yaml PATH]
 """
@@ -58,6 +62,8 @@ def initial_state(block, config, moving):
     w[kICY] = 0.02  # vapour mass fraction of the total; cloud stays 0
     if moving:
         w[kIV1] = (5.0 * torch.sin(math.pi * z / x1max)).view(1, 1, -1)
+        # sheared horizontal wind: the full (scheme 9) VIC couples it, the partial one does not
+        w[kIV1 + 1] = (10.0 * torch.cos(math.pi * z / x1max)).view(1, 1, -1)
     r = torch.full((1,) + tuple(w.shape[1:]), R0, dtype=w.dtype, device=w.device)
     return w, r
 
@@ -95,6 +101,9 @@ def run(config, device, moving, nlim):
                 excess = (mass_corr[kIV1] - mass_corr[kIV1 + 1]).abs()[I[1:]]
                 implicit_bug_scale += float((excess / (v["hydro_u"][kIDN][I[1:]] * vol)).max())
     dev = float((v["scalar_s"][I] / (v["hydro_u"][kIDN][I[1:]] * r_init) - 1.0).abs().max())
+    # the primitive the runners read must agree with the conserved pair
+    cached = float((v["scalar_r"][I] / r_init - 1.0).abs().max())
+    dev = max(dev, cached)
     return v, dev, implicit_bug_scale
 
 
@@ -127,30 +136,49 @@ def main():
     if not loading > 1000 * TOL:
         failures.append(f"init: dry and total density indistinguishable ({loading:.3e}); test cannot bite")
 
-    # ---- implicit: tracer moved with the dry face transfer ----
-    cfg = yaml.safe_load(yaml.safe_dump(base))
-    cfg["integration"]["implicit-scheme"] = 1
-    _, dev, bug_scale = run(cfg, args.device, moving=True, nlim=cfg["integration"]["nlim"])
-    print(f"implicit: max|r/r_init-1|={dev:.3e}  old-code over-transport scale={bug_scale:.3e}")
-    if not dev < TOL:
-        failures.append(f"implicit: uniform tracer departed by {dev:.3e}")
-    if not bug_scale > 1000 * TOL:
-        failures.append(f"implicit: the solve moved too little mass ({bug_scale:.3e}); test cannot bite")
+    # ---- implicit: tracer moved with the dry face transfer (partial and full VIC) ----
+    finals = {}
+    for scheme in (1, 9):
+        cfg = yaml.safe_load(yaml.safe_dump(base))
+        cfg["integration"]["implicit-scheme"] = scheme
+        vs, dev, bug_scale = run(cfg, args.device, moving=True, nlim=cfg["integration"]["nlim"])
+        finals[scheme] = vs["hydro_u"].clone()
+        print(f"implicit{scheme}: max|r/r_init-1|={dev:.3e}  old-code over-transport estimate={bug_scale:.3e}")
+        if not dev < TOL:
+            failures.append(f"implicit scheme {scheme}: uniform tracer departed by {dev:.3e}")
+        if not bug_scale > 1000 * TOL:
+            failures.append(f"implicit scheme {scheme}: the solve moved too little mass ({bug_scale:.3e}) "
+                            "or no mass_corr buffer was found; test cannot bite")
 
-    # ---- relax: relax-bot-comp carries the tracer with the dry air it converts ----
+    if torch.equal(finals[1], finals[9]):
+        failures.append("implicit: schemes 1 and 9 gave bitwise-identical states; scheme 9 not exercised")
+
+    # ---- relax: relax-bot-comp carries the tracer with the dry air it converts, both ways ----
     cfg = yaml.safe_load(yaml.safe_dump(base))
     cfg["integration"]["implicit-scheme"] = 0
     nlim = cfg["integration"]["nlim"]
     v0, _, _ = run(cfg, args.device, moving=False, nlim=nlim)
-    cfg["forcing"]["relax-bot-comp"] = {"tau": 10.0, "species": ["vapor"], "xfrac": [0.2]}
-    v1, dev, _ = run(cfg, args.device, moving=False, nlim=nlim)
     I = interior(cfg)
-    forced = float(((v1["hydro_u"][kIDN] - v0["hydro_u"][kIDN])[I[1:]] / v0["hydro_u"][kIDN][I[1:]]).abs().max())
-    print(f"relax   : max|r/r_init-1|={dev:.3e}  dry-density change due to the forcing={forced:.3e}")
+    for label, xfrac in (("moisten", 0.2), ("dry", 0.0)):
+        c = yaml.safe_load(yaml.safe_dump(cfg))
+        c["forcing"]["relax-bot-comp"] = {"tau": 10.0, "species": ["vapor"], "xfrac": [xfrac]}
+        v1, dev, _ = run(c, args.device, moving=False, nlim=nlim)
+        forced = float(((v1["hydro_u"][kIDN] - v0["hydro_u"][kIDN])[I[1:]] / v0["hydro_u"][kIDN][I[1:]]).abs().max())
+        print(f"relax-{label}: max|r/r_init-1|={dev:.3e}  dry-density change due to the forcing={forced:.3e}")
+        if not dev < TOL:
+            failures.append(f"relax ({label}): uniform tracer departed by {dev:.3e}")
+        if not forced > 1000 * TOL:
+            failures.append(f"relax ({label}): forcing converted too little dry air ({forced:.3e}); test cannot bite")
+
+    # ---- combined, production-like: scheme 9 + relax-bot-comp + EOS limiter ----
+    cfg = yaml.safe_load(yaml.safe_dump(base))
+    cfg["integration"]["implicit-scheme"] = 9
+    cfg["dynamics"]["equation-of-state"]["limiter"] = True
+    cfg["forcing"]["relax-bot-comp"] = {"tau": 10.0, "species": ["vapor"], "xfrac": [0.2]}
+    _, dev, bug_scale = run(cfg, args.device, moving=True, nlim=cfg["integration"]["nlim"])
+    print(f"combined: max|r/r_init-1|={dev:.3e}  old-code over-transport estimate={bug_scale:.3e}")
     if not dev < TOL:
-        failures.append(f"relax: uniform tracer departed by {dev:.3e}")
-    if not forced > 1000 * TOL:
-        failures.append(f"relax: forcing converted too little dry air ({forced:.3e}); test cannot bite")
+        failures.append(f"combined (scheme 9 + relax + limiter): uniform tracer departed by {dev:.3e}")
 
     if failures:
         for msg in failures:
