@@ -678,11 +678,12 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
     auto mass_corr = phydro->implicit_mass_correction();
     if (mass_corr.defined() && mass_corr.numel() > 0 &&
         vars.count("scalar_r")) {
-      // vic_constituent_column exported the implied face mass transfer M
-      // (mass/step through the face BELOW cell i, x1 only, zero in ghosts =>
-      // both column ends closed). Move scalars by M * r_donor per face; the
-      // per-face product telescopes, so the column total is conserved exactly.
-      auto M = mass_corr[IVX];  // (nc3, nc2, nc1)
+      // r is per DRY air (scalar_s = rho_dry * r), so move scalars with the
+      // dry-gas face transfer vic_constituent_column exported (mass/step
+      // through the face BELOW cell i, x1 only, zero in ghosts => both column
+      // ends closed), not the total M. The per-face product telescopes, so the
+      // column total is conserved exactly.
+      auto M = mass_corr[IVY];  // (nc3, nc2, nc1)
       auto r = vars.at("scalar_r");
       int nc1 = r.size(-1);
       auto r_below = torch::zeros_like(r);
