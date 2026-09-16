@@ -693,6 +693,12 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
       P_above.slice(-1, 0, nc1 - 1) = P.slice(-1, 1, nc1);
       fut_scalar_ds.add_((P - P_above) / pcoord->cell_volume());
     }
+    // a forcing that creates or removes dry air (relax-bot-comp) takes the
+    // cell's own tracer with it, so r is unchanged by it
+    auto dry_forcing = phydro->forcing_dry_increment();
+    if (dry_forcing.defined() && vars.count("scalar_r")) {
+      fut_scalar_ds.add_(vars.at("scalar_r") * dry_forcing);
+    }
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> elapsed = end - start;

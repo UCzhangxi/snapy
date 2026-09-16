@@ -390,7 +390,9 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   du.index(interior) = -dt * _div.index(interior);
 
   auto temp = peos->compute("W->T", {w});
+  auto dry_before = du[IDN].clone();
   for (auto& f : forcings) f.forward(du, w, temp, dt);
+  _forcing_dry = du[IDN] - dry_before;
 
   // Preserve the original cell-centred gravity work through the implicit
   // solve: the VIC matrix assumes that energy-momentum coupling is present in
