@@ -487,7 +487,7 @@ void MeshBlockImpl::finalize_initialization(Variables &vars) {
 
   vars["hydro_u"] = phydro->peos->compute("W->U", {hydro_w});
   if (pscalar->nvar() > 0) {
-    vars["scalar_s"] = hydro_w[IDN] * scalar_r;
+    vars["scalar_s"] = vars["hydro_u"][IDN] * scalar_r;  // r is per dry air
   }
 
   //// ------------- (8) Fill solid boundaries -------------- ////
