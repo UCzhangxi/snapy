@@ -234,6 +234,9 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! true if the VIC dry-gas clamp emptied a cell during this step
   bool vic_dry_clamp_hit() const;
 
+  //! true if the conserved limiter changed an interior density or energy
+  bool limiter_patch_hit() const;
+
   //! roll back (redo) or accept (!redo) the step; the decision is the caller's
   int apply_redo(Variables& vars, bool redo);
 
@@ -261,6 +264,7 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! stage registers
   torch::Tensor _hydro_u0;
   torch::Tensor _scalar_s0;
+  torch::Tensor _limiter_patched;  // not a buffer: stage forcings list those
 };
 
 TORCH_MODULE(MeshBlock);
