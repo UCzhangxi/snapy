@@ -516,8 +516,8 @@ TEST(forcing, implicit_gravity_work_ignores_the_potential_origin_under_clamp) {
             1.e-9 * e0.abs().max().item<double>());
 }
 
-// Below the temperature floor (20 K) the limiter raises the energy every
-// stage, so a step there must report a limiter patch; 350 K must not.
+// A state whose energy sits below the temperature floor (20 K) must report a
+// limiter patch after the RK average; a 350 K state must not.
 TEST(forcing, limiter_patch_is_reported_below_the_temperature_floor) {
   for (double pres : {1.e5, 1.e3}) {
     auto options = MeshBlockOptionsImpl::from_yaml("test_gravity_energy.yaml");
@@ -533,6 +533,8 @@ TEST(forcing, limiter_patch_is_reported_below_the_temperature_floor) {
     Variables vars;
     vars["hydro_w"] = w;
     block->initialize(vars);
+    vars["hydro_u"][IPR].fill_(pres /
+                               0.4);  // at rest, gamma = 1.4: 3.5 K / 350 K
     for (int stage = 0; stage < block->pintg->stages.size(); ++stage) {
       block->forward(vars, 1.e-3, stage);
     }
