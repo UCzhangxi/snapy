@@ -516,6 +516,30 @@ TEST(forcing, implicit_gravity_work_ignores_the_potential_origin_under_clamp) {
             1.e-9 * e0.abs().max().item<double>());
 }
 
+// Below the temperature floor (20 K) the limiter raises the energy every
+// stage, so a step there must report a limiter patch; 350 K must not.
+TEST(forcing, limiter_patch_is_reported_below_the_temperature_floor) {
+  for (double pres : {1.e5, 1.e3}) {
+    auto options = MeshBlockOptionsImpl::from_yaml("test_gravity_energy.yaml");
+    options->hydro()->eos()->limiter(true);
+    auto block = std::make_shared<MeshBlockImpl>(options);
+    auto coord = block->pcoord;
+    auto w = torch::zeros({block->phydro->peos->nvar(), coord->options->nc3(),
+                           coord->options->nc2(), coord->options->nc1()},
+                          torch::kFloat64);
+    w[IDN].fill_(1.);
+    w[IPR].fill_(pres);
+
+    Variables vars;
+    vars["hydro_w"] = w;
+    block->initialize(vars);
+    for (int stage = 0; stage < block->pintg->stages.size(); ++stage) {
+      block->forward(vars, 1.e-3, stage);
+    }
+    EXPECT_EQ(block->limiter_patch_hit(), pres < 1.e4) << "pres=" << pres;
+  }
+}
+
 TEST(forcing, vertical_gravity_work_uses_continuity_mass_flux) {
   auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion_moist.yaml");
   options->hydro()->diffusion() = nullptr;

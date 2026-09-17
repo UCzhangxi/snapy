@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 // C/C++
+#include <cmath>
 #include <vector>
 
 // snap
@@ -137,6 +138,21 @@ TEST(vic_redistribution, conserves_constituent_column_tendencies) {
     }
     EXPECT_NEAR(constituent_total, delta[i](0), 1.e-12);
   }
+
+  // face rows: dry moved mass for the tracers, total moved mass for gravity
+  double dry = 0., total = 0.;
+  for (int i = il + 1; i <= iu; ++i) {
+    dry -= vol[i - 1] * mass_fix[snap::IDN * stride1 + i - 1];
+    total -= vol[i - 1] * mass_fix[snap::IDN * stride1 + i - 1];
+    for (int n = 0; n < ny; ++n) {
+      total -= vol[i - 1] * mass_fix[(snap::ICY + n) * stride1 + i - 1];
+    }
+    EXPECT_NEAR(mass_fix[snap::IVY * stride1 + i], dry, 1.e-12);
+    EXPECT_NEAR(mass_fix[snap::IVZ * stride1 + i], total, 1.e-12);
+  }
+  EXPECT_GT(std::abs(mass_fix[snap::IVZ * stride1 + 1] -
+                     mass_fix[snap::IVY * stride1 + 1]),
+            1.e-3);
 }
 
 TEST(vic_redistribution, dry_only_transport_is_conservative_and_clamped) {
