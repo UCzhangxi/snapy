@@ -237,8 +237,8 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! true if the conserved limiter changed an interior density or energy
   bool limiter_patch_hit() const;
 
-  //! roll back (redo) or accept (!redo) the step; the decision is the caller's
-  int apply_redo(Variables& vars, bool redo);
+  //! roll back (causes != 0: 1 floor, 2 clamp, 4 limiter) or accept the step
+  int apply_redo(Variables& vars, int causes);
 
  protected:
   //! initialize from restart file

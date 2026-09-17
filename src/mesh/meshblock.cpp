@@ -1140,13 +1140,14 @@ bool MeshBlockImpl::limiter_patch_hit() const {
   return _limiter_patched.defined() && _limiter_patched.item<bool>();
 }
 
-int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {
-  if (redo) {
+int MeshBlockImpl::apply_redo(Variables &vars, int causes) {
+  if (causes) {
     SINFO(MeshBlock)
         << "Density/pressure at or below the floor, the VIC dry-gas clamp "
            "emptied a cell, or the limiter patched one. Redoing the step "
-           "with smaller dt."
-        << std::endl;
+           "with smaller dt (causes:"
+        << (causes & 1 ? " floor" : "") << (causes & 2 ? " clamp" : "")
+        << (causes & 4 ? " limiter" : "") << ")." << std::endl;
     pintg->current_redo += 1;
     if (pintg->current_redo > pintg->options->max_redo()) {
       SINFO(MeshBlock)
@@ -1174,16 +1175,17 @@ int MeshBlockImpl::apply_redo(Variables &vars, bool redo) {
 }
 
 int MeshBlockImpl::check_redo(Variables &vars) {
-  // dt is global, so the decision must be: MAX over every rank
-  auto flag = torch::tensor(
-      {(floor_hit(vars) || vic_dry_clamp_hit() || limiter_patch_hit()) ? 1.
-                                                                       : 0.},
-      torch::dtype(torch::kFloat64));
+  // dt is global, so the decision must be: MAX over every rank, per cause
+  auto flag =
+      torch::tensor({floor_hit(vars) ? 1. : 0., vic_dry_clamp_hit() ? 1. : 0.,
+                     limiter_patch_hit() ? 1. : 0.},
+                    torch::dtype(torch::kFloat64));
   std::vector<at::Tensor> flag_reduce = {flag};
   if (_playout->has_process_group()) {
     _playout->comm->allreduce(flag_reduce, c10d::ReduceOp::MAX);
   }
-  return apply_redo(vars, flag_reduce[0].item<double>() > 0.);
+  auto f = flag_reduce[0].accessor<double, 1>();
+  return apply_redo(vars, (f[0] > 0.) | (f[1] > 0.) << 1 | (f[2] > 0.) << 2);
 }
 
 double MeshBlockImpl::_init_from_restart(Variables &vars, std::string fname) {
