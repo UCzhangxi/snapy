@@ -678,12 +678,8 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
     auto mass_corr = phydro->implicit_mass_correction();
     if (mass_corr.defined() && mass_corr.numel() > 0 &&
         vars.count("scalar_r")) {
-      // r is per DRY air (scalar_s = rho_dry * r), so move scalars with the
-      // dry-gas face transfer vic_constituent_column exported (mass/step
-      // through the face BELOW cell i, x1 only, zero in ghosts => both column
-      // ends closed), not the total M. The per-face product telescopes, so the
-      // column total is conserved exactly.
-      auto M = mass_corr[IVY];  // (nc3, nc2, nc1)
+      // r is per dry air: move it with the clamped dry transfer, not total M
+      auto M = mass_corr[IVY];  // slot IVX+(dir+1)%3 with dir == 0 (x1 only)
       auto r = vars.at("scalar_r");
       int nc1 = r.size(-1);
       auto r_below = torch::zeros_like(r);
@@ -693,8 +689,7 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
       P_above.slice(-1, 0, nc1 - 1) = P.slice(-1, 1, nc1);
       fut_scalar_ds.add_((P - P_above) / pcoord->cell_volume());
     }
-    // a forcing that creates or removes dry air (relax-bot-comp) takes the
-    // cell's own tracer with it, so r is unchanged by it
+    // dry air a forcing creates or removes carries the cell's own r
     auto dry_forcing = phydro->forcing_dry_increment();
     if (dry_forcing.defined() && vars.count("scalar_r")) {
       fut_scalar_ds.add_(vars.at("scalar_r") * dry_forcing);
@@ -805,7 +800,7 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
     }
   }
 
-  // -------- (5) saturation adjustment (before the walls mirror the state) ----
+  // -------- (5b) saturation adjustment, before the wall ghosts are filled ----
   if (stage == pintg->stages.size() - 1 && phydro->options->eos()->thermo() &&
       phydro->options->eos()->thermo()->reactions().size() > 0) {
     phydro->peos->apply_conserved_limiter_(hydro_u);
