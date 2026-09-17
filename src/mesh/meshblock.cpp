@@ -487,7 +487,7 @@ void MeshBlockImpl::finalize_initialization(Variables &vars) {
 
   vars["hydro_u"] = phydro->peos->compute("W->U", {hydro_w});
   if (pscalar->nvar() > 0) {
-    vars["scalar_s"] = hydro_w[IDN] * scalar_r;
+    vars["scalar_s"] = vars["hydro_u"][IDN] * scalar_r;  // r is per dry air
   }
 
   //// ------------- (8) Fill solid boundaries -------------- ////
@@ -678,11 +678,8 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
     auto mass_corr = phydro->implicit_mass_correction();
     if (mass_corr.defined() && mass_corr.numel() > 0 &&
         vars.count("scalar_r")) {
-      // vic_constituent_column exported the implied face mass transfer M
-      // (mass/step through the face BELOW cell i, x1 only, zero in ghosts =>
-      // both column ends closed). Move scalars by M * r_donor per face; the
-      // per-face product telescopes, so the column total is conserved exactly.
-      auto M = mass_corr[IVX];  // (nc3, nc2, nc1)
+      // r is per dry air: move it with the clamped dry transfer, not total M
+      auto M = mass_corr[IVY];  // slot IVX+(dir+1)%3 with dir == 0 (x1 only)
       auto r = vars.at("scalar_r");
       int nc1 = r.size(-1);
       auto r_below = torch::zeros_like(r);
@@ -691,6 +688,11 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
       auto P_above = torch::zeros_like(P);
       P_above.slice(-1, 0, nc1 - 1) = P.slice(-1, 1, nc1);
       fut_scalar_ds.add_((P - P_above) / pcoord->cell_volume());
+    }
+    // dry air a forcing creates or removes carries the cell's own r
+    auto dry_forcing = phydro->forcing_dry_increment();
+    if (dry_forcing.defined() && vars.count("scalar_r")) {
+      fut_scalar_ds.add_(vars.at("scalar_r") * dry_forcing);
     }
     if (options->verbose()) {
       auto end = std::chrono::high_resolution_clock::now();
@@ -798,39 +800,7 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
     }
   }
 
-  // (5.A) apply hydro boundary
-  bops.type(kConserved);
-  for (int i = 0; i < options->bfuncs().size(); ++i) {
-    if (options->bfuncs()[i] == nullptr) continue;
-    options->bfuncs()[i](hydro_u, 3 - i / 2, bops);
-  }
-  if (options->verbose()) {
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    SINFO(MeshBlock) << "stage " << stage
-                     << " hydro boundary condition time (s): "
-                     << elapsed.count() << std::endl;
-    start = std::chrono::high_resolution_clock::now();
-  }
-
-  // (5.B) apply scalar boundary
-  if (pscalar->nvar() > 0) {
-    bops.type(kScalar);
-    for (int i = 0; i < options->bfuncs().size(); ++i) {
-      if (options->bfuncs()[i] == nullptr) continue;
-      options->bfuncs()[i](scalar_s, 3 - i / 2, bops);
-    }
-    if (options->verbose()) {
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed = end - start;
-      SINFO(MeshBlock) << "stage " << stage
-                       << " scalar boundary condition time (s): "
-                       << elapsed.count() << std::endl;
-      start = std::chrono::high_resolution_clock::now();
-    }
-  }
-
-  // -------- (6) saturation adjustment --------
+  // -------- (5b) saturation adjustment, before the wall ghosts are filled ----
   if (stage == pintg->stages.size() - 1 && phydro->options->eos()->thermo() &&
       phydro->options->eos()->thermo()->reactions().size() > 0) {
     phydro->peos->apply_conserved_limiter_(hydro_u);
@@ -858,6 +828,38 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
       SINFO(MeshBlock) << "stage " << stage
                        << " saturation adjustment time (s): " << elapsed.count()
                        << std::endl;
+      start = std::chrono::high_resolution_clock::now();
+    }
+  }
+
+  // (6.A) apply hydro boundary
+  bops.type(kConserved);
+  for (int i = 0; i < options->bfuncs().size(); ++i) {
+    if (options->bfuncs()[i] == nullptr) continue;
+    options->bfuncs()[i](hydro_u, 3 - i / 2, bops);
+  }
+  if (options->verbose()) {
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    SINFO(MeshBlock) << "stage " << stage
+                     << " hydro boundary condition time (s): "
+                     << elapsed.count() << std::endl;
+    start = std::chrono::high_resolution_clock::now();
+  }
+
+  // (6.B) apply scalar boundary
+  if (pscalar->nvar() > 0) {
+    bops.type(kScalar);
+    for (int i = 0; i < options->bfuncs().size(); ++i) {
+      if (options->bfuncs()[i] == nullptr) continue;
+      options->bfuncs()[i](scalar_s, 3 - i / 2, bops);
+    }
+    if (options->verbose()) {
+      auto end = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed = end - start;
+      SINFO(MeshBlock) << "stage " << stage
+                       << " scalar boundary condition time (s): "
+                       << elapsed.count() << std::endl;
       start = std::chrono::high_resolution_clock::now();
     }
   }
