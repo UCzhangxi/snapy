@@ -37,7 +37,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
 
   // hydrostatic pressure correction
   torch::Tensor rho_grav = torch::zeros_like(w[IDN]);
-  int ny = u.size(0) - ICY;
+  int ny =
+      u.size(0) - 5;  // count, not offset: ICY is 1 under legacy NMASS indexing
 
   //// ------------ (2) Calculate dimension 1 flux ------------ ////
   if (u.size(DIM1) > 1) {
