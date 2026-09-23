@@ -31,6 +31,7 @@ setup_test(test_diffusion_moist)
 setup_test(test_condensate_conservation)
 setup_test(test_forcing)
 setup_parallel_test(test_exchange 2)
+setup_parallel_test(test_check_redo_parallel 2)
 
 if(UCX_FOUND)
   add_test(
@@ -110,6 +111,46 @@ set_tests_properties(test_eos_temp2inteng_python PROPERTIES
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
   TIMEOUT 60
   LABELS "python;eos"
+)
+
+add_test(
+  NAME test_fix_vapor_reports_failure_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_fix_vapor_reports_failure.py
+)
+set_tests_properties(test_fix_vapor_reports_failure_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;eos;positivity"
+)
+
+add_test(
+  NAME test_check_redo_floor_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_check_redo_floor.py
+)
+set_tests_properties(test_check_redo_floor_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;mesh;redo"
+)
+
+add_test(
+  NAME test_flux_positivity_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity.py
+)
+set_tests_properties(test_flux_positivity_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 300
+  LABELS "python;positivity"
+)
+
+add_test(
+  NAME test_flux_positivity_cubedsphere_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_flux_positivity_cubedsphere.py
+)
+set_tests_properties(test_flux_positivity_cubedsphere_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 300
+  LABELS "python;positivity;cubed-sphere"
 )
 
 add_test(
