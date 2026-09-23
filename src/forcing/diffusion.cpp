@@ -1,6 +1,7 @@
 // C/C++
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 
 // yaml
@@ -426,6 +427,7 @@ double DiffusionImpl::max_time_step(torch::Tensor w) const {
     coeff = std::max(nu_max, kappa_max);
   }
   if (coeff == 0.) return std::numeric_limits<double>::max();
+  TORCH_CHECK(std::isfinite(coeff), "[Diffusion] diffusivity is not finite");
   return dx_min * dx_min / (2. * ndim * coeff);
 }
 
