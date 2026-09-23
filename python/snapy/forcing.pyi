@@ -118,3 +118,28 @@ class DiffusionOptions:
     def kappa_iso(self, value: float) -> "DiffusionOptions":
         """Set thermal diffusivity in units of length squared per time."""
         ...
+
+    @overload
+    def dynamic(self) -> bool:
+        """Read nu_iso as a dynamic viscosity mu and kappa_iso as a conductivity k."""
+        ...
+
+    @overload
+    def dynamic(self, value: bool) -> "DiffusionOptions": ...
+
+    @overload
+    def nu_scale_x1(self) -> torch.Tensor:
+        """Per-x1-cell scaling of the KINEMATIC nu_iso, one entry per cell centre
+        including ghosts. Set before the MeshBlock is built; no YAML form."""
+        ...
+
+    @overload
+    def nu_scale_x1(self, value: torch.Tensor) -> "DiffusionOptions": ...
+
+    @overload
+    def kappa_scale_x1(self) -> torch.Tensor:
+        """Per-x1-cell scaling of the KINEMATIC kappa_iso; same rules as nu_scale_x1."""
+        ...
+
+    @overload
+    def kappa_scale_x1(self, value: torch.Tensor) -> "DiffusionOptions": ...

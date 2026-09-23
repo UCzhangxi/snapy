@@ -63,17 +63,40 @@ DiffusionOptions
 
 .. class:: DiffusionOptions
 
-   Constant isotropic hydro diffusion configuration for Cartesian meshes.
+   Isotropic hydro diffusion configuration for Cartesian meshes.
 
    .. method:: nu_iso() -> float
                nu_iso(value: float) -> DiffusionOptions
 
-      Get or set kinematic viscosity.
+      Get or set the viscosity: kinematic by default, or the dynamic
+      viscosity ``mu`` when :py:meth:`dynamic` is true.
 
    .. method:: kappa_iso() -> float
                kappa_iso(value: float) -> DiffusionOptions
 
-      Get or set thermal diffusivity in units of length squared per time.
-      The conductive energy flux is
-      ``-rho * cv * kappa_iso * grad(T)``, where ``cv`` is the local
-      equation-of-state mixture specific heat at constant volume.
+      Get or set the thermal coefficient: a diffusivity in units of length
+      squared per time by default, or the conductivity ``k`` when
+      :py:meth:`dynamic` is true. In the default (kinematic) form the
+      conductive energy flux is ``-rho * cv * kappa_iso * grad(T)``, where
+      ``cv`` is the local equation-of-state mixture specific heat at constant
+      volume; in the dynamic form it is ``-k * grad(T)``, with no face density.
+
+   .. method:: dynamic() -> bool
+               dynamic(value: bool) -> DiffusionOptions
+
+      Read ``nu_iso`` as ``mu`` and ``kappa_iso`` as ``k``. Default ``False``,
+      which leaves the previous path bit-identical.
+
+   .. method:: nu_scale_x1() -> torch.Tensor
+               nu_scale_x1(value: torch.Tensor) -> DiffusionOptions
+
+      Per-cell scaling of the KINEMATIC viscosity along x1: one entry per x1
+      cell centre, ghost cells included. There is no YAML form; set it before
+      the mesh block is built, since a profile installed afterwards is
+      refused, and its length is validated against ``nc1`` at reset.
+
+   .. method:: kappa_scale_x1() -> torch.Tensor
+               kappa_scale_x1(value: torch.Tensor) -> DiffusionOptions
+
+      Per-cell scaling of the KINEMATIC thermal coefficient along x1; same
+      rules as :py:meth:`nu_scale_x1`.
