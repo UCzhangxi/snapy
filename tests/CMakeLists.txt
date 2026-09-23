@@ -103,6 +103,16 @@ set_tests_properties(test_jit_user_forcing_python PROPERTIES
 )
 
 add_test(
+  NAME test_eos_temp2inteng_python
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_eos_temp2inteng.py
+)
+set_tests_properties(test_eos_temp2inteng_python PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+  TIMEOUT 60
+  LABELS "python;eos"
+)
+
+add_test(
   NAME test_local_horizontal_cells_python
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_local_horizontal_cells.py
 )
