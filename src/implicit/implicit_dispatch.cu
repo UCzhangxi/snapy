@@ -39,7 +39,7 @@ void vic_assemble_partial_cuda(at::TensorIterator &iter, double dt, double grav,
     int stride1 = at::native::ensure_nonempty_stride(iter.output(), 0);
     int stride2 = at::native::ensure_nonempty_stride(iter.output(), 3);
 
-    int ny = nhydro - ICY;
+    int ny = nhydro - 5;
     bool first_block = true;
     bool last_block = true;
 
@@ -80,7 +80,7 @@ void vic_assemble_full_cuda(at::TensorIterator &iter, double dt, double grav,
     auto stride1 = at::native::ensure_nonempty_stride(iter.output(), 0);
     auto stride2 = at::native::ensure_nonempty_stride(iter.output(), 3);
 
-    int ny = nhydro - ICY;
+    int ny = nhydro - 5;
     bool first_block = true;
     bool last_block = true;
     bool periodic = false;
@@ -122,7 +122,7 @@ void vic_solve_cuda(at::TensorIterator &iter, double dt, double grav, int dir) {
     auto stride1 = at::native::ensure_nonempty_stride(iter.output(), 0);
     auto stride2 = at::native::ensure_nonempty_stride(iter.output(), 3);
 
-    int ny = nhydro - ICY;
+    int ny = nhydro - 5;
     bool first_block = true;
     bool last_block = true;
 
@@ -158,7 +158,7 @@ void vic_redistribute_cuda(at::TensorIterator &iter, double /*dt*/,
     int stride1 = at::native::ensure_nonempty_stride(iter.output(), 0);
     int stride2 = at::native::ensure_nonempty_stride(iter.output(), 3);
 
-    int ny = nhydro - ICY;
+    int ny = nhydro - 5;
 
     using Vector = Eigen::Matrix<scalar_t, N, 1>;
 

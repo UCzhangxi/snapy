@@ -476,7 +476,7 @@ std::tuple<double, torch::Tensor, bool> implicit_gravity_energy(
 
   int is = coord->il();
   int ie = coord->iu() + 1;
-  int ny = du.size(0) - ICY;
+  int ny = du.size(0) - 5;
   auto mass_du = du[IDN].clone();
   auto mass_flux = block->phydro->flux1()[IDN].clone();
   if (ny > 0) {
@@ -565,7 +565,7 @@ TEST(forcing, vertical_gravity_work_uses_continuity_mass_flux) {
 
   int is = coord->il();
   int ie = coord->iu() + 1;
-  int ny = du.size(0) - ICY;
+  int ny = du.size(0) - 5;
   auto mass_du = du[IDN].clone();
   auto mass_flux = block->phydro->flux1()[IDN].clone();
   if (ny > 0) {
@@ -623,7 +623,7 @@ TEST(forcing, vertical_gravity_work_includes_sedimentation_mass_flux) {
       sedimentation_velocity.slice(-1, is + 1, ie),
       torch::full_like(sedimentation_velocity.slice(-1, is + 1, ie), -2.)));
 
-  int ny = du.size(0) - ICY;
+  int ny = du.size(0) - 5;
   auto mass_du = du[IDN].clone();
   auto mass_flux = block->phydro->flux1()[IDN].clone();
   if (ny > 0) {
@@ -673,7 +673,7 @@ TEST(forcing, vertical_gravity_work_excludes_horizontal_mass_divergence) {
   double dt = 0.1;
   auto du = block->phydro->forward(dt, u, vars);
 
-  int ny = du.size(0) - ICY;
+  int ny = du.size(0) - 5;
   auto total_mass_du = du[IDN].clone();
   auto mass_flux1 = block->phydro->flux1()[IDN].clone();
   auto mass_flux2 = block->phydro->flux2()[IDN].clone();
@@ -740,7 +740,7 @@ TEST(forcing, implicit_gravity_work_holds_under_rk3_stage_weighting) {
 
     int is = coord->il();
     int ie = coord->iu() + 1;
-    int ny = du.size(0) - ICY;
+    int ny = du.size(0) - 5;
     auto mass_du = du[IDN].clone();
     auto mass_flux = block->phydro->flux1()[IDN].clone();
     if (ny > 0) {

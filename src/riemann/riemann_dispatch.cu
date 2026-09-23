@@ -20,7 +20,7 @@ void call_lmars_cuda(at::TensorIterator &iter, int dim) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "call_lmars_cuda", [&]() {
     auto nhydro = at::native::ensure_nonempty_size(iter.output(0), 0);
     auto stride = at::native::ensure_nonempty_stride(iter.output(0), 0);
-    auto ny = nhydro - ICY;
+    auto ny = nhydro - 5;
 
     native::gpu_kernel<6>(iter, [=] GPU_LAMBDA(char *const data[6],
                                                unsigned int strides[6]) {
@@ -42,7 +42,7 @@ void call_hllc_cuda(at::TensorIterator &iter, int dim) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "call_hllc_cuda", [&]() {
     auto nhydro = at::native::ensure_nonempty_size(iter.output(0), 0);
     auto stride = at::native::ensure_nonempty_stride(iter.output(0), 0);
-    auto ny = nhydro - ICY;
+    auto ny = nhydro - 5;
 
     native::gpu_kernel<7>(iter, [=] GPU_LAMBDA(char *const data[7],
                                                unsigned int strides[7]) {
@@ -68,7 +68,7 @@ void call_roe_cuda(at::TensorIterator &iter, int dim, bool ideal_moist,
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "call_roe_cuda", [&]() {
     auto nhydro = at::native::ensure_nonempty_size(iter.output(0), 0);
     auto stride = at::native::ensure_nonempty_stride(iter.output(0), 0);
-    auto ny = nhydro - ICY;
+    auto ny = nhydro - 5;
     auto inv_mu = ideal_moist ? inv_mu_ratio_m1.data_ptr<scalar_t>() : nullptr;
     auto cv = ideal_moist ? cv_ratio_m1.data_ptr<scalar_t>() : nullptr;
     auto energy0 = ideal_moist ? u0.data_ptr<scalar_t>() : nullptr;

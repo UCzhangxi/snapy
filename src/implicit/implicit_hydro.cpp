@@ -206,7 +206,7 @@ torch::Tensor ImplicitHydroImpl::forward(torch::Tensor du, torch::Tensor w,
   {
     int is = pcoord->il();
     int ie = pcoord->iu() + 1;
-    int nyc = du.size(0) - ICY;
+    int nyc = du.size(0) - 5;
     auto cell = _mass_corr[IDN].clone();
     for (int n = 0; n < nyc; ++n) cell += _mass_corr[ICY + n];
     auto M = _mass_corr[IVX];

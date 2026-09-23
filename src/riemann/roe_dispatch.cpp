@@ -21,7 +21,7 @@ void call_roe_cpu(at::TensorIterator& iter, int dim, bool ideal_moist,
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_roe_cpu", [&] {
     auto nhydro = at::native::ensure_nonempty_size(iter.output(0), 0);
     auto stride = at::native::ensure_nonempty_stride(iter.output(0), 0);
-    auto ny = nhydro - ICY;
+    auto ny = nhydro - 5;
     auto inv_mu = ideal_moist ? inv_mu_ratio_m1.data_ptr<scalar_t>() : nullptr;
     auto cv = ideal_moist ? cv_ratio_m1.data_ptr<scalar_t>() : nullptr;
     auto energy0 = ideal_moist ? u0.data_ptr<scalar_t>() : nullptr;
@@ -59,7 +59,7 @@ void call_roe_mps(at::TensorIterator& iter, int dim, bool ideal_moist,
   auto glr = iter.input(3);
   auto clr = iter.input(4);
 
-  int ny = wl.size(0) - ICY;
+  int ny = wl.size(0) - 5;
   auto ivx = IPR - dim;
   auto ivy = IVX + ((ivx - IVX) + 1) % 3;
   auto ivz = IVX + ((ivx - IVX) + 2) % 3;
