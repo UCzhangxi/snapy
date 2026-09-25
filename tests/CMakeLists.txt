@@ -109,6 +109,9 @@ snapy_add_python_test(test_mesh_exchange LABELS "python;exchange")
 snapy_add_python_test(test_cubed_sphere_vertical_velocity_exchange
                       LABELS "python;exchange;cubed-sphere;diagnostic")
 snapy_add_python_test(test_jit_user_forcing TIMEOUT 30 LABELS "python;forcing")
+snapy_add_python_test(test_flux_positivity TIMEOUT 300 LABELS "python;positivity")
+snapy_add_python_test(test_flux_positivity_cubedsphere TIMEOUT 300
+                      LABELS "python;positivity;cubed-sphere")
 
 # Checks the SNAPY_TEST_PYTHONPATH wiring below. Its own PYTHONPATH stands in for the
 # caller's and must survive behind SNAPY_TEST_PYTHONPATH (only checkable with CMake >= 3.22).
