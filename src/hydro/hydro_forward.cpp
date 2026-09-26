@@ -435,6 +435,30 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     auto face_gravity_work =
         dt *
         (phi_cell.slice(0, is, ie) * vertical_mass_div - potential_flux_div);
+
+    // high-order faces: the face average exceeds rho*v by dx^2/12 (rho v)'';
+    // remove it as div H, H = dx/12 (phi_i - phi_{i-1}), H = 0 at x1 walls
+    auto type1 = precon1->pinterp1->options->type();
+    if (type1 != "dc" && type1 != "plm") {
+      int n = ie - is;
+      auto x1v = pmb->pcoord->x1v;
+      auto rhov = w[IDN] * w[IVX];
+      auto curv_flux1 =
+          (x1v.narrow(0, is, n + 1) - x1v.narrow(0, is - 1, n + 1)) / 12. *
+          (rhov.narrow(-1, is, n + 1) - rhov.narrow(-1, is - 1, n + 1));
+      if (pmb->options->is_physical_boundary(0, 0, -1)) {
+        curv_flux1.select(-1, 0).zero_();
+      }
+      if (pmb->options->is_physical_boundary(0, 0, 1)) {
+        curv_flux1.select(-1, n).zero_();
+      }
+      auto area = area1.narrow(-1, is, n + 1);
+      face_gravity_work -=
+          dt * grav1 *
+          (area.narrow(-1, 1, n) * curv_flux1.narrow(-1, 1, n) -
+           area.narrow(-1, 0, n) * curv_flux1.narrow(-1, 0, n)) /
+          volume.slice(-1, is, ie);
+    }
     auto original_gravity_work = dt * w[IDN].slice(-1, is, ie) *
                                  w[IVX].slice(-1, is, ie) * grav1 *
                                  non_hydrostatic;
