@@ -161,6 +161,29 @@ void expect_carried(Arm const& off, Arm const& on, int dim = 1,
         << "column total of row " << c;
   }
 }
+
+//! the card's EOS type set to eos, then edit applied
+std::function<void(YAML::Node&)> on_eos(
+    std::string const& eos, std::function<void(YAML::Node&)> const& edit) {
+  return [=](YAML::Node& card) {
+    card["dynamics"]["equation-of-state"]["type"] = eos;
+    edit(card);
+  };
+}
+
+//! the cloud settles at 2 m/s
+void settles(YAML::Node& card) {
+  card["sedimentation"] =
+      YAML::Load("{radius: {}, density: {}, const-vsed: {cloud: -2.}}");
+}
+
+//! a six-by-six slab, reflecting in x2
+void along_x2(YAML::Node& card) {
+  card["geometry"]["bounds"]["x2max"] = 6.;
+  card["geometry"]["cells"]["nx2"] = 6;
+  card["boundary-condition"]["external"]["x2-inner"] = "reflecting";
+  card["boundary-condition"]["external"]["x2-outer"] = "reflecting";
+}
 }  // namespace
 
 // A uniform column moving up at 2 m/s with dt = dx / 1: every face drains its
@@ -182,12 +205,8 @@ TEST(flux_positivity, withheld_advected_mass_keeps_its_energy_and_momentum) {
 // drains the cell above it of twice its cloud, theta = 1/2, and the withheld
 // settling flux keeps its energy (no pressure share) and its x2 momentum.
 TEST(flux_positivity, withheld_settling_mass_keeps_its_energy_and_momentum) {
-  auto edit = [](YAML::Node& card) {
-    card["sedimentation"] =
-        YAML::Load("{radius: {}, density: {}, const-vsed: {cloud: -2.}}");
-  };
-  auto off = forward_once(false, edit, 0., 3.);
-  auto on = forward_once(true, edit, 0., 3.);
+  auto off = forward_once(false, settles, 0., 3.);
+  auto on = forward_once(true, settles, 0., 3.);
   expect_carried(off, on);
 }
 
@@ -195,14 +214,8 @@ TEST(flux_positivity, withheld_settling_mass_keeps_its_energy_and_momentum) {
 // at 2 m/s along x2 (3 m/s along x3), so the limited faces are x2 faces and
 // the carry runs on the x2 flux.
 TEST(flux_positivity, withheld_mass_keeps_its_energy_and_momentum_along_x2) {
-  auto edit = [](YAML::Node& card) {
-    card["geometry"]["bounds"]["x2max"] = 6.;
-    card["geometry"]["cells"]["nx2"] = 6;
-    card["boundary-condition"]["external"]["x2-inner"] = "reflecting";
-    card["boundary-condition"]["external"]["x2-outer"] = "reflecting";
-  };
-  auto off = forward_once(false, edit, 0., 2., 3.);
-  auto on = forward_once(true, edit, 0., 2., 3.);
+  auto off = forward_once(false, along_x2, 0., 2., 3.);
+  auto on = forward_once(true, along_x2, 0., 2., 3.);
   expect_carried(off, on, 2);
 }
 
@@ -213,7 +226,8 @@ TEST(flux_positivity, withheld_mass_keeps_its_energy_and_momentum_along_x2) {
 // limited upward (donors c0, c1) and faces c3|c4 and c4|c5 downward (donors
 // c4, c5), each by theta = 1/2.2 or 1/2; a swapped donor index would carry
 // the other neighbour's energy and momentum.
-void withheld_mass_keeps_its_donors_energy_and_momentum(torch::Device device) {
+void withheld_mass_keeps_its_donors_energy_and_momentum(
+    torch::Device device, std::string const& eos = "ideal-moist") {
   auto shape = [](torch::Tensor& w, int il) {
     double rho[6] = {1.00, 1.15, 0.90, 1.05, 0.85, 1.20};
     double vx[6] = {2.0, 2.4, 1.6, -1.6, -2.4, -2.0};
@@ -226,7 +240,7 @@ void withheld_mass_keeps_its_donors_energy_and_momentum(torch::Device device) {
       w[IVZ].select(-1, il + c).fill_(vz[c]);
     }
   };
-  auto keep = [](YAML::Node&) {};
+  auto keep = on_eos(eos, [](YAML::Node&) {});
   auto off = forward_once(false, keep, 0., 0., 0., shape, device);
   auto on = forward_once(true, keep, 0., 0., 0., shape, device);
   int up = 0, down = 0;
@@ -252,7 +266,7 @@ TEST(flux_positivity, withheld_mass_keeps_its_donors_energy_and_momentum_cuda) {
 // Withholding a share of the face flux withholds that share of each part, and
 // each part carries its own donor's energy and momentum.
 void withheld_mixed_flux_keeps_each_parts_energy_and_momentum(
-    torch::Device device) {
+    torch::Device device, std::string const& eos = "ideal-moist") {
   auto shape = [](torch::Tensor& w, int il) {
     double rho[6] = {1.00, 1.15, 0.90, 1.05, 0.85, 1.20};
     double vx[6] = {3.0, 3.4, 2.6, 3.2, 2.8, 3.1};
@@ -265,11 +279,11 @@ void withheld_mixed_flux_keeps_each_parts_energy_and_momentum(
       w[IVZ].select(-1, il + c).fill_(vz[c]);
     }
   };
-  auto keep = [](YAML::Node&) {};
-  auto settle = [](YAML::Node& card) {
+  auto keep = on_eos(eos, [](YAML::Node&) {});
+  auto settle = on_eos(eos, [](YAML::Node& card) {
     card["sedimentation"] =
         YAML::Load("{radius: {}, density: {}, const-vsed: {cloud: -1.}}");
-  };
+  });
   auto bare = forward_once(false, keep, 0., 0., 0., shape, device);
   auto off = forward_once(false, settle, 0., 0., 0., shape, device);
   auto on = forward_once(true, settle, 0., 0., 0., shape, device);
@@ -341,4 +355,38 @@ TEST(flux_positivity,
   if (!torch::cuda::is_available()) GTEST_SKIP() << "CUDA is not available";
   withheld_mixed_flux_keeps_each_parts_energy_and_momentum(
       torch::Device(torch::kCUDA, 0));
+}
+
+// Every case above on the moist-mixture EOS: the default type, and the one
+// examples/uranus.yaml runs with the limiter on. Its withheld species mass
+// must keep its energy and momentum in the donor too.
+TEST(flux_positivity,
+     moist_mixture_withheld_mass_keeps_its_energy_and_momentum) {
+  std::string const mm = "moist-mixture";
+  for (std::string rs : {"lmars", "hllc"}) {
+    SCOPED_TRACE("advected, " + rs);
+    auto edit = on_eos(mm, [&](YAML::Node& card) {
+      card["dynamics"]["riemann-solver"]["type"] = rs;
+    });
+    expect_carried(forward_once(false, edit, 2., 3.),
+                   forward_once(true, edit, 2., 3.));
+  }
+  {
+    SCOPED_TRACE("settling");
+    expect_carried(forward_once(false, on_eos(mm, settles), 0., 3.),
+                   forward_once(true, on_eos(mm, settles), 0., 3.));
+  }
+  {
+    SCOPED_TRACE("along x2");
+    expect_carried(forward_once(false, on_eos(mm, along_x2), 0., 2., 3.),
+                   forward_once(true, on_eos(mm, along_x2), 0., 2., 3.), 2);
+  }
+  {
+    SCOPED_TRACE("donors");
+    withheld_mass_keeps_its_donors_energy_and_momentum(torch::kCPU, mm);
+  }
+  {
+    SCOPED_TRACE("mixed");
+    withheld_mixed_flux_keeps_each_parts_energy_and_momentum(torch::kCPU, mm);
+  }
 }
