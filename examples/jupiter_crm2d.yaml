@@ -1,0 +1,179 @@
+# 2-D moist Jupiter cloud-resolving model: H2O and NH3 clouds in a 300 km (x1, vertical) by
+# 2400 km (x2) box, ideal-moist equation of state with the positivity limiter on, bulk cloud
+# microphysics (nucleation, coagulation, evaporation) with sedimentation, bottom relaxation of
+# temperature and composition, and cooling at the top.
+#
+#   build/bin/run_hydro.release -i jupiter_crm2d.yaml
+#
+# Convection starts near cycle 1250, so run at least 2000 cycles to exercise it; nlim is 4000.
+reference-state:
+  Tref: 0.
+  Pref: 1.e5
+
+species:
+  - name: dry
+    composition: {H: 1.6667, He: 0.16667}
+    cv_R: 2.5
+
+  - name: H2O
+    composition: {H: 2, O: 1}
+    cv_R: 2.5
+    u0_R: 0.
+
+  - name: NH3
+    composition: {N: 1, H: 3}
+    cv_R: 2.5
+    u0_R: 0.
+
+  - name: H2O(l)
+    composition: {H: 2, O: 1}
+    cv_R: 8.486009
+    u0_R: -6786.6602
+
+  - name: H2O(l,p)
+    composition: {H: 2, O: 1}
+    cv_R: 8.486009
+    u0_R: -6786.6602
+
+  - name: NH3(s)
+    composition: {N: 1, H: 3}
+    cv_R: 4.93
+    u0_R: -4033.056
+
+  - name: NH3(s,p)
+    composition: {N: 1, H: 3}
+    cv_R: 4.93
+    u0_R: -4033.056
+
+geometry:
+  type: cartesian
+
+  bounds:
+    x1min: 0.
+    x1max: 300.e3
+    x2min: 0.
+    x2max: 2400.e3
+    x3min: 0.
+    x3max: 2400.e3
+
+  cells:
+    nx1: 100
+    nx2: 100
+    nx3: 1
+    nghost: 3
+
+distribute:
+  layout: slab
+  nb2: 1
+  nb3: 1
+  verbose: false
+
+dynamics:
+  equation-of-state:
+    type: ideal-moist
+    density-floor:  1.e-10
+    pressure-floor: 1.e-10
+    limiter: true
+    max-iter: 20
+    ftol: 1.e-6
+
+  reconstruct:
+    vertical: {type: weno5, scale: true, shock: true}
+    horizontal: {type: weno5, scale: true, shock: true}
+
+  riemann-solver:
+    type: hllc
+
+boundary-condition:
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+    x2-inner: periodic
+    x2-outer: periodic
+    x3-inner: periodic
+    x3-outer: periodic
+
+integration:
+  type: rk3
+  cfl: 0.9
+  implicit-scheme: 1
+  nlim: 4000
+  tlim: 2500.e5
+  ncycle_out: 50
+
+outputs:
+  - type: netcdf
+    variables: [prim, uov]
+    dt: 2.E3
+  - type: netcdf
+    variables: [thermo, path]
+    dt: 2.E3
+
+forcing:
+  const-gravity:
+    grav1: -22.
+
+  top-cool:
+    flux: -10.
+    depth: 5
+
+  diffusion:
+    nu_iso: 10.0
+    kappa_iso: 10.0
+
+  relax-bot-temp:
+    tau: 1.e3
+    btemp: 607.545
+
+  # relax-bot-comp relaxes the bottom cell layer toward xfrac at 1/tau with total density held
+  # fixed, so once rain evaporates there the excess vapor is exchanged for dry air: mass0 (dry)
+  # rises while masst stays constant (|dmasst/masst| < 1e-12 over 4000 cycles).
+  relax-bot-comp:
+    tau: 1.e3
+    species: ["H2O", "NH3"]
+    xfrac: [3.e-3, 3.2e-4]
+
+sedimentation:
+  radius:
+    H2O(l,p): 1.0e-10
+    NH3(s,p): 1.0e-10
+
+  density:
+    H2O(l,p): 1000.
+    NH3(s,p): 800.
+
+  const-vsed:
+    H2O(l,p): -20.0
+    NH3(s,p): -20.0
+
+reactions:
+  - equation: H2O => H2O(l)
+    type: nucleation
+    rate-constant: {formula: h2o_ideal}
+
+  - equation: H2O(l) => H2O(l,p)
+    type: coagulation
+    rate-constant: {A: 1.e-4, b: 0, Ea_R: 0.}
+
+  - equation: H2O(l,p) => H2O
+    type: evaporation
+    rate-constant: {formula: h2o_ideal, diff_c: 0.2e-4, diff_T: 1.75, diff_P: -1., vm: 18.e-6, diameter: 1.e-3}
+
+  - equation: NH3 => NH3(s)
+    type: nucleation
+    rate-constant: {formula: nh3_ideal}
+
+  - equation: NH3(s) => NH3(s,p)
+    type: coagulation
+    rate-constant: {A: 1.e-4, b: 0, Ea_R: 0.}
+
+  - equation: NH3(s,p) => NH3
+    type: evaporation
+    rate-constant: {formula: nh3_ideal, diff_c: 0.2e-4, diff_T: 1.75, diff_P: -1., vm: 25.e-6, diameter: 1.e-3}
+
+problem:
+  Ps: 100.e5
+  Ts: 610.
+  Tmin: 110.
+  xH2O: 3.e-3
+  xNH3: 3.2e-4
