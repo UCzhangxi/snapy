@@ -4,7 +4,7 @@
 A redo pays when a smaller time step removes its cause. Density and energy repairs can shrink
 with dt; a clipped negative cloud or vapor mass need not, and a moist run that clips species
 every step then redoes every step until the redo budget runs out and the run terminates.
-UM-JUPITER's jup_crm2d dies that way after a few cycles, all causes
+A 2D moist Jupiter CRM dies that way after a few cycles, all causes
 "limiter", while it ran 400 cycles when only density and energy repairs marked a step.
 
 The step starts from a uniform moist block with one interior cell carrying a small negative
