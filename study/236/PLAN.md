@@ -1,4 +1,4 @@
-# #236 study plan, rev 4 (branch (a))
+# #236 study plan, rev 5 (branch (a))
 
 Study plan for issue #236; not for merge. Drafting only; nothing run.
 
@@ -7,6 +7,12 @@ Issue: https://github.com/chengcli/snapy/issues/236
 ## critique -> change, scope
 
 ```text
+Critique -> change (rev 5)
+1. Gate 0 built 3f7ad96, no longer main -> Gate 0 builds current main 5eeb9b6 (v2.10.36, kintera >= 2.5.13); the 3f7ad96 counts become a prior; a count mismatch is recorded, not an abort.
+2. Gate 4 compared A against 842a116, a candidate -> Gate 4 = full ctest + two bitwise checks, both against 5eeb9b6: ideal-moist fluxes, and formulation A with no extras. 842a116 is a candidate only, never the oracle; no rebase comparison.
+3. The non-ideal option's species scope was unstated -> it registers virial z and u for dry gas and vapour ONLY and leaves every cloud extra unset; the option, O1 and Gate 1b state that scope.
+4. No item said where species positivity is guaranteed -> new open item: face flux limiter vs cell clamp, what the cell clamp does to mass, energy and momentum, and what it reports. Reproducers: a 2D moist Jupiter CRM with limiter: true clamps vapour/cloud on nearly every step (#263); examples/uranus.yaml (moist-mixture EOS, limiter: true, sedimentation).
+
 Scope: branch (a) only. A test-only kintera option registers virial functions in the CPU and device func2 tables, so all 24 moist-mixture cells run, including the 12 z!=1 cells. Branch (b) and its TORCH_CHECK are removed. Drafting only; nothing run.
 
 Critique -> change (Tianhao's bot review of rev 3)
@@ -48,7 +54,7 @@ kintera main (4dc613d) today
 - eval_intEng_R with intEng_R_extra (:266-302) exists. Its T-derivative is taken via the name + "_ddT" (eval_cv_R :169-174; thermo_dispatch.cpp:103-110, .cu:98-103).
 - There is no c-derivative of intEng_R_extra. No eval_intEng_R_ddC exists.
 
-The test-only option adds (one set per species, constants compiled in; they return increments because call_func2 adds)
+The test-only option adds (one set per gas species, dry gas and vapour ONLY; every cloud extra stays unset, so h_c = u_c; constants compiled in; they return increments because call_func2 adds)
 - z_virial_<sp>(T, c) = B(T) c, onto czh = 1
 - z_virial_<sp>_ddC(T, c) = B(T), with B = b - a/(RT) in m3/mol
 - u_virial_<sp>(T, c) = -a c / R, in K
@@ -90,6 +96,7 @@ B (J/mol, then divide by M_n)
 
 O1 (closed form, standalone)
 - z = 1 + B c, B = b - a/(RT); u = u0 + cv T - a c.
+- Scope: dry gas and vapour only; clouds carry no virial term (their extras are unset), so h_c = u_c.
 - Dry: a 0.137, b 3.87e-5, cv 2.5R, u0 0, M 28.97e-3.
 - Vapour: a 0.5536, b 3.05e-5, cv 3.5R, u0 -4.4e4 J/mol, M 18.015e-3.
 - Dense state: T 353 K, c 1000/1000 mol/m3. Rechecked, same values as rev 3:
@@ -157,12 +164,12 @@ G-AB (z=1 cells only)
 - If it fails, B is not the claimed reduction and is stopped.
 
 Gates
-- 0 (CPU): build main 3f7ad96. Record the six moist-mixture counts, M_n and T. Pass if all six moist-mixture cases are red (energy residual rel 1.0 at every limited face) and every ideal-moist arm is green. A count mismatch is recorded, not an abort. 842a116's after-numbers are recorded.
+- 0 (CPU): build main 5eeb9b6 (v2.10.36, kintera >= 2.5.13). Record the six moist-mixture counts, M_n and T; the 3f7ad96 counts are a prior. Pass if all six moist-mixture cases are red (energy residual rel 1.0 at every limited face) and every ideal-moist arm is green. A count mismatch is recorded, not an abort. 842a116's after-numbers are recorded.
 - 1 (CPU, no snapy): O1/O2 are reproduced in J/mol and J/kg, including the card z!=1 values. I1 and I3 hold on O1. Every control misses by its stated size (+-10%) and by >= 1e3 x tolerance, X included.
-- 1b (CPU and CUDA, kintera test build): the registered functions match O1 per species: czh, czh_ddC, eval_intEng_R and eval_intEng_R_ddC to 1e-12. I3 holds on the VT->U and VT->P path. X, registered in the same build, fails I3.
+- 1b (CPU and CUDA, kintera test build): the registered functions match O1 for dry gas and vapour: czh, czh_ddC, eval_intEng_R and eval_intEng_R_ddC to 1e-12. Cloud species have no extras registered: czh = 1, czh_ddC = 0 and extra = 0 exactly. I3 holds on the VT->U and VT->P path. X, registered in the same build, fails I3.
 - 2 (CPU): 18 cells x {A, B} meet every tolerance. z=1 cells go against O3; z!=1 cells against O1 at each cell's state and O2. I1 and I2 hold for A and B. A-NI holds. G-AB holds on 6 cells. The controls fail.
 - 3 (CUDA, fp64): 18 cells x {A, B} meet the same checks plus the CPU vs CUDA rows. G-AB holds on 6 cells. A skip is a gap and fails the gate.
-- 4: full ctest + python limiter tests show no new failures vs main. Ideal-moist fluxes are bitwise equal to main. A's results with no extras are bitwise equal to 842a116. Column totals hold. Runtime recorded.
+- 4: full ctest + python limiter tests show no new failures vs 5eeb9b6. Two bitwise checks, both against 5eeb9b6: ideal-moist fluxes, and formulation A with no extras. 842a116 is a candidate only, never the oracle; no rebase comparison. Column totals hold. Runtime recorded.
 - Coverage: all 36 cells ran on their device and passed.
 ```
 
@@ -204,4 +211,6 @@ Open
   - harp's element table: kintera computes M via harp::get_compound_weight (molar_mass.cpp:17-18); IUPAC weights give 28.96998e-3 or 28.96968e-3;
   - that the Newton T solve in thermo_y.cpp converges for z!=1 at the card state (the python estimate gives T 353.440 K).
 - The baseline counts are only a prior until Gate 0.
+- Species positivity (new): where it is guaranteed, the face flux limiter or the cell clamp; what the cell clamp does to mass, energy and momentum; and what it reports.
+  - Reproducers: a 2D moist Jupiter CRM with limiter: true clamps vapour/cloud on nearly every step (#263); examples/uranus.yaml (moist-mixture EOS, limiter: true, sedimentation).
 ```
