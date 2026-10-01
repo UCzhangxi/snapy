@@ -1,0 +1,74 @@
+# Anders & Brown (2017) polytropic convection, low-Mach smoke case:
+# eps = 1e-2, Ra = 1e4, 128 x 512, 32 ranks
+# (torchrun --no-python --nproc-per-node=32 ./fc_poly.release fc_poly.yaml).
+# fc_poly.cpp derives the atmosphere and the dissipation from `problem` and
+# aborts if the extent or the gravity below disagree with it.
+# Code time unit: t_b = 14.736537998368863 (buoyancy time).
+
+geometry:
+  type: cartesian
+  bounds: {x1min: 0., x1max: 6.488906699059797, x2min: 0., x2max: 25.955626796239187, x3min: 0., x3max: 1.}
+  cells: {nx1: 128, nx2: 512, nx3: 1, nghost: 3}
+
+distribute:
+  layout: slab
+  nb2: 32
+  nb3: 1
+  blocks_per_process: 1
+  verbose: false
+
+dynamics:
+  wb-wall-clamp: true  # the balanced IC is built for the clamped reference
+
+  equation-of-state:
+    type: ideal-gas
+    gammad: 1.6666666666666667
+    weight: 8.31446  # = Rgas, so Rd = 1
+    density-floor: 1.e-12
+    pressure-floor: 1.e-12
+    temperature-floor: 1.e-12  # the default (20) clamps T = O(1)
+    limiter: true
+
+  reconstruct:
+    vertical: {type: weno5, scale: true, shock: false}
+    horizontal: {type: weno5, scale: true, shock: false}
+
+  riemann-solver:
+    type: lmars
+
+boundary-condition:
+  external:
+    x1-inner: fixed_temperature
+    x1-outer: fixed_temperature
+    x2-inner: periodic
+    x2-outer: periodic
+    x3-inner: periodic
+    x3-outer: periodic
+
+integration:
+  type: rk3
+  cfl: 0.4
+  implicit-scheme: 0
+  nlim: -1
+  tlim: 2210.4806997553296  # 150 t_b
+  ncycle_out: 500
+
+outputs:
+  - type: restart
+    dt: 368.41344995922157  # 25 t_b
+  - type: netcdf
+    variables: [prim]
+    dt: 368.41344995922157
+
+forcing:
+  const-gravity:
+    grav1: -2.49  # -Rd (m + 1)
+
+problem:
+  eps: 1.e-2
+  Ra: 1.e+4
+  Pr: 1.
+  n_rho: 3.
+  aspect: 4.
+  noise: 1.e-2
+  seed: 42
