@@ -1,14 +1,13 @@
 // Fully compressible polytropic convection: Anders & Brown (2017), Phys. Rev.
 // Fluids 2, 083501. Ported from athena's fc_poly problem generator.
 //
-// Rest check (noise 0, 128 x 512, 2 t_b): with diffusion off max |u|/c_s stays
-// below 3.4e-13. With diffusion on, two known residuals remain at rest:
-// * u2 in the wall row at each x2 block edge, |u|/c_s 1.15e-5 from cycle 1,
-//   identical with stock reflecting walls: snapy's diffusion operator, see
-//   branch xiz/test-wb-wall-corner;
-// * the linear-T0 polytrope is not a discrete conductive equilibrium: the
-//   interior face flux is off by +1.29e-3 under the top wall, which heats the
-//   top cell at 1.29e-3 chi_t/dz = 6.0e-4 per unit volume and time.
+// Rest check (noise 0, 128 x 512): with diffusion off max |u|/c_s stays below
+// 2e-13 for 2 t_b. The column is the operator's own conductive rest, within
+// 1.5e-4 of the linear-T0 polytrope: with viscosity off (Pr -> 0) it keeps
+// |u|/c_s below 1e-14 for 0.5 t_b, where the linear T0 drives up to 2e-7.
+// With viscosity on, one known residual remains: u2 in the wall row at each x2
+// block edge, |u|/c_s 1.15e-5 from cycle 1, identical with stock reflecting
+// walls: snapy's diffusion operator, see branch xiz/test-wb-wall-corner.
 
 // C/C++
 #include <algorithm>
@@ -17,6 +16,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 // yaml
@@ -154,12 +154,85 @@ double hash_uniform(std::uint64_t a) {
   return static_cast<double>(a >> 11) / static_cast<double>(1ULL << 53);
 }
 
-// leftover |a|/g of the balanced column: keeps |u|/c_s < 1e-12 for ~2 t_b
-constexpr double kBalanceRtol = 1.e-14;
+// leftover |a|/g of the balanced column, above its round-off floor (~2e-14 on
+// a deep column); keeps |u|/c_s < 1e-12 for ~2 t_b
+constexpr double kBalanceRtol = 5.e-14;
 
-// the polytrope projected onto the scheme's own discrete hydrostatic balance
-// at fixed T, then white noise in T entering through p; the noise is hashed
-// from the global cell index, so it does not depend on the decomposition
+// the column at rest in both discrete operators: T carries one constant
+// conductive face flux (interior faces avg(rho)*avg(1/rho0), wall faces the
+// one-sided product and the A&B ghost), rho is balance_column's fixed point at
+// that T; the two are alternated to a joint fixed point
+torch::Tensor conductive_rest(Polytrope const& p, torch::Tensor const& z,
+                              torch::Tensor const& dx, int nvar) {
+  int n = z.size(0);
+  double dz = p.Lz / n;
+  auto zc = z.accessor<double, 1>();
+  std::vector<double> s(n), T(n), T0(n), K(n + 1);
+  for (int i = 0; i < n; ++i) {
+    s[i] = 1. / p.rho0_clamped(zc[i]);
+    T[i] = T0[i] = p.T0(zc[i]);
+  }
+
+  auto col = torch::zeros({nvar, 1, 1, n}, torch::kFloat64);
+  col[IDN] = torch::tensor(T0, torch::kFloat64).pow(p.m).view({1, 1, n});
+  double dT = 1., residual = 0., F = 0.;
+  int iters = 0, sweeps = 0;
+  // balance at T, then face conductances over chi_t (a wall face spans half a
+  // cell) and the T that carries one flux F between the fixed wall values
+  auto balance_and_conduct = [&]() {
+    col[IPR] =
+        col[IDN] * p.Rd * torch::tensor(T, torch::kFloat64).view({1, 1, n});
+    std::tie(col, residual, sweeps) = balance_column(
+        col, dx, p.g, /*wall_clamp=*/true, kBalanceRtol, /*max_iter=*/400);
+    auto rho = col[IDN].reshape({n}).contiguous();
+    auto r = rho.accessor<double, 1>();
+    K[0] = 2. * (1.5 * r[0] * s[0] - 0.5 * r[1] * s[1]);
+    K[n] = 2. * (1.5 * r[n - 1] * s[n - 1] - 0.5 * r[n - 2] * s[n - 2]);
+    for (int f = 1; f < n; ++f) {
+      K[f] = 0.25 * (r[f - 1] + r[f]) * (s[f - 1] + s[f]);
+    }
+    double R = 0.;
+    for (double k : K) R += dz / k;
+    F = (p.T0(0.) - p.T0(p.Lz)) / R;
+  };
+  for (; dT > 1.e-12 && iters < 50; ++iters) {
+    balance_and_conduct();
+    dT = 0.;
+    double Tf = p.T0(0.);
+    for (int i = 0; i < n; ++i) {
+      Tf -= F * dz / K[i];
+      dT = std::max(dT, std::abs(Tf / T[i] - 1.));
+      T[i] = Tf;
+    }
+  }
+  TORCH_CHECK(dT <= 1.e-12, "fc_poly: conductive rest did not converge");
+  balance_and_conduct();
+
+  // what is left: the face flux spread and the distance from the linear T0
+  double spread = 0., dT0 = 0.;
+  int at = 0;
+  for (int f = 0; f <= n; ++f) {
+    double hi = f == 0 ? p.T0(0.) : T[f - 1];
+    double lo = f == n ? p.T0(p.Lz) : T[f];
+    spread = std::max(spread, std::abs(K[f] * (hi - lo) / dz / F - 1.));
+  }
+  for (int i = 0; i < n; ++i) {
+    if (std::abs(T[i] / T0[i] - 1.) > dT0) {
+      dT0 = std::abs(T[i] / T0[i] - 1.);
+      at = i;
+    }
+  }
+  std::cout << std::scientific << std::setprecision(3)
+            << "fc_poly: rest iterations=" << iters << " dT=" << dT
+            << " balance residual=" << residual << " sweeps=" << sweeps
+            << " flux/chi_t-1=" << F - 1. << " flux spread=" << spread
+            << " max|T/T0-1|=" << dT0 << " at i=" << at << std::endl;
+  return col;
+}
+
+// the column at discrete rest, then white noise in T entering through p; the
+// noise is hashed from the global cell index, so it does not depend on the
+// decomposition
 void initialize_block(MeshBlock block, Variables& vars, Polytrope const& p,
                       YAML::Node const& config, torch::Device const& device) {
   auto problem = config["problem"];
@@ -201,20 +274,16 @@ void initialize_block(MeshBlock block, Variables& vars, Polytrope const& p,
     }
   }
 
-  auto w = torch::zeros({block->phydro->peos->nvar(), nc3, nc2, nc1},
-                        torch::kFloat64);
+  int nvar = block->phydro->peos->nvar();
+  auto w = torch::zeros({nvar, nc3, nc2, nc1}, torch::kFloat64);
   w[IDN] = temp.pow(p.m);
   w[IPR] = w[IDN] * p.Rd * temp;
 
-  auto in = block->part({0, 0, 0}, PartOptions().exterior(false));
-  auto dx = pcoord->dx1f.cpu().narrow(0, pcoord->il(), nx1).contiguous();
-  auto [balanced, residual, sweeps] = balance_column(
-      w.index(in).contiguous(), dx, p.g, /*wall_clamp=*/true, kBalanceRtol,
-      /*max_iter=*/400);
-  w.index_put_(in, balanced);
-  std::cout << std::scientific << std::setprecision(3)
-            << "fc_poly: balance residual=" << residual << " sweeps=" << sweeps
-            << std::endl;
+  int il = pcoord->il();
+  auto dx = pcoord->dx1f.cpu().narrow(0, il, nx1).contiguous();
+  auto rest = conductive_rest(p, x1v.narrow(0, il, nx1).contiguous(), dx, nvar);
+  auto in = w.index(block->part({0, 0, 0}, PartOptions().exterior(false)));
+  in.copy_(rest.expand_as(in));
 
   w[IPR] *= kick;
   vars["hydro_w"] = w.to(device);
