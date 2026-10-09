@@ -1,5 +1,6 @@
 // C/C++
 #include <chrono>
+#include <cstdlib>
 
 // snap
 #include <snap/snap.h>
@@ -11,6 +12,48 @@
 #include "hydro.hpp"
 
 namespace snap {
+
+// SNAPY_X2COV (study switch, unset = off): the x2/x3 face energy flux is
+// formed from x1-averaged states, gamma/(gamma-1) <p> <m>/<rho>; the x1
+// average of gamma/(gamma-1) p m/rho over the cell height dz exceeds it by
+// gamma/(gamma-1) dz^2/12 p d(ln p/rho)/dz du/dz (u the face-normal velocity;
+// exact at second order). Value = the multiplier of that term.
+static double x2cov_factor() {
+  static double const f = [] {
+    char const* s = std::getenv("SNAPY_X2COV");
+    return s ? std::atof(s) : 0.;
+  }();
+  return f;
+}
+
+// add the x1 covariance to the energy flux through the faces normal to
+// tensor dimension d (-2: x2, -3: x3); ivel = the face-normal velocity
+static void add_x1_covariance_(torch::Tensor flx, torch::Tensor const& w,
+                               torch::Tensor const& gamma,
+                               torch::Tensor const& x1v,
+                               torch::Tensor const& dx1f, int il, int iu, int d,
+                               int ivel, double factor) {
+  int n1 = w.size(-1);
+  auto lnt = torch::log(w[IPR] / w[IDN]);
+  auto vel = w[ivel];
+  auto h = x1v.narrow(0, 2, n1 - 2) - x1v.narrow(0, 0, n1 - 2);
+  auto dlnt = (lnt.narrow(-1, 2, n1 - 2) - lnt.narrow(-1, 0, n1 - 2)) / h;
+  auto dvel = (vel.narrow(-1, 2, n1 - 2) - vel.narrow(-1, 0, n1 - 2)) / h;
+  auto g = gamma.narrow(-1, 1, n1 - 2);
+  auto dz = dx1f.narrow(0, 1, n1 - 2);
+  auto cov = torch::zeros_like(w[IPR]);
+  cov.narrow(-1, 1, n1 - 2)
+      .copy_(g / (g - 1.) * dz * dz / 12. * w[IPR].narrow(-1, 1, n1 - 2) *
+             dlnt * dvel);
+  // interior x1 rows only
+  auto rows = torch::zeros_like(cov);
+  rows.narrow(-1, il, iu - il + 1).fill_(1.);
+  cov *= rows;
+  int n = w.size(d);
+  // face j sits between cells j-1 and j
+  flx[IPR].narrow(d, 1, n - 1) +=
+      factor * 0.5 * (cov.narrow(d, 0, n - 1) + cov.narrow(d, 1, n - 1));
+}
 
 torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                                  Variables const& other) {
@@ -312,6 +355,12 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         has_solid ? pmb->pib->forward(wtmp2, DIM2, other.at("solid")) : wtmp2;
     if (!options->disable_flux_x2()) {
       priemann->forward(wlr2[ILT], wlr2[IRT], DIM2, _flux2);
+      if (x2cov_factor() != 0.) {
+        add_x1_covariance_(_flux2, w, peos->compute("W->A", {w}),
+                           pmb->pcoord->x1v, pmb->pcoord->dx1f,
+                           pmb->pcoord->il(), pmb->pcoord->iu(), -2, IVY,
+                           x2cov_factor());
+      }
       if (options->verbose()) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
@@ -327,6 +376,12 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         has_solid ? pmb->pib->forward(wtmp3, DIM3, other.at("solid")) : wtmp3;
     if (!options->disable_flux_x3()) {
       priemann->forward(wlr3[ILT], wlr3[IRT], DIM3, _flux3);
+      if (x2cov_factor() != 0.) {
+        add_x1_covariance_(_flux3, w, peos->compute("W->A", {w}),
+                           pmb->pcoord->x1v, pmb->pcoord->dx1f,
+                           pmb->pcoord->il(), pmb->pcoord->iu(), -3, IVZ,
+                           x2cov_factor());
+      }
       if (options->verbose()) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
