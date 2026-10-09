@@ -1,0 +1,89 @@
+diff --git a/src/hydro/hydro_forward.cpp b/src/hydro/hydro_forward.cpp
+index 0fde522..9061761 100644
+--- a/src/hydro/hydro_forward.cpp
++++ b/src/hydro/hydro_forward.cpp
+@@ -1,5 +1,6 @@
+ // C/C++
+ #include <chrono>
++#include <cstdlib>
+ 
+ // snap
+ #include <snap/snap.h>
+@@ -12,6 +13,53 @@
+ 
+ namespace snap {
+ 
++namespace {
++// SNAPY_DF_COEF (#289, experimental, default off): coefficient on the x1
++// covariance of the x2/x3 enthalpy and species fluxes. A face flux built from
++// x1 cell averages misses <rho u_n f> - <rho> u_n f = dx1^2/12 rho d1(u_n)
++// d1(f) for each mass-weighted specific quantity f (h(<p>,<rho>) for an ideal
++// gas, q = <rho q>/<rho>); 1 restores it.
++double df_coef() {
++  static double const c = [] {
++    char const* s = std::getenv("SNAPY_DF_COEF");
++    return s ? std::atof(s) : 0.;
++  }();
++  return c;
++}
++
++// add coef * dx1^2/12 rho d1(u_n) d1(f), the two-cell mean, to the flux of
++// every x2 (dim = 2) or x3 (dim = 1) face, for each specific quantity f that
++// the face flux carries as rho u_n f: h on IPR and, since the species
++// primitive is the mass fraction <rho q>/<rho>, q on ICY+n with the dry row
++// debited by the same amount (the total mass flux is unchanged)
++void add_x1_covariance_flux(torch::Tensor flux, torch::Tensor const& w,
++                            torch::Tensor const& h, torch::Tensor const& x1v,
++                            torch::Tensor const& dx1f, int dim, double coef) {
++  int ivn = dim == 2 ? IVY : IVZ;
++  int n1 = w.size(-1);
++  auto d1 = [&](torch::Tensor const& f) {
++    auto out = torch::zeros_like(f);
++    out.narrow(-1, 1, n1 - 2)
++        .copy_((f.narrow(-1, 2, n1 - 2) - f.narrow(-1, 0, n1 - 2)) /
++               (x1v.narrow(0, 2, n1 - 2) - x1v.narrow(0, 0, n1 - 2)));
++    return out;
++  };
++  auto rdu = coef * dx1f.square() / 12. * w[IDN] * d1(w[ivn]);
++  int ax = dim - 1;  // axis of flux[n] / cell, (nc3, nc2, nc1)
++  auto add = [&](int n, torch::Tensor const& cell) {
++    int nc = cell.size(ax);
++    flux[n].narrow(ax, 1, nc - 1) +=
++        0.5 * (cell.narrow(ax, 0, nc - 1) + cell.narrow(ax, 1, nc - 1));
++  };
++  add(IPR, rdu * d1(h));
++  for (int n = ICY; n < w.size(0); ++n) {
++    auto cell = rdu * d1(w[n]);
++    add(n, cell);
++    add(IDN, -cell);
++  }
++}
++}  // namespace
++
+ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
+                                  Variables const& other) {
+   enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };
+@@ -312,6 +360,11 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
+         has_solid ? pmb->pib->forward(wtmp2, DIM2, other.at("solid")) : wtmp2;
+     if (!options->disable_flux_x2()) {
+       priemann->forward(wlr2[ILT], wlr2[IRT], DIM2, _flux2);
++      if (df_coef() != 0. && u.size(DIM1) > 1) {
++        auto h = (peos->compute("W->I", {w}) + w[IPR]) / w[IDN];
++        add_x1_covariance_flux(_flux2, w, h, pmb->pcoord->x1v,
++                               pmb->pcoord->dx1f, DIM2, df_coef());
++      }
+       if (options->verbose()) {
+         auto end = std::chrono::high_resolution_clock::now();
+         std::chrono::duration<double> elapsed = end - start;
+@@ -327,6 +380,11 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
+         has_solid ? pmb->pib->forward(wtmp3, DIM3, other.at("solid")) : wtmp3;
+     if (!options->disable_flux_x3()) {
+       priemann->forward(wlr3[ILT], wlr3[IRT], DIM3, _flux3);
++      if (df_coef() != 0. && u.size(DIM1) > 1) {
++        auto h = (peos->compute("W->I", {w}) + w[IPR]) / w[IDN];
++        add_x1_covariance_flux(_flux3, w, h, pmb->pcoord->x1v,
++                               pmb->pcoord->dx1f, DIM3, df_coef());
++      }
+       if (options->verbose()) {
+         auto end = std::chrono::high_resolution_clock::now();
+         std::chrono::duration<double> elapsed = end - start;
