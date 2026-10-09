@@ -193,6 +193,25 @@ bool HydroImpl::flux_covariance() {
   return on;
 }
 
+bool HydroImpl::gravity_work_radial_exact() {
+  // read once, like SNAP_FLUX_COVARIANCE: every block must make the same choice
+  static const bool on = [] {
+    auto v = get_env("SNAP_GRAVITY_WORK_RADIAL_EXACT", "0");
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return !(v.empty() || v == "0" || v == "false" || v == "off" || v == "no");
+  }();
+  return on;
+}
+
+bool HydroImpl::radial_exact_work() const {
+  auto g = options->grav();
+  auto const& type = pmb->pcoord->options->type();
+  return gravity_work_radial_exact() && g && g->grav1() != 0. &&
+         g->gravity_work() == "face" &&
+         (type == "cartesian" || type == "spherical-polar");
+}
+
 bool HydroImpl::face_work_in_operator() const {
   auto g = options->grav();
   return g && g->grav1() != 0. && g->gravity_work() == "face" && picorr &&
