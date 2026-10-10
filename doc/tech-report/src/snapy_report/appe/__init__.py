@@ -1,0 +1,1 @@
+"""External component appendix figures."""

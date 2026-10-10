@@ -1,0 +1,114 @@
+## External component interfaces {#sec-appe-components}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: build metadata and component call sites below
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Kintera supplies thermodynamics and kinetics; pyharp supplies the time integrator.
+Disort is a required C++ link dependency and Python import, even though the inspected compiled source has no
+radiative-transfer solver call. Dependency availability does not imply active radiation coupling.
+:::
+
+| component | use in snapy | required version at the snapy pin |
+|---|---|---|
+| kintera | moist EOS, saturation adjustment, driver kinetics | at least 2.5.13 in CMake and Python build/runtime metadata |
+| pyharp / CMake Harp | integrator options, stage weights and stage combination | required by CMake; no version minimum or exact version specified |
+| pydisort / CMake Disort | C++ shared-library link and Python package import | required by CMake; no version minimum or exact version specified |
+
+: Requirements, distinct from source pins and tested compatibility. {#tbl-appe-requirements}
+
+`find_package` declares these CMake requirements ([`CMakeLists.txt:94-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L94-L101)). Python `requires` contains
+`kintera>=2.5.13` ([`pyproject.toml:1-13`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L13)), as does the runtime `dependencies` list ([`pyproject.toml:25-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L25-L31)).
+Neither list declares pyharp or pydisort. Their absence is a packaging gap, not evidence that they are optional:
+`python/__init__.py` imports all three before the extension ([`__init__.py:1-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L8)).
+The kintera source pin above fixes this report's API evidence; it is not an exact dependency version constraint.
+No compatible pyharp or pydisort version range is inferred from the unversioned requirement.
+
+### Derivation
+
+This appendix inventories interfaces and dependencies; it introduces no numerical scheme or equation.
+Thermodynamic, integration and moist-coupling derivations belong to the corresponding chapters.
+A linked library, an imported Python package and a numerical call are separate facts and are recorded separately.
+
+### Numerical method
+
+Kintera's `ThermoYImpl` is constructed by the moist-mixture EOS. `compute` converts conserved internal energy to
+temperature (`VU->T`) and temperature to pressure (`VT->P`); `specific_heat_cv` obtains mixture heat capacity.
+On the final integrator stage, the mesh block calls `pthermo->forward` with density, internal energy density and
+species mass fractions, then writes the adjusted fractions back. The pinned kintera `ThermoYImpl::forward`
+accepts this contract ([`kintera thermo_y.cpp:275-284`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L275-L284)); it is separate from the example driver's kinetic update.
+The driver refreshes primitives after dynamics, evaluates rates and their Jacobian, and calls `evolve_implicit`.
+
+Pyharp is used through C++ `harp::Integrator`: snapy parses its options, creates the integrator and invokes
+`pintg->forward` to combine both hydro and scalar stage increments. This is active solver use of pyharp,
+independent of any external radiation functionality that package may provide.
+
+Disort is explicitly in the `PUBLIC` libraries of the `snap` shared target, through `DISORT_LIBRARY`
+([`CMakeLists.txt:55-75`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L55-L75)). `FindDisort` locates `disort_release` ([`FindDisort.cmake:76-97`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindDisort.cmake#L76-L97)) and obtains version information
+by importing pydisort ([`FindDisort.cmake:16-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindDisort.cmake#L16-L32)). Harp similarly reads `pyharp.__version__`
+([`FindHarp.cmake:16-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindHarp.cmake#L16-L31)) and requires its headers/library ([`FindHarp.cmake:74-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindHarp.cmake#L74-L103)).
+Reading a version does not impose a minimum absent a version argument to `find_package`.
+
+```{python}
+#| label: fig-appe-components
+#| fig-cap: "Component boundaries: solid labelled arrows show active C++ calls; the dashed Disort edge is a declared C++ link. Text also records Python imports. No performance data are shown."
+#| fig-alt: "snapy calls kintera for thermodynamics and pyharp for integration, links Disort, and imports all three Python packages."
+#| echo: false
+from snapy_report.appe.fig_components import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| construct moist EOS | [`moist_mixture.cpp:18-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L18-L29) | `ThermoYImpl` | component API |
+| temperature and pressure | [`moist_mixture.cpp:148-151`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L148-L151) | `compute` | component API |
+| mixture heat capacity | [`moist_mixture.cpp:42-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L42-L48) | `specific_heat_cv` | component API |
+| final-stage saturation | [`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816) | `pthermo` | component API |
+| redo failure query | [`meshblock.cpp:1222-1235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1222-L1235) | `take_saturation_adjustment_failures` | component API |
+| driver kinetics | [`run_hydro.cpp:175-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L175-L191) | `evolve_implicit` | component API |
+| integrator options | [`meshblock_options.cpp:40-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L40-L46) | `IntegratorOptionsImpl` | component API |
+| integrator construction | [`meshblock.cpp:229-235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L229-L235) | `IntegratorImpl` | component API |
+| hydro/scalar stage combination | [`meshblock.cpp:750-769`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L750-L769) | `pintg` | component API |
+| three C++ link dependencies | [`CMakeLists.txt:55-75`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L55-L75) | `DISORT_LIBRARY` | component API |
+| Python imports | [`__init__.py:1-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L8) | `pydisort` | component API |
+
+: Representative active call sites and dependency edges. {#tbl-appe-calls}
+
+Read the call chain as options, construction, evaluation, then failure handling.
+The kintera `take_saturation_adjustment_failures` method consumes its accumulated count
+([`kintera thermo_y.cpp:385-390`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L385-L390)); snapy calls it during redo checks. The CMake version-floor comment explicitly
+names this API as the reason for requiring 2.5.13 ([`CMakeLists.txt:94-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L94-L101)).
+
+### Tests
+
+| check | assertion | tolerance | evidence |
+|---|---|---|---|
+| local anchor audit | pinned file/range exists and contains the recorded symbol | exact text | `reviews/check_appe_anchors.py` |
+| source math-span check | appendix has valid math delimiters | exact syntax | frozen house checker |
+| dependency runtime compatibility | not run | not measured | no build or installed-package execution |
+
+: Documentation validation only. {#tbl-appe-checks}
+
+No runtime result is claimed for any component version, CPU, CUDA or multi-rank configuration.
+The appendix's C++ link statement follows the build definition, not a newly inspected linked binary;
+a platform linker may omit unused dependencies from the resulting dynamic dependency table.
+
+### Limits
+
+The frozen outline describes the Disort locator as only supporting Python. The actual `PUBLIC` link list above
+corrects that description at the source pin. The compiled `src_files` glob ([`CMakeLists.txt:35-53`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L35-L53)) excludes the legacy
+diagnostics directory and files with trailing underscores. Inspection of its source directories finds no active
+Disort radiative-transfer call. Radiation-labelled output metadata is not a solver call.
+The external radiative time-step limiter mentioned by the outline is not implemented in the pinned snapy tree;
+this appendix does not assign external runner keys or a radiation scheme to snapy.
+
+The missing pyharp/pydisort Python dependency declarations and unspecified CMake version floors leave reproducible
+installation and supported compatibility ranges unresolved. The requested kintera pin has been read, not built
+with this snapy pin. Official citation checking and book rendering await publication tooling and editor integration.
