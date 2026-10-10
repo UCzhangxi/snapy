@@ -1,0 +1,71 @@
+# Grids and geometry {#sec-ch03}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md chapter 3
+status: draft
+-->
+
+This chapter describes the grids snapy integrates on and what a ghost cell holds. It covers the three working
+coordinate systems (Cartesian, spherical-polar and the gnomonic equiangular cubed sphere) with the metric
+quantities the finite-volume update uses: face areas, cell volumes, centroids, widths, geometric source terms and
+the local frames of the Riemann problems. It also covers the curved-grid helpers that the face-flux corrections of
+chapter 4 read, how the one global grid is cut into blocks and ranks, and what each kind of ghost contains at a
+physical face, an internal face, a cubed-sphere panel edge and an $x_1$ seam between blocks. How ghost values are
+carried (buffers, tags, backends) is chapter 14; here only what they are is described. All code is cited at
+`chengcli/snapy` commit `e894700ff7aee30b52882e5202b16461413780b0`. The schemes are listed in @tbl-ch03-schemes; their switch couplings are in the switch coverage matrix of chapter 12.
+
+<!-- PENDING: the chapter's dependency map (STYLE.md section 10.1) needs `snapy_report.depmap`, which is not on
+     tech-report yet; the switch couplings are in the chapter 12 matrix. -->
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| global grid, sliced per block (@sec-ch03-globalgrid) | YAML `geometry`, `distribute` | on | exact | `test_coordinate` |
+| Cartesian metric (@sec-ch03-cartesian) | `type: cartesian` | default type | exact | `test_coordinate` |
+| spherical-polar metric (@sec-ch03-sphpolar) | `type: spherical-polar` | off | exact metric | `test_coordinate` |
+| gnomonic cubed sphere (@sec-ch03-gnomonic) | `type: gnomonic-equiangle` | off | exact metric | `test_cubed_sphere_cell_volume_python` |
+| radial face moments (@sec-ch03-facemoments) | `SNAP_FLUX_COVARIANCE` | off | exact | `test_radial_face_moments` |
+| layouts and rank maps (@sec-ch03-layouts) | `distribute: layout` | `slab` | n/a | `test_exchange_decomp` |
+| physical and internal faces (@sec-ch03-physfaces) | `boundary-condition` | `reflecting` | n/a | `test_exchange` |
+| generic ghost exchange (@sec-ch03-exchange) | `SyncOptions` | conserved, no corners | exact copy | `test_mesh_exchange_python` |
+| cross-panel ghost interpolation (@sec-ch03-csinterp) | `interpolate` | on per stage | 2 | `test_cubed_sphere_exchange` |
+| face-state seam sync (@sec-ch03-cslrsync) | none | on (cubed sphere) | exact copy | `test_flux_covariance_seams_python` |
+| donor factor raw copy (@sec-ch03-thetacopy) | `limiter` | on with limiter | exact copy | `test_flux_positivity_cubedsphere_python` |
+| $x_1$ seams between blocks (@sec-ch03-x1seams) | `layout: cubed`, `nb1` | `nb1: 1` | round-off | `test_x1_seam_split` |
+| conserved vs primitive sync (@sec-ch03-synctype) | `type` | conserved | exact | `test_coordinate` |
+| $x_1$-wall corner refresh (@sec-ch03-cornerrefresh) | none | on | exact | `test_wb_wall_corner` |
+| `cylindrical` stub (@sec-ch03-cylindrical) | `type: cylindrical` | off | none | none |
+
+: The schemes of this chapter. "order" is the accuracy of the quantity the scheme produces; "exact" means equal to
+the defining integral or copy up to round-off. Test names omit the `.release` suffix of C++ entries.
+{#tbl-ch03-schemes}
+
+{{< include 03-grids-geometry/_globalgrid.qmd >}}
+
+{{< include 03-grids-geometry/_cartesian.qmd >}}
+
+{{< include 03-grids-geometry/_sphpolar.qmd >}}
+
+{{< include 03-grids-geometry/_gnomonic.qmd >}}
+
+{{< include 03-grids-geometry/_facemoments.qmd >}}
+
+{{< include 03-grids-geometry/_layouts.qmd >}}
+
+{{< include 03-grids-geometry/_physfaces.qmd >}}
+
+{{< include 03-grids-geometry/_exchange.qmd >}}
+
+{{< include 03-grids-geometry/_csinterp.qmd >}}
+
+{{< include 03-grids-geometry/_cslrsync.qmd >}}
+
+{{< include 03-grids-geometry/_thetacopy.qmd >}}
+
+{{< include 03-grids-geometry/_x1seams.qmd >}}
+
+{{< include 03-grids-geometry/_synctype.qmd >}}
+
+{{< include 03-grids-geometry/_cornerrefresh.qmd >}}
+
+{{< include 03-grids-geometry/_cylindrical.qmd >}}

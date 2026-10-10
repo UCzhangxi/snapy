@@ -1,0 +1,212 @@
+## Gnomonic equiangular cubed sphere (`gnomonic-equiangle`) {#sec-ch03-gnomonic}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/coord/gnomonic_equiangle.cpp, src/coord/coord_utils.cpp, src/coord/coord_utils_impl.h, src/coord/cubed_sphere_utils.cpp, src/coord/cubed_sphere6.nb, tests/test_coordinate.cpp, tests/test_cubed_sphere_cell_volume.py
+status: draft
+-->
+
+Local symbols (flagged to the editor): $X = \tan\xi$, $Y = \tan\eta$ [-]; $C = \sqrt{1+X^2}$, $D = \sqrt{1+Y^2}$,
+$\delta = \sqrt{1+X^2+Y^2}$ [-]; $\psi$ the angle between the $\xi$ and $\eta$ coordinate lines on the sphere [rad]
+(the code calls its cosine `cosine_cell_kj`); $\hat{\mathbf u}$ the unit position vector on the sphere [-].
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: the six-panel gnomonic equiangular grid $(r, \xi, \eta)$ with exact solid angles, exact volumes and
+great-circle widths, a non-orthogonal velocity frame, and the curvature sources. **Switch**: YAML
+`geometry.type: gnomonic-equiangle`, with `distribute.layout: cubed-sphere`. **Default**: off. **Requires**:
+`nx2 == nx3`, `interp_order: 2`. **Order**: exact measures; second-order sources. **Defining equation**:
+@eq-ch03-gnomonic-solidangle.
+:::
+
+Each panel of the cubed sphere covers $\xi, \eta \in [-\pi/4, \pi/4]$; a point of the panel is the unit vector
+$\hat{\mathbf u} = (1, X, Y)/\delta$ in the panel's own frame. The coordinate lines meet at an angle $\psi$ that is
+$\pi/2$ on the panel centre lines and $\pi/3$ or $2\pi/3$ at the corners, so velocities are carried as components along the two
+unit tangent vectors with metric $g_{23} = \cos\psi$, and each Riemann problem is solved in a local orthonormal frame.
+Every measure is exact: the $x_1$ face area is $r^2$ times the exact solid angle of the cell, the volume is
+$\tfrac13(r_+^3 - r_-^3)$ times the same solid angle, and the $x_2$, $x_3$ face areas are planar sectors. The curvature
+sources are built so that a uniform pressure at rest is in exact discrete balance.
+
+The type is on when `geometry.type` is `gnomonic-equiangle`. Unlike spherical-polar, the radial cell centre is the
+midpoint, not the volume centroid. The corrected-PE gravity work of chapter 6 has no form here
+(@sec-ch06-dwork). The geometry was set up in the Mathematica notebook
+[`cubed_sphere6.nb`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere6.nb),
+which is symbolic and is not a prose derivation.
+
+### Derivation
+
+**Angle between the coordinate lines.** With $X = \tan\xi$, $\partial X/\partial\xi = C^2$. Differentiating
+$\hat{\mathbf u} = (1,X,Y)/\delta$ gives
+
+$$
+\frac{\partial\hat{\mathbf u}}{\partial X} = \frac{(-X,\ D^2,\ -XY)}{\delta^3}, \qquad
+\frac{\partial\hat{\mathbf u}}{\partial Y} = \frac{(-Y,\ -XY,\ C^2)}{\delta^3},
+$$
+
+with lengths $D/\delta^2$ and $C/\delta^2$ (using $C^2D^2 = \delta^2 + X^2Y^2$) and dot product $-XY/\delta^4$. Hence
+
+$$
+\cos\psi = -\frac{XY}{CD}, \qquad \sin\psi = \frac{\delta}{CD}.
+$$ {#eq-ch03-gnomonic-angle}
+
+@eq-ch03-gnomonic-angle is evaluated at cell centres and at $x_2$ and $x_3$ faces as `cosine_cell_kj` and
+`sine_cell_kj` ([`gnomonic_equiangle.cpp:70-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L70-L94)). $\cos\psi$ vanishes on the centre lines $X = 0$ or
+$Y = 0$ and is $-\tfrac12$ at the panel corners, where $X^2 = Y^2 = 1$.
+
+**Solid angle.** The area element of the unit sphere is
+$\lvert\partial_\xi\hat{\mathbf u}\times\partial_\eta\hat{\mathbf u}\rvert\,\mathrm{d}\xi\,\mathrm{d}\eta
+= \sin\psi\,C^2\tfrac{D}{\delta^2}\,D^2\tfrac{C}{\delta^2}\,\mathrm{d}\xi\,\mathrm{d}\eta
+= \mathrm{d}X\,\mathrm{d}Y/\delta^3$. The function $\arctan(XY/\delta)$ has mixed derivative $\delta^{-3}$, so the solid
+angle of the cell $[X_{j-1/2}, X_{j+1/2}]\times[Y_{k-1/2}, Y_{k+1/2}]$ is the corner sum
+
+$$
+\varpi_{jk} = \sum_{a,b\in\{\pm\}} ab\,\arctan\!\frac{X_{j+a/2}\,Y_{k+b/2}}{\sqrt{1 + X_{j+a/2}^2 + Y_{k+b/2}^2}}.
+$$ {#eq-ch03-gnomonic-solidangle}
+
+@eq-ch03-gnomonic-solidangle is `solid_angle_kj` ([`gnomonic_equiangle.cpp:124-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L124-L137)); over a panel the
+corner sums telescope to $4\arctan(1/\sqrt3) = 2\pi/3$, and six panels give $4\pi$.
+
+**Measures.** With $\varpi_{jk}$ the volume and the $x_1$ face area are exact:
+
+$$
+\begin{aligned}
+A_{i\pm1/2} &= r_\pm^2\,\varpi_{jk}, \\
+V_i &= \tfrac13 h_i\left(r_+^2 + r_+r_- + r_-^2\right)\varpi_{jk} = \tfrac13\left(r_+^3 - r_-^3\right)\varpi_{jk},
+\end{aligned}
+$$ {#eq-ch03-gnomonic-volume}
+
+written in `cell_volume` without the cancelling difference of cubes ([`gnomonic_equiangle.cpp:207-227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L207-L227)). An $x_2$ face lies in the plane through the centre that contains the line $X = X_{j\pm1/2}$, so it is a
+planar annular sector: its area is $\int r\,\mathrm{d}r = \tfrac12(r_+^2 - r_-^2)$ times the angle it subtends, the
+great-circle angle between its two $\eta$ edges. That angle between the unit vectors $\hat{\mathbf u}(X, Y_1)$ and
+$\hat{\mathbf u}(X, Y_2)$ is $\arccos[(1 + X^2 + Y_1Y_2)/(\delta_1\delta_2)]$, which is `dx3f_ang_face2_kj`
+([`gnomonic_equiangle.cpp:110-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L110-L122)); the code forms $\tfrac12(r_+^2 - r_-^2)$ as `x1v` times `dx1f`, exact
+because `x1v` is the midpoint. The $x_3$ faces are the same with $X$ and $Y$ exchanged.
+
+**Velocity frame.** Velocity components $v_2, v_3$ are taken along the unit tangent vectors, so $g_{22} = g_{33} = 1$,
+$g_{23} = \cos\psi$ and $\lvert\mathbf v\rvert^2 = v_1^2 + v_2^2 + v_3^2 + 2\cos\psi\,v_2v_3$. Lowering and raising are
+
+$$
+\begin{aligned}
+v_{\underline 2} &= v_2 + v_3\cos\psi, \qquad v_{\underline 3} = v_3 + v_2\cos\psi, \\
+v_2 &= \frac{v_{\underline 2} - v_{\underline 3}\cos\psi}{\sin^2\psi}, \qquad
+v_3 = \frac{v_{\underline 3} - v_{\underline 2}\cos\psi}{\sin^2\psi},
+\end{aligned}
+$$ {#eq-ch03-gnomonic-lower}
+
+with the underline marking a covariant component (local notation). @eq-ch03-gnomonic-lower is `coord_vec_lower_impl`
+and `coord_vec_raise_impl` ([`coord_utils_impl.h:9-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L9-L24)). The conserved momenta are covariant; the primitive
+velocities are contravariant. For an $x_1$ face the local orthonormal frame is $(v_1,\ v_2 + v_3\cos\psi,\
+v_3\sin\psi)$, which keeps $\lvert\mathbf v\rvert^2$; the $x_2$ and $x_3$ faces use the same idea with the face values
+of $\psi$ and the normal along the face normal.
+
+**Pressure balance.** Take a uniform pressure $p$ at rest. In the $x_2$ face frame the flux is $p$ in the normal slot
+and zero in the tangential slot; transforming back gives the covariant $m_2$ flux $p\sin\psi_{j\pm1/2}$ and a zero
+$m_3$ flux, and the $x_3$ faces give a zero $m_2$ flux. The $m_2$ divergence is therefore
+$\Delta_j[A\,p\sin\psi]/V_i$, and the code subtracts exactly that through the coefficient
+$\Delta_j[A\sin\psi]/V_i$, `x_ov_rD_kji` ([`gnomonic_equiangle.cpp:139-148`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L139-L148)). A uniform pressure at rest
+therefore produces no $m_2$ or $m_3$ tendency, to round-off. The velocity terms of the sources,
+$\rho v_3^2\sin^2\psi$ beside $p$ and $-\rho v_1 v_{\underline 2}/r$, and the centripetal radial term
+$\rho(v_2v_{\underline 2} + v_3v_{\underline 3})/r = \rho\lvert\mathbf v_h\rvert^2/r$, follow the notebook's flux-form
+metric terms; they are stated from the code and are not re-derived in this draft (marked re-derive). In the $m_1$
+equation the face-pressure form of @sec-ch03-sphpolar is used whenever face pressures exist.
+
+What is exact: @eq-ch03-gnomonic-angle to @eq-ch03-gnomonic-lower and the uniform-pressure balance. What is
+truncated: the products of cell values in the velocity source terms, at $O(h^2)$. The identities are checked in
+`src/snapy_report/ch03/geometry_check.py` (lines `[C6]` to `[C9]` of `geometry_check.out`).
+
+### Numerical method
+
+The $\xi$, $\eta$ widths are the global uniform widths; `x1v`, `x2v`, `x3v` are midpoints. `cosine_*` and `sine_*`
+live at cell centres (`_cell_kj`) and on the $x_2$ and $x_3$ faces (`_face2_kj`, `_face3_kj`); the great-circle
+widths `dx2f_ang_kj`, `dx3f_ang_kj` at centres and on faces; `solid_angle_kj` per cell. All are buffers built once in
+`reset`, constant along $x_1$. In each stage the Riemann solvers call `prim2local1_` to `prim2local3_` on the face
+states and `flux2global1_` to `flux2global3_` on the fluxes, and `forward` adds the sources after the divergence.
+Wall boundary functions rotate ghost velocities into the wall's orthonormal frame with `boundary_velocity_` and back.
+@fig-ch03-gnomonic-cosine shows $\cos\psi$ over one panel.
+
+```{python}
+#| label: fig-ch03-gnomonic-cosine
+#| fig-cap: "The cosine of the angle between the coordinate lines, $\\cos\\psi = -XY/(CD)$, over one gnomonic panel. It is zero on the two centre lines and reaches $\\pm1/2$ at the corners, which is where non-orthogonality enters the face states and fluxes."
+#| fig-alt: "Contour map of cos psi over xi and eta from minus pi/4 to pi/4, zero along the axes and largest in magnitude at the corners."
+#| echo: false
+from snapy_report.ch03.fig_gnomonic_cosine import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| setup checks | [`gnomonic_equiangle.cpp:18-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L18-L29) | `reset` | `type: gnomonic-equiangle` |
+| angle and great-circle widths | [`gnomonic_equiangle.cpp:69-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L69-L122) | `cosine_cell_kj` | none |
+| solid angle | [`gnomonic_equiangle.cpp:124-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L124-L137) | `solid_angle_kj` | none |
+| pressure-balance coefficients | [`gnomonic_equiangle.cpp:139-148`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L139-L148) | `x_ov_rD_kji` | none |
+| areas and volume | [`gnomonic_equiangle.cpp:207-227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L207-L227) | `face_area2` | none |
+| face metrics (marked TODO) | [`gnomonic_equiangle.cpp:265-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L265-L293) | `_set_face2_metric` | none |
+| local frames | [`gnomonic_equiangle.cpp:295-341`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L295-L341) | `prim2local2_` | none |
+| back to covariant | [`gnomonic_equiangle.cpp:343-413`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L343-L413) | `flux2global2_` | none |
+| sources | [`gnomonic_equiangle.cpp:415-473`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L415-L473) | `forward` | none |
+| lower and raise | [`coord_utils.cpp:12-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils.cpp#L12-L44) | `coord_vec_lower_` | none |
+| wall frame | [`coordinate.cpp:611-637`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L611-L637) | `boundary_velocity_` | none |
+| panel to spherical | [`cubed_sphere_utils.cpp:245-257`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L245-L257) | `cs_contra_to_sph_` | none |
+
+: Code map of the gnomonic grid. {#tbl-ch03-gnomonic-code}
+
+In step order (@tbl-ch03-gnomonic-code):
+
+1. `reset` requires `nx2 == nx3` ("nx2 must equal nx3") and `interp_order` to be 2 ("Only 2nd order ghost
+   interpolation is supported") ([`gnomonic_equiangle.cpp:18-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L18-L29)).
+2. It builds uniform widths and midpoints, the longitude and latitude of the cell centres for output with
+   `cs_ab_to_lonlat` ([`gnomonic_equiangle.cpp:59-67`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L59-L67)), then the angle, the great-circle widths, the solid
+   angle and `x_ov_rD_kji`, `y_ov_rC_kji` ([`gnomonic_equiangle.cpp:69-148`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L69-L148)).
+3. It builds the ghost interpolation abscissae of @sec-ch03-csinterp and refuses `interp_order > 2` a second time
+   with `TORCH_CHECK` ([`gnomonic_equiangle.cpp:162-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L162-L196)).
+4. Per stage, `prim2local2_` sets the face metric with `_set_face2_metric` and projects the face states
+   ([`gnomonic_equiangle.cpp:303-321`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L303-L321)); after the solve, `flux2global2_` returns the fluxes to covariant
+   components ([`gnomonic_equiangle.cpp:357-384`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L357-L384)); likewise for $x_1$ and $x_3$.
+5. `forward` adds the radial, $m_2$ and $m_3$ sources ([`gnomonic_equiangle.cpp:415-473`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L415-L473)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_cubed_sphere_cell_volume_python` | six panels sum to $\tfrac43\pi(r_o^3-r_i^3)$; discrete $\nabla\cdot(r\hat{\mathbf r}) = 3$ | $10^{-12}$ | `ROUNDOFF` in the script |
+| `test_cubed_sphere_cell_volume_python` | a balanced rest state stays at rest for 20 cycles | $\max\lvert v\rvert/c_s < 10^{-6}$ | `REST_TOL` in the script |
+| `test_coordinate` | lower then raise returns the input | `allclose` default | float32 and float64 |
+| `test_coordinate` | panel, Cartesian and spherical velocity transforms round-trip | $10^{-4}$ rel., $10^{-5}$ abs. | float32 cases |
+| `test_coordinate` | `prim2local` then `flux2global` then raise is the identity, three faces | `allclose` default | float32 and float64 |
+| `test_coordinate` | with face pressures the $m_1$ row is the face difference | $10^{-6}$ | set in the test |
+
+: Tests of the gnomonic grid. C++ entries carry the build suffix (`.release`). {#tbl-ch03-gnomonic-tests}
+
+The script checks are in `geometry`, which forms the sum of `cell_volume` and the divergence of $r\hat{\mathbf r}$
+([`test_cubed_sphere_cell_volume.py:51-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_cell_volume.py#L51-L65)), and in `main`, which applies `ROUNDOFF` and `REST_TOL`
+([`test_cubed_sphere_cell_volume.py:126-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_cell_volume.py#L126-L137)); the deck is `test_cubed_sphere_cell_volume.yaml`, six panels of
+$8\times8\times8$ cells in one process. The transform cases are `vec_lower_raise` to
+`uniform_radial_spherical_velocity_round_trips` ([`test_coordinate.cpp:234-412`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L234-L412)), the projection cases
+`flux_projection1` to `flux_projection3` ([`test_coordinate.cpp:507-577`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L507-L577)) and the face-pressure cases
+`radial_source_uses_face_pressure_in_x1_momentum` and `radial_source_preserves_face_pressure_gradient`
+([`test_coordinate.cpp:579-643`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L579-L643)). The `DeviceTest` cases run on CPU and CUDA in float32 and float64, as the
+fixture instantiates them ([`device_testing.hpp:44-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/device_testing.hpp#L44-L50)); the Python test also has no CUDA
+twin at the pin. All are single-rank. Their pass status at the pin was not run for this chapter (missing evidence).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `nx2` must equal `nx3`, and `interp_order` must be 2.
+- The corrected-PE face work is not available on this grid; setup warns with
+  `TORCH_WARN_ONCE` ([`hydro.cpp:82-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L82-L93)).
+:::
+
+`DeviceTest.usrc` and `GnomonicEquiangle.area_vol` print values and assert nothing about the geometry, as in
+`area_vol` ([`test_coordinate.cpp:123-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L123-L145)). `_set_face2_metric` and `_set_face3_metric` carry the comment
+"TODO(cli):: CHECK" ([`gnomonic_equiangle.cpp:265-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L265-L293)); the round-trip tests above
+exercise them only with the projection followed by its inverse, which a consistently wrong metric would also pass.
+The radial centre `x1v` is the midpoint, so a cell value is not stored at the volume centroid as on spherical-polar;
+the
+curved-face corrections of chapter 4 rely on `x1v` times `dx1f` being $\tfrac12(r_+^2 - r_-^2)$. On a block with a
+single $x_1$ cell there are no face pressures and the radial pressure source is $2p/r$ at the midpoint, which differs
+from $\Delta_i[A]p/V_i = 2p\langle r^{-1}\rangle_{V_i}$ by the relative factor $1/(1 + h_i^2/(12(x^{\mathrm{m}}_{1,i})^2))$
+(algebra from @eq-ch03-gnomonic-volume; not measured). The velocity source terms are not re-derived here. The switch
+combinations that are tested are listed in the switch coverage matrix of chapter 12.

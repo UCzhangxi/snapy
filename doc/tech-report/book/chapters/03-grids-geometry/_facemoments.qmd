@@ -1,0 +1,128 @@
+## Radial face moments and the face-centroid shift {#sec-ch03-facemoments}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/coord/coordinate.cpp, src/coord/coordinate.hpp, src/coord/spherical_polar.cpp, src/coord/gnomonic_equiangle.cpp, docs/derivations/289-covariance-x3-curved.md, tests/test_radial_face_moments.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $x^{\mathrm{A}}_{1,i}$ the $x_1$ centroid of an $x_2$ or $x_3$ face of cell $i$
+on the face's own measure [m]; $(\sigma^{\mathrm{A}}_i)^2$ the second central moment of $x_1$ on that measure
+[m$^2$]; $\delta^{\mathrm{A}}_i = x_{1,i} - x^{\mathrm{A}}_{1,i}$ the face-centroid shift [m]; $I_n$ the integral
+$\int_{r_-}^{r_+} r^n\,\mathrm{d}r$ [m$^{n+1}$].
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: the exact $x_1$ second moment of an $x_2$/$x_3$ face and the exact distance between a cell's volume
+centroid and that face's centroid, in a cancellation-free form. **Switch**: read only when `SNAP_FLUX_COVARIANCE` is
+set (chapter 12). **Default**: off (the helpers exist on every grid). **Requires**: nothing.
+**Order**: exact. **Defining equations**: @eq-ch03-facemoments-moment, @eq-ch03-facemoments-shift.
+:::
+
+The flux through an $x_2$ or $x_3$ face is a face average, weighted by the face's own area measure. On a Cartesian
+grid that weight is uniform in $x_1$; on the spherical-polar and cubed-sphere grids an $x_2$/$x_3$ face spans
+$r\,\mathrm{d}r$ times an angular factor while the cell spans $r^2\,\mathrm{d}r$ times one. Two numbers follow from
+the face measure: its $x_1$ variance, which sets the size of the covariance of two fields over the face, and the
+offset between where a cell average lives and where the face average lives. Both enter the $O(\Delta x_1^2)$ face-flux
+corrections of chapter 4. This scheme supplies them exactly; the flux use is chapter 4's. In the history it is part
+of [chengcli/snapy#289](https://github.com/chengcli/snapy/issues/289) and its follow-up items.
+
+### Derivation
+
+The derivation is in [`289-covariance-x3-curved.md`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/docs/derivations/289-covariance-x3-curved.md)
+§2.7 (the moment) and §2A.1 (the two centroids); it is rewritten here in the report's notation. The angular factor
+of an $x_2$/$x_3$ face does not vary along $x_1$ on one face, so it cancels in every average and the face weight is
+$w(r) = r$. With $h = h_i$ and $x^{\mathrm{m}} = x^{\mathrm{m}}_{1,i} = \tfrac12(r_- + r_+)$,
+
+$$
+\begin{aligned}
+x^{\mathrm{A}}_{1,i} &= \frac{I_2}{I_1} = \frac{12(x^{\mathrm{m}})^2 + h^2}{12\,x^{\mathrm{m}}}, \\
+x_{1,i} &= \frac{I_3}{I_2} = \frac{3x^{\mathrm{m}}\left(4(x^{\mathrm{m}})^2 + h^2\right)}{12(x^{\mathrm{m}})^2 + h^2},
+\end{aligned}
+$$
+
+the second being the spherical-polar volume centroid of @eq-ch03-sphpolar-centroids. The second central moment on the
+face measure is $(I_3 - 2x^{\mathrm{A}}I_2 + (x^{\mathrm{A}})^2I_1)/I_1$, which simplifies to
+
+$$
+(\sigma^{\mathrm{A}}_i)^2 = \frac{h^2}{12}\left(1 - \frac{h^2}{12(x^{\mathrm{m}})^2}\right).
+$$ {#eq-ch03-facemoments-moment}
+
+@eq-ch03-facemoments-moment is `radial_face_moment2_` ([`coordinate.cpp:446-459`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L446-L459)). Subtracting the two
+centroids directly would cancel, because both are close to $x^{\mathrm{m}}$; doing the algebra first gives the exact
+
+$$
+\delta^{\mathrm{A}}_i = \frac{h^2\left(12(x^{\mathrm{m}})^2 - h^2\right)}{12\,x^{\mathrm{m}}\left(12(x^{\mathrm{m}})^2 + h^2\right)}
+= \frac{h^2}{12\,x^{\mathrm{m}}} + O\!\left(\frac{h^4}{(x^{\mathrm{m}})^3}\right).
+$$ {#eq-ch03-facemoments-shift}
+
+@eq-ch03-facemoments-shift is `radial_face_centroid_shift_` ([`coordinate.cpp:467-488`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L467-L488)). On a Cartesian grid
+the two measures are the same uniform weight, so the moment is $h^2/12$ and the shift is zero; these are the base-class
+values `face_moment2_x1` and `face_centroid_shift_x1` ([`coordinate.cpp:442-465`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L442-L465)). Both formulas are exact,
+not truncated; @eq-ch03-facemoments-moment recovers $h^2/12$ as $h/x^{\mathrm{m}}\to0$. The checks are lines `[C1]` to
+`[C3]` of `geometry_check.out`.
+
+### Numerical method
+
+Both helpers return one value per $x_1$ cell, ghosts included, shaped like `dx1f`, from the face array alone. A face
+with $x^{\mathrm{m}}\le h/2$ (an $x_1$ ghost that reaches $r\le0$) is degenerate: the moment's curvature correction
+and the shift are set to zero there, and the divisors are clamped to $10^{-300}$ so the masked branch never divides by
+zero. Spherical-polar and gnomonic grids override the virtual methods to call the radial forms; on the gnomonic grid
+the cell volume is the same $r^2$ integral times the solid angle (@sec-ch03-gnomonic), so the same shift applies even
+though its `x1v` is the midpoint. They are evaluated when the covariance correction asks for them, in the stage, before
+the $x_2$/$x_3$ fluxes. @fig-ch03-facemoments-ratio plots both against $h/x^{\mathrm{m}}$.
+
+```{python}
+#| label: fig-ch03-facemoments-ratio
+#| fig-cap: "The radial face moment divided by its Cartesian value $h^2/12$ (solid) and the face-centroid shift divided by its leading term $h^2/(12x^{\\mathrm{m}})$ (dashed), against the relative cell width $h/x^{\\mathrm{m}}$. Both tend to 1 as the cell becomes thin; the moment is the Cartesian one to within $h^2/(12(x^{\\mathrm{m}})^2)$."
+#| fig-alt: "Two curves starting at 1 at zero relative width and bending down as the width grows."
+#| echo: false
+from snapy_report.ch03.fig_facemoments_ratio import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| interface and its derivation comment | [`coordinate.hpp:242-291`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L242-L291) | `radial_face_moment2_` | none |
+| Cartesian values | [`coordinate.cpp:442-465`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L442-L465) | `face_centroid_shift_x1` | none |
+| exact radial moment | [`coordinate.cpp:446-459`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L446-L459) | `radial_face_moment2_` | none |
+| exact radial shift | [`coordinate.cpp:467-488`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L467-L488) | `radial_face_centroid_shift_` | none |
+| spherical-polar overrides | [`spherical_polar.cpp:213-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L213-L222) | `face_moment2_x1` | `SNAP_FLUX_COVARIANCE` |
+| gnomonic overrides | [`gnomonic_equiangle.cpp:229-243`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L229-L243) | `face_centroid_shift_x1` | `SNAP_FLUX_COVARIANCE` |
+
+: Code map of the radial face moments. {#tbl-ch03-facemoments-code}
+
+In step order (@tbl-ch03-facemoments-code):
+
+1. The caller asks the coordinate for `face_moment2_x1` and `face_centroid_shift_x1`; virtual dispatch picks the
+   grid's form ([`spherical_polar.cpp:213-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L213-L222)).
+2. `radial_face_moment2_` forms $h$ and $x^{\mathrm{m}}$ from the faces and masks the degenerate cells with
+   `torch::where` ([`coordinate.cpp:446-459`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L446-L459)).
+3. `radial_face_centroid_shift_` evaluates the cancellation-free quotient and masks the same cells
+   ([`coordinate.cpp:467-488`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L467-L488)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_radial_face_moments` | the hand rationals equal the integrals | $10^{-13}$ relative | double evaluation of the $I_n$ |
+| `test_radial_face_moments` | the closed forms equal the rationals | $10^{-14}$ relative | a few operations of round-off |
+| `test_radial_face_moments` | per-cell indexing on a four-cell column | $10^{-14}$ abs., $10^{-12}$ rel. | as above, and the integrals' cancellation |
+
+: Tests of the radial face moments. C++ entries carry the build suffix (`.release`). {#tbl-ch03-facemoments-tests}
+
+The cases are `the_rationals_are_the_integrals`, `closed_forms_match_the_exact_integrals` and
+`one_value_per_cell_on_a_multi_cell_column` ([`test_radial_face_moments.cpp:49-91`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radial_face_moments.cpp#L49-L91)); the cells
+$[1.5, 2.5]$, $[3, 5]$, $[1, 2]$ have shift $47/1176$, $47/588$, $13/252$ and moment $47/576$, $47/144$,
+$13/162$, as listed in `kCells` ([`test_radial_face_moments.cpp:30-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radial_face_moments.cpp#L30-L34)). These rationals are reproduced
+exactly by line `[C2]` of `geometry_check.out`. The test runs on CPU, one process; the helpers are pure tensor
+functions with no device-specific path. Its pass status at the pin was not run for this chapter (missing evidence).
+
+### Limits
+
+No known limits beyond the degenerate-face mask, which drops the curvature correction on ghost cells that reach
+$r \le 0$. The helpers are used only by `SNAP_FLUX_COVARIANCE`; their effect on the solution belongs to chapter 4. The
+switch combinations that are tested are listed in the switch coverage matrix of chapter 12.

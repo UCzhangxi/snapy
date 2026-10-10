@@ -1,0 +1,155 @@
+## Cross-panel ghost interpolation (`interpolate`) {#sec-ch03-csinterp}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/coord/cubed_sphere_utils.hpp, src/coord/cubed_sphere_utils.cpp, src/coord/gnomonic_equiangle.cpp, src/layout/cubed_sphere_layout.cpp, src/mesh/meshblock.cpp, sources/canoe__cubedsphere_decomposition_TECH_REPORT.md, tests/test_cubed_sphere_exchange.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $\ell = 1..n_g$ the ghost layer counted from the panel edge (count);
+$N_{\mathrm{p}}$ the cells along a panel edge, $n_2 p_x$ (count); $\Delta\xi = \pi/(2N_{\mathrm{p}})$ the angular cell
+width [rad]; $u$ the fractional source abscissa along the edge, in cells of the source panel [-]; $\eta'$ the
+along-edge angle of a ghost centre on the source panel [rad].
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: a ghost across a panel edge is a linear interpolation along the edge, at an abscissa precomputed once by
+mapping the ghost centre onto the neighbouring panel; velocities travel in the global spherical frame.
+**Switch**: `SyncOptions.interpolate(true)`, set by the per-stage conserved sync, the initial primitive sync and the
+scalar syncs. **Default**: on in those syncs; off for face states and the donor factor. **Requires**:
+`interp_order: 2`; a subdivided panel ($p_x > 1$) runs the sync in two phases. **Order**: second (linear
+interpolation). **Defining equation**: @eq-ch03-csinterp-weights.
+:::
+
+Across a panel edge the two panels' coordinate lines meet at an angle, so a ghost cannot be a copy of a neighbour's
+cell. snapy fills each ghost by one-dimensional linear interpolation along the shared edge, from a strip of the
+neighbour's cells. The source of a ghost in layer $\ell$ does not sit opposite it: it slides along the edge toward the
+edge midpoint by up to $n_g - \tfrac12$ cells, independently of resolution. So the strip is widened by $n_g$ cells on
+each side, and when a panel is split among blocks the widened strip reaches into the sender's own intra-panel halo,
+which must be current; the sync therefore runs in two phases, intra-panel first. Velocities are rotated from the
+sender's panel frame to the global spherical $(r, \theta, \varphi)$ frame before sending and back into the receiver's
+frame after interpolation. In the history: [chengcli/snapy#222](https://github.com/chengcli/snapy/issues/222) (the
+decomposition fixes).
+
+### Derivation
+
+The slide follows from the gnomonic map, as in `sources/canoe__cubedsphere_decomposition_TECH_REPORT.md` §1. Take the
+right edge of a panel, $\xi = \pi/4$. A ghost of layer $\ell$ sits at $\xi = \pi/4 + (\ell - \tfrac12)\Delta\xi$ and
+along-edge angle $\eta$; its direction is $(1, \tan\xi, \tan\eta)$ in the panel's frame. The neighbouring panel's
+frame is the same frame turned by $\pi/2$ about the edge, in which the same direction reads $(\tan\xi, -1, \tan\eta)$
+up to sign, so its along-edge angle there is
+
+$$
+\tan\eta' = \frac{\tan\eta}{\tan\xi}.
+$$ {#eq-ch03-csinterp-slide}
+
+On the edge itself $\tan\xi = 1$ and $\eta' = \eta$. Outside it, with $\varepsilon = (\ell - \tfrac12)\Delta\xi$ and
+$\tan\xi = 1 + 2\varepsilon + O(\varepsilon^2)$, expanding gives $\eta' - \eta = -\varepsilon\sin 2\eta +
+O(\varepsilon^2)$: a slide of $(\ell - \tfrac12)\sin 2\eta$ cells toward $\eta = 0$, at most $n_g - \tfrac12$ cells,
+at the corners. The code does not use the expansion: `cs_build_ghost_usrc` maps each ghost centre through Cartesian
+coordinates onto the source panel and converts the angle to a cell abscissa $u = (\eta' + \pi/4)/\Delta\xi - \tfrac12$,
+reversed when the edge table says so ([`cubed_sphere_utils.cpp:78-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L78-L108)). The ghost value is then
+
+$$
+q_{\mathrm{ghost}} = (1 - w)\,q_{\lfloor u\rfloor} + w\,q_{\lfloor u\rfloor + 1}, \qquad w = u - \lfloor u\rfloor,
+$$ {#eq-ch03-csinterp-weights}
+
+with the cell index shifted by an integer per block. @eq-ch03-csinterp-weights is the `interp_order == 2` branch of
+`_interp_ghost_LR` ([`gnomonic_equiangle.cpp:475-514`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L475-L514)) and of `_interp_ghost_BT`
+([`gnomonic_equiangle.cpp:516-554`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L516-L554)). Linear interpolation is exact for linear data and has an $O(\Delta\xi^2)$
+error otherwise. The margin is the largest slide rounded up, $\lceil n_g - \tfrac12\rceil = n_g$, which is
+`cs_interp_margin` ([`cubed_sphere_utils.hpp:95-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.hpp#L95-L108)). For $N_{\mathrm{p}} = 64$ and $n_g = 3$ the exact slide
+from @eq-ch03-csinterp-slide is at most 2.4955 cells and departs from the expansion by at most 0.072 cells (check line
+`[C11]` of `geometry_check.out`).
+
+The ordering constraint is derived in the same source, §5 and §6: on a subdivided panel the widened strip packed for a
+cross-panel neighbour contains cells this block holds only as intra-panel ghosts, and those are written by the unpack
+of the same sync. One round cannot satisfy that, so the intra-panel round completes first.
+
+### Numerical method
+
+The abscissae are built once in `reset` for the whole edge (face 0, left side, reused for every edge by symmetry) and
+kept as a double per ghost; the block's offset into the edge is kept as a separate integer and added to the index after
+`floor`, so the stored weight does not depend on the decomposition. A sync with interpolation on a cubed sphere with
+$p_x > 1$ or $p_y > 1$ runs as intra-panel (no interpolation), then cross-panel, then `fill_corners`. In the
+cross-panel pack the strip is widened by the margin, its velocities are rotated to the spherical frame (conserved
+momenta are raised to contravariant first), and the strip is relabelled for the neighbour's orientation by the
+reverse, flip and transpose flags. In the unpack the wide strip lands in the ghost zone and its margin, the ghost is
+interpolated from it while all of it is still in the spherical frame, and only the narrow ghost zone is rotated into
+the receiver's frame (and lowered back to covariant for conserved momenta). @fig-ch03-csinterp-slide shows the slide.
+
+```{python}
+#| label: fig-ch03-csinterp-slide
+#| fig-cap: "Two panels meeting at an edge (thick line). Ghost centres of layers $\\ell = 1, 2, 3$ beyond the edge (open circles) and the points of the neighbouring panel they are interpolated from (filled circles), joined by arrows: the sources slide along the edge toward its midpoint, most at the panel corners. Computed from @eq-ch03-csinterp-slide for 16 cells per edge."
+#| fig-alt: "Ghost centres in three rows beside a vertical edge, each connected to a source point shifted toward the middle of the edge."
+#| echo: false
+from snapy_report.ch03.fig_csinterp_slide import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| ghost centre on the target panel | [`cubed_sphere_utils.hpp:43-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.hpp#L43-L66) | `cs_equ_ghost_center` | none |
+| margin | [`cubed_sphere_utils.hpp:95-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.hpp#L95-L108) | `cs_interp_margin` | none |
+| source abscissae | [`cubed_sphere_utils.cpp:78-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L78-L108) | `cs_build_ghost_usrc` | none |
+| global abscissae, integer shift | [`gnomonic_equiangle.cpp:162-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L162-L196) | `usrc_shift_BT` | `interp_order` |
+| interpolation | [`gnomonic_equiangle.cpp:245-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L245-L263) | `interp_ghost` | `interpolate` |
+| two phases | [`meshblock.cpp:554-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L572) | `intra_panel_only` | `interpolate` |
+| pack: phase stop, margin, flags, rotation | [`cubed_sphere_layout.cpp:625-793`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L625-L793) | `trans_flag` | `type` |
+| unpack: wide landing, interpolate, rotate | [`cubed_sphere_layout.cpp:897-958`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L897-L958) | `interp_ghost` | `type` |
+| cached rotation matrix | [`cubed_sphere_layout.cpp:122-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L122-L152) | `_velocity_transform` | none |
+| phase filter on messages | [`cubed_sphere_layout.cpp:1007-1016`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L1007-L1016) | `same_panel` | none |
+
+: Code map of the cross-panel interpolation. {#tbl-ch03-csinterp-code}
+
+In step order (@tbl-ch03-csinterp-code):
+
+1. At setup `reset` calls `cs_build_ghost_usrc` for the whole edge and stores the block's slice with the integer
+   shift `usrc_shift_LR` ([`gnomonic_equiangle.cpp:162-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L162-L196)).
+2. `exchange` splits an interpolating sync on a subdivided panel into `intra_panel_only` and `cross_panel_only`
+   rounds and calls `fill_corners` after both ([`meshblock.cpp:554-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L572)).
+3. `serialize` returns after the intra-panel neighbours in phase 1; in phase 2 it widens the strip with `extend_x2`
+   or `extend_x3` ([`cubed_sphere_layout.cpp:625-685`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L625-L685)), sets `rev_flag`, `trans_flag` and `flip_flag`
+   ([`cubed_sphere_layout.cpp:700-705`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L700-L705)), rotates the velocities with `cs_apply_velocity_transform_`
+   ([`cubed_sphere_layout.cpp:736-753`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L736-L753)) and relabels the strip with `flip_out`
+   ([`cubed_sphere_layout.cpp:755-780`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L755-L780)).
+4. `deserialize` lands the wide strip with `sub_w`, calls `interp_ghost`, then rotates the narrow ghost zone back
+   with `cs_apply_velocity_transform_` ([`cubed_sphere_layout.cpp:897-958`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L897-L958)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_cubed_sphere_exchange` | faces, `dx2f` and the density after one RK stage are equal for nb2 = 1, 2, 4 in one process | bitwise | decomposition must not change a ghost |
+| `test_cubed_sphere_exchange` | a communication tag that would collide is refused | exact | tag arithmetic |
+| `test_exchange` | ghosts across panel edges carry the neighbour's payload, two ranks | value bounds | payloads identify the sender |
+| `test_cubed_sphere_vertical_velocity_exchange_python` | a radial velocity crosses every edge unchanged | $10^{-12}$ | @sec-ch03-exchange |
+
+: Tests of the cross-panel interpolation. C++ entries carry the build suffix (`.release`). {#tbl-ch03-csinterp-tests}
+
+The bitwise case is `subdivided_panel_exchange_matches_one_block` ([`test_cubed_sphere_exchange.cpp:159-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L159-L179));
+the deck is the card written by `write_card`, $8\times8$ cells per panel, `nb2` = 1, 2 and 4, all $6p_x^2$ blocks in one
+process ([`test_cubed_sphere_exchange.cpp:20-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L20-L40)). Its CUDA twin
+`subdivided_panel_exchange_matches_one_block_cuda` is in the same binary and skips without a GPU
+([`test_cubed_sphere_exchange.cpp:181-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L181-L200)). The tag case is `rejects_tags_that_collide_with_the_variable_offset`
+([`test_cubed_sphere_exchange.cpp:150-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L150-L157)). Their pass status at the pin was not run for this chapter (missing
+evidence).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `interp_order` must be 2; the fourth-order branch of `_interp_ghost_LR` and `_interp_ghost_BT` is unreachable.
+- Bitwise decomposition independence is tested for `nb2` = 1, 2, 4 in one process, one stage.
+:::
+
+The source report records bit-for-bit agreement of `nb2` = 1, 2 and 4 over one cycle on CPU with gloo and one block
+per rank (`sources/canoe__cubedsphere_decomposition_TECH_REPORT.md` §7 and §10); that was measured on a development
+build, not at the pin, and re-running it at the pin needs the report's multi-rank gate, which is not committed. The
+margin cells of the wide landing zone keep the neighbour's spherical frame after the unpack; the same report shows
+with a gate that nothing reads them (§8), which was not re-checked at the pin. `_interpolate_to_local` is a stub with a
+TODO and no effect ([`cubed_sphere_layout.cpp:1065-1088`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L1065-L1088)). `DeviceTest.interpolate_LR` sets up linear data
+and asserts nothing, as written in `interpolate_LR` ([`test_coordinate.cpp:424-506`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L424-L506)). The switch combinations
+that are tested are listed in the switch coverage matrix of chapter 12.
