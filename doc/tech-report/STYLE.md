@@ -110,8 +110,8 @@ In a rendered chapter a code citation is always the link of section 10.6: link t
 the file at the pinned **full** sha on GitHub. The notation `path:lines@<short-sha>` names a location in this
 guide, in OUTLINE.md, in a review and in a pre-conversion draft; it never appears in a `.qmd`. Converting one
 to the other is mechanical. **The old form, forbidden in a `.qmd`,** is
-`src/hydro/hydro_forward.cpp:826-831@dae902b`; it becomes
-`` [`hydro_forward.cpp:826-831`](https://github.com/UCzhangxi/snapy/blob/dae902b04d217a824634762dd4e07790a12add5e/src/hydro/hydro_forward.cpp#L826-L831) ``.
+`src/hydro/hydro_forward.cpp:817-822@e894700`; it becomes
+`` [`hydro_forward.cpp:817-822`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L817-L822) ``.
 That line is the one place in this guide where a short sha is allowed, and it is allowed because it is
 explicitly labelled as the old form (section 3.2).
 In prose the symbol comes first, then the link:
@@ -135,7 +135,7 @@ In prose the symbol comes first, then the link:
   | pin | full sha | what it is |
   |---|---|---|
   | snapy base | `aea71ed852effb09e6aa155dd26349f1210ef556` | the commit of `chengcli/snapy` on which the gravity-work round is based |
-  | snapy round | `dae902b04d217a824634762dd4e07790a12add5e` | the gravity-work round, 52 commits ahead of the base, on `UCzhangxi/snapy` |
+  | snapy round | `e894700ff7aee30b52882e5202b16461413780b0` | the gravity-work round as squash-merged by `chengcli/snapy#297`, on `chengcli/snapy` main |
   | kintera | `4dc613d04f24621b3119d343c5c7c9b93628895b` | the kintera commit the round builds against |
   | pyharp | `4721715855e937c1e8b218e964c0655f46e56e29` | the pyharp commit the round builds against |
 
@@ -186,7 +186,7 @@ In prose the symbol comes first, then the link:
 
 Every number that is a measurement (an error, a drift, a rate, a timing, a growth) carries a provenance tag:
 
-> max per-step $|\Delta(E+P)|/|E+P| = 3.9\times10^{-16}$ [sha `dae902b`; deck: `tests/test_gravity_work_radial_exact.py`
+> max per-step $|\Delta(E+P)|/|E+P| = 3.9\times10^{-16}$ [sha `e894700ff7aee30b52882e5202b16461413780b0`; deck: `tests/test_gravity_work_radial_exact.py`
 > case `sph_vic`; run: ctest `test_gravity_work_radial_exact_python`, CPU, double].
 
 - **sha**: the code that produced it.
@@ -500,7 +500,7 @@ files, so every construct below must work in both. When in doubt, render both an
   on GitHub. Written out, the source is:
 
   ```markdown
-  [`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/dae902b04d217a824634762dd4e07790a12add5e/src/hydro/gravity_work_radial.hpp#L28-L51)
+  [`gravity_work_radial.hpp:28-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/gravity_work_radial.hpp#L28-L51)
   ```
 
   The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
