@@ -100,7 +100,8 @@ Rules for the layers:
 - **Code** citations must resolve at the pinned sha (section 3).
 - **Tests** never quotes a number without its sha, deck and run; "missing evidence" is an acceptable entry, a bare
   number is not.
-- **Limits** includes the switch combinations that are not tested (cross-reference chapter 12's matrix).
+- **Limits** includes the switch combinations that are not tested (cross-reference the switch coverage
+  matrix, `@sec-ch12-matrix`).
 
 ## 3. Citations
 
@@ -338,7 +339,8 @@ doc/tech-report/
 5. Every figure re-renders from its script with no diff; colour-blind palette; labelled axes and units.
 6. Every derivation's check runs, passes, and its `.out` is committed and current.
 7. No machine names, cluster paths, personal paths; no other model's code.
-8. Switch, default and couplings in the Summary agree with chapter 12's matrix.
+8. Switch, default and couplings in the Summary agree with the switch coverage matrix,
+   `@sec-ch12-matrix`.
 
 ## 10. Quarto markup (binding)
 
@@ -360,6 +362,8 @@ files, so every construct below must work in both. When in doubt, render both an
 - Chapter identifiers are fixed now from OUTLINE.md and never change: `ch01` ... `ch17`; split chapters use a letter,
   `ch04a`, `ch04b`, `ch07a`, `ch07b`, `ch14a` ... `ch14c`; appendices `appa`, `appb`, ... (Quarto numbers appendices
   A, B, ...).
+  Scheme numbers inside a chapter are fixed from OUTLINE.md at the same time as the chapter identifiers and do
+  not change either; a cross-reference to a scheme uses its label (`@sec-ch12-matrix`), never its number.
 - Each scheme is a level-2 section with a label, `## ... {#sec-ch06-dwork}`. Its six layers are level-3 sections with
   exactly the headings of section 2. Deeper structure inside a layer uses level 4 (`####`) at most. Quarto numbers all
   sections (`number-sections: true`); never type a section number.

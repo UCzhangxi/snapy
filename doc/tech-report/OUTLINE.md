@@ -1991,8 +1991,8 @@ How gravity's work enters the energy equation and what each form conserves: the 
     docs/derivations/curved-gravity-work-weight.md@dae902b §§2-6 with `curved_gravity_work_weight.py`.
   - The curvature flux $\mathcal K$ (face average exceeds $m$ by $\tfrac{h^2}{12}(m''+\rho'v')$): re-derive from
     `src/hydro/hydro_forward.cpp:833-858@dae902b`; its wall-cell order: exists: curved-gravity-work-weight.md §8.3.
-  - Independent Cartesian four-point booking: exists: sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md
-    (alternative, not implemented; cite as context only).
+  - Independent Cartesian four-point booking: moved to 6.4. It is an independent derivation of D's own result,
+    not an unimplemented alternative to the face form; see the 6.4 entry.
   - `face-wallc` wall cells: re-derive from `src/hydro/hydro_forward.cpp:901-906@dae902b`.
 - Figures:
   - Stencil: face potential $\phi_{i\pm1/2}$ vs centroid $\phi_i$, the two face weights $(x_{1,i\pm1/2}-x_{1,i})$.
@@ -2051,11 +2051,32 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Summary: written in full as the worked example, `chapters/06-gravity-energy/D_face_work_pe.md` (all six layers).
   $W^{\mathrm{D}}=W^{\mathrm{face}}+g_1\sigma^2s[\dot\rho]$ conserves $E+P$ ($P$ exact to $O(h^4)$) to round-off and is $O(h^4)$
   in every cell; on by default with `gravity-work: face` on Cartesian and spherical-polar grids.
-- Derivations: exists: docs/derivations/curved-gravity-work-weight.md@dae902b §§7, 8, 10; re-written in the report
-  with checks C1-C11 (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass); note that §7 and §8.6 of the note give the $E+\mathrm{PE}_d$ change under D with the wrong sign (corrected in the section, eq. 6.4.13).
+- Derivations: exists: `docs/derivations/curved-gravity-work-weight.md@dae902b04d217a824634762dd4e07790a12add5e`
+  §§1-4 (face form and error expansion), §§7-8 (the corrected potential and the weights), §10 (the implicit
+  operator) and §11 (onset); re-written in the report with checks C1-C11
+  (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass). Two carry-overs from §11 are open
+  and must be closed before approval: the §11.2 onset numbers quoted in the Tests layer have no deck or run
+  (**missing evidence**), and the §11.3 convergence table was a placeholder at the pin. Note that §7, §8.6 and
+  §§11.3-11.4 of the note were edited after the pin on `next/final-batch`; re-read the note's current head
+  before approval (STYLE.md §3.2).
+- Independent corroboration and open disagreement: `sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md`
+  derives the same result for the Cartesian case by a different construction (§2.3, boundary shifts
+  $\varepsilon_i$ on the three cells next to each wall), proves exact conservation (§2.4) and $O(h^4)$ in
+  every cell including wall cells (§2.5), shows the modified $P$ is fourth order against the plain one's
+  second (§2.6), and verifies all of it numerically (§3). Cite it in the Derivation layer as independent
+  confirmation, not as an unimplemented alternative. Its §4.4 lists claims it holds to be wrong or
+  under-qualified in `docs/derivations/curved-gravity-work-weight.md`, in particular §4.4(a) on the Cartesian
+  "conflict" sentence. Each §4.4 item is dispositioned before 6.4 is approved — accepted and the derivation
+  note corrected, or rejected with a reason — and the outcome recorded in the section's Limits layer. An
+  undispositioned item blocks approval.
 - Figures: done: `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (stencils interior/wall/seam, VIC
   lumping, order of accuracy).
-- Code: see the section's Code layer (48 citations, all resolve at dae902b).
+- Code: see the section's Code layer. 37 distinct `path:lines@dae902b` citations; each file exists and each
+  range exists at `dae902b04d217a824634762dd4e07790a12add5e`, checked 2026-10-10 with
+  `git show <sha>:<path>`. One further citation is to pyharp at
+  `4721715855e937c1e8b218e964c0655f46e56e29` and must be corrected from `:49-60` to `:49-61`, which is where
+  the third rk3 weight is. Re-check all of them with `tools/check_citations.py` when it lands, and record the
+  count and the date here rather than a bare number.
 - Tests: `test_gravity_work_radial_exact_python` (checks 1-8), `test_x1_seam_split_radial_exact`,
   `test_x1_seam_split_mp_radial_exact`, `test_implicit_gravity_tall_column_python`, the `_radial_exact` arms of
   `test_implicit_face_work_operator` and `test_implicit_stratified_solid`.
@@ -2109,6 +2130,12 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Limits / known issues: the physically "right" form for low-Mach convection is the open question of the draft §§6-7
   (T1L onset); with the wall closure and D the remaining onset error is shared by face and cell (placeholder table in
   curved-gravity-work-weight.md §11.3, missing evidence).
+  - Untested combinations of the gravity-work forms with the other scheme switches
+    (`SNAP_FLUX_COVARIANCE`, `SNAP_WB_REF4`, `SNAP_X1_CENTROID_EXACT`, `SNAP_X1_MASS_COVARIANCE`), and the face
+    forms on moist columns with several mass rows: no ctest entry covers any of them (D's Limits item 12). This
+    chapter states the combinations and what would break first in each; §12.12's matrix records the coverage
+    gap; neither invents a test. Whether any of them blocks approval of chapter 6 is the lead's decision, taken
+    when the matrix is first complete.
 - Discrepancies: the draft's Fig. 6 and Appendix A are dropped or rebuilt (ISSUES.md items 1, 6).
 
 
@@ -3907,7 +3934,7 @@ Recommendations on structure:
 <a id="ch12"></a>
 ## Chapter 12. Build-time and run-time switches and configurations
 
-Every switch that changes what snapy compiles or computes: 12.1 build time, 12.2 environment (the five `SNAP_*` scheme switches), 12.3 YAML scheme keys, 12.4 the coverage matrix (switch combination → ctest entries). The scheme switches are process-global and read once; their couplings are real constraints, so they get this chapter rather than being scattered over chapters 4-6 (each physics section still states its own switch in its Summary layer).
+Every switch that changes what snapy compiles or computes: 12.1 build time, 12.2 environment (the five `SNAP_*` scheme switches), 12.3 YAML scheme keys, 12.12 the coverage matrix (switch combination -> ctest entries). The scheme switches are process-global and read once; their couplings are real constraints, so they get this chapter rather than being scattered over chapters 4-6 (each physics section still states its own switch in its Summary layer).
 
 <details><summary>Research note from the inventory (scope, recommendations)</summary>
 
@@ -3917,8 +3944,8 @@ YAML option keys that select a scheme (gravity-work mode, fixer, wall clamp, imp
 reconstruction and Riemann types). For each switch the chapter gives how it is set, its default, the code that reads
 it, its couplings, and the tests that run it. It ends with a coverage matrix (switch combination -> ctest entries).
 **Recommendation: keep it as one chapter, in three parts:** 12.1 build-time, 12.2 environment (the five `SNAP_*`
-scheme switches are the core), 12.3 YAML scheme keys. Put the coverage matrix in 12.4 and cross-link it from
-Chapter 15. Do not merge it into Ch.15: Ch.15 indexes tests by topic, while 12.4 indexes them by switch
+scheme switches are the core), 12.3 YAML scheme keys. Put the coverage matrix in 12.12 and cross-link it from
+Chapter 15. Do not merge it into Ch.15: Ch.15 indexes tests by topic, while 12.12 indexes them by switch
 combination. The study switches (`SNAP_*`) are process-global and read once, and their couplings
 (implication, nghost, grid type, gravity-work mode) are real constraints. They deserve a chapter of their own and should
 not be scattered across Chapters 4-6.
@@ -4260,7 +4287,7 @@ not be scattered across Chapters 4-6.
   `test_gravity_work_fixer_python` (fixer guards, face-wallc, Python keys).
 
 
-### 12.4 Coverage matrix
+### 12.12 Coverage matrix
 
 
 #### 12.12 Coverage matrix (switch combination -> ctest entries)
@@ -4821,7 +4848,7 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
 <a id="ch15"></a>
 ## Chapter 15. Verification catalogue
 
-The human-readable index of every ctest entry at the pin, grouped by the chapter that owns the topic, with what each asserts and its tolerance; the examples used as regression. Appendix C (the machine index) is generated from `ctest -N` at the pin so the two cannot drift; 12.4 is the same tests indexed by switch combination.
+The human-readable index of every ctest entry at the pin, grouped by the chapter that owns the topic, with what each asserts and its tolerance; the examples used as regression. Appendix C (the machine index) is generated from `ctest -N` at the pin so the two cannot drift; 12.12 is the same tests indexed by switch combination.
 
 <details><summary>Research note from the inventory (scope, recommendations)</summary>
 
@@ -4829,7 +4856,7 @@ Scope: an index of every ctest entry registered by `tests/CMakeLists.txt@dae902b
 topic (chapter numbers from the proposed outline). Each entry gives one line on what it asserts and the tolerance where
 it is visible. It also lists the example decks used as regression (straka, bryan, shallow-water, uranus) and the files
 that exist but are not registered. **Recommendation:** keep this chapter as the human-readable index. Generate the
-appendix test index (Ch.17) from `ctest -N` at the pinned sha, so the two cannot drift. Ch.12.4's switch matrix is the
+appendix test index (Ch.17) from `ctest -N` at the pinned sha, so the two cannot drift. Ch.12.12's switch matrix is the
 other view.
 
 </details>
@@ -5012,7 +5039,7 @@ other view.
 | `test_hydro_options.<b>` | dynamics/eos/forcing key whitelists; `fric-heat` refused; scheme not in {0,1,9} refused; `wb-wall-clamp` ships true and reaches the reference; non-map blocks refused | n/a |
 | `test_process_group.<b>` | backend and `MASTER_PORT` env rules | n/a |
 | `test_python_import_path_python` | `SNAPY_TEST_PYTHONPATH` wiring | n/a |
-| switch arms | see Ch.12.4 matrix | |
+| switch arms | see Ch.12.12 matrix | |
 
 
 #### 15.13 Ch.13 Diagnostics
@@ -5322,6 +5349,14 @@ Folded in from inventory A (1.14); Ch. 12.2 is the full treatment.
 - Discrepancies: none.
 
 ### Appendix E. Components outside snapy
+- Radiation inside the snapy tree: none is compiled. `src/diagnostics/radiative_flux.cpp_` is a disabled
+  diagnostic (the trailing underscore keeps it out of the build, as for `src/coord/cylindrical.cpp_` and
+  `src/forcing/sponge_lyr.cpp_`); `src/z.junk/load_radiation_output_data.cpp_` is dead;
+  `cmake/modules/FindDisort.cmake` is a locator kept for the Python package, which imports pydisort
+  (`python/__init__.py`, §1.13). None of them is described further. The only radiation-related scheme in the
+  report is the radiating characteristic boundary (§11.5), which is a characteristic outflow condition and
+  contains no radiative transfer; its name is the only thing radiative about it, and §11.5 says so in its
+  first line.
 - The time integrator: pyharp `harp::Integrator` (`pyharp:src/integrator/integrator.cpp:49-60@4721715` for rk3).
 - The kinetics coupling and precipitation: in the example driver `examples/run_hydro.cpp` (10.6).
 - The radiative time-step limiter, folded in from inventory D:
