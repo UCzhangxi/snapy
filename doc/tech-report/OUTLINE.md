@@ -3,7 +3,7 @@
 > Editor: C0. Status: **for review by the lead, then approval by the project owner before drafting starts.**
 > Pinned code: snapy `dae902b` (`next/final-batch` on UCzhangxi/snapy = snapy main `aea71ed` plus the gravity-work
 > round); kintera `4dc613d` and pyharp `4721715` for code outside snapy. Every `path:line@sha` below was checked with
-> `build/check_citations.py` (file and lines exist at the sha); the inventories behind it were checked by hand against
+> `tools/check_citations.py` (file and lines exist at the sha); the inventories behind it were checked by hand against
 > the statement each line carries. Binding style: `STYLE.md`. Symbols: `NOTATION.md`.
 
 ## How to read this outline
@@ -5283,7 +5283,7 @@ are written.
 | 14.12 | Reproducibility and bit-for-bit claims (inventory) | 0 | 0 |
 
 ### Appendix C. Test index
-Generated from `ctest -N` at the pinned sha by a script in `build/` (planned), so it cannot drift from Ch. 15.
+Generated from `ctest -N` at the pinned sha by a script in `tools/` (planned), so it cannot drift from Ch. 15.
 
 ### Appendix D. Environment-variable switches
 Folded in from inventory A (1.14); Ch. 12.2 is the full treatment.

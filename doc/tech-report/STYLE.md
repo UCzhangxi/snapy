@@ -110,7 +110,7 @@ location; it never appears in chapter text. In prose the symbol comes first:
   - the gravity-work round: `dae902b` (`next/final-batch` on UCzhangxi/snapy). Code that differs between the two is
     cited at `dae902b`. When the round merges, the editor moves every pin to the merge sha with a script; authors do
     not edit shas by hand.
-- A citation is checked by `build/check_citations.py` (planned; see section 9): the file must exist at the sha and
+- A citation is checked by `tools/check_citations.py` (planned; see section 9): the file must exist at the sha and
   the line must exist. Authors run `git show <sha>:<path> | sed -n '<line>p'` themselves before committing.
 - Tests are cited by file and ctest name: `tests/test_gravity_work_radial_exact.py` (ctest
   `test_gravity_work_radial_exact_python`).
@@ -255,7 +255,7 @@ doc/tech-report/
         figs/                     # static images only (none expected)
     src/                          # python: package snapy_report (figures, checks), tests/ (pytest)
     reviews/                      # review notes, one file per review round
-    build/                        # scripts: citation checker, pin mover
+    tools/                        # scripts: citation checker, pin mover
 ```
 
 ## 9. Review checklist (authors run it before asking for review)
@@ -263,7 +263,7 @@ doc/tech-report/
 1. Six layers present, in order, with the headings of section 2; `quarto render book --to html` and `--to pdf` both
    succeed with no unresolved cross-reference and no warning from the chapter (section 10.9).
 2. Every symbol in NOTATION.md or defined locally and flagged to the editor.
-3. Every code link resolves at its sha and its lines show the claimed statement (`build/check_citations.py`).
+3. Every code link resolves at its sha and its lines show the claimed statement (`tools/check_citations.py`).
 4. Every number carries sha, deck, run, or is marked missing evidence.
 5. Every figure re-renders from its script with no diff; colour-blind palette; labelled axes and units.
 6. Every derivation's check runs, passes, and its `.out` is committed and current.
@@ -382,7 +382,7 @@ files, so every construct below must work in both. When in doubt, render both an
   `[`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<full-sha>/src/hydro/gravity_work_radial.hpp#L28-L51)`.
   The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
   directory (`hydro/hydro.cpp:120-140`). The Code table of a scheme holds the same short links. The pinned shas and their meaning are listed once in `index.qmd`. The
-  editor's pin-mover script rewrites every URL when the pin moves, and `build/check_citations.py` checks every link
+  editor's pin-mover script rewrites every URL when the pin moves, and `tools/check_citations.py` checks every link
   (file and lines exist at the sha).
 - Code excerpts: only when the text discusses the lines, at most 15 lines, in a fenced block with its language
   (`cpp`, `python`, `yaml`) and the citation link in the sentence before it. No line numbers inside the block;

@@ -16,7 +16,7 @@ OUTLINE.md generated from five research inventories + ch6 (152 schemes, 439 cita
 | its check | `chapters/06-gravity-energy/checks/d_face_work_pe_check.py` | 11/11 claims pass |
 | its figure | `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (+ `.png`) | rebuilds bit for bit |
 | shared figure style | `chapters/common/figstyle.py` | |
-| citation checker | `build/check_citations.py` | all citations in OUTLINE.md and the D section resolve |
+| citation checker | `tools/check_citations.py` | NOT COMMITTED: it was written under `build/`, which snapy gitignores; to be re-pushed under `tools/` |
 
 ## Open questions for the lead
 1. **Evidence at the pin.** This environment has no libtorch build, so no C++/Python test was run at `dae902b`. The D
@@ -44,8 +44,8 @@ OUTLINE.md generated from five research inventories + ch6 (152 schemes, 439 cita
    - an orphan test runner, `run_example_mass_check.py`, is not registered.
 
    OUTLINE.md chapter 16 lists them. Should they become issues?
-8. **Pin move.** When `next/final-batch` merges, the pins move to the merge sha. `build/check_citations.py` then shows
-   which citations moved, but line shifts must be fixed by hand. Proposal: a `build/move_pin.py` that remaps line
+8. **Pin move.** When `next/final-batch` merges, the pins move to the merge sha. `tools/check_citations.py` then shows
+   which citations moved, but line shifts must be fixed by hand. Proposal: a `tools/move_pin.py` that remaps line
    numbers with `git blame -C`. Decide before the authors start.
 9. **Sign slip in a committed derivation.** `docs/derivations/curved-gravity-work-weight.md` §7 and §8.6 give the
    $E+\mathrm{PE}_d$ change under D as $-g_1\sum V\sigma^2s[\Delta\rho]$. It is $+$. The report's eq. (6.4.13) uses
