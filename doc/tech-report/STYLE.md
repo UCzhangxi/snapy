@@ -150,7 +150,11 @@ Every number that is a measurement (an error, a drift, a rate, a timing, a growt
 ## 5. Equations and notation
 
 - All symbols are defined in `NOTATION.md`, one meaning each. A chapter may introduce a local symbol only if
-  NOTATION.md has no symbol for the concept; it defines it at first use and the editor adds it to NOTATION.md.
+  NOTATION.md has no symbol for the concept. It then does three things: defines the symbol at first use, lists
+  it in a "Local symbols" note at the top of the scheme file, and opens an ISSUES.md item naming the symbol and
+  the scheme. When the editor adds the symbol to NOTATION.md, the editor closes the item and **deletes the entry
+  from the chapter's local-symbol note**; a note that still lists a symbol NOTATION.md defines is a review
+  failure (section 9, item 2). A chapter never redefines a symbol NOTATION.md already has, even to narrow it.
 - Indices: cell $i$ (x1), $j$ (x2), $k$ (x3); faces at half integers $i\pm\tfrac12$. Code index names (`is`, `ie`,
   `il`, `iu`) appear only in the Code layer, mapped to math indices once.
 - Cell averages carry an overbar only where a point value of the same quantity also appears: $\bar\rho_i$ against
@@ -328,8 +332,12 @@ files, so every construct below must work in both. When in doubt, render both an
 
 ### 10.2 Inline text
 - Inline code (identifiers, switches, YAML keys, file names): backticks. Math symbols: `$...$`, never backticks.
-- OUTLINE.md, NOTATION.md and the sources are planning files, not rendered, and may use Unicode symbols. Text
-  copied from them into a `.qmd` file is converted to math mode on the way.
+- OUTLINE.md and the sources are planning files and are not rendered; they may use Unicode symbols, and text
+  copied from them into a `.qmd` is converted to math mode on the way. NOTATION.md is different: it is rendered,
+  as Appendix A. The editor keeps it in the markup of this section (ASCII only, every symbol in `$...$`, pipe
+  tables within the column limits of section 10.5) and converts it to `book/chapters/appa-notation.qmd` with the
+  label `{#sec-appa}`; chapters reference it as `@sec-appa`. Authors edit NOTATION.md, never the generated
+  `.qmd`.
 - Units, chemical formulas, relations and arrows always in math mode: `$\mathrm{m\,s^{-2}}$`, `$\mathrm{H_2O}$`,
   `$\le$`, `$\to$`. Never Unicode superscripts, subscripts or symbols (`s⁻¹`, `H₂O`, ≤, →, ×): the PDF can drop them
   silently.
