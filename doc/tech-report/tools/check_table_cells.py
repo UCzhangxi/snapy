@@ -13,10 +13,10 @@ character-mapping one, so ``render_gate.py`` catches a handful of ~510; and the 
 sees nothing at all.  The instrument that works is a scan of the RENDERED ``<th>``/``<td>``
 contents, which is what this script does.
 
-    python reference/check_table_cells.py book/_book          # gate a build
-    python reference/check_table_cells.py book/_book --list   # one line per offending cell
-    python reference/check_table_cells.py --source book/chapters/*.qmd   # gate the SOURCE
-    python reference/check_table_cells.py --self-test
+    python tools/check_table_cells.py book/_book          # gate a build
+    python tools/check_table_cells.py book/_book --list   # one line per offending cell
+    python tools/check_table_cells.py --source book/chapters/*.qmd   # gate the SOURCE
+    python tools/check_table_cells.py --self-test
 
 🔴 **--source exists because fixing #10 turns a DORMANT defect class into a fatal one.**
 While a cell's strings were going straight into pandas' HTML, a math span inside one that
