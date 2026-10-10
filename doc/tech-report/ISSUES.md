@@ -58,3 +58,16 @@ Remove the local-symbol notes once the shared notation table incorporates these 
 Runtime gaps: outflow/WB/VIC and corner combinations, periodic solid closure, scalar/diffusion coupling
 through solids, and at least three-resolution wall-reference convergence. These are missing evidence,
 not measured defects. The source tests and report formula checks are separated in the Chapter 15 catalogue.
+
+## Chapter 10 local symbols (draft)
+
+Owners: chapter 10 / editor. Each scheme file lists its symbols in a "Local symbols" line; remove that line when the
+symbol enters NOTATION.md.
+- `_borrow.qmd`: $\mathcal P_c$, the parent-vapour set of condensate $c$.
+- `_fixvapor.qmd`: $\mathcal M$, the window of $x_1$ cells one scan step of the column repair rewrites.
+- `_kinetics.qmd`: $\dot{\boldsymbol\omega}$, reaction rates; $\mathsf J_{\dot\omega}$, their concentration Jacobian
+  (subscripted to stay apart from chapter 2's $\mathsf J$); $x$, the two-product evaporation extent.
+- `_tracer.qmd`: $b$, the tracer upper bound; $F_n$, $F_{\mathrm d}$, the $x_1$ face fluxes of tracer $n$ and of dry air.
+- `_sed.qmd`: $a_n$ particle radius, $\rho_{\mathrm p,n}$ particle density, $\beta_n$ Cunningham factor, $\lambda$ mean
+  free path, $\mathrm{Kn}$ Knudsen number, and $m$, $d$, $\epsilon$ for the background gas's molecular mass, diameter
+  and Lennard-Jones well depth ($k_{\mathrm B}$ as in chapter 2).

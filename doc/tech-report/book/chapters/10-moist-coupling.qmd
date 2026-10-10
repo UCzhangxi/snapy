@@ -1,0 +1,56 @@
+# Moist physics coupling {#sec-ch10}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md chapter 10 (10.1-10.8; 10.4 and 10.5 merged into one scheme file, as the chapter note asks)
+status: draft
+-->
+
+This chapter is about how phase change and condensates enter snapy's step. The equations of state and the phase
+equilibrium itself are Chapter 2 (@sec-ch02-saturation); this chapter starts where they are called. It covers the
+saturation adjustment's place in the step; the two causes for rejecting a step that moist physics raises; the two
+species repairs of the conserved limiter, which keep condensate and vapour non-negative without creating mass; the
+reaction kinetics that the example drivers, not the library, run between steps; passive tracers carried per unit
+dry air; and the settling of condensates. One rule runs through all of them: latent heat is never a separate term.
+It is the difference of the species reference energies, so every operator here except sedimentation writes the
+species rows only and leaves the total energy, the momentum and the dry air alone. Sedimentation moves condensate
+with its own energy and momentum. The redo machinery in general is Chapter 7 and the positivity limiter's theory
+Chapter 8.
+
+```{python}
+#| label: fig-ch10-deps
+#| fig-cap: "Dependency map of the moist-coupling schemes. Solid arrows read 'requires' or 'is part of', dashed arrows 'raises a redo cause in', the dotted arrow 'needs it switched on'. The borrow and the column repair are parts of the conserved limiter, which the saturation adjustment calls first; the limiter (cause 4) and the adjustment (cause 16) feed check_redo, which the driver kinetics calls; sedimentation requires constant gravity."
+#| fig-alt: "Directed graph of nine boxes: dry-air tracers, conserved limiter, saturation adjustment, driver kinetics, parent-vapour borrow, column vapour repair, check_redo, const-gravity, sedimentation, with solid, dashed and dotted arrows."
+#| echo: false
+from snapy_report.ch10.fig_deps import make_fig
+make_fig()
+```
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| Saturation adjustment (@sec-ch10-satadj) | reactions in the thermo | on with reactions | n/a | `test_wall_saturation` |
+| Redo causes (@sec-ch10-redo) | `max_redo` | 5 | n/a | `test_check_redo_saturation` |
+| Parent-vapour borrow (@sec-ch10-borrow) | `limiter` | off | n/a | `test_condensate_conservation` |
+| Column vapour repair (@sec-ch10-fixvapor) | `limiter` | off | n/a | `test_fix_vapor_volume` |
+| Driver kinetics (@sec-ch10-kinetics) | driver | driver | 1 in time | `test_uranus_cycle1_abort` |
+| Dry-air tracers (@sec-ch10-tracer) | `scalar` | off | as `reconstruct` | `test_tracer_dry_convention` |
+| Sedimentation (@sec-ch10-sed) | `sedimentation` | off | 1 in space | `test_sedimentation_guards` |
+
+: The schemes of this chapter, their switches and defaults, and the test that carries each one. "Driver" means
+the scheme is in the example drivers, not in the library, and has no library switch. `limiter` defaults to
+false both in the C++ options struct and in YAML. Full ctest names and tolerances are in each scheme's Tests
+layer and in @sec-ch15-ch10-tests. {#tbl-ch10-schemes}
+
+{{< include 10-moist-coupling/_satadj.qmd >}}
+
+{{< include 10-moist-coupling/_redo.qmd >}}
+
+{{< include 10-moist-coupling/_borrow.qmd >}}
+
+{{< include 10-moist-coupling/_fixvapor.qmd >}}
+
+{{< include 10-moist-coupling/_kinetics.qmd >}}
+
+{{< include 10-moist-coupling/_tracer.qmd >}}
+
+{{< include 10-moist-coupling/_sed.qmd >}}

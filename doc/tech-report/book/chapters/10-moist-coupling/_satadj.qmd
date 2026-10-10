@@ -1,0 +1,161 @@
+## Saturation adjustment in the step (reactions in the thermo block) {#sec-ch10-satadj}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md 10.1; code links below; the phase solve itself is section ch02-saturation
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Brings every interior cell to phase equilibrium once per step, at fixed density and fixed
+internal energy, by moving mass between each vapour and its condensates.
+**Switch.** None of its own: on whenever the thermo block declares reactions; kintera's `uv-solver`, `max-iter`
+and `ftol` tune the solve. **Requires.** The whole-column conserved limiter, which runs just before it.
+**Runs.** On the last RK stage, interior cells only, before the boundary fill.
+**Defining equation.** @eq-ch10-satadj-state.
+:::
+
+Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK stages. It lets the
+stages advect vapour and condensate as tracers that carry their own reference energies, and once per step,
+after the last stage has been averaged, it hands each interior cell to kintera's fixed-volume fixed-energy
+equilibrium solve (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is never a separate
+source: it is the difference of the species reference energies $u^{\star}_n$ (NOTATION.md section 2), so moving
+mass between phases at fixed $\rho e$ changes the temperature and leaves $E$ alone. This section is the snapy
+side of that solve: when it runs, what it is handed, what it writes, and what happens when it fails.
+
+The adjustment is on whenever the thermo block of the YAML card lists reactions; there is no flag to turn it off
+while keeping the reactions. Its failures do not stop the step: they are counted and turned into redo cause 16
+(@sec-ch10-redo). The ghost cells are not adjusted; they are refilled from the adjusted interior afterwards
+(the #206 ordering, [chengcli/snapy#206](https://github.com/chengcli/snapy/issues/206)).
+
+### Derivation
+
+The derivation of the equilibrium itself, its energy constraint and its active-set solve, is
+@sec-ch02-saturation; it is not repeated here. What this section adds is the state handed to it and the proof that
+the write-back changes only the species rows.
+
+Step (6) of the stage update forms, in every interior cell, the total density, the internal energy density and
+the mass fractions from the conserved state:
+
+$$
+\begin{aligned}
+\rho &= \rho_{\mathrm{d}} + \sum_{n}\rho_n,\\
+\rho e &= E - \tfrac12\rho\lvert\mathbf v\rvert^2,\\
+y_n &= \rho_n/\rho .
+\end{aligned}
+$$ {#eq-ch10-satadj-state}
+
+@eq-ch10-satadj-state is formed as `rho`, `ie` and `yfrac` in `MeshBlockImpl::forward`
+([`meshblock.cpp:800-806`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L800-L806), `yfrac`).
+kintera's `ThermoYImpl::forward` receives $\rho$ and $\rho e$ by value and $y_n$ by reference, solves the
+equilibrium at fixed $\rho$ and fixed $\rho e$, and overwrites $y_n$
+([`kintera thermo_y.cpp:275-383`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L275-L383)).
+snapy then writes $\rho_n \leftarrow \rho\,y_n$ for every species row, with the same $\rho$ it handed in
+([`meshblock.cpp:816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L816), `yfrac`).
+
+Three consequences follow from these lines alone. First, the energy row is not written, so $E$ is unchanged to the
+last bit; since momentum is not written either, $\rho e = E - \tfrac12\rho\lvert\mathbf v\rvert^2$ is unchanged as
+long as $\rho$ is. Second, the dry row is not written, so $\rho_{\mathrm{d}}$ is unchanged. Third, $\rho$ is
+unchanged if and only if $\sum_n y_n$ is: the phase reactions move mass between species rows and never create it,
+so kintera returns fractions whose sum equals the input sum up to its solver tolerance, and $\rho$ after the write-back
+equals $\rho$ before to that tolerance. The energy is therefore conserved exactly and the total water to the
+tolerance of the phase solve; `test_wall_saturation` measures both below $10^{-12}$ relative over a whole run
+(Tests layer). No executable check is added in this chapter: the identities above are read off the code, and the
+solve's own algebra is checked by `saturation_check.py` of chapter 2.
+
+### Numerical method
+
+@fig-ch10-satadj-timeline places the adjustment in the step. Every stage ends with the RK average and a
+whole-column call of the conserved limiter
+([`meshblock.cpp:755-756`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L755-L756), `apply_conserved_limiter_`).
+On the last stage, and only if the thermo has reactions, the limiter runs once more and the adjustment follows
+([`meshblock.cpp:796-798`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L796-L798), `reactions`),
+so kintera never sees a negative species density. The solve is restricted to interior cells through the
+`exterior(false)` part of the block
+([`meshblock.cpp:811-814`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L811-L814), `exterior`),
+and the physical ghosts are refilled from the adjusted interior by `apply_boundaries`, after the gravity-work fixer
+([`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841)).
+The order of that fill relative to the exchange and the corner refresh is @sec-ch11-timing.
+Every quantity here is a cell average; the adjustment is pointwise in each cell, with no stencil.
+
+The call passes `warm_start = true`: kintera reuses the active set of its last call when the shape and the
+device match, and starts cold otherwise
+([`kintera thermo_y.cpp:293-310`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L293-L310), `reuse`).
+A cell the solve could not adjust is marked by a negative diagnostic and counted; on CPU kintera also warns at once,
+on CUDA the count stays on the device until snapy reads it after the step (@sec-ch10-redo).
+
+```{python}
+#| label: fig-ch10-satadj-timeline
+#| fig-cap: "Where the saturation adjustment sits in one RK step. Each box is one step of the stage update, read top to bottom; the last three boxes run on the last stage only, and the final box is the driver's call after the step. Green outlines mark operations, black arrows the order."
+#| fig-alt: "Six boxes in a column: stage-0 save and counter drain; per-stage limiter; last-stage limiter; UV adjustment of interior cells; boundary fill; check_redo after the step."
+#| echo: false
+from snapy_report.ch10.fig_satadj_timeline import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| step (6) gate and call | [`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816) | `pthermo` | reactions |
+| per-stage limiter | [`meshblock.cpp:755-756`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L755-L756), `apply_conserved_limiter_` | `apply_conserved_limiter_` | `limiter` |
+| boundary fill after it | [`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841) | `apply_boundaries` | |
+| equilibrium solve | [`kintera thermo_y.cpp:275-383`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L275-L383) | `ThermoYImpl::forward` | `uv-solver` |
+| warm-start reuse | [`kintera thermo_y.cpp:293-310`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L293-L310), `reuse` | `reuse` | |
+
+: Code map of the saturation adjustment in the step. {#tbl-ch10-satadj-code}
+
+1. The gate: last stage and a non-empty reaction list ([`meshblock.cpp:796-797`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L796-L797), `reactions`).
+2. The whole-column limiter, which removes negative species first ([`meshblock.cpp:798`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L798), `apply_conserved_limiter_`).
+3. The state of @eq-ch10-satadj-state ([`meshblock.cpp:800-806`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L800-L806), `yfrac`).
+4. The module found by name, so that every EOS type with a ThermoY is served ([`meshblock.cpp:808-809`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L808-L809), `pthermo`).
+5. The interior-only call with the warm start ([`meshblock.cpp:811-814`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L811-L814), `warm_start`).
+6. The write-back of the species rows ([`meshblock.cpp:816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L816), `yfrac`).
+7. The boundary fill ([`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841), `apply_boundaries`).
+
+The step has no setup check of its own and prints no warning; kintera's CPU warning on a failed cell is the only
+message a user sees, and the redo log line of @sec-ch10-redo names the cause.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_wall_saturation.release` | energy and water over a run | $10^{-12}$ rel. | test threshold |
+| `test_balance_column.release` | moist column stays at rest | $10^{-10}$ | dry case's bound |
+| `test_vic_moist_device_python` | CPU equals CUDA, one step | $10^{-9}$ | 17 times the recorded gap |
+| `test_check_redo_saturation_python` | a failed cell redoes the step | logical | failure protocol |
+
+: Tests of the saturation adjustment in the step. Assertions are read from the test sources at the pin; none was
+run for this draft. {#tbl-ch10-satadj-tests}
+
+`test_wall_saturation` runs a 64 m column next to a lower and an upper wall, once condensing and once evaporating,
+and asserts relative drifts of total energy and total water below $10^{-12}$ and an actual phase change
+([`test_wall_saturation.cpp:63-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wall_saturation.cpp#L63-L89), `EXPECT_LT`).
+The moist `test_balance_column` case holds a subsaturated column, so it shows the adjustment leaves a balanced
+state at rest, with the condensate row exactly zero and the vapour within $10^{-12}$
+([`test_balance_column.cpp:505-513`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_balance_column.cpp#L505-L513), `f_balanced`).
+`test_vic_moist_device_python` compares CPU and CUDA for one moist step; its bound $10^{-9}$ is about 17 times the
+gap recorded in its source comment
+([`test_vic_moist_device.py:19-20`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_vic_moist_device.py#L19-L20), `DEVICE_TOL`);
+that comment's number has no sha, deck or run of its own and is not quoted as evidence here. Coverage: the wall test
+is registered on CPU and, in CUDA builds, on CUDA; the device test exists only in CUDA builds; no test runs the
+adjustment on more than one rank. Measured numbers at the pin are **missing evidence** until a pinned build runs
+these entries (@sec-ch15-ch10-tests).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+Only interior cells are adjusted; ghosts are copies, so a scheme that reads ghost species before the next boundary
+fill sees unadjusted values. A failed cell is left unadjusted for the rest of the step and costs a redo.
+:::
+
+- No decomposed moist test with reflecting walls exists ([chengcli/snapy#208](https://github.com/chengcli/snapy/issues/208)).
+- The warm start is discarded whenever kintera is called with another shape or device in between, for example
+  by a diagnostic call from Python; correctness is unaffected, cost is not measured.
+- Water is conserved to the phase solve's tolerance, not to round-off; the solve's tolerances are those of
+  @sec-ch02-saturation.
+- The switch coverage matrix (@sec-ch12-matrix) has no row for moist runs; the combinations with
+  `SNAP_WB_REF4`, `SNAP_X1_CENTROID_EXACT` and the face gravity work are covered only by the moist
+  `test_balance_column` arms.

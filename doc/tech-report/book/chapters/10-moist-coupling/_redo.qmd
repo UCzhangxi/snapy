@@ -1,0 +1,121 @@
+## Step rejection for moist causes (`max_redo`) {#sec-ch10-redo}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77;
+     pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+sources: OUTLINE.md 10.2; code links below; sources/gh__ISSUE_THREADS_251-294.md
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** After each step, combines six failure flags over every block and rank into one cause word, then
+accepts the step or restores it and redoes it with a smaller time step.
+**Switch.** Integrator `max_redo`, default 5. **Moist causes.** Species repair by the limiter (4) and a cell the
+saturation adjustment left unadjusted (16).
+**Defining equation.** None: a decision rule, listed in @tbl-ch10-redo-code and checked by `redo_check.py`.
+:::
+
+The redo machinery itself (how $\Delta t$ is halved, what the driver does with the return value) belongs to
+Chapter 7 and is outlined in @sec-ch01-driver. This section covers the two causes moist physics raises and the
+parts of the rule that matter to them. A species repair by the conserved limiter that is larger than round-off
+(@sec-ch10-borrow, @sec-ch10-fixvapor) sets the limiter mark, cause 4. A cell that the saturation adjustment
+(@sec-ch10-satadj) failed to bring to equilibrium is counted by kintera, and a non-zero count after the step is
+cause 16. Either one, on any rank, rejects the step everywhere.
+
+The saturation cause is always on when the thermo has a ThermoY; the limiter cause is on with `limiter: true`.
+The redo restores `hydro_u`, recomputes `hydro_w`, restores the scalars, drops the gravity-work fixer's count of
+the rejected step and decrements the cycle. Aliases: the saturation cause was added by PR #248, the round-off
+bound on the limiter cause by #256 ([chengcli/snapy#256](https://github.com/chengcli/snapy/issues/256)).
+
+### Derivation
+
+No derivation: the scheme is a decision rule, not a discretization. Its three properties that the rest of the
+chapter relies on are checked by `src/snapy_report/ch10/redo_check.py` against a line-for-line port. The six
+flags map to the bits 1, 2, 4, 8, 16, 32 in the order floor, clamp, limiter, nan, saturation, vic-solve
+(check line `[C1]`). The maximum over ranks of 0/1 flags is the bitwise OR of every rank's cause word, so one
+rank's failure is every rank's (`[C2]`, all 4096 two-rank combinations). Past `max_redo`, a step with a moist cause
+terminates without restoring; only the VIC solve cause (32) restores the state first (`[C3]`). The provenance of every
+`[Cn]` line is [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the
+check itself; run: `python3 redo_check.py`, numpy, double].
+
+### Numerical method
+
+@fig-ch10-redo-flow shows the decision. The saturation counter is drained once at the start of every step, so
+a failure counted by a ThermoY call between steps (a diagnostic from Python, say) is not charged to the next step
+([`meshblock.cpp:621`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L621), `saturation_failures`).
+After the step, `local_redo_flags` reads the floor test first, then the limiter marks it may have set, then drains
+the saturation counter exactly once
+([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286)).
+The counter read is one device-to-host copy on CUDA. A `Mesh` with several local blocks ORs their flags before the
+one collective reduction
+([`mesh.cpp:422-450`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L450)).
+
+```{python}
+#| label: fig-ch10-redo-flow
+#| fig-cap: "Step acceptance for the moist causes. Each box is one step of the decision, read top to bottom; the last three boxes are the three outcomes. Green outlines mark operations, black arrows the order."
+#| fig-alt: "Five boxes in a column: local flags; MAX over blocks and ranks; accept; restore and redo; terminate."
+#| echo: false
+from snapy_report.ch10.fig_redo_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| entry point | [`meshblock.cpp:1302-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1302-L1304) | `check_redo` | |
+| restore or accept | [`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276) | `apply_redo` | `max_redo` |
+| saturation counter | [`meshblock.cpp:1220-1227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1220-L1227) | `saturation_failures` | |
+| kintera's counter | [`kintera thermo_y.cpp:385-390`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L385-L390) | `take_saturation_adjustment_failures` | |
+| default of `max_redo` | [`pyharp integrator.hpp:58`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.hpp#L58) | `max_redo` | `max_redo` |
+
+: Code map of the moist redo causes. {#tbl-ch10-redo-code}
+
+1. Drain the counter at stage 0 ([`meshblock.cpp:621`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L621), `saturation_failures`).
+2. Form the six local flags ([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286), `local_redo_flags`).
+3. Reduce with MAX over ranks and pack the bits ([`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300), `reduce_redo_flags`).
+4. Name the causes in the log line ([`meshblock.cpp:1237-1240`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1237-L1240), `causes`).
+5. Terminate past `max_redo` unless cause 32 ([`meshblock.cpp:1241-1247`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1241-L1247), `max_redo`).
+6. Restore the saved state, recompute the primitives and the scalar ratios ([`meshblock.cpp:1249-1256`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1249-L1256), `drop_gravity_work_fix`).
+
+The user-visible messages are the log line "Redoing the step with smaller dt (causes: ...)" and "Maximum number of redo
+attempts exceeded. Terminating.", both in `apply_redo`.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_check_redo_saturation_python` | five arms, saturation cause alone | logical | failure protocol |
+| `test_check_redo_parallel.release` | one decision on 2 ranks | exact | saved tensors copied back |
+| `test_forcing.release` | species repair redoes; round-off does not | ulp bound | `kPositivityRoundoffUlp` |
+| `test_uranus_cycle1_abort.release` | column survives; abort exits nonzero | exit status | log strings |
+
+: Tests of the moist redo causes; assertions read from the test sources at the pin, not run. {#tbl-ch10-redo-tests}
+
+`test_check_redo_saturation` starts from one NH4SH cell 150 times supersaturated. With `max-iter: 1` at least one
+cell is left unadjusted, and the step must be redone with the saturation cause alone and then accepted; a control
+step with the default `max-iter` must be clean; a failure counted between steps must not be charged; and a
+two-block `Mesh` with the cell in block 1 must read block 1's count
+([`test_check_redo_saturation.py:1-11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_check_redo_saturation.py#L1-L11), `check_redo`).
+The `test_forcing` cases put $-10^{-4}$ in a species at stage 1 and require cause 4; a repair below
+`kPositivityRoundoffUlp` ulp of the gas density is applied but not redone
+([`test_forcing.cpp:805-848`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L805-L848), `limiter_species_repair_redoes_the_step`).
+The CUDA arm `test_check_redo_saturation_cuda_python` exists only in CUDA builds; the 2-rank test is the only
+multi-rank evidence. Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+A failure that a smaller time step cannot cure exhausts `max_redo` and ends the run (PR #248). A species repair above
+round-off redoes the step even when it would be harmless.
+:::
+
+- A stale driver state can make every attempt fail ([chengcli/snapy#263](https://github.com/chengcli/snapy/issues/263),
+  closed as a driver defect).
+- `examples/uranus.yaml` aborted at cycle 342 on an H2S repair in the issue history
+  ([chengcli/snapy#260](https://github.com/chengcli/snapy/issues/260)); not re-measured at the pin.
+- Past `max_redo` a moist failure terminates with the rejected state in memory; only the VIC cause restores first
+  (`redo_check.py` `[C3]`).
+- Moist redo combinations are absent from the switch coverage matrix (@sec-ch12-matrix).

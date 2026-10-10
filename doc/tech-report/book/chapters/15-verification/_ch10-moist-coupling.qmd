@@ -1,0 +1,94 @@
+## Moist physics coupling evidence {#sec-ch15-ch10-tests}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: chapter 10 Tests layers; tests/CMakeLists.txt and the test sources at the pin
+status: draft
+-->
+
+The following is a source inventory at snapy `e894700ff7aee30b52882e5202b16461413780b0`, not a run log. No
+compiled snapy test was run for this draft; every tolerance below is read from the test source, and every measured
+value is missing evidence until a pinned build runs the entry. `<b>` is the build suffix, normally `release`. The
+report's own CPU checks are listed last. "CUDA case" means the test fixture also runs on CUDA, in float32
+and float64, and skips that case at run time without a device; "if built" means the CUDA case exists only in CUDA
+builds. The checks verify formulas ported from the code and import no snapy.
+
+### Saturation adjustment and redo
+
+| ctest | asserts | tolerance | device, ranks |
+|---|---|---|---|
+| `test_wall_saturation.<b>` | energy and water at a wall, condensing and evaporating | $10^{-12}$ rel. | CPU; CUDA if built |
+| `test_balance_column.<b>` (moist case) | moist column at rest; condensate stays 0 | $10^{-10}$; $10^{-12}$ | CPU |
+| `test_vic_moist_device_python` | CPU and CUDA agree after one step | $10^{-9}$ | CUDA builds only |
+| `test_check_redo_saturation_python` | saturation cause alone; drained; Mesh arm | logical | CPU |
+| `test_check_redo_saturation_cuda_python` | the same on CUDA | logical | CUDA builds only |
+| `test_check_redo_parallel.<b>` | one decision across ranks | exact | 2 ranks |
+| `test_check_redo_floor_python` | floor and NaN causes, Mesh arm | logical | CPU |
+| `test_forcing.<b>` (limiter cases) | species repair redoes; round-off does not | ulp bound | CPU |
+| `test_uranus_cycle1_abort.<b>` | Uranus column through `run_hydro` | exit status | CPU |
+
+: Evidence for @sec-ch10-satadj, @sec-ch10-redo and @sec-ch10-kinetics. {#tbl-ch15-ch10-satadj}
+
+The wall test is registered once ([`CMakeLists.txt:117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L117), `test_wall_saturation`);
+the moist balance case runs in `test_balance_column` and in its `_wb_ref4` and `_x1_centroid` arms
+([`CMakeLists.txt:96-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L96-L101), `test_balance_column`).
+The CUDA arms are registered only in CUDA builds
+([`CMakeLists.txt:283-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L283-L285), `test_check_redo_saturation_cuda`).
+The moist balance numbers in the moist balance-column team note under `sources/team-notes/` were measured at
+snapy@fc3534c34dc514805b80ba3ac75bf14b80dd4e12, before the pin, and are not used as evidence here.
+
+### Species repairs
+
+| ctest | asserts | tolerance | device, ranks |
+|---|---|---|---|
+| `test_condensate_conservation.<b>` | stoichiometric debit of two parents | $10^{-12}$; $10^{-6}$ | CPU; CUDA case |
+| `test_cloud_parent_slots.<b>` | parents with unused card species | $10^{-12}$; $10^{-6}$ | CPU; CUDA case |
+| `test_diffusion_moist.<b>` | limiter reads nucleation parents | $10^{-12}$; $10^{-6}$ | CPU; CUDA case |
+| `test_two_cards_species.<b>` | split and settling after a second card | $10^{-10}$; $10^{-4}$ f32 | CPU; CUDA case |
+| `test_eos.<b>` (`eos_limiter.*`) | five fix_vapor columns | $10^{-14}$ rel. | CPU |
+| `test_fix_vapor_volume.<b>` | column mass on unequal volumes | $10^{-12}$; $10^{-6}$ f32 | CPU; CUDA case |
+| `test_parentless_cloud.<b>` | parentless cloud kept, clamped, zero | $10^{-12}$; $10^{-6}$ f32 | CPU; CUDA case |
+| `test_parentless_cloud_nb1.<b>` | the same with one and two $x_1$ blocks | $10^{-12}$; $10^{-6}$ f32 | CPU; CUDA case |
+| `test_parentless_cloud_nb1_mp.<b>` | across two processes | $10^{-12}$ rel. | 2 ranks; Gloo arm with UCX |
+| `test_vapor_column_nb1.<b>` | split vapour column equals one block | bitwise | CPU; CUDA case |
+| `test_fix_vapor_reports_failure_python` | unrepairable column throws | message | CPU; CUDA arm if built |
+| `test_fix_vapor_counts_every_column_python` | one broken column of 16384 found | message | CPU |
+
+: Evidence for @sec-ch10-borrow and @sec-ch10-fixvapor. {#tbl-ch15-ch10-repair}
+
+The single-process repair tests are registered together
+([`CMakeLists.txt:110-119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L110-L119), `setup_test`);
+the two-process test and its Gloo arm
+([`CMakeLists.txt:144-151`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L144-L151), `test_parentless_cloud_nb1_mp`).
+Chapter 2's catalogue (@sec-ch15-ch02-tests) also lists `test_two_cards_species`; its rows are the EOS view of
+the same test.
+
+### Tracers and sedimentation
+
+| ctest | asserts | tolerance | device, ranks |
+|---|---|---|---|
+| `test_scalar.<b>` | transport; bound holds both sides | $10^{-12}$; $10^{-5}$ f32 | CPU; CUDA case |
+| `test_tracer_dry_convention_python` | init, implicit and relax arms | $10^{-12}$, 1000-fold signal | CPU |
+| `test_stage_forcing_dry_tracer_python` | user dry sources carry tracers | per arm | CPU |
+| `test_dry_carry_zero_base_python` | 0/0 guard of the carry | $10^{-12}$ abs. | CPU |
+| `test_flux_positivity_cubedsphere_python` | dry tracers across panel seams | per arm | CPU; CUDA arm if built |
+| `test_forcing.<b>` (sedimentation cases) | fused equals tensor; sealing; gravity work | $10^{-10}$ rel.; exact | CPU |
+| `test_sedimentation_guards.<b>` | gravity required; flux off; rising from below | $10^{-9}$ rel. | CPU; CUDA case |
+| `test_sedimentation_cubed_seam.<b>` | seam flux, mass conserved | $10^{-12}$ rel. | 2 ranks; Gloo arm with UCX |
+
+: Evidence for @sec-ch10-tracer and @sec-ch10-sed. {#tbl-ch15-ch10-transport}
+
+The Gloo arm of the seam test compares against the UCX result through `run_seam_backends.py`
+([`CMakeLists.txt:132-141`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L132-L141), `test_sedimentation_cubed_seam_gloo`).
+
+### Gaps and the report's own checks
+
+No snapy test covers one kinetics step's mass and energy budget, the evaporation rate, or the
+`jupiter_evap_precip_1d` driver; no test runs the saturation adjustment on more than one rank or across a decomposed
+reflecting wall ([chengcli/snapy#208](https://github.com/chengcli/snapy/issues/208)); the MPS sedimentation path is
+untested; and the switch coverage matrix (@sec-ch12-matrix) has no moist rows.
+
+Run `python3 src/snapy_report/ch10/<scheme>_check.py` for `fixvapor`, `borrow`, `kinetics`, `tracer`, `sed` and
+`redo`; each prints labelled `[Cn]` lines and exits with its number of failed claims, and the sibling `.out` file is
+its committed output. `src/tests/test_ch10_checks.py` requires every output to be current. These checks run on CPU
+in float64 (and float32 where stated) and verify ported formulas, not compiled behaviour.

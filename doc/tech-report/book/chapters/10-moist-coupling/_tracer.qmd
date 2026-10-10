@@ -1,0 +1,130 @@
+## Passive tracers per dry air, with an optional upper bound (`scalar`) {#sec-ch10-tracer}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 10.7; code links below; sources/canoe__tracer_seam_TECH_REPORT.md
+status: draft
+-->
+
+Local symbols: $b$ is the upper bound of a tracer's mixing ratio (YAML `scalar/upper-bound`); $F_{n}$ and
+$F_{\mathrm d}$ are the $x_1$ face fluxes of tracer $n$ and of dry air. Tracked in ISSUES.md.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Keeps passive tracers as mixing ratios $r_n$ per unit dry mass, so they move with the dry air
+under every operator that moves dry air; keeps them non-negative and, optionally, at or below a bound $b$.
+**Switch.** YAML `scalar` (`nvar` or `names`); `upper-bound` default $-1$ (off), $0$ refused, needs the EOS limiter.
+**Defining equation.** @eq-ch10-tracer-bound.
+:::
+
+Chapter 1 maps the scalar transport path and derives how the ratio rides with the implicit dry transfer and with
+dry-density sources (@sec-ch01-scalar, @sec-ch01-stage, @eq-ch01-stage-upwind, @eq-ch01-stage-dry). This section
+adds what makes those tracers part of the moist coupling: why the reference mass is dry air and not total mass,
+the second limiter that bounds the ratio from above, and the conditions under which that bound holds.
+
+A tracer measured per unit total mass would change its ratio whenever water condenses, evaporates or settles out of
+a cell, although no tracer moved. Per unit dry mass the ratio changes only when dry air moves, which every moist
+operator of this chapter leaves alone: the saturation adjustment, the borrow, the column repair and the kinetics write
+species rows only, and sedimentation moves condensate, not dry air. Aliases: the dry-air convention is PR #220.
+
+### Derivation
+
+Write $\rho_{\mathrm d}r_n$ for the tracer density, so the code's `r = u / rho` with `rho` the dry density is $r_n$
+([`scalar.cpp:71-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L71-L72), `r`).
+The transport flux is $F_n=F_{\mathrm d}\,r_n^{\mathrm{up}}$ with the upwind ratio, so a uniform ratio stays uniform
+under transport; under the implicit dry transfer the tracer increment is $r_n$ times the dry increment (check line
+`[C3]`), so it stays uniform there too.
+
+The upper bound uses the complement. If $r_n\le b$ then $b\rho_{\mathrm d}-\rho_{\mathrm d}r_n\ge0$, and that
+quantity is transported by the flux $G=bF_{\mathrm d}-F_n$. Its non-negativity is exactly what the positivity limiter
+already enforces for a density, so the code applies the same limiter to $G$, which returns a factor $\Theta\in[0,1]$
+per face, and puts back only the change:
+
+$$
+F_n \leftarrow F_n + (1-\Theta)\,\big(bF_{\mathrm d}-F_n\big) = \Theta F_n + (1-\Theta)\,bF_{\mathrm d}.
+$$ {#eq-ch10-tracer-bound}
+
+@eq-ch10-tracer-bound is applied as `h - g` in `ScalarImpl::forward`
+([`scalar.cpp:175-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L175-L198), `upper_bound`).
+The second form shows the limited flux is a blend between the tracer's own flux and the flux of a tracer sitting
+at the bound, so a plateau at $b$ keeps advecting (`[C1]`, symbolic). Adding the change rather than recomputing
+$bF_{\mathrm d}-G$ leaves $F_n$ bitwise unchanged on every face where $\Theta=1$; recomputing perturbs nearly every
+face by round-off, 9994 of 10000 in a float32 test (`[C2]`). The bound inherits the positivity limiter's premise:
+it holds while the mass Courant number stays below one and $\rho_{\mathrm d}$ changes only by the transport
+divergence. The implicit vertical correction and any forcing that writes the dry row break that premise, as the code
+comment states. Checks: `src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out` [sha: the formulas of
+snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the check itself; run:
+`python3 tracer_check.py`, numpy and sympy, double and float32].
+
+### Numerical method
+
+The ratio is reconstructed with the scalar block's own `reconstruct` and upwinded with the hydro dry-mass flux
+`flux1[IDN]` (and `flux2`, `flux3`); the Riemann solver must be `upwind`. With the EOS limiter on, the positivity
+limiter scales the tracer fluxes first; the complement limiter, if `upper-bound` > 0, scales them second. The
+divergence then gives the stage tendency on interior cells only
+([`scalar.cpp:202-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L202-L205), `divergence`).
+The implicit dry transfer and the dry-source carry follow, as in @sec-ch01-stage. @fig-ch10-tracer-face shows the
+donor choice of that transfer.
+
+```{python}
+#| label: fig-ch10-tracer-face
+#| fig-cap: "Donor choice of the implicit tracer transfer M at one x1 face, between cells i-1 and i. Sky-blue dots are the cell ratios, the orange triangle the face, the orange arrow the direction of the dry transfer. (a) An upward transfer carries the ratio of the cell below; (b) a downward transfer carries the ratio of the cell above."
+#| fig-alt: "Two panels, each with two stacked cells and a face between them; an arrow points up in (a) and down in (b), with the transported ratio written beside it."
+#| echo: false
+from snapy_report.ch10.fig_tracer_face import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| YAML keys | [`scalar_options.cpp:11-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L11-L50) | `from_yaml` | `scalar` |
+| setup checks | [`scalar.cpp:16-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L16-L31) | `ScalarImpl::reset` | `upper-bound` |
+| positivity limiter | [`scalar.cpp:158-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L158-L162) | `flux_positivity_theta` | `limiter` |
+| complement bound | [`scalar.cpp:175-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L175-L198) | `upper_bound` | `upper-bound` |
+| implicit transfer | [`meshblock.cpp:661-676`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L661-L676) | `mass_corr` | |
+
+: Code map of the dry-air tracers; chapter 1 holds the rest of the scalar path (@tbl-ch01-scalar-code). {#tbl-ch10-tracer-code}
+
+1. Parse the keys; `upper-bound` defaults to $-1$ ([`scalar_options.cpp:27`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L27), `upper_bound`).
+2. Refuse a solver other than `upwind`, a bound of 0, and a bound without the limiter ([`scalar.cpp:20-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L20-L31), `TORCH_CHECK`).
+3. Form the ratio per dry air ([`scalar.cpp:71-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L71-L72), `rho`).
+4. Limit for positivity ([`scalar.cpp:158-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L158-L162), `theta`).
+5. Limit the complement and add the change ([`scalar.cpp:175-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L175-L198), `flux_positivity_scale_`).
+6. Take the divergence on interior cells ([`scalar.cpp:202-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L202-L205), `divergence`).
+
+Setup messages a user can hit: "[Scalar] Passive scalars currently require the upwind solver", the refusal of
+`upper-bound: 0`, and "[Scalar] upper-bound needs the eos limiter".
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_scalar.release` | bound holds on both sides | $10^{-12}$; $10^{-5}$ f32 | test thresholds |
+| `test_tracer_dry_convention_python` | init, implicit and relax arms | $10^{-12}$ | 1000-fold non-vacuity |
+| `test_forcing.release` | dry source keeps scalar bounds | $10^{-12}$ | test threshold |
+| `test_dry_carry_zero_base_python` | the 0/0 guard of the carry | $10^{-12}$ abs. | test threshold |
+
+: Tests of the dry-air tracers; assertions read from the test sources at the pin, not run. {#tbl-ch10-tracer-tests}
+
+`scalar_upper_bound_holds_both_sides` advects 12 steps with the bound at 1 and requires
+$r_n\le1+10^{-12}$ and $\rho_{\mathrm d}r_n\ge-10^{-12}$ in float64 ($10^{-5}$ in float32)
+([`test_scalar.cpp:159-163`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_scalar.cpp#L159-L163), `tol`).
+`test_tracer_dry_convention` uses `TOL` $=10^{-12}$ and also requires each arm's signal to exceed 1000 times `TOL`, so
+a pass is not vacuous
+([`test_tracer_dry_convention.py:32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_tracer_dry_convention.py#L32), `TOL`).
+`test_stage_forcing_dry_tracer_python` and `test_flux_positivity_cubedsphere_python` (seams) are also registered.
+Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+In practice `reconstruct` is mandatory when `nvar` > 0. The upper bound holds only while the mass Courant number is
+below one and the dry density moves by transport alone.
+:::
+
+- `ScalarOptions` has `thermo` and `kinetics` members that are never parsed or used.
+- A uniform-tracer test cannot detect a wrong donor choice (docstring of `test_tracer_dry_convention.py`).
+- Not in the switch coverage matrix (@sec-ch12-matrix).

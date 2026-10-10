@@ -1,0 +1,149 @@
+## Column vapour and cloud repair (`limiter`) {#sec-ch10-fixvapor}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 10.4 and 10.5 (two inventories of the same kernel, merged as the chapter note asks);
+         code links below; sources/canoe__POSITIVITY_TECH_REPORT.md section 6
+status: draft
+-->
+
+Local symbols: $\mathcal M$ is the window of $x_1$ cells one scan step rewrites. Tracked in ISSUES.md.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Removes negative vapour, and negative parentless cloud, along each $x_1$ column by mixing it with
+the cells below at one common ratio to the dry density, conserving the column's mass.
+**Switch.** EOS `limiter: true`; default false. The gather of a column split over $x_1$ blocks is on only for the
+call from the stage update. **Fails.** A vapour column that cannot be repaired throws; a cloud column is clamped.
+**Defining equation.** @eq-ch10-fixvapor-flatten.
+:::
+
+After the parent-vapour borrow (@sec-ch10-borrow) a cell can still hold negative vapour, and a condensate with no
+nucleation parent cannot borrow at all. Both are repaired along the column: a negative cell is mixed with the
+cells below it until the mixture is non-negative, and the mixture is spread at one ratio to the dry density. The
+repair conserves the column's mass $\sum_i V_i\rho_{n,i}$, not its density sum, which matters on grids whose cell
+volume changes with height. If nothing below can cover a deficit, the cells above supply it, bounded by the
+deficit. A vapour column that cannot be repaired at all is an error; a cloud column in net deficit is clamped to
+zero, which creates exactly the missing mass.
+
+The repair is on with `limiter: true`. Aliases: the volume weights are #241, the upward branch #243, the
+whole-column gather #244 and #268 ([chengcli/snapy#268](https://github.com/chengcli/snapy/issues/268)); PR #230's
+"the repair is per meshblock" is superseded by the gather.
+
+### Derivation
+
+Index the column from the bottom, $i=0..N-1$, with cell volumes $V_i$. The scan starts at the top. A cell with
+$\rho_{n,i}\ge0$ is passed over. A negative cell starts a window $\mathcal M$ that grows downward one cell at a
+time until $\sum_{l\in\mathcal M}V_l\rho_{n,l}\ge0$ or the bottom is passed. If the sum is non-negative, every
+cell of the window is rewritten as
+
+$$
+\rho_{n,i} \leftarrow \rho_{\mathrm{d},i}\,\frac{\sum_{l\in\mathcal M}V_l\,\rho_{n,l}}{\sum_{l\in\mathcal M}V_l\,\rho_{\mathrm{d},l}}
+$$ {#eq-ch10-fixvapor-flatten}
+
+for $i\in\mathcal M$, and the scan resumes below the window. @eq-ch10-fixvapor-flatten is computed in
+`fix_vapor_impl`: the window sums are `sum_vapor` and `sum_major` ([`fix_vapor_impl.h:32-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/fix_vapor_impl.h#L32-L39)),
+and the common ratio `yfrac` is written to every cell of the window ([`fix_vapor_impl.h:66-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/fix_vapor_impl.h#L66-L70)).
+The code weights by $V_l/V_0$, the volume relative to the column's bottom cell; the factor cancels in the ratio.
+
+Multiplying @eq-ch10-fixvapor-flatten by $V_i$ and summing over the window gives back
+$\sum_{l\in\mathcal M}V_l\rho_{n,l}$: the window's mass is unchanged, and every rewritten value has the sign of the
+dry density, so it is non-negative. Windows are disjoint and the scan index only decreases, so the scan visits each
+cell at most twice and terminates. If the bottom is passed with the sum still negative, the deficit
+$D=-\sum_{l\le i_0}V_l\rho_{n,l}/V_0$ of the cells from the starting cell $i_0$ down is taken from the cells above,
+in order, each giving at most what it holds; the cells from $i_0$ down are set to zero. Before writing anything this
+branch checks that the cells above hold at least $D$, so it writes nothing when it fails
+([`fix_vapor_impl.h:41-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/fix_vapor_impl.h#L41-L64), `deficit`).
+A window repaired earlier in the same scan stays rewritten, though: a column that fails below an already repaired
+window is returned with that window flattened, mass kept. The kernel fails on a non-positive dry density; otherwise, in every case
+`fixvapor_check.py` tried, only on a column whose total vapour mass is negative.
+
+All of this is checked by `src/snapy_report/ch10/fixvapor_check.py`, a line-for-line port of the kernel. It replays
+the inputs of the `eos_limiter` gtests (`[C1]` to `[C3]`), keeps $\sum_iV_i\rho_{n,i}$ to $2.2\times10^{-15}$ relative
+on 1995 repaired random columns with unequal volumes (`[C4]`), finds no failure on a column with non-negative total
+(`[C5]`), repairs an interior and a bottom deficit in one scan (`[C6]`) and confirms the partial rewrite before a
+failure (`[C7]`) [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck:
+the check itself; run: `python3 fixvapor_check.py`, numpy, double]. The partial rewrite is a property of the port; it
+has not been reproduced in a snapy run.
+
+### Numerical method
+
+The kernel runs once per $x_1$ column of interior cells, one CPU thread or one CUDA thread per column, inside each
+call of the conserved limiter. Parentless clouds are repaired first without requiring success and then clamped;
+vapour is repaired second and must succeed
+([`equation_of_state.cpp:307-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L307-L312), `parentless`).
+When the call comes from the stage update and $x_1$ is split over several blocks (`pz` > 1), every block gathers
+the full column with the dry density and the volumes, repairs it and keeps its own slice
+([`equation_of_state.cpp:276-305`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L276-L305)).
+Failures are counted with `std::atomic` on CPU and `atomicAdd` on CUDA, and read back once per call, which costs one
+device synchronisation. @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
+
+```{python}
+#| label: fig-ch10-fixvapor-column
+#| fig-cap: "One 64-cell column before and after the repair, as the ratio of vapour to dry density. The vermillion dashed line with crosses is the column before, with a negative cell at index 40 and one at the bottom; the green line with dots is after: cells 40 and 39 share one ratio, and the bottom deficit is taken from cell 1 above it. The column's mass is unchanged."
+#| fig-alt: "Vertical profile of vapour ratio against cell index; two negative excursions before, none after."
+#| echo: false
+from snapy_report.ch10.fig_fixvapor_column import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| column kernel | [`fix_vapor_impl.h:9-79`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/fix_vapor_impl.h#L9-L79) | `fix_vapor_impl` | |
+| CPU dispatch | [`eos_dispatch.cpp:79-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/eos_dispatch.cpp#L79-L101) | `call_fix_vapor_cpu` | |
+| CUDA dispatch | [`eos_dispatch.cu:52-74`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/eos_dispatch.cu#L52-L74) | `call_fix_vapor_cuda` | |
+| column repair, gather | [`equation_of_state.cpp:276-305`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L276-L305) | `repair_column` | `whole_column` |
+| parentless, then vapour | [`equation_of_state.cpp:307-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L307-L312), `parentless` | `parentless` | |
+
+: Code map of the column vapour and cloud repair. {#tbl-ch10-fixvapor-code}
+
+1. Take the cell volumes so the repair conserves mass ([`equation_of_state.cpp:272-273`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L272-L273), `vol`).
+2. Gather the column when split over $x_1$ blocks ([`equation_of_state.cpp:280-288`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L280-L288), `gather_x1`).
+3. Run the kernel per column ([`equation_of_state.cpp:289-296`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L289-L296), `call_fix_vapor`).
+4. Throw for vapour ([`equation_of_state.cpp:297-299`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L297-L299), `require_success`).
+5. Copy back this block's slice ([`equation_of_state.cpp:300-304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L300-L304), `copy_`).
+6. Mark the limiter only above round-off ([`equation_of_state.cpp:313-321`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L313-L321), `positivity_roundoff`).
+
+A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed to fix vapor mass fractions."
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_eos.release` | five `eos_limiter` columns | $10^{-14}$ rel. | test threshold |
+| `test_fix_vapor_volume.release` | column mass, unequal volumes | $10^{-12}$; $10^{-6}$ f32 | test thresholds |
+| `test_parentless_cloud.release` | cloud kept, clamped, zero column | $10^{-12}$; $10^{-6}$ f32 | test thresholds |
+| `test_vapor_column_nb1.release` | split column equals one block | bitwise | test threshold |
+| `test_fix_vapor_reports_failure_python` | unrepairable column throws | n/a | message match |
+
+: Tests of the column repair; assertions read from the test sources at the pin, not run. {#tbl-ch10-fixvapor-tests}
+
+The `eos_limiter` cases are the inputs replayed by `fixvapor_check.py`; the bottom-cell case asserts the transfer
+itself to $10^{-25}$ absolute, because a tolerance on the supplier's value would also pass a supplier that gave
+nothing ([`test_eos.cpp:68-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L68-L89), `repairs_bottom_cell_from_above`).
+`test_fix_vapor_volume` keeps the column mass of a spherical-polar column to $10^{-12}$ in float64 and $10^{-6}$ in
+float32 ([`test_fix_vapor_volume.cpp:82-84`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_fix_vapor_volume.cpp#L82-L84), `tol`).
+The split-column test requires every vapour cell of a two-block column to equal the one-block result exactly
+([`test_vapor_column_nb1.cpp:133-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_vapor_column_nb1.cpp#L133-L143), `vapor_repair_keeps_the_mass_with_nb1_2`).
+Also registered: `test_parentless_cloud_nb1.release`, the 2-rank `test_parentless_cloud_nb1_mp` (rain and total
+mass to $10^{-12}$), `test_fix_vapor_counts_every_column_python` (one broken column in 16384 is reported) and the CUDA
+arm `test_fix_vapor_reports_failure_cuda_python`. Measured results at the pin are **missing evidence**
+(@sec-ch15-ch10-tests).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+A vapour column whose total is negative stops the run. A cloud column whose total is negative is clamped, creating
+the missing mass.
+:::
+
+- The downward branch mixes: it moves vapour beyond the deficit, over the whole window.
+- A failure below an already repaired window leaves that window rewritten (`fixvapor_check.py` `[C7]`, port only).
+  For vapour the run stops anyway; for parentless clouds the rewrite stays, mass kept.
+- Serial callers with several $x_1$ blocks wait at the gather (PR #244); the cross-process gather has not run on CUDA.
+- The weight is relative to the bottom cell, so last-bit differences in spacing can move results at round-off
+  (PR #243).
+- Not in the switch coverage matrix (@sec-ch12-matrix).
