@@ -6,8 +6,9 @@ sources: OUTLINE.md section 2; code links below
 status: draft
 -->
 
-Local notation exception:  $d_{\mathrm{sw}}$ denotes the depth-like `IDN` slot with gravity absorbed,
+Local symbols: $d_{\mathrm{sw}}$ denotes the depth-like `IDN` slot with gravity absorbed,
 not the volumetric gas density. The local symbol is tracked in ISSUES.md.
+
 ### Summary
 
 ::: {.callout-note title="At a glance"}
@@ -15,6 +16,8 @@ Explicit `type: shallow-water`; default EOS remains `moist-mixture`.
 Four rows store depth-like density and three momenta; there is no energy row.
 The speed is @eq-ch02-shallow-water-speed; thermodynamic temperature is undefined.
 :::
+
+The depth-like conserved slot replaces gas density and carries gravity in its units. Momentum conversion remains meaningful, but temperature and internal-energy operations are unavailable. The factory alias is `shallow-water`.
 
 ### Derivation
 
@@ -25,9 +28,10 @@ c_s^2=d_{\mathrm{sw}}
 $$ {#eq-ch02-shallow-water-speed}
 
 @eq-ch02-shallow-water-speed is implemented by `sqrt` in [`shallow_water.cpp:26-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/shallow_water.cpp#L26-L33).
-Here $d_{\mathrm{sw}}$ is the shallow-water use of the `IDN` slot is not a volumetric gas density; its dimensions are
+Here $d_{\mathrm{sw}}$, the shallow-water use of the `IDN` slot, is not a volumetric gas density; its dimensions are
 $\mathrm{m^2\,s^{-2}}$. This local exception is tracked in ISSUES.md.
-`shallow-water_check.py` checks the square-root identity on positive states.
+`shallow-water_check.py` checks a depth/momentum round trip on positive states.
+The square-root relation above is a definition, not an independent validation.
 
 ### Numerical method
 
@@ -37,8 +41,8 @@ index is returned as a defined tensor. There is no EOS neighbour stencil.
 
 ```{python}
 #| label: fig-ch02-shallow-water-flow
-#| fig-cap: "Shallow-water conversion: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
-#| fig-alt: "Cell-local data and operation flow for Shallow-water conversion."
+#| fig-cap: "The depth-like slot scales momentum conversion and determines the gravity-wave speed."
+#| fig-alt: "The depth-like slot scales momentum conversion and determines the gravity-wave speed."
 #| echo: false
 from snapy_report.ch02.fig_shallow_water_flow import make_fig
 make_fig()
@@ -67,12 +71,12 @@ Read the implementation in this order:
 
 : Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-shallow-water-tests}
 
+::: {.callout-important title="Check"}
 The independent derivation check is `src/snapy_report/ch02/shallow-water_check.py`;
 its committed output is `src/snapy_report/ch02/shallow-water_check.out`, line `[C1]`.
 
-::: {.callout-important title="Check"}
 No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
 :::
 
 ### Limits

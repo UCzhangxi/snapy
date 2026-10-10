@@ -6,7 +6,7 @@ from snapy_report import figstyle as fs
 def make_fig():
     fs.apply()
     fig, ax = plt.subplots(figsize=(fs.SINGLE, 3.1))
-    labels = ['fixed density + energy', 'constrained phase extents', 'temperature recovery', 'species update + ghosts']
+    labels = ['fixed density + energy', 'auto: partition first', 'KKT fallback if needed', 'species update + ghosts']
     for n, label in enumerate(labels):
         y = 3-n
         ax.text(.5, y, label, ha="center", va="center", fontsize=8,

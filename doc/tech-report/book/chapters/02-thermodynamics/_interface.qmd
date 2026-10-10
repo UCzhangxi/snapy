@@ -15,6 +15,8 @@ Five concrete types implement different conversion keys; moist types require the
 No discretization order or single defining equation applies to a factory.
 :::
 
+The EOS factory selects a set of tensor conversion operations. Unsupported keys fail at dispatch, so selecting an EOS also selects which downstream operations are available. The factory key is `type`.
+
 ### Derivation
 
 No physical derivation applies to dispatch. The caller and selected implementation must agree on both key
@@ -29,7 +31,8 @@ Dispatch is pointwise on cell tensors, including ghost entries passed by the cal
 | key family | ideal gas | moist types | ANEOS | shallow water |
 |---|---|---|---|---|
 | `W->U`, `U->W` | yes | yes | yes | yes |
-| `W->I`, `W->T`, `UT->I` | yes | yes | yes | temperature undefined |
+| `W->I`, `UT->I` | yes | yes | yes | throws unknown abbreviation |
+| `W->T` | yes | yes | yes | undefined tensor |
 | `W->A`, `WA->L` | yes | yes | no | index undefined; speed yes |
 | `W->E`, `U->K` | no | yes | no | no |
 | `W->L`, `WL->A` | no | no | yes | no |
@@ -44,8 +47,8 @@ $10^{-10}$ in their respective units. Moist resets replace `gammad` and `weight`
 
 ```{python}
 #| label: fig-ch02-interface-flow
-#| fig-cap: "EOS interface and dispatch: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
-#| fig-alt: "Cell-local data and operation flow for EOS interface and dispatch."
+#| fig-cap: "The YAML type selects the concrete EOS and its supported conversion keys."
+#| fig-alt: "The YAML type selects the concrete EOS and its supported conversion keys."
 #| echo: false
 from snapy_report.ch02.fig_interface_flow import make_fig
 make_fig()
@@ -81,7 +84,7 @@ Read the implementation in this order:
 
 ::: {.callout-important title="Check"}
 No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
 :::
 
 ### Limits

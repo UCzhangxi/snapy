@@ -10,6 +10,7 @@ Local symbols: $T_{\mathrm{int}}$ is integration temperature in $\mathrm K$; $e_
 $J$ is a rotational quantum number; $k_{\mathrm B}$ is Boltzmann's constant in $\mathrm{J\,K^{-1}}$;
 Angle brackets in the rotor formula mean a normalized
 finite ensemble average. These additions are tracked in ISSUES.md.
+
 ### Summary
 
 ::: {.callout-note title="At a glance"}
@@ -18,12 +19,14 @@ Temperature inversions and heat capacities come from kintera.
 Sound speed follows @eq-ch02-moist-mixture-speed; accuracy is limited by inversion tolerance.
 :::
 
+Temperature-dependent species functions require temperature inversion before pressure and sound speed can be evaluated. The inversion tolerance limits consistency of the local maps. The factory alias is `moist-mixture`.
+
 ### Derivation
 
 kintera's `DY->V` stores partial mass densities $\rho_n$, including dry air; snapy multiplies by
 inverse molar masses to obtain $\tilde c_n=\rho_n/\mu_n$ in $\mathrm{mol\,m^{-3}}$.
-The API tensor named `V` is neither cell volume nor molar concentration. This corrects the explanatory
-sentence in the frozen notation file without changing its mathematical symbols.
+The API tensor named `V` is neither cell volume nor molar concentration; the notation reconciliation
+is tracked in ISSUES.md.
 At fixed composition, differentiate $p=\mathcal RT\sum_{n\in\{\mathrm d\}\cup\mathcal V}\tilde c_nZ_n$
 with respect to total density. Since every concentration scales with density, the implemented diagonal
 concentration derivative gives
@@ -40,7 +43,10 @@ $$ {#eq-ch02-moist-mixture-speed}
 
 @eq-ch02-moist-mixture-speed is implemented by `_adiabatic_index` in [`moist_mixture.cpp:245-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L245-L272).
 
-At the ideal-gas pin $Z_n=1$, the speed reduces to $c_s^2=\gamma p/\rho$.
+The supported evidence here is restricted to $Z_n=1$, for which the speed reduces to $c_s^2=\gamma p/\rho$.
+The nonideal expression above describes the implementation, not a verified general isentropic closure.
+The $Z_n=1$ tripwire is explicit in [`test_flux_positivity_carry.cpp:447-449`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_carry.cpp#L447-L449).
+No $Z_n\ne1$ sound-speed result is established at this pin.
 A general concentration-coupled nonideal mixture would require cross derivatives not represented by this formula.
 For temperature recovery, linearize volumetric internal energy at fixed partial densities. Its derivative is
 volumetric heat capacity, giving the update
@@ -54,6 +60,8 @@ $$ {#eq-ch02-moist-mixture-newton}
 @eq-ch02-moist-mixture-newton is implemented by `_intEng_to_temp` in [`kintera thermo_y.cpp:495-517`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L495-L517).
 
 Here $e_n(T)$ is species specific internal energy in $\mathrm{J\,kg^{-1}}$.
+Before iteration, `_pres_to_temp` floors gas concentrations with `gas_floor` in
+[`thermo_y.cpp:438-469`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L438-L469).
 The pressure inversion uses the residual $T\sum\tilde c_nZ_n-p/\mathcal R$ and subtracts it divided by
 $\sum\rho_n(c_{p,n}-c_{v,n})/\mathcal R$ over gases. For $Z_n=1$ that denominator is the exact derivative,
 and the initial ideal-gas estimate already solves the equation. The damping argument in the source comment
@@ -72,6 +80,9 @@ $$ {#eq-ch02-moist-mixture-integral}
 
 The constant $c_{v,n}^{\mathrm{ref}}$
 is the tabulated constant capacity, not its value after enabling NASA-9.
+For selected species, the NASA-9 and H2 branches replace the generic energy, including
+`intEng_R_extra`; they do not add a correction to that term, as the `torch::where` assignments
+in [`eval_uhs.cpp:288-299`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L288-L299) show.
 
 For molecular hydrogen, each rotational level $J$ has energy $k_{\mathrm B}T_{\mathrm{rot}}J(J+1)$.
 The implementation sums levels from $0$ through $40$ with $T_{\mathrm{rot}}=87.55\,\mathrm K$.
@@ -91,7 +102,9 @@ odd ensembles with weights one quarter and three quarters, including their separ
 $\tfrac32T+T_{\mathrm{rot}}\langle J(J+1)\rangle$ to $300\,\mathrm K$ gives the energy correction.
 The rotational sum is truncated at the coded level limit; no temperature-range error bound is measured here.
 `moist-mixture_check.py` differentiates this energy numerically in both modes and checks a NASA polynomial
-antiderivative and the ideal-gas Newton sign. This tests the formulas, not a compiled kintera run.
+antiderivative in separate claims. A third claim exercises the pressure-loop subtraction and stopping rule
+with synthetic nonlinear $Z(T)=1+10^{-3}T$, gas flooring and a known root. This is an isolated loop check,
+not evidence for a registered nonideal species or a compiled kintera run.
 
 ### Numerical method
 
@@ -102,8 +115,8 @@ No spatial wall or seam accuracy order follows from a temperature inversion.
 
 ```{python}
 #| label: fig-ch02-moist-mixture-flow
-#| fig-cap: "Temperature-dependent moist thermodynamics: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
-#| fig-alt: "Cell-local data and operation flow for Temperature-dependent moist thermodynamics."
+#| fig-cap: "Partial mass densities become molar concentrations for temperature inversion and property evaluation."
+#| fig-alt: "Partial mass densities become molar concentrations for temperature inversion and property evaluation."
 #| echo: false
 from snapy_report.ch02.fig_moist_mixture_flow import make_fig
 make_fig()
@@ -145,12 +158,12 @@ Read the implementation in this order:
 
 : Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-moist-mixture-tests}
 
-The independent derivation check is `src/snapy_report/ch02/moist-mixture_check.py`;
-its committed output is `src/snapy_report/ch02/moist-mixture_check.out`, line `[C1]`.
-
 ::: {.callout-important title="Check"}
+The independent derivation check is `src/snapy_report/ch02/moist-mixture_check.py`;
+its committed output is `src/snapy_report/ch02/moist-mixture_check.out`, lines `[C1]` through `[C3]`.
+
 No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
 :::
 
 ### Limits

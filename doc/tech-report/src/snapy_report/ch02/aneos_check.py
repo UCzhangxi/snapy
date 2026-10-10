@@ -2,11 +2,14 @@
 Run: python3 aneos_check.py, from any directory. Independent algebra, not snapy runtime.
 The complete synthetic deck and tolerances are in formulas.py.
 """
-from formulas import check_C1_aneos
+from pathlib import Path
+import runpy
+
+namespace = runpy.run_path(str(Path(__file__).with_name("formulas.py")))
 
 
 def main():
-    return int(not check_C1_aneos())
+    return int(not namespace["illustrate_aneos"]())
 
 
 if __name__ == "__main__":

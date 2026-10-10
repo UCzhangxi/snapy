@@ -15,6 +15,8 @@ Spatial and temporal order belong to the selected transport and integrator.
 The flux increment is defined in @eq-ch02-laws-increment.
 :::
 
+The shared face flux cancels between adjacent cells before native forcing and implicit corrections are applied. Last-stage phase adjustment precedes physical boundary filling; this ordering matters for ghost composition. The code uses the `du` stage increment.
+
 ### Derivation
 
 Density $\rho$ has units $\mathrm{kg\,m^{-3}}$, momentum density $m_a$ has units
@@ -34,22 +36,24 @@ Here $\mathbf g=(g_1,g_2,g_3)$ is acceleration in $\mathrm{m\,s^{-2}}$.
 Coriolis, diffusion and configured sources add their tendencies; geometric momentum terms enter through the
 coordinate operator. Integration over a fixed cell changes the divergence into outward surface flux.
 Dividing by its volume and replacing surface integrals by numerical area-weighted fluxes gives the
-flux-only increment (shown in one dimension):
+flux-only increment (shown in one dimension). The local superscript $\mathrm{flux}$ distinguishes
+this term from the full explicit increment, which also includes forcing:
 
 $$
-\Delta\mathbf U^{(0)}_i=-\frac{\Delta t}{V_i}\Delta_i[A\mathbf F_1]
+\Delta\mathbf U^{\mathrm{flux}}_i=-\frac{\Delta t}{V_i}\Delta_i[A\mathbf F_1]
 $$ {#eq-ch02-laws-increment}
 
 @eq-ch02-laws-increment is implemented by `du` in [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765).
 
-Summing $V_i\Delta\mathbf U^{(0)}_i$ cancels each shared interior face, leaving boundary fluxes.
+Summing $V_i\Delta\mathbf U^{\mathrm{flux}}_i$ cancels each shared interior face, leaving boundary fluxes.
 This cancellation is exact algebra when both neighbours use the same flux; accuracy of that flux is separate.
-The check `laws_check.py` verifies this telescoping identity and the wall-copy ordering.
+The check `laws_check.py` verifies only the telescoping identity.
 
 Phase adjustment changes interior composition after transport. A wall ghost copied before adjustment retains
 old composition; reconstruction then sees a jump not present in the adjusted interior. Copying afterward makes
-the reflected thermodynamic state equal again. This proves consistency of the copied state, not a universal
-conservation guarantee for an arbitrary reconstruction or boundary condition.
+the reflected thermodynamic state equal again. Evidence for the ordering is the final `apply_boundaries`
+call in [`meshblock.cpp:795-841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L841) and the
+`test_wall_saturation` source cited in the Tests layer; neither is a runtime result from this draft.
 
 ### Numerical method
 
@@ -61,8 +65,8 @@ EOS conversions themselves have no spatial stencil. Ghost exchange and seam flux
 
 ```{python}
 #| label: fig-ch02-laws-flow
-#| fig-cap: "Conservation laws and stage ordering: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
-#| fig-alt: "Cell-local data and operation flow for Conservation laws and stage ordering."
+#| fig-cap: "Transport produces a flux increment before forcing, phase adjustment and physical ghost filling."
+#| fig-alt: "Transport produces a flux increment before forcing, phase adjustment and physical ghost filling."
 #| echo: false
 from snapy_report.ch02.fig_laws_flow import make_fig
 make_fig()
@@ -97,12 +101,12 @@ Read the implementation in this order:
 
 : Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-laws-tests}
 
+::: {.callout-important title="Check"}
 The independent derivation check is `src/snapy_report/ch02/laws_check.py`;
 its committed output is `src/snapy_report/ch02/laws_check.out`, line `[C1]`.
 
-::: {.callout-important title="Check"}
 No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
 :::
 
 ### Limits
