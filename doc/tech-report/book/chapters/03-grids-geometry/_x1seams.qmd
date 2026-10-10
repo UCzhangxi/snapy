@@ -21,7 +21,7 @@ must run concurrently. **Order**: round-off agreement with one block, not bitwis
 @eq-ch03-x1seams-average.
 :::
 
-Only the `cubed` layout splits $x_1$ (@sec-ch03-layouts). The vertical schemes of chapter 5 are column operations: the
+Only the `cubed` layout splits $x_1$ (@sec-ch03-layouts). The vertical schemes of @sec-ch05 are column operations: the
 hydrostatic reference is a scan from the top of the column, and several switches read windows that reach past a block
 edge. Four mechanisms make a split column match one block. (a) The reference scan is relayed from the top block down,
 each block passing its bottom face value to the block below. (b) The reference ghost rows (`pref`, `dref`) are
@@ -52,7 +52,7 @@ each cell adding its own hydrostatic drop. Split into blocks, each block needs a
 reached at its upper face. The top block anchors itself; each other block takes $p^{\mathrm{top}}$ from the block above
 and, after its own scan, passes its bottom face value down (`take_x1_anchor` and `pass_x1_anchor`,
 [`hydro.cpp:518-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L518-L579)). The relay is serial from top to bottom, so every block's anchor equals the value the
-one-block scan has at the same face, up to the order of the additions. The scan kernel itself is chapter 5's.
+one-block scan has at the same face, up to the order of the additions. The scan kernel itself is in @sec-ch05.
 
 **Ghost rows.** A block's ghost rows of `pref`, `dref` computed locally from its ghost quadrature differ from the
 owner's interior values; the code comment records about $10^2$ Pa near a wall. Replacing them by the neighbour's
@@ -66,7 +66,7 @@ All four mechanisms run in every stage of a split column. The relay and the ghos
 `_hydro_ref_x1`, when the well-balanced reconstruction builds its reference; the plain-mean ghost rows before it; the
 seam average after the $x_1$ fluxes are computed and before the positivity limiter; the face-pressure ghost rows after
 the average. A same-process neighbour is reached through an in-memory board, a remote one through the process group
-(chapter 14); `_x1_ghost_rows` packs $m$ rows from below the top face (up) and from above the bottom face (down) and
+(the parallelism, GPU and I/O chapter); `_x1_ghost_rows` packs $m$ rows from below the top face (up) and from above the bottom face (down) and
 copies the neighbour's rows into its ghosts. The message tags are 0x7715 (relay), 0x7717 and 0x7718 (reference ghost
 rows), 0x7720 and 0x7721 (seam flux), 0x7722 to 0x7725 (face-pressure and plain-mean ghost rows). EOS column repairs
 call `gather_x1`, which joins the column's pieces bottom first. @fig-ch03-x1seams-relay shows a column of three blocks.
@@ -117,7 +117,7 @@ In step order (@tbl-ch03-x1seams-code):
 | `test_pref_local_seam` | an in-process split restarts the reference at the seam; split equals one block after 200 steps | $10^{-6}$; $10^{-12}$ relative | set in the test |
 | `test_x1_seam_split` and arms `_x1_centroid`, `_radial_exact`, `_radial_exact_off`, `_wb_ref4`, `_wb_ref4_gravity_0`, `_x1_mass_covariance` | two blocks in one process equal one block after 20 steps, per switch | $10^{-13}$ relative | round-off of 20 steps |
 | `test_x1_seam_split_mp` and arms | the same split across two ranks | $10^{-13}$ relative | as above |
-| `test_parentless_cloud_nb1_mp` | column repair across two processes keeps mass | in the test | chapter 10 |
+| `test_parentless_cloud_nb1_mp` | column repair across two processes keeps mass | in the test | @sec-ch10 |
 
 : Tests of the $x_1$ seams. C++ entries carry the build suffix (`.release`). {#tbl-ch03-x1seams-tests}
 
@@ -143,4 +143,4 @@ the relay and ghost-row exchange existed, that $x_1$ splits on CPU with gloo dif
 $8.0\times10^{-15}$ relative while two GPUs with UCX were bitwise (`sources/gh__ISSUE_THREADS_138-250.md`, issue #250);
 that measurement predates the pin and was not repeated here. The header comment of `test_pref_local_seam.cpp` still
 says that `HydroImpl` restarts the scan in a second same-process block and that the test does not fix it, while the
-assertions expect the fixed behaviour ([`test_pref_local_seam.cpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L1-L15)). The switch combinations that are tested are listed in the switch coverage matrix of chapter 12.
+assertions expect the fixed behaviour ([`test_pref_local_seam.cpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L1-L15)). The switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
