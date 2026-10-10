@@ -4903,7 +4903,7 @@ other view.
 
 | ctest | Asserts | Tol |
 |---|---|---|
-| `test_coordinate.<b>` | gnomonic area/volume, spherical-polar vs Athena formulas, vector lower/raise, contravariant transforms, flux projections, radial source uses face pressure; programmatic/decomposed coordinates match the global grid bitwise | 1e-15 to 1e-14 |
+| `test_coordinate.<b>` | gnomonic area/volume, spherical-polar vs Athena++ formulas, vector lower/raise, contravariant transforms, flux projections, radial source uses face pressure; programmatic/decomposed coordinates match the global grid bitwise | 1e-15 to 1e-14 |
 | `test_radial_face_moments.<b>` | curved x1 face centroid shift and second moment equal the exact rationals (#289) | 1e-14 |
 | `test_cubed_sphere_cell_volume_python` | six panels sum to 4/3 pi (ro^3-ri^3); discrete div(r rhat) = 3; rest run | 1e-12; `REST_TOL 1e-6` |
 | `test_cubed_sphere_exchange.<b>` | subdivided-panel exchange equals one block (nb2 = 1, 2, 4); comm tag collision refused | exact |
