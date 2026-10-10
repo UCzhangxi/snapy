@@ -18,7 +18,8 @@ saturation adjustment left unadjusted (16).
 :::
 
 The redo machinery itself (how $\Delta t$ is halved, what the driver does with the return value) belongs to
-Chapter 7 and is outlined in @sec-ch01-driver. This section covers the two causes moist physics raises and the
+the time-integration chapter and is outlined in @sec-ch01-driver. This section covers the two causes moist physics
+raises and the
 parts of the rule that matter to them. A species repair by the conserved limiter that is larger than round-off
 (@sec-ch10-borrow, @sec-ch10-fixvapor) sets the limiter mark, cause 4. A cell that the saturation adjustment
 (@sec-ch10-satadj) failed to bring to equilibrium is counted by kintera, and a non-zero count after the step is
@@ -31,7 +32,10 @@ bound on the limiter cause by #256 ([chengcli/snapy#256](https://github.com/chen
 
 ### Derivation
 
-No derivation: the scheme is a decision rule, not a discretization. Its three properties that the rest of the
+No derivation: the scheme is a decision rule, not a discretization.
+
+::: {.callout-important title="Check"}
+Its three properties that the rest of the
 chapter relies on are checked by `src/snapy_report/ch10/redo_check.py` against a line-for-line port. The six
 flags map to the bits 1, 2, 4, 8, 16, 32 in the order floor, clamp, limiter, nan, saturation, vic-solve
 (check line `[C1]`). The maximum over ranks of 0/1 flags is the bitwise OR of every rank's cause word, so one
@@ -39,6 +43,7 @@ rank's failure is every rank's (`[C2]`, all 4096 two-rank combinations). Past `m
 terminates without restoring; only the VIC solve cause (32) restores the state first (`[C3]`). The provenance of every
 `[Cn]` line is [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the
 check itself; run: `python3 redo_check.py`, numpy, double].
+:::
 
 ### Numerical method
 
@@ -103,7 +108,8 @@ The `test_forcing` cases put $-10^{-4}$ in a species at stage 1 and require caus
 `kPositivityRoundoffUlp` ulp of the gas density is applied but not redone
 ([`test_forcing.cpp:805-848`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L805-L848), `limiter_species_repair_redoes_the_step`).
 The CUDA arm `test_check_redo_saturation_cuda_python` exists only in CUDA builds; the 2-rank test is the only
-multi-rank evidence. Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
+multi-rank evidence. Measured results at the pin are **missing evidence** (the verification catalogue's entry for
+this chapter).
 
 ### Limits
 

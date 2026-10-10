@@ -2,14 +2,14 @@
 
 <!-- PROVENANCE
 pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: OUTLINE.md 10.8 (moved from chapter 9); code links below
+sources: OUTLINE.md 10.8 (moved from ch09); code links below
 status: draft
 -->
 
 Local symbols: $a_n$ is the particle radius of condensate $n$ [m], $\rho_{\mathrm p,n}$ its material density
 [$\mathrm{kg\,m^{-3}}$], $\beta_n$ the Cunningham slip factor [-], $\lambda$ the mean free path of the background gas
 [m], $\mathrm{Kn}=\lambda/a_n$ the Knudsen number [-], and $m$, $d$, $\epsilon$ the molecular mass [kg], diameter [m]
-and Lennard-Jones well depth [J] of the background gas; $k_{\mathrm B}$ is Boltzmann's constant, as in chapter 2.
+and Lennard-Jones well depth [J] of the background gas; $k_{\mathrm B}$ is Boltzmann's constant, as in @sec-ch02.
 Tracked in ISSUES.md. $\mu$ is the dynamic viscosity of
 NOTATION.md section 8.
 
@@ -46,7 +46,12 @@ $$ {#eq-ch10-sed-stokes}
 clamped to $\pm$`upper-limit`. @eq-ch10-sed-stokes is computed in `SedVelImpl::forward` as `stokes`
 ([`sed_vel.cpp:60-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_vel.cpp#L60-L70)).
 The viscosity is the Chapman-Enskog value for a Lennard-Jones gas,
-$\mu=\tfrac{5}{16}\sqrt{mk_{\mathrm B}T/\pi}\,(k_{\mathrm B}T/\epsilon)^{0.16}/(1.22\,d^2)$, with molecular mass $m$,
+
+$$
+\mu = \frac{5}{16}\,\frac{\sqrt{m\,k_{\mathrm B}T/\pi}\,(k_{\mathrm B}T/\epsilon)^{0.16}}{1.22\,d^2},
+$$ {#eq-ch10-sed-viscosity}
+
+with molecular mass $m$,
 diameter $d$ and well depth $\epsilon$ from the YAML defaults of an $\mathrm{H_2}$ background, and the mean free path
 is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m)}$
 ([`sed_vel.cpp:45-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_vel.cpp#L45-L58), `eta`).
@@ -61,10 +66,13 @@ The donor carries $\rho_nw_{\mathrm s,n}$ of mass, $\mathbf v\,\rho_nw_{\mathrm 
 $\rho_nw_{\mathrm s,n}\big(u^{\star}_n+c_{v,n}T+\tfrac12\lvert\mathbf v\rvert^2\big)$ of energy: the condensate's own
 internal energy plus kinetic energy, with no $R_nT$ share, because a condensate does no pressure work
 ([`sed_hydro_impl.h:84-92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro_impl.h#L84-L92), `species_energy`).
-With both walls sealed the column's condensate mass changes only by what the advective flux does (`[C5]`). Checks:
+With both walls sealed the column's condensate mass changes only by what the advective flux does (`[C5]`).
+
+::: {.callout-important title="Check"}
 `src/snapy_report/ch10/sed_check.py`, output `sed_check.out` [sha: the formulas of
 snapy@e894700ff7aee30b52882e5202b16461413780b0 with kintera@c55b13b2204997d2d09e04498558ab9495d8ee77's Boltzmann
 constant, ported line for line; deck: the check itself; run: `python3 sed_check.py`, numpy, double].
+:::
 
 ### Numerical method
 
@@ -79,7 +87,7 @@ The wall bounds are set only where the block face is a physical boundary, so sea
 
 ```{python}
 #| label: fig-ch10-sed-donor
-#| fig-cap: "Donor cells of the settling flux in one x1 column. Light-blue boxes are interior cells, hatched pink boxes ghosts, thick black lines physical walls. Orange arrows show settling fluxes, each taken from the cell above its face; the two wall faces carry no flux."
+#| fig-cap: "Donor cells of the settling flux in one $x_1$ column. Light-blue boxes are interior cells, hatched pink boxes ghosts, thick black lines physical walls. Orange arrows show settling fluxes, each taken from the cell above its face; the two wall faces carry no flux."
 #| fig-alt: "A column of four interior cells between two hatched ghost cells; downward arrows at the three interior faces; the wall faces are labelled sealed."
 #| echo: false
 from snapy_report.ch10.fig_sed_donor import make_fig
@@ -88,7 +96,7 @@ make_fig()
 
 ```{python}
 #| label: fig-ch10-sed-vsed
-#| fig-cap: "Settling speed against particle radius for the H2 defaults at T = 150 K and g_1 = -24.79 m s^-2. Green solid: slip-corrected at 1e4 Pa; green dashed: at 1e6 Pa; blue dotted: plain Stokes, the same at both pressures; vermillion dash-dot: the default upper-limit. Small particles fall faster than Stokes at low pressure, where the mean free path is long."
+#| fig-cap: "Settling speed against particle radius for the $\\mathrm{H_2}$ defaults at $T=150\\,\\mathrm{K}$ and $g_1=-24.79\\,\\mathrm{m\\,s^{-2}}$. Green solid: slip-corrected at $10^4\\,\\mathrm{Pa}$; green dashed: at $10^6\\,\\mathrm{Pa}$; blue dotted: plain Stokes, the same at both pressures; vermillion dash-dot: the default upper-limit. Small particles fall faster than Stokes at low pressure, where the mean free path is long."
 #| fig-alt: "Log-log plot of settling speed against radius; three nearly parallel lines that diverge at small radius, and a horizontal line at 5000 m/s."
 #| echo: false
 from snapy_report.ch10.fig_sed_vsed import make_fig
@@ -136,7 +144,7 @@ On two ranks of a cubed sphere, the condensate mass is conserved to $10^{-12}$ r
 to $10^{-7}$ and $5\times10^{-3}$ absolute
 ([`test_sedimentation_cubed_seam.cpp:113-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_sedimentation_cubed_seam.cpp#L113-L117), `conserved`);
 the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX result. Measured results at the pin are
-**missing evidence** (@sec-ch15-ch10-tests).
+**missing evidence** (the verification catalogue's entry for this chapter).
 
 ### Limits
 
@@ -147,6 +155,6 @@ settling speed can over-drain a cell, and only the positivity limiter catches it
 
 - The MPS path is untested (PR #216).
 - Casting a block to float32 turns the index buffer into floats (PR #258).
-- `fric-heat` was removed because it double-counted the face gravity work (PR #217; Chapter 6, @sec-ch06).
+- `fric-heat` was removed because it double-counted the face gravity work (PR #217; @sec-ch06).
 - The default gas constants describe $\mathrm{H_2}$; other backgrounds must set them.
 - Not in the switch coverage matrix (@sec-ch12-matrix).

@@ -18,7 +18,7 @@ under every operator that moves dry air; keeps them non-negative and, optionally
 **Defining equation.** @eq-ch10-tracer-bound.
 :::
 
-Chapter 1 maps the scalar transport path and derives how the ratio rides with the implicit dry transfer and with
+@sec-ch01 maps the scalar transport path and derives how the ratio rides with the implicit dry transfer and with
 dry-density sources (@sec-ch01-scalar, @sec-ch01-stage, @eq-ch01-stage-upwind, @eq-ch01-stage-dry). This section
 adds what makes those tracers part of the moist coupling: why the reference mass is dry air and not total mass,
 the second limiter that bounds the ratio from above, and the conditions under which that bound holds.
@@ -53,9 +53,13 @@ $bF_{\mathrm d}-G$ leaves $F_n$ bitwise unchanged on every face where $\Theta=1$
 face by round-off, 9994 of 10000 in a float32 test (`[C2]`). The bound inherits the positivity limiter's premise:
 it holds while the mass Courant number stays below one and $\rho_{\mathrm d}$ changes only by the transport
 divergence. The implicit vertical correction and any forcing that writes the dry row break that premise, as the code
-comment states. Checks: `src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out` [sha: the formulas of
+comment states.
+
+::: {.callout-important title="Check"}
+`src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out` [sha: the formulas of
 snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the check itself; run:
 `python3 tracer_check.py`, numpy and sympy, double and float32].
+:::
 
 ### Numerical method
 
@@ -69,7 +73,7 @@ donor choice of that transfer.
 
 ```{python}
 #| label: fig-ch10-tracer-face
-#| fig-cap: "Donor choice of the implicit tracer transfer M at one x1 face, between cells i-1 and i. Sky-blue dots are the cell ratios, the orange triangle the face, the orange arrow the direction of the dry transfer. (a) An upward transfer carries the ratio of the cell below; (b) a downward transfer carries the ratio of the cell above."
+#| fig-cap: "Donor choice of the implicit tracer transfer $M$ at one $x_1$ face, between cells $i-1$ and $i$. Sky-blue dots are the cell ratios, the orange triangle the face, the orange arrow the direction of the dry transfer. (a) An upward transfer carries the ratio of the cell below; (b) a downward transfer carries the ratio of the cell above."
 #| fig-alt: "Two panels, each with two stacked cells and a face between them; an arrow points up in (a) and down in (b), with the transported ratio written beside it."
 #| echo: false
 from snapy_report.ch10.fig_tracer_face import make_fig
@@ -86,7 +90,8 @@ make_fig()
 | complement bound | [`scalar.cpp:175-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L175-L198) | `upper_bound` | `upper-bound` |
 | implicit transfer | [`meshblock.cpp:661-676`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L661-L676) | `mass_corr` | |
 
-: Code map of the dry-air tracers; chapter 1 holds the rest of the scalar path (@tbl-ch01-scalar-code). {#tbl-ch10-tracer-code}
+: Code map of the dry-air tracers; @sec-ch01 holds the rest of the scalar
+path (@tbl-ch01-scalar-code). {#tbl-ch10-tracer-code}
 
 1. Parse the keys; `upper-bound` defaults to $-1$ ([`scalar_options.cpp:27`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L27), `upper_bound`).
 2. Refuse a solver other than `upwind`, a bound of 0, and a bound without the limiter ([`scalar.cpp:20-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L20-L31), `TORCH_CHECK`).
@@ -116,7 +121,7 @@ $r_n\le1+10^{-12}$ and $\rho_{\mathrm d}r_n\ge-10^{-12}$ in float64 ($10^{-5}$ i
 a pass is not vacuous
 ([`test_tracer_dry_convention.py:32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_tracer_dry_convention.py#L32), `TOL`).
 `test_stage_forcing_dry_tracer_python` and `test_flux_positivity_cubedsphere_python` (seams) are also registered.
-Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
+Measured results at the pin are **missing evidence** (the verification catalogue's entry for this chapter).
 
 ### Limits
 
