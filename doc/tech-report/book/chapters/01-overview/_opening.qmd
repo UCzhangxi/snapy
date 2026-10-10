@@ -1,0 +1,56 @@
+This chapter follows one step from caller through MeshBlock or Mesh to the kernels, then maps storage, configuration, Python bindings and external dependencies. Its evidence is pinned source and explicitly identified tests; it makes no new runtime performance or convergence claim.
+
+The dependency map is a call-ownership map. Numerical switch implications remain pending the editor-owned @sec-ch12-matrix.
+
+```{python}
+#| label: fig-ch01-overview-dependencies
+#| fig-cap: "Interfaces around Mesh and MeshBlock. Black arrows associate the block API with its caller, increment operators, exchange layout and external services; they do not assert a numerical switch implication."
+#| fig-alt: "Mesh or MeshBlock linked to its caller, hydro and scalar, layout, and external integrator and thermodynamics."
+#| echo: false
+from snapy_report.ch01.fig_overview_dependencies import make_fig
+make_fig()
+```
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| @sec-ch01-driver | `integration:` | external | N/A: map | `test_restart_cycle_limit` |
+| @sec-ch01-construction | `MeshBlockOptions` | caller options | N/A: map | `test_yaml_keys.release` |
+| @sec-ch01-initialization | `restart_file` | fresh start | N/A: map | `test_scalar.release` |
+| @sec-ch01-stage | `user_stage_forcings` | callbacks absent | N/A: map | `test_user_output.release` |
+| @sec-ch01-block-forward | `MeshBlock.forward` | exchange first | N/A: map | Missing dedicated test |
+| @sec-ch01-mesh | `distribute.blocks_per_process` | 1 block | N/A: map | `test_mesh_multi_block.release` |
+| @sec-ch01-hydro | `dynamics:` | per physics | N/A: map | Missing dedicated test |
+| @sec-ch01-scalar | `scalar:` | 0 scalars | N/A: map | `test_scalar.release` |
+| @sec-ch01-dispatch | `CUDA` | OFF / cpu | N/A: map | `test_weno5_cuda_line.release` |
+| @sec-ch01-layout | `NMASS / PartOptions` | 0 / exterior | N/A: map | `test_scalar.release` |
+| @sec-ch01-options | `from_yaml` | per reader | N/A: map | `test_yaml_keys.release` |
+| @sec-ch01-python | `import snapy` | float64 / 1 thread | N/A: map | `test_python_import_path_python` |
+| @sec-ch01-dependencies | `find_package` | see Summary | N/A: map | Missing dedicated test |
+
+: Chapter scope; operator order belongs to the physics chapters. {#tbl-ch01-overview-schemes}
+
+{{< include 01-overview/_driver.qmd >}}
+
+{{< include 01-overview/_construction.qmd >}}
+
+{{< include 01-overview/_initialization.qmd >}}
+
+{{< include 01-overview/_stage.qmd >}}
+
+{{< include 01-overview/_block-forward.qmd >}}
+
+{{< include 01-overview/_mesh.qmd >}}
+
+{{< include 01-overview/_hydro.qmd >}}
+
+{{< include 01-overview/_scalar.qmd >}}
+
+{{< include 01-overview/_dispatch.qmd >}}
+
+{{< include 01-overview/_layout.qmd >}}
+
+{{< include 01-overview/_options.qmd >}}
+
+{{< include 01-overview/_python.qmd >}}
+
+{{< include 01-overview/_dependencies.qmd >}}
