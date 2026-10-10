@@ -186,7 +186,7 @@ In prose the symbol comes first, then the link:
 
 Every number that is a measurement (an error, a drift, a rate, a timing, a growth) carries a provenance tag:
 
-> max per-step $|\Delta(E+P)|/|E+P| = 3.9\times10^{-16}$ [sha `e894700`; deck: `tests/test_gravity_work_radial_exact.py`
+> max per-step $|\Delta(E+P)|/|E+P| = 3.9\times10^{-16}$ [sha `e894700ff7aee30b52882e5202b16461413780b0`; deck: `tests/test_gravity_work_radial_exact.py`
 > case `sph_vic`; run: ctest `test_gravity_work_radial_exact_python`, CPU, double].
 
 - **sha**: the code that produced it.
