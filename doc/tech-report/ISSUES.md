@@ -29,3 +29,16 @@
    Delete the local-symbol note when these enter NOTATION.md.
 9. Chapter 12 distinguishes the mass-covariance setup guard from missing numerical accuracy evidence.
    The coverage matrix needs new runtime evidence for its explicitly listed combinations.
+
+10. Chapter 2 local notation for editor reconciliation: species energy $e_n(T)$; tabulated constant
+   capacity $c_{v,n}^{\mathrm{ref}}$; integration temperature $T_{\mathrm{int}}$; rotor level $J$,
+   Boltzmann constant $k_{\mathrm B}$, and normalized finite-ensemble brackets; shallow-water depth-like
+   state $d_{\mathrm{sw}}$; reaction extent $\zeta_k$, linearized residual $\mathbf b$, Jacobian $\mathsf J$,
+   and KKT multipliers $\boldsymbol\lambda$. Owners: Chapter 2 / editor. Remove local notes when settled.
+11. NOTATION section 2a's sentence describes the API tensor `V` as molar concentration, but at the pinned
+   snapy code `MoistMixtureImpl::_adiabatic_index` multiplies `V` by inverse molar mass before using it.
+   Chapter 2 describes `V` as partial mass densities and reserves the existing concentration symbol for
+   the converted tensor. Editor should reconcile that sentence without changing the mathematical symbols.
+12. Chapter 2 source inventory corrects the commented-out 14-variable test in OUTLINE section 2.3.
+    The draft does not treat it as active coverage. Publication follow-ups: compiled H2 heat-capacity plot,
+    moist-mixture temperature-map regression, active-set evidence, editor skeleton integration and renders.

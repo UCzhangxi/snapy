@@ -1,0 +1,40 @@
+## Thermodynamics evidence {#sec-ch15-ch02-tests}
+
+The following is a source inventory at snapy `e894700ff7aee30b52882e5202b16461413780b0`, not a run log.
+No compiled snapy or kintera tests were run for this draft. The report's independent CPU formula checks
+have their own committed outputs; they cannot certify dispatch, CUDA kernels or communication.
+
+### EOS maps and reference energies
+
+`moist_mixture` checks round trips and cache refresh in [`test_eos.cpp:122-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L122-L166). The offset tests are [`test_eos.cpp:168-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L168-L207).
+
+The ideal-moist temperature sweep uses $50$, $100$, $200$, and $400\,\mathrm K$,
+with relative threshold $10^{-12}$, affinity threshold $10^{-12}$ and offset threshold $10^{-10}$;
+these are regression tolerances, not measured errors: [`test_eos_temp2inteng.py:76-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos_temp2inteng.py#L76-L155).
+
+`test_eos_species_registry_python` uses relative $10^{-14}$ for conversions and exact equality for
+step output after rewriting the global tables: [`test_eos_species_registry.py:93-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos_species_registry.py#L93-L122).
+
+The two-card parent split uses $10^{-10}$ for float64 and $10^{-4}$ for float32: [`test_two_cards_species.cpp:78-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_two_cards_species.cpp#L78-L90).
+
+The registry threshold `TOL` is defined in [`test_eos_species_registry.py:28-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos_species_registry.py#L28-L29).
+
+### Flux enthalpy and phase adjustment
+
+The NASA/H2 enthalpy carry assertion includes dry gas and kinetic energy. Its relative tolerance is
+$10^{-9}$, chosen to distinguish the omitted-kinetic-energy error per the source comment: [`test_flux_positivity_carry.cpp:424-458`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_carry.cpp#L424-L458). No historical residual from that comment is treated as a new run.
+
+The wall test requires actual phase change and relative energy and water drift below $10^{-12}$: [`test_wall_saturation.cpp:63-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wall_saturation.cpp#L63-L89). It is parameterized for CPU and, when compiled, CUDA; neither was executed here.
+
+### Registration, gaps and reproducible report checks
+
+The temperature and registry Python tests have default CPU registrations: [`CMakeLists.txt:245-256`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L245-L256).
+Shallow-water examples require `FULL_TESTS`: [`CMakeLists.txt:368-379`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L368-L379).
+
+The old 14-variable EOS round trips are commented out: [`test_eos.cpp:209-273`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L209-L273). ANEOS has no runtime evidence. A moist-mixture temperature-map sweep,
+compiled H2 heat-capacity plot and full phase active-set tests remain follow-up evidence.
+No thermodynamic multi-rank coverage is claimed.
+
+Run `python3 src/snapy_report/ch02/<scheme>_check.py` for each non-interface scheme.
+The sibling `.out` files record `[C1]` results on the synthetic decks in `formulas.py`.
+These verify derivation identities with CPU float64 or symbolic algebra, not compiled source behavior.

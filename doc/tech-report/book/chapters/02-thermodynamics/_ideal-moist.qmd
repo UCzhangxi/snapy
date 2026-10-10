@@ -1,0 +1,120 @@
+## Constant-heat-capacity moist mixture (`ideal-moist`) {#sec-ch02-ideal-moist}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: OUTLINE.md section 2; code links below
+status: draft
+-->
+
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Explicit `type: ideal-moist`; requires thermo; default EOS remains `moist-mixture`.
+Condensates carry mass and heat but no pressure share.
+The fixed-composition relation is @eq-ch02-ideal-moist-energy; no spatial order applies.
+:::
+
+### Derivation
+
+Let $y_n$ be mass fraction per total mass, not mixing ratio per dry mass. The dry density is
+$\rho_{\mathrm d}=\rho(1-\sum_n y_n)$ in $\mathrm{kg\,m^{-3}}$.
+Add the partial gas pressures and the heat capacities of all species. Dividing the first sum by
+$\rho R_{\mathrm d}T$ and the second by $\rho c_{v,\mathrm d}$ yields
+
+$$
+\begin{aligned}
+f_\varepsilon&=1+\sum_{n\in\mathcal V}y_n(\mu_{\mathrm d}/\mu_n-1)-\sum_{n\in\mathcal C}y_n,\\
+f_\sigma&=1+\sum_n y_n(c_{v,n}/c_{v,\mathrm d}-1).
+\end{aligned}
+$$ {#eq-ch02-ideal-moist-factors}
+
+@eq-ch02-ideal-moist-factors is implemented by `f_eps` in [`ideal_moist.cpp:319-346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L319-L346).
+
+The reference energies $u_n^\star$ have units $\mathrm{J\,kg^{-1}}$ and enter additively, including dry air.
+Using $R_{\mathrm d}=(\gamma_{\mathrm d}-1)c_{v,\mathrm d}$ gives
+
+$$
+\begin{aligned}
+\rho e&=\rho_{\mathrm d}u_{\mathrm d}^\star+\sum_n\rho_nu_n^\star
++\rho c_{v,\mathrm d}f_\sigma T,\\
+p&=\rho R_{\mathrm d}f_\varepsilon T,\\
+p&=\frac{(\gamma_{\mathrm d}-1)f_\varepsilon}{f_\sigma}
+\left(\rho e-\rho_{\mathrm d}u_{\mathrm d}^\star-\sum_n\rho_nu_n^\star\right).
+\end{aligned}
+$$ {#eq-ch02-ideal-moist-energy}
+
+@eq-ch02-ideal-moist-energy is implemented by `_cons2prim` in [`ideal_moist.cpp:164-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L164-L233).
+
+For frozen composition, $c_p-c_v=R_{\mathrm d}f_\varepsilon$; divide by
+$c_v=c_{v,\mathrm d}f_\sigma$ to obtain
+
+$$
+\gamma=1+(\gamma_{\mathrm d}-1)f_\varepsilon/f_\sigma
+$$ {#eq-ch02-ideal-moist-gamma}
+
+@eq-ch02-ideal-moist-gamma is implemented by `gammad` in [`ideal_moist.cpp:113-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L113-L128).
+
+Species thermal energy is $u_n^\star+c_{v,n}T$. A gas adds $R_nT$ to form specific enthalpy;
+a condensate does not. The carried energy adds the specific kinetic energy to either result, as derived in
+@sec-ch02-consistency. These are exact constant-capacity identities for a uniform cell, without quadrature or
+iteration. `ideal-moist_check.py` verifies the factors, energy recovery and frozen-composition heat ratio.
+
+### Numerical method
+
+Both conversion directions use total density for velocity, while the conserved density row stores only dry air.
+The pressure calculation subtracts all reference energies after kinetic energy. The inverse adds them.
+There is no neighbour stencil; floors bracket the maps. Thermo reference buffers are populated at reset,
+so a later process-global species-table change must not alter this EOS.
+
+```{python}
+#| label: fig-ch02-ideal-moist-flow
+#| fig-cap: "Constant-heat-capacity moist mixture: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
+#| fig-alt: "Cell-local data and operation flow for Constant-heat-capacity moist mixture."
+#| echo: false
+from snapy_report.ch02.fig_ideal_moist_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| reset and reference energies | [`ideal_moist.cpp:18-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L18-L51) | `u0` | `ideal-moist` |
+| offset | [`ideal_moist.cpp:70-83`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L70-L83) | `internal_energy_offset` | `ideal-moist` |
+| maps | [`ideal_moist.cpp:164-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L164-L233) | `_cons2prim` | `ideal-moist` |
+| species energy/enthalpy | [`ideal_moist.cpp:235-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L235-L280) | `species_enthalpy` | `ideal-moist` |
+| temperature map | [`ideal_moist.cpp:293-317`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L293-L317) | `_temp2intEng` | `ideal-moist` |
+
+: Code map. {#tbl-ch02-ideal-moist-code}
+
+
+Read the implementation in this order:
+
+1. Reset and reference energies: `u0` in [`ideal_moist.cpp:18-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L18-L51).
+2. Offset: `internal_energy_offset` in [`ideal_moist.cpp:70-83`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L70-L83).
+3. Maps: `_cons2prim` in [`ideal_moist.cpp:164-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L164-L233).
+4. Species energy/enthalpy: `species_enthalpy` in [`ideal_moist.cpp:235-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L235-L280).
+5. Temperature map: `_temp2intEng` in [`ideal_moist.cpp:293-317`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L293-L317).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_eos.release` | dry offset and linearity | $10^{-6}$ | test-selected `allclose` |
+| `test_eos_temp2inteng_python` | temperature map | $10^{-12}$ relative | algebra regression threshold |
+| `test_eos_species_registry_python` | own species table | $10^{-14}$ relative | regression threshold |
+
+: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-ideal-moist-tests}
+
+The independent derivation check is `src/snapy_report/ch02/ideal-moist_check.py`;
+its committed output is `src/snapy_report/ch02/ideal-moist_check.out`, line `[C1]`.
+No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
+@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+
+### Limits
+
+Constant heat capacities are assumed even if a thermo card requests temperature-dependent options. The TODO
+about iteration in the pressure maps is not a measured defect of this constant-capacity identity.
+The offset test uses a dry card; it does not by itself test all species offsets.
+Switch-combination coverage remains pending in @sec-ch12-matrix.

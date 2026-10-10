@@ -1,0 +1,89 @@
+## EOS interface and dispatch (`type`) {#sec-ch02-interface}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: OUTLINE.md section 2; code links below
+status: draft
+-->
+
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+YAML `dynamics/equation-of-state/type` defaults to `moist-mixture`.
+Five concrete types implement different conversion keys; moist types require thermo options.
+No discretization order or single defining equation applies to a factory.
+:::
+
+### Derivation
+
+No physical derivation applies to dispatch. The caller and selected implementation must agree on both key
+and tensor representation. `W` denotes primitive state, `U` conserved state, `I` internal energy density,
+`T` temperature, `A` adiabatic index, `L` sound speed, `K` kinetic energy density and `E` species energy density.
+These are API labels, not additional mathematical symbols.
+
+### Numerical method
+
+Dispatch is pointwise on cell tensors, including ghost entries passed by the caller; it performs no halo exchange.
+
+| key family | ideal gas | moist types | ANEOS | shallow water |
+|---|---|---|---|---|
+| `W->U`, `U->W` | yes | yes | yes | yes |
+| `W->I`, `W->T`, `UT->I` | yes | yes | yes | temperature undefined |
+| `W->A`, `WA->L` | yes | yes | no | index undefined; speed yes |
+| `W->E`, `U->K` | no | yes | no | no |
+| `W->L`, `WL->A` | no | no | yes | no |
+
+: Supported conversion branches, as cited in each type's Code layer. {#tbl-ch02-interface-keys}
+
+Unknown keys throw. YAML validates map structure and known keys. A present EOS map supplies `gammad=1.4`,
+`weight=0.029` in $\mathrm{kg\,mol^{-1}}$, density floor $10^{-6}$ in $\mathrm{kg\,m^{-3}}$,
+pressure floor $10^{-3}$ in $\mathrm{Pa}$, temperature floor $20$ in $\mathrm K$, `limiter=false`,
+and empty `eos-file`. If the map is absent, the struct defaults remain: density and pressure floors are both
+$10^{-10}$ in their respective units. Moist resets replace `gammad` and `weight` from their thermo.
+
+```{python}
+#| label: fig-ch02-interface-flow
+#| fig-cap: "EOS interface and dispatch: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
+#| fig-alt: "Cell-local data and operation flow for EOS interface and dispatch."
+#| echo: false
+from snapy_report.ch02.fig_interface_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| YAML validation/defaults | [`equation_of_state.cpp:33-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L33-L99) | `from_yaml` | `type` |
+| struct defaults | [`equation_of_state.hpp:45-57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.hpp#L45-L57) | `density_floor` | `type` |
+| factory | [`equation_of_state.cpp:356-374`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L356-L374) | `create` | `type` |
+| base fallback | [`equation_of_state.cpp:165-173`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L165-L173) | `specific_heat_cv` | `type` |
+
+: Code map. {#tbl-ch02-interface-code}
+
+
+Read the implementation in this order:
+
+1. Yaml validation/defaults: `from_yaml` in [`equation_of_state.cpp:33-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L33-L99).
+2. Struct defaults: `density_floor` in [`equation_of_state.hpp:45-57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.hpp#L45-L57).
+3. Factory: `create` in [`equation_of_state.cpp:356-374`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L356-L374).
+4. Base fallback: `specific_heat_cv` in [`equation_of_state.cpp:165-173`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L165-L173).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_hydro_options.release` | unknown dynamics keys rejected | exception | configuration contract |
+| `test_eos.release` | selected EOS behavior | per-type | see the per-type sections |
+
+: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-interface-tests}
+
+No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
+@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+
+### Limits
+
+Temperature-floor positivity and finiteness are not validated in `from_yaml`. Selecting the default moist EOS
+without thermo options fails during reset. ANEOS and shallow water do not satisfy the full moist API.
+Switch-combination coverage remains pending in @sec-ch12-matrix.

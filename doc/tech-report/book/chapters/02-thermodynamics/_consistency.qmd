@@ -1,0 +1,105 @@
+## EOS and solver consistency (`none`) {#sec-ch02-consistency}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: OUTLINE.md section 2; code links below
+status: draft
+-->
+
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+No switch; identities apply when the selected maps exist and floors do not change the state.
+The temperature floor requires consistent energy recovery.
+The enthalpy identity is @eq-ch02-consistency-enthalpy.
+:::
+
+### Derivation
+
+At fixed conserved partial densities, adding constant-capacity species energies gives
+
+$$
+\rho e(T)=\rho_{\mathrm d}u_{\mathrm d}^\star+\sum_n\rho_nu_n^\star
++\left(\rho_{\mathrm d}c_{v,\mathrm d}+\sum_n\rho_nc_{v,n}\right)T
+$$ {#eq-ch02-consistency-affine}
+
+@eq-ch02-consistency-affine is implemented by `_temp2intEng` in [`ideal_moist.cpp:293-317`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L293-L317).
+
+Thus the zero-temperature intercept is the offset, and the slope includes the dry heat capacity. Substituting
+the temperature recovered from pressure reproduces `W->I`. Integrating over a uniform cell merely multiplies
+this identity by $V_i$. For temperature-dependent capacities, `UT->I` evaluates the same `VT->U` function
+as `W->I`, rather than assuming affinity.
+
+The code's `species_enthalpy` returns thermodynamic enthalpy plus specific kinetic energy, and excludes the dry
+row. Adding that dry contribution explicitly, and summing gas pressure shares, gives
+
+$$
+\rho_{\mathrm d}\left(\hat h_{\mathrm d}+\tfrac12\lvert\mathbf v\rvert^2\right)
++\sum_n\rho_n\left(\hat h_n+\tfrac12\lvert\mathbf v\rvert^2\right)=E+p
+$$ {#eq-ch02-consistency-enthalpy}
+
+@eq-ch02-consistency-enthalpy is implemented by `species_enthalpy` in [`ideal_moist.cpp:260-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L260-L280).
+
+The first part of the sum is internal energy plus pressure; the remaining mass-weighted kinetic terms sum to
+$\tfrac12\rho|\mathbf v|^2$. This proves the identity and explains why condensates must have no pressure share.
+`consistency_check.py` verifies the intercept, temperature round trip and enthalpy sum independently.
+Exactness is algebraic for the specified energy functions; floors and incomplete Newton convergence break
+an inverse-map claim.
+
+### Numerical method
+
+The conserved limiter asks `UT->I` for a minimum internal energy at its configured temperature.
+Using a different offset or omitting the dry heat capacity would enforce a different temperature.
+Species tables must belong to the EOS instance; cloud-parent lookup and sedimentation must not resolve
+indices against a subsequently replaced global table. These are local data-ownership requirements, not
+a spatial accuracy improvement.
+
+```{python}
+#| label: fig-ch02-consistency-flow
+#| fig-cap: "EOS and solver consistency: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
+#| fig-alt: "Cell-local data and operation flow for EOS and solver consistency."
+#| echo: false
+from snapy_report.ch02.fig_consistency_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| floor consumer | [`equation_of_state.cpp:226-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L226-L233) | `min_ie` | `none` |
+| own species table | [`equation_of_state.cpp:110-134`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L110-L134) | `cache_cloud_parents_` | `none` |
+| nonlinear energy evaluation | [`moist_mixture.cpp:232-243`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L232-L243) | `_temp2intEng` | `none` |
+| enthalpy carry | [`moist_mixture.cpp:196-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L196-L218) | `species_enthalpy` | `none` |
+
+: Code map. {#tbl-ch02-consistency-code}
+
+
+Read the implementation in this order:
+
+1. Floor consumer: `min_ie` in [`equation_of_state.cpp:226-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L226-L233).
+2. Own species table: `cache_cloud_parents_` in [`equation_of_state.cpp:110-134`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L110-L134).
+3. Nonlinear energy evaluation: `_temp2intEng` in [`moist_mixture.cpp:232-243`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L232-L243).
+4. Enthalpy carry: `species_enthalpy` in [`moist_mixture.cpp:196-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L196-L218).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_eos_temp2inteng_python` | round trip / affinity / intercept | $10^{-12}$ / $10^{-12}$ / $10^{-10}$ | regression thresholds in script |
+| `test_eos_species_registry_python` | table rewrite invariance | $10^{-14}$; step exactly equal | script contract |
+| `test_two_cards_species.release` | second-card independence | precision dependent | test constants; see Chapter 15 |
+
+: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-consistency-tests}
+
+The independent derivation check is `src/snapy_report/ch02/consistency_check.py`;
+its committed output is `src/snapy_report/ch02/consistency_check.out`, line `[C1]`.
+No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
+@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+
+### Limits
+
+A dedicated moist-mixture `UT->I` versus `W->I` regression is still needed. The existing temperature-sweep
+script selects ideal-moist only. Algebraic reuse of `VT->U` is not a replacement for a compiled test.
+Switch-combination coverage remains pending in @sec-ch12-matrix.
