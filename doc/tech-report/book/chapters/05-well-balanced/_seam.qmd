@@ -43,8 +43,8 @@ $$
 p^{(b)}_{\mathrm{sf},\,i^{(b)}_u+1/2} = p^{(b+1)}_{\mathrm{sf},\,i^{(b+1)}_s-1/2},
 $$ {#eq-ch05-seam-relay}
 
-and block $n_{b1}$, which owns the domain top, uses @eq-ch05-refkernel-anchor. Since the two faces in
-@eq-ch05-seam-relay are the same physical face, and @eq-ch05-refkernel-scan adds the same terms
+and block $n_{b1}$, which owns the domain top, uses @eq-ch05-refkernel-anchor. Since the two faces
+in @eq-ch05-seam-relay are the same physical face, and @eq-ch05-refkernel-scan adds the same terms
 $g\overline\rho_i\Delta x_{1,i}$ in the same order as a single block would, the face pressures of the split column
 equal those of one block up to the round-off of the different summation boundaries. @eq-ch05-seam-relay is
 `take_x1_anchor` in the block below
@@ -69,7 +69,7 @@ tests below.
 
 ### Numerical method
 
-@fig-ch05-seam-relay shows the two steps. The relay is serial along the column: each block waits for the block above
+The two steps are shown in @fig-ch05-seam-relay. The relay is serial along the column: each block waits for the block above
 before it scans. Across processes the anchor is a point-to-point message (tag `0x7715`); between blocks of one
 process it is posted to a board keyed by the receiving block and taken with a five-minute timeout, so local blocks
 must run concurrently or from the top down. The ghost-row exchange uses the same pairing. Both run once per call of
@@ -77,7 +77,7 @@ must run concurrently or from the top down. The ghost-row exchange uses the same
 
 ```{python}
 #| label: fig-ch05-seam-relay
-#| fig-cap: "Reference continuity at an x1 seam (dashed reddish-purple line), x1 to the right; the upper block (top row) owns the domain top (thick black line at its right end). The upper block scans from the top (bluish-green arrow along the top) and passes its bottom-face pressure (orange triangle) down as the lower block's anchor (bluish-green vertical arrow). Then each block's hatched ghost cells of p_ref and rho_ref are overwritten with the neighbour's interior rows (dashed reddish-purple arrows)."
+#| fig-cap: "Reference continuity at an $x_1$ seam (dashed reddish-purple line), $x_1$ to the right; the upper block (top row) owns the domain top (thick black line at its right end). The upper block scans from the top (bluish-green arrow along the top) and passes its bottom-face pressure $p_{\\mathrm{sf}}$ (orange triangle) down as the lower block's anchor (bluish-green vertical arrow). Then each block's hatched ghost cells of $p_{\\mathrm{ref}}$ and $\\rho_{\\mathrm{ref}}$ are overwritten with the neighbour's interior rows (dashed reddish-purple arrows)."
 #| fig-alt: "Two offset rows of cells meeting at a dashed seam line; arrows show a scan along the top row, an anchor passed down at the seam, and copies between interior cells and the hatched ghost cells of the other row."
 #| echo: false
 from snapy_report.ch05.fig_seam_relay import make_fig
@@ -85,7 +85,7 @@ make_fig()
 ```
 
 Two related seam mechanisms belong to other sections: the single-valued seam flux average across process seams
-(Chapter 4) and, under `SNAP_X1_CENTROID_EXACT`, the exchange of plain-mean and face-pressure ghost rows
+(@sec-ch04) and, under `SNAP_X1_CENTROID_EXACT`, the exchange of plain-mean and face-pressure ghost rows
 (@sec-ch05-x1cent).
 
 ### Code
@@ -129,12 +129,14 @@ the only error a user can hit here.
 
 : Tests of reference continuity across seams. {#tbl-ch05-seam-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** All pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test files; run:
 `ctest -V`, Release build, 2026-10-10, CPU, double; 1 rank, the `_mp` entries 2 ranks under `torchrun`]. Printed gaps
 of that run: `_x1_centroid` split against one block $0$ (both `non-hydrostatic` 1 and 0); `_wb_ref4`
 $6.775\times10^{-15}$ and $1.675\times10^{-15}$; `_mp` arms, 2 ranks against 2 in-process blocks, $0$ in every arm.
 **Coverage.** CPU, 1 and 2 ranks; CUDA arms exist and were not run (**pending: a CUDA run at the pin**); more than two
 ranks along $x_1$ is not tested.
+:::
 
 ### Limits
 
@@ -144,4 +146,4 @@ ranks along $x_1$ is not tested.
    column anyway.
 3. **Stale test comment.** The header of `tests/test_pref_local_seam.cpp` still says the test is red and does not fix
    the jump; at the pin both cases pass, after chengcli/snapy#259.
-4. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

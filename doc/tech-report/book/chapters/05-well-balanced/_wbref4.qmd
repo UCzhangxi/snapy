@@ -20,8 +20,8 @@ on non-uniform grids it also replaces the cell pressure by a cubic average.
 :::
 
 The kernel's density reference is second order: the binomial smoothing biases $\rho/p$ by $\tfrac{\Delta x_1^2}{2}r''$,
-and its face density is not the face value of its own cell density, so the solver's face density carries the offset
-@eq-ch05-refkernel-offset. That offset enters the $x_1$ mass flux at linear order and, through it, the gravity work. The
+and its face density is not the face value of its own cell density, so the solver's face density carries the
+offset @eq-ch05-refkernel-offset. That offset enters the $x_1$ mass flux at linear order and, through it, the gravity work. The
 switch removes it with two operators: a five-point filter with zero second and third moments, which keeps the
 reference fourth order while still removing the two-cell mode, and a face value taken from the quartic through the
 primitive of the cell reference, so that face and cell are consistent by construction. On a non-uniform grid it also
@@ -29,7 +29,7 @@ replaces the log-mean cell pressure by the average of a cubic through four face 
 
 Guards keep the kernel's values wherever the new ones would leave the local range or the column is under-resolved,
 and the cell part runs before the seam exchange of @sec-ch05-seam, the face part after it. With the corrected-PE face
-work of Chapter 6 on (its default with `gravity-work: face`) the one-step spurious stratification of a neutral column
+work of @sec-ch06 on (its default with `gravity-work: face`) the one-step spurious stratification of a neutral column
 converges at about fourth order with the switch and second order without it.
 
 *Aliases.* "Leg W" in `docs/derivations/x1-centroid-spherical.md`; `SNAPY_WB_REF_EXACT` in the specification
@@ -125,7 +125,7 @@ gives $O(\Delta x_1^3)$ (the anchor constant through the even ghosts); not re-ch
 
 ### Numerical method
 
-@fig-ch05-wbref4-stencils shows the stencils. The stencils and weights are built once per block, on the CPU in double
+The stencils are shown in @fig-ch05-wbref4-stencils. The stencils and weights are built once per block, on the CPU in double
 precision, and cached until device or dtype changes; application is a gather and a weighted sum on the block's device.
 The cell part runs right after the kernel in `_hydro_ref_x1`, before the seam ghost-row exchange; the face part runs
 after it, so a column split along $x_1$ gets the same faces as one block. A block with a clamped wall and fewer than
@@ -133,7 +133,7 @@ four owned cells keeps the kernel's reference.
 
 ```{python}
 #| label: fig-ch05-wbref4-stencils
-#| fig-cap: "The SNAP_WB_REF4 stencils at a bottom wall (thick black line), x1 to the right. Top: the filter F on the wall cell i_s reads two values past the wall (bluish-green diamonds E_1, E_2), which are cubic extrapolations of the four owned cells nearest it (sky-blue circles), never the hatched ghosts; with them the filtered ratio equals r in the end cell. Bottom: the face density at the wall face from the quartic primitive over the four owned cells next to the wall (orange triangles at the five faces); interior faces use the centred weights (-1, 7, 7, -1)/12."
+#| fig-cap: "The `SNAP_WB_REF4` stencils at a bottom wall (thick black line), $x_1$ to the right. Top: the filter $F$ on the wall cell $i_s$ reads two values past the wall (bluish-green diamonds $E_1$, $E_2$), which are cubic extrapolations of the four owned cells nearest it (sky-blue circles), never the hatched ghosts; with them the filtered ratio equals $r$ in the end cell. Bottom: the face density at the wall face from the quartic primitive over the four owned cells next to the wall (orange triangles at the five faces); interior faces use the centred weights $(-1, 7, 7, -1)/12$."
 #| fig-alt: "Two rows of cells beside a wall with hatched ghosts; in the top row diamonds sit in two ghost cells and circles in four interior cells under a bracket of five cells; in the bottom row triangles mark five faces under a bracket of four cells."
 #| echo: false
 from snapy_report.ch05.fig_wbref4_stencils import make_fig
@@ -148,7 +148,7 @@ $N^2_{\mathrm{eff}}$ is scheme error. @fig-ch05-wbref4-order shows the four arms
 
 ```{python}
 #| label: fig-ch05-wbref4-order
-#| fig-cap: "One-step spurious stratification |N2_eff| n1^2 of a neutral column against the number of cells, (a) 1 and (b) 3 pressure e-folds deep. Vermillion circles: SNAP_WB_REF4 off; bluish-green squares: on. Solid lines: the corrected-PE face work at its default (on); dotted lines with open markers: SNAP_GRAVITY_WORK_RADIAL_EXACT=0. A flat line is second-order convergence of N2_eff; the black dotted guide has slope -2, i.e. fourth order. With the default gravity work the switch takes the error from second to fourth order."
+#| fig-cap: "One-step spurious stratification $\\lvert N^2_{\\mathrm{eff}}\\rvert\\,n_1^2$ [-] of a neutral column against the number of cells $n_1$, (a) 1 and (b) 3 pressure e-folds deep. Vermillion circles: `SNAP_WB_REF4` off; bluish-green squares: on. Solid lines: the corrected-PE face work at its default (on); dotted lines with open markers: `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`. A flat line is second-order convergence of $N^2_{\\mathrm{eff}}$; the black dotted guide has slope $-2$, i.e. fourth order. With the default gravity work the switch takes the error from second to fourth order."
 #| fig-alt: "Two log-log panels with four lines each: two nearly flat vermillion lines, a steeply falling solid green line and a less steep dotted green line."
 #| echo: false
 from snapy_report.ch05.fig_wbref4_order import make_fig
@@ -205,17 +205,19 @@ The only user-facing error is the ghost-depth check of step 2.
 
 : Tests of `SNAP_WB_REF4`. {#tbl-ch05-wbref4-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** $N^2_{\mathrm{eff}}n_1^2$ at $n_1$ = 32, 64, 128, re-measured at the pin (ISSUES.md item 3): switch off
 $+0.0719$, $+0.0656$, $+0.0640$ (1 e-fold) and $+0.6198$, $+0.5344$, $+0.5060$ (3 e-folds); on $+0.0025$, $+0.0006$,
 $+0.0001$ and $+0.0407$, $+0.0111$, $+0.0029$ [sha `e894700ff7aee30b52882e5202b16461413780b0`; deck:
 `tests/test_wb_ref4_order.py`; run: `python tests/test_wb_ref4_order.py` against the pin's build, 2026-10-10, CPU,
-double, 1 rank; data `src/snapy_report/ch05/data/wb_ref4_order.json`]. The `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` arms of
-@fig-ch05-wbref4-order come from a second run of the same script with that variable set. The seam tests print gaps
+double, 1 rank; data `src/snapy_report/ch05/data/wb_ref4_order.json`]. The `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` arms
+of @fig-ch05-wbref4-order come from a second run of the same script with that variable set. The seam tests print gaps
 of $6.775\times10^{-15}$ and $1.675\times10^{-15}$ ($n_h$ = 1, 0) for the split and 0 for two ranks against two blocks.
 The ctest entry `test_wb_ref4_order_python` itself failed in a first run because the test imported an older
 installed snapy instead of the pin's build; run against the pin's build it passes, as above.
 **Coverage.** CPU; the CUDA twin `test_wb_ref4_order_cuda` and the `_cuda` seam arms were not run (**pending: a CUDA
 run at the pin**); 2 ranks through the `_mp` arm.
+:::
 
 ### Limits
 
@@ -231,4 +233,4 @@ run at the pin**); 2 ranks through the `_mp` arm.
    threshold `ORDER_ON` 2.75 no longer distinguishes the fourth order measured at the pin from the third order of the
    note; the test still separates on from off.
 4. **Names.** The specification calls the switch `SNAPY_WB_REF_EXACT`; the code reads `SNAP_WB_REF4`.
-5. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+5. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

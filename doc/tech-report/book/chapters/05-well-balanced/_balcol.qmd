@@ -51,7 +51,7 @@ $$
 \varepsilon = \max_i\frac{\lvert \overline{p}_i - p_{\mathrm{ref},i} - C\rvert}{\overline{\rho}_i\,g\,\Delta x_{1,i}} < \mathrm{rtol} .
 $$ {#eq-ch05-balcol-res}
 
-@eq-ch05-balcol-iter and @eq-ch05-balcol-res are the loop that calls `call_hydro_ref_x1`
+The sweep @eq-ch05-balcol-iter and the stop test @eq-ch05-balcol-res are the loop that calls `call_hydro_ref_x1`
 ([`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104)).
 A fixed point of @eq-ch05-balcol-iter satisfies @eq-ch05-wbx1-rest with $c=C$, so it is at rest in the solver. The
 residual is checked before the update, so the returned column is the one it describes and an already balanced
@@ -77,13 +77,13 @@ truncated beyond that.
 
 ### Numerical method
 
-@fig-ch05-balcol-gauge shows what the projection does. Each sweep is one call of the reference kernel on the column
+What the projection does is shown in @fig-ch05-balcol-gauge. Each sweep is one call of the reference kernel on the column
 (CPU, CUDA or MPS, with the column's device), plus the switched cell pressure of @sec-ch05-wbref4 when that switch is on
 and the column is non-uniform; uniformity is decided with the solver's test on the column's own widths.
 
 ```{python}
 #| label: fig-ch05-balcol-gauge
-#| fig-cap: "What balance_column does to a column, x1 to the right. Vermillion dashed circles: the perturbation p - p_ref of a column marched from the continuum equation, which varies along the column; bluish-green squares: after the projection it is one constant C, the value at the top cell. The column itself moves by C everywhere. Illustrative values."
+#| fig-cap: "What `balance_column` does to a column, $x_1$ to the right. Vermillion dashed circles: the perturbation $p - p_{\\mathrm{ref}}$ [Pa] of a column marched from the continuum equation, which varies along the column; bluish-green squares: after the projection it is one constant $C$ [Pa], the value at the top cell. The column itself moves by $C$ everywhere. Illustrative values."
 #| fig-alt: "Line plot of a wavy dashed curve of circles and a flat line of squares meeting at the right end, with an arrow labelling the right end as the gauge."
 #| echo: false
 from snapy_report.ch05.fig_balcol_gauge import make_fig
@@ -98,7 +98,7 @@ $4\epsilon_{\mathrm{mach}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within
 
 ```{python}
 #| label: fig-ch05-balcol-passes
-#| fig-cap: "The moist balance-ic loop of the bryan example, per pass. (a) Largest relative pressure change the saturation adjustment makes to the column just projected (bluish-green circles); the dotted line is the stop criterion 1e-13. (b) Projection sweeps balance_column needed in that pass (black squares). The change falls by about a factor 20 per pass and the loop stops after pass 6."
+#| fig-cap: "The moist balance-ic loop of the bryan example, per pass. (a) Largest relative pressure change $\\max\\lvert\\Delta p/p\\rvert$ [-] the saturation adjustment makes to the column just projected (bluish-green circles); the dotted line is the stop criterion $10^{-13}$. (b) Projection sweeps `balance_column` needed in that pass (black squares). The change falls by about a factor 20 per pass and the loop stops after pass 6."
 #| fig-alt: "Two panels: a semilog plot falling linearly over six passes below a dotted threshold line, and a plot of sweeps falling from 13 to 4."
 #| echo: false
 from snapy_report.ch05.fig_balcol_passes import make_fig
@@ -156,6 +156,7 @@ later run, the same uniform classification in every block, and the saturation lo
 
 : Tests of `balance_column`. {#tbl-ch05-balcol-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** All pass at the pin. The moist test prints audit residual $3.357\times10^{-1}$ before and
 $8.896\times10^{-11}$ after, in 13 sweeps, and $\max\lvert v_1\rvert/(g\Delta t)$ after one step $2.58\times10^{-11}$
 balanced against $2.05\times10^{-2}$ marched, identical in all three arms. The bryan default case stops after pass 6
@@ -165,6 +166,7 @@ with saturation changes falling from $8.76\times10^{-8}$ to $1.39\times10^{-14}$
 1 rank; data `src/snapy_report/ch05/data/bryan_balance_ic.json`].
 **Coverage.** CPU; the `_cuda` cases exist and were not run (**pending: a CUDA run at the pin**); no multi-rank case
 (the function works on one column).
+:::
 
 ### Limits
 
@@ -179,4 +181,4 @@ balanced under `SNAP_X1_CENTROID_EXACT`.
 2. **Classification.** The uniform test is made once for the whole column and must match every block's own test.
 3. **Moist columns.** The caller must iterate with saturation adjustment, as the bryan example does.
 4. **No convergence proof.** Convergence is observed (`[C15]`, the tests), not proven.
-5. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+5. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

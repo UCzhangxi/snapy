@@ -108,7 +108,7 @@ Ratios of means (the Favre velocity, $T=p/\rho$, $\rho/p$ inside $F$) are not ma
 
 ### Numerical method
 
-@fig-ch05-x1cent-window shows the windows. In `HydroImpl::forward` the plain-mean view `wx1` is computed before the
+The windows are shown in @fig-ch05-x1cent-window. In `HydroImpl::forward` the plain-mean view `wx1` is computed before the
 reference, its seam ghost rows are taken from the neighbour, and the reconstruction and the reference read it; the
 primitives themselves are unchanged. After the Riemann solve the two ghost face pressures each side of a seam are taken
 from the neighbour, so the source window is the centred one-block window. Everything runs in every RK stage,
@@ -116,7 +116,7 @@ explicitly; the stencils are built once per block in double precision.
 
 ```{python}
 #| label: fig-ch05-x1cent-window
-#| fig-cap: "The maps of SNAP_X1_CENTROID_EXACT, x1 = r to the right. Top: a radial cell, its mid-radius (dotted) and its r^2 centroid x1v (bluish-green line) h^2/(6 r) further out. Middle: the five-cell window that converts r^2 means to the plain mean of cell i, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
+#| fig-cap: "The maps of `SNAP_X1_CENTROID_EXACT`, $x_1 = r$ to the right. Top: a radial cell, its mid-radius $\\overline{r}_i$ (dotted) and its $r^2$ centroid $x_{1v}$ (bluish-green line) $h^2/(6\\overline{r}_i)$ [m] further out. Middle: the five-cell window that converts $r^2$ means to the plain mean of cell $i$, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
 #| fig-alt: "A single wide cell with two vertical lines inside, below it a row of nine cells with brackets over five cells, and a third row of cells with a dashed seam and six triangles crossing it."
 #| echo: false
 from snapy_report.ch05.fig_x1cent_window import make_fig
@@ -178,11 +178,13 @@ a non-Cartesian geometry under it. A block too thin for the stencils (`usable` f
 Evidence: sha `e894700ff7aee30b52882e5202b16461413780b0`; deck `tests/test_x1_centroid_rest.py`; run `python
 tests/test_x1_centroid_rest.py` against the pin's build, 2026-10-10, CPU, double, 1 rank. {#tbl-ch05-x1cent-rest}
 
+::: {.callout-important title="Test"}
 **Evidence.** @tbl-ch05-x1cent-rest: with the switch the rest force is at round-off in every case; without it the
 $r_0/H=5$ column feels $2.4\times10^{-5}$. The seam arm prints a split-against-one-block gap of 0 in both modes, and
 the 2-rank arm 0 against both two blocks and one block [same sha; decks the test files; run `ctest -V`, 2026-10-10,
 CPU, double, 1 and 2 ranks].
 **Coverage.** CPU; the CUDA twins were not run (**pending: a CUDA run at the pin**).
+:::
 
 ### Limits
 
@@ -191,11 +193,11 @@ The switch does nothing on cubed-sphere grids. Under it `balance_column` balance
 `geometry='cartesian'`.
 :::
 
-1. **Ratios of means.** The Favre velocity, $T$ and $\rho/p$ are still treated as means; the $O(h^2/R)$ remainder is
-   @sec-ch05-oneoverr.
+1. **Ratios of means.** The Favre velocity, $T$ and $\rho/p$ are still treated as means; the $O(h^2/R)$ remainder
+   is @sec-ch05-oneoverr.
 2. **Cubed sphere.** Not implemented: the gnomonic grids store the mid-radius as $x_{1v}$ and would need the
    conversion with their own radial measure.
 3. **Note history.** The copy of the derivation in `sources/deriv__x1-centroid-spherical.md` predates the seam
    exchange and says the switch leaves the reference unchanged; at the pin it implies `SNAP_WB_REF4` and seam ghosts
    are exchanged.
-4. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

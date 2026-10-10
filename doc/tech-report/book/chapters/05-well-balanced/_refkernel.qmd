@@ -29,8 +29,8 @@ smoothed $\rho/p$: smoothed, because an unsmoothed ratio makes the density pertu
 perturbation and the entropy mode would bypass the reconstruction.
 
 The kernel has a C++ implementation shared by the CPU and CUDA paths and a tensor implementation for MPS. The wall
-closure of the smoothed ratio and of the six-face rows is @sec-ch05-wallclamp; the anchor relay across $x_1$ seams is
-@sec-ch05-seam; the fourth-order replacement of the density reference is @sec-ch05-wbref4.
+closure of the smoothed ratio and of the six-face rows is @sec-ch05-wallclamp; the anchor relay across $x_1$ seams
+is @sec-ch05-seam; the fourth-order replacement of the density reference is @sec-ch05-wbref4.
 
 *Aliases.* "smooth5" (the five-point binomial) and "the base reference" in
 `docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1.
@@ -135,22 +135,22 @@ $$
 $$ {#eq-ch05-refkernel-offset}
 
 with $R=\rho/p$ the point ratio and primes $x_1$ derivatives (this paragraph only). `[C14]` measures $\delta\rho_f$ at
-the middle face of a polytrope against fifth-order linear reconstruction and finds the ratio to
-@eq-ch05-refkernel-offset 1.0022, 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
+the middle face of a polytrope against fifth-order linear reconstruction and finds the ratio
+to @eq-ch05-refkernel-offset 1.0022, 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
 
 *Exact and truncated.* Exact: the scan step, hence the rest balance. $O(\Delta x_1^6)$: the uniform cell pressure.
 $O(\Delta x_1^2)$: the log-mean on non-isothermal cells, the smoothed ratio and the face density reference.
 
 ### Numerical method
 
-@fig-ch05-refkernel-scan shows the stencils. The scan is serial along each column; the per-cell part reads six face
+The stencils are shown in @fig-ch05-refkernel-scan. The scan is serial along each column; the per-cell part reads six face
 pressures and five ratios. The kernel runs once per $x_1$ sweep, in every RK stage, on cell averages (on plain means
 under @sec-ch05-x1cent), including ghost cells: ghosts get face pressures from the upward scan and, without the wall
 clamp, ghost ratios enter the binomial. Uniformity is decided once per block from its own `dx1f`.
 
 ```{python}
 #| label: fig-ch05-refkernel-scan
-#| fig-cap: "The reference kernel on one column between two walls (thick black lines), x1 to the right. Top: the scan (bluish-green arrow) starts from the top anchor and adds g rho_i dx1 cell by cell; face pressures are orange triangles. Bottom: the six faces whose quintic gives the interior cell pressure of cell i, and the one-sided six-face window used for the two cells next to a wall. Shaded cells are the cells whose pressure the windows define."
+#| fig-cap: "The reference kernel on one column between two walls (thick black lines), $x_1$ to the right. Top: the scan (bluish-green arrow) starts from the top anchor and adds $g\\,\\overline{\\rho}_i\\,\\Delta x_1$ [Pa] cell by cell; face pressures $p_{\\mathrm{sf}}$ are orange triangles. Bottom: the six faces whose quintic gives the interior cell pressure $p_{\\mathrm{ref},i}$ of cell $i$, and the one-sided six-face window used for the two cells next to a wall. Shaded cells are the cells whose pressure the windows define."
 #| fig-alt: "Two rows of eight cells between thick wall lines; an arrow over the top row runs from right to left, triangles mark faces; brackets in the bottom row span six faces around cell i and six faces starting at the wall."
 #| echo: false
 from snapy_report.ch05.fig_refkernel_scan import make_fig
@@ -211,6 +211,7 @@ the one-sided rows unusable (`fits` false), and the face mean is kept.
 
 : Tests of the reference kernel. {#tbl-ch05-refkernel-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** `test_hydro_ref_x1.release` (6 passed, `cuda_matches_cpu` skipped) and `test_hydro_options.release`
 (11 passed, the `_cuda` case skipped) pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the
 test files; run: `ctest -V`, Release build, 2026-10-10, CPU, double, 1 rank]. Check numbers: [sha: the formulas of
@@ -218,6 +219,7 @@ snapy@e894700ff7aee30b52882e5202b16461413780b0, rebuilt from this section's equa
 `python3 wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double].
 **Coverage.** CPU in the run above; CUDA cases exist but were not run (**pending: a CUDA run at the pin**); the MPS
 path itself is compared only through its CPU execution; multi-rank through @sec-ch05-seam.
+:::
 
 ### Limits
 
@@ -236,4 +238,4 @@ at rest to round-off only after `balance_column`.
    §2). Not measured at the pin.
 3. **One classification per block.** A grid uniform over part of the column gives different operators to different
    blocks; `balance_column` must make the same choice (@sec-ch05-balcol).
-4. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
