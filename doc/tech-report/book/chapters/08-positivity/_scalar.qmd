@@ -1,0 +1,65 @@
+## The passive-scalar limiter and the complement bound {#sec-ch08-scalar}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.4
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Passive scalars get the same limiter as the hydro species, from the same function.
+- Switch: the same limiter switch; the scalar module runs its own call.
+- The factors are exchanged as a raw copy, never interpolated, for the same reason as the hydro ones.
+- A scalar bounded above by its complement needs a second constraint, which is noted here, not derived.
+:::
+
+Passive scalars are transported by the same divergence as the hydro species and are limited by the same
+scheme. This section exists because the call is a separate one, in a separate module, with its own
+counters, and a reader looking for it in the hydro path will not find it.
+
+### Derivation
+
+Nothing new: the derivation is @sec-ch08-theta, and the scalar module calls the same two functions. The
+argument for the ghost exchange being a raw copy rather than an interpolation is also the same, and the
+code comment points back to the hydro call site rather than repeating it.
+
+The one thing specific to scalars is the upper bound. A scalar that represents a fraction is bounded
+above by the positivity of its complement, so enforcing non-negativity on the scalar alone is not
+enough to keep it below one. The code comment at `the` ([`scalar.cpp:28-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L28-L32)) records this; the
+chapter records it as a stated design intent and does not claim a derivation, because none is committed.
+
+### Numerical method
+
+The call is `_flux1` ([`scalar.cpp:158-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L158-L162)), which builds the factors with the same
+`flux_positivity_theta`, counts the cells it limited, and scales through the synchronised factors. The
+synchronisation is the lambda at `theta_opts` ([`scalar.cpp:140-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L140-L155)): it puts the factors into a variable
+map, exchanges them with interpolation switched off, and applies the physical boundary functions, which
+is exactly the fill the limiter's contract requires.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the scalar limiter call | [`scalar.cpp:158-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L158-L162) | `flux_positivity_theta` | limiter on |
+| the factor exchange | [`scalar.cpp:140-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L140-L155) | `sync_theta` | |
+| the complement bound, as intent | [`scalar.cpp:28-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L28-L32) | `positivity` | |
+
+: Code map of the passive-scalar limiter. {#tbl-ch08-scalar-code}
+
+### Tests
+
+No test in the repository selects the passive-scalar limiter on its own. Its behaviour follows from
+@sec-ch08-theta, whose checks cover the shared function, but the scalar call path itself is covered by
+nothing.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The upper bound is not enforced. The limiter keeps a scalar non-negative; nothing in this path keeps
+  it below its complement, and the code comment describes that as the intent rather than the behaviour.
+:::
+
+1. **Untested path.** The scalar call, its counters and its exchange are exercised by no test, so this
+   section is written from reading alone.

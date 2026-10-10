@@ -1,0 +1,75 @@
+## Round-off thresholds for positivity events {#sec-ch08-roundoff}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.11
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Two constants decide what counts as a real positivity event rather than arithmetic noise.
+- The limiter stops short of zero by 4096 ulp in float64 and 64 ulp in float32.
+- The thresholds are fractions of the cell's *total gas mass*, not of the species being limited.
+- The clip itself is always applied; the threshold only decides whether it is reported and marked.
+:::
+
+A limiter that aims at exactly zero will overshoot, because the target rounds negative. A census that
+counts every such overshoot will report a flood of events that mean nothing. These two constants are
+how the code separates a real repair from arithmetic, and the float32 value is not the float64 one.
+
+### Derivation
+
+The margin leaves a fixed fraction of the cell's own species mass behind on purpose. In float64, 4096
+ulp is $9.09\times10^{-13}$ of the gas mass, which `[C4]` computes: negligible against anything
+physical.
+
+The same 4096 ulp in float32 would be $4.88\times10^{-4}$, which the header calls the size of a real
+repair. Using it would make the margin itself larger than the events it is meant to filter out. The
+float32 constant is therefore 64 ulp, giving $7.63\times10^{-6}$, and `[C4]` checks all three numbers
+together so the reason for the second constant is visible rather than asserted.
+
+The threshold is measured against the cell's total gas mass over all species, not against the species
+being limited. That is what makes it robust for a trace species: an almost-empty cell drained by a
+round-off face flux has a factor of zero at any step size, and its withheld mass is around $10^{-20}$ of
+the cell's. Scaled against the trace species itself, that would look like total depletion; scaled
+against the cell's gas mass, it is correctly reported as nothing.
+
+### Numerical method
+
+The constants are `constexpr` ([`flux_positivity.hpp:11-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L11-L23)), where the comment states both the intent and
+the float32 reasoning. The margin enters the factors at `margin` ([`flux_positivity.cpp:63-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L63-L66)).
+
+The census is at `cells` ([`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669)). An event is counted as *severe* only when the
+factor is below $0.9$ **and** the withheld mass is above the threshold times the cell's gas mass, the
+two conditions at [`hydro_forward.cpp:663-668`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L663-L668). The smallest factor seen is recorded
+separately, so a run can report how hard the limiter worked without that number being distorted by
+round-off events.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the two constants and why | [`flux_positivity.hpp:11-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L11-L23) | `kPositivityRoundoffUlp` | |
+| the margin in the factors | [`flux_positivity.cpp:63-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L63-L66) | `margin` | |
+| the census | [`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669) | `_positivity_hits` | limiter on |
+| the severity test | [`hydro_forward.cpp:663-668`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L663-L668) | `_positivity_severe` | |
+
+: Code map of the round-off thresholds. {#tbl-ch08-roundoff-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| this chapter's check | `[C4]` the two margins as fractions of the gas mass, and why float32 needs its own | exact arithmetic |
+
+: Tests of the round-off thresholds. {#tbl-ch08-roundoff-tests}
+
+### Limits
+
+1. **The constants are not derived.** They are chosen so that the margin sits below a real repair and
+   above arithmetic noise. The header gives the reasoning for the float32 value; neither constant comes
+   from an error analysis.
+2. **A fixed fraction is left behind.** The limiter deliberately does not drain a cell to exactly zero.
+   That residue is bounded by the margin and is not accounted anywhere.

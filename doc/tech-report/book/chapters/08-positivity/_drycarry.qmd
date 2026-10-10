@@ -1,0 +1,82 @@
+## Dry-carry of passive tracers, and the zero-base guard {#sec-ch08-drycarry}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.13
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- When a forcing changes dry mass, the passive tracers must be carried with it.
+- An addition carries the ratio at source entry; a removal carries the source-free stage ratio.
+- A zero source-free density would make that ratio $0/0$, so it falls back to the entry ratio.
+- This is a finiteness guard, not a positivity one: the result may legitimately be negative.
+:::
+
+This is the one entry in the chapter that is not about positivity at all, and the distinction is worth
+making loudly because its name and its neighbours both suggest otherwise. It keeps an arithmetic
+expression finite. The tracer it protects can still go negative, and the repository's own test for it
+accepts a negative value.
+
+### Derivation
+
+A forcing that writes a dry-mass tendency has to say what happens to the tracers riding on that mass.
+Addition and removal are not symmetric, and the code comment at
+`carry_dry_source` ([`meshblock.cpp:631-634`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L631-L634)) gives the reason: an addition carries the ratio as it stands at
+source entry, while a removal carries the ratio the stage would have had with no source at all, so that
+the removal cannot amplify a ratio that transport or the implicit solve has just changed.
+
+Computing that source-free ratio means dividing the source-free scalar by the source-free density, and
+nothing prevents that density from being zero in a cell that is empty with the source removed. The guard
+at `rho_base` ([`meshblock.cpp:640-642`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L640-L642)) substitutes the entry ratio there, which keeps the expression
+finite.
+
+What the guard does *not* do is bound the result. The repository's own test asserts a finite answer at a
+zero base and accepts a bottom value of $-5\times10^{-4}$: a negative tracer is the expected outcome,
+not a failure. Passive scalars under a dry sink have no positivity guarantee from this path or from any
+other.
+
+### Numerical method
+
+The carry is the lambda at `scalar_r` ([`meshblock.cpp:634-646`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L634-L646)). The source-free density and scalar are
+rebuilt by running the integrator's own stage combination on the tendency with the dry source subtracted
+at `rho_base` ([`meshblock.cpp:637-639`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L637-L639)), so the "source-free" state is the one the integrator would have
+produced and not a cell-wise approximation of it. The choice between the two ratios is made per cell on
+the sign of the dry source at `carry_r` ([`meshblock.cpp:643-644`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L643-L644)).
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| why addition and removal differ | [`meshblock.cpp:631-634`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L631-L634) | `carry_dry_source` | |
+| the carry | [`meshblock.cpp:634-646`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L634-L646) | `carry_dry_source` | scalars present, a forcing writes dry mass |
+| the source-free stage state | [`meshblock.cpp:637-639`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L637-L639) | `rho_base` | |
+| the zero-base guard | [`meshblock.cpp:640-642`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L640-L642) | `remove_r` | source-free density zero |
+| addition against removal | [`meshblock.cpp:643-644`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L643-L644) | `carry_r` | |
+
+: Code map of the dry-carry guard. {#tbl-ch08-drycarry-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_dry_carry_zero_base.py` | a finite result at a zero base; the bottom scalar equals $-5\times10^{-4}$ | `1e-12` |
+| `tests/test_stage_forcing_dry_tracer.py` | a user stage forcing that writes dry mass carries its tracers | per test |
+
+: Tests of the dry-carry guard. {#tbl-ch08-drycarry-tests}
+
+The first test is the clearest statement in the repository that this is not a positivity mechanism: it
+asserts a negative value to twelve digits.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- No positivity guarantee for passive scalars under a dry sink. The guard keeps the arithmetic finite
+  and nothing more.
+:::
+
+1. **A fallback, not a correction.** When the source-free density is zero the entry ratio is used
+   instead. Whether that ratio is the physically right one in an emptied cell is not argued anywhere;
+   it is the finite choice.

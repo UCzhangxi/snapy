@@ -1,0 +1,62 @@
+## Reconstruction-stage floors {#sec-ch08-reconfloors}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.8
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Floors applied to the face states, not to the cell state, right after each reconstruction.
+- Switch: the same limiter switch; the floor values come from the equation of state.
+- Density and pressure take the floors; tracers are clamped at zero.
+- The tracer clamp fires even when the caller asked for no floors, which the well-balanced path does.
+:::
+
+A high-order reconstruction can overshoot into a negative face density or pressure even from a
+perfectly admissible cell state. These floors catch that at the face, before the Riemann solver sees it.
+They belong to the reconstruction framework of @sec-ch04-framework and are described here because they
+are part of the positivity story rather than part of the interpolation.
+
+### Derivation
+
+None: a floor is a clamp, and everything said about non-conservation in @sec-ch08-eoslimiter applies
+here too. What is worth recording is the asymmetry between the three row groups, because it is not
+what a reader would guess.
+
+Density and pressure are floored only when the caller asked for floors. Tracers are clamped at zero
+whenever the limiter is on, *regardless* of what the caller asked, at
+`clamp_min_` ([`reconstruct.cpp:153-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L153-L155)). The well-balanced path of chapter 5 calls the reconstruction with
+floors switched off precisely so that it can handle its own perturbation variables, and it still gets
+its tracers clamped.
+
+### Numerical method
+
+The three groups are floored in place as each is reconstructed: density at
+`eos` ([`reconstruct.cpp:135-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L135-L137)), pressure at `eos` ([`reconstruct.cpp:143-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L143-L145)) and the tracers
+at [`reconstruct.cpp:153-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L153-L155). The values are read from the equation-of-state options and not
+from the reconstruction options, which carry floor members that `forward` never reads.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the face density floor | [`reconstruct.cpp:135-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L135-L137) | `density_floor` | limiter and floor |
+| the face pressure floor | [`reconstruct.cpp:143-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L143-L145) | `pressure_floor` | limiter and floor |
+| the tracer clamp | [`reconstruct.cpp:153-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L153-L155) | `clamp_min_` | limiter on, floor ignored |
+
+: Code map of the reconstruction-stage floors. {#tbl-ch08-reconfloors-code}
+
+### Tests
+
+No test isolates the face floors. They fire inside every limited deck.
+
+### Limits
+
+1. **The tracer clamp ignores its caller.** A path that switches floors off to protect its own variables
+   still has its tracer face states clamped. Whether that is intended is not recorded anywhere; the
+   chapter records the behaviour.
+2. **Same absolute values.** The face floors use the same absolute numbers as the cell floors, so the
+   scaling caveat of @sec-ch08-eoslimiter applies to them unchanged.

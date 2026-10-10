@@ -1,0 +1,86 @@
+# Positivity, floors and limiters {#sec-ch08}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8
+status: draft
+-->
+
+This chapter is every mechanism that keeps the state physically admissible, or detects that it is not.
+
+The most important thing to say comes first, because the rest of the chapter reads differently once it
+is said: **snapy guarantees no thermodynamic positivity of density or pressure.** There is exactly one
+guarantee in this chapter, and it covers tracer channels under explicit transport: the limiter of
+@sec-ch08-theta, which cannot drain a cell below zero in a stage. Everything protecting density,
+pressure and temperature is a floor, which is to say a clamp that invents whatever the state was
+missing, and the only backstop is a detector that asks for the step to be taken again. The chapter's
+own check measures what the floors invent rather than describing them as safeguards.
+
+The second thing worth knowing early is that one switch controls most of it.
+`equation-of-state/limiter`, default false, turns on the tracer limiter, the equation-of-state floors,
+the reconstruction face floors and the species clamps together. They cannot be selected independently.
+That coupling is a documented design decision, not an accident of the implementation.
+
+```{python}
+#| label: fig-ch08-deps
+#| fig-cap: "The dependency map of this chapter. Dashed green arrows read turns on: one switch controls the tracer limiter, the passive scalars, the equation-of-state floors and the face floors together. Solid black arrows read requires or sets, dotted vermillion reads falls back to, and dash-dotted blue reads read by. The two paths on the right end at the redo detector, which is the only consumer of the limiter marks and of the implicit dry clamp. Every edge is stated and cited in the section it comes from."
+#| fig-alt: "Eleven labelled boxes joined by arrows of four styles, with a switch box at the left feeding four mechanisms and two paths converging on a redo detector at the right."
+#| echo: false
+from snapy_report.ch08.fig_ch08_deps import make_fig
+make_fig()
+```
+
+| scheme | switch | default | guarantee | main test |
+|---|---|---|---|---|
+| Tracer flux limiter (@sec-ch08-theta) | `limiter` | off | non-negative tracers under transport, per stage | `test_flux_positivity` |
+| Energy and momentum carry (@sec-ch08-carry) | with the limiter | off | the withheld mass keeps its energy | `test_flux_positivity_carry` |
+| Passive-scalar limiter (@sec-ch08-scalar) | with the limiter | off | the same, for scalars | none |
+| EOS limiter and floors (@sec-ch08-eoslimiter) | `limiter` | off | none; a clamp that invents mass | none |
+| Condensate borrow (@sec-ch08-borrow) | with the limiter | off | conservative in mass and elements | none |
+| Vapour column repair (@sec-ch08-fixvapor) | with the limiter | off | conservative in mass, or it throws | none |
+| Face floors (@sec-ch08-reconfloors) | `limiter` | off | none; a clamp at the face | none |
+| Well-balanced face fallback (@sec-ch08-wbface) | with the reference | — | no-op at rest | chapter 5 tests |
+| Implicit dry clamp (@sec-ch08-vic) | with the implicit scheme | — | none; recorded, not prevented | none |
+| Round-off thresholds (@sec-ch08-roundoff) | — | always | separates a repair from arithmetic | this chapter's check |
+| Floor detector and redo (@sec-ch08-redo) | — | always | detection only | none |
+| Dry-carry zero-base guard (@sec-ch08-drycarry) | with scalars and dry sources | — | finiteness, *not* positivity | `test_dry_carry_zero_base` |
+
+: The mechanisms of this chapter. "Guarantee" is what the mechanism actually promises; most promise
+nothing and repair instead. {#tbl-ch08-schemes}
+
+Two notes on how this chapter is organised against the outline, both of which the outline asks for. The
+carry appears there twice, as two inventories' accounts of one mechanism, and is one section here. The
+equation-of-state limiter appears three times, as a conserved pass, a primitive pass and a combined
+account with the floors and the marks; all three are one section here, because the single switch and the
+shared marks are one story. The vapour column repair and the condensate borrow are lifted out of the
+conserved pass into their own sections, which is what the outline recommends and what their difference
+in kind deserves: they are the only repairs in the chapter that conserve anything.
+
+Where this chapter touches others: the limiter runs inside the stage operator of @sec-ch04-divergence,
+between the Riemann solve and the flux divergence, and after the seam averaging of @sec-ch04-seam. The
+face floors belong to the reconstruction framework of @sec-ch04-framework. The implicit clamp is inside
+the solve of chapter 7, and the redo budget that ends a redo loop is chapter 7's too.
+
+{{< include 08-positivity/_theta.qmd >}}
+
+{{< include 08-positivity/_carry.qmd >}}
+
+{{< include 08-positivity/_scalar.qmd >}}
+
+{{< include 08-positivity/_eoslimiter.qmd >}}
+
+{{< include 08-positivity/_borrow.qmd >}}
+
+{{< include 08-positivity/_fixvapor.qmd >}}
+
+{{< include 08-positivity/_reconfloors.qmd >}}
+
+{{< include 08-positivity/_wbface.qmd >}}
+
+{{< include 08-positivity/_vic.qmd >}}
+
+{{< include 08-positivity/_roundoff.qmd >}}
+
+{{< include 08-positivity/_redo.qmd >}}
+
+{{< include 08-positivity/_drycarry.qmd >}}

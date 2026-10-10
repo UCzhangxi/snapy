@@ -1,0 +1,77 @@
+## The vapour column repair {#sec-ch08-fixvapor}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, lifted out of scheme 8.5 as the outline recommends
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A repair along a whole $x_1$ column, not a floor: it moves mass within the column.
+- Switch: part of the conserved limiter, where a vapour row has gone negative.
+- Conserves mass by weighting with cell volumes, so it repairs mass and not density.
+- Gathers the column across ranks when the $x_1$ axis is split.
+- Clouds tolerate an unrepairable column and clamp; vapour must throw instead.
+:::
+
+When the borrow of @sec-ch08-borrow cannot cover a deficit from the parent vapour in the same cell, the
+vapour itself goes negative and a local repair has no mass to work with. The column repair is the
+fallback: it looks along the whole $x_1$ column for mass to move.
+
+### Derivation
+
+The scheme is a redistribution, so the thing to establish is what it conserves. It weights by cell
+volume at `cell_volume` ([`equation_of_state.cpp:271-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L271-L272)), which is the point recorded in the code comment
+there: a column repair that moved *densities* would not conserve mass on a non-uniform grid, because
+equal densities in unequal cells are unequal masses. Weighting by volume makes the redistribution
+conservative in mass.
+
+This chapter does not port the repair, and the reason is worth stating rather than hiding: the search
+itself is a device kernel reached through a dispatch call, so a numpy port would be a reimplementation
+rather than a port, and a check built on it would test my reimplementation and not the code. The
+conservation property above is read from the code and its comment; it is not measured here.
+
+### Numerical method
+
+The repair is the lambda at `split` ([`equation_of_state.cpp:274-300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L300)). When the $x_1$ axis is split
+across ranks it gathers the column first, so the repair sees the whole column rather than one block's
+piece of it.
+
+The two callers are deliberately different, and the comment at
+`repair_column` ([`equation_of_state.cpp:274-276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L276)) says why: clouds tolerate a column that cannot be repaired and
+fall back to a clamp at `clamp_min_` ([`equation_of_state.cpp:310`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L310)), while vapour must throw rather than copy
+a bad gathered column back, which is the check at `err` ([`equation_of_state.cpp:296-299`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L296-L299)). A failure
+in the vapour path is therefore a hard stop, not a silent repair.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| volume weighting, so mass is conserved | [`equation_of_state.cpp:271-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L271-L272) | `vol` | |
+| the two callers differ by design | [`equation_of_state.cpp:274-276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L276) | `repair_column` | |
+| the repair | [`equation_of_state.cpp:274-300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L300) | `repair_column` | vapour negative |
+| vapour must succeed | [`equation_of_state.cpp:296-299`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L296-L299) | `TORCH_CHECK` | `require_success` |
+| clouds clamp instead | [`equation_of_state.cpp:310`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L310) | `clamp_min_` | parentless or unrepairable |
+
+: Code map of the vapour column repair. {#tbl-ch08-fixvapor-code}
+
+### Tests
+
+No test in the repository isolates the column repair, and this chapter does not check it either, for
+the reason given in the Derivation. It is the least verified mechanism in the chapter.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The vapour path throws when the column cannot be repaired. That is a crash, not a degraded run, and
+  it is the intended behaviour rather than a defect.
+- The repair needs the whole column. On a split $x_1$ axis it gathers across ranks, so it is a
+  collective operation inside what is otherwise a local limiter.
+:::
+
+1. **Not ported, not measured.** The conservation claim is read from the code and its comment. No check
+   in this chapter and no ctest in the repository demonstrates it.
+2. **Cost.** Gathering a column is communication in the middle of the equation-of-state call. Nothing in
+   the repository measures how often it fires or what it costs.

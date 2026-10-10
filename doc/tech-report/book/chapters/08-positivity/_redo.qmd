@@ -1,0 +1,71 @@
+## The floor detector and the redo decision {#sec-ch08-redo}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Detection, not repair: it decides whether the step just taken should be redone.
+- A primitive at or below $1.001$ times a floor counts as a hit.
+- The marks set by the limiter passes are read alongside it.
+- The detector's own restore must not mark a repair, so the marks are reset around it.
+:::
+
+Everything else in this chapter keeps the state admissible or records that it could not. This is the
+mechanism that decides the step was bad enough to take again, and it is the closest thing snapy has to a
+positivity failure path.
+
+### Derivation
+
+The test is a margin above the floor rather than equality with it, at
+`hit` ([`meshblock.cpp:1199-1202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1199-L1202)): a minimum density at or below $1.001$ times the density floor
+counts as a hit, and the same for pressure where there is a pressure row. Testing equality with the
+floor would miss a cell that was floored and then nudged by a later operation; the margin catches the
+neighbourhood of the floor instead.
+
+The ordering around it carries a subtlety the code calls out at
+`reset_limiter_marks` ([`meshblock.cpp:1259-1261`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1259-L1261)): the detector restores primitives in order to look at them, and
+that restore itself runs a conversion which can trip the limiter and set a mark. The marks are therefore
+reset so that the detector's own work is not mistaken for a repair of the step being judged.
+
+### Numerical method
+
+The detector is `hydro_u` ([`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204)). The marks are read through
+`limiter_hits` ([`meshblock.cpp:1211-1218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1211-L1218)), which returns the pair set by the limiter passes of
+@sec-ch08-eoslimiter, and the implicit clamp of @sec-ch08-vic is read through its own accessor at
+`vic_dry_clamp_hit` ([`meshblock.cpp:1206-1208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1206-L1208)). The redo decision combines them at
+[`meshblock.cpp:1276-1281`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1276-L1281), where the floor test is run first and the marks are read
+afterwards, in that order, for the reason above.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the detector | [`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204) | `floor_hit` | |
+| the margin above the floor | [`meshblock.cpp:1199-1202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1199-L1202) | `density_floor` | |
+| the implicit clamp accessor | [`meshblock.cpp:1206-1208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1206-L1208) | `dry_clamp_step` | implicit on |
+| reading the limiter marks | [`meshblock.cpp:1211-1218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1211-L1218) | `limiter_marks` | |
+| resetting around the restore | [`meshblock.cpp:1259-1261`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1259-L1261) | `reset_limiter_marks` | |
+| the decision | [`meshblock.cpp:1276-1281`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1276-L1281) | `floor_hit` | |
+
+: Code map of the floor detector. {#tbl-ch08-redo-code}
+
+### Tests
+
+No test in the repository isolates the detector. It is written here from reading.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- A redo repeats the step; it does not make the step succeed. A column that floors at every step size
+  will keep flooring, and the redo budget of chapter 7 is what ends the loop.
+:::
+
+1. **The margin is a constant.** The factor $1.001$ is not derived and not configurable. A cell
+   legitimately sitting a tenth of a per cent above the floor is read as a hit.
+2. **Detection is per block.** One floored cell marks the whole block for a redo, and nothing records
+   which cell it was.
