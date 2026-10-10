@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Executable check for section 6.4, the corrected-PE face gravity work (scheme D,
-SNAP_GRAVITY_WORK_RADIAL_EXACT), chapters/06-gravity-energy/D_face_work_pe.md.
+SNAP_GRAVITY_WORK_RADIAL_EXACT), book/chapters/06-gravity-energy/_dwork.qmd.
 
-What it checks, from the discrete formulas of snapy at dae902b (next/final-batch):
+What it checks, from the discrete formulas of snapy at
+snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy main):
   C1  sigma^2 of x1_variance equals the exact variance of x1 about the centroid on the
       cell's own measure (Cartesian: h^2/12; spherical-polar: the r^2 measure)        [sympy]
   C2  the weights of centroid_slope are the derivative of the quadratic through three
@@ -32,10 +33,11 @@ What it checks, from the discrete formulas of snapy at dae902b (next/final-batch
       coupling's sign or swapping its lower/upper weights breaks it                   [numpy]
 
 The numpy ports of x1_variance, centroid_slope and corrected_pe_work below are line for
-line against src/hydro/gravity_work_radial.hpp:13-63@dae902b; the lumped matrix stencil is
-line for line against src/implicit/implicit_hydro.cpp:301-318@dae902b (rx_tri: :293-300),
-and the entry updates of C11 against :326-332@dae902b with the block convention of
-src/implicit/forward_sweep_impl.h:35-49, 89-126@dae902b (B_i multiplies delta_{i-1}, C_i
+line against src/hydro/gravity_work_radial.hpp:13-63@e894700ff7aee30b52882e5202b16461413780b0; the lumped matrix stencil is
+line for line against src/implicit/implicit_hydro.cpp:301-318@e894700ff7aee30b52882e5202b16461413780b0 (rx_tri:
+src/implicit/implicit_hydro.cpp:293-300@e894700ff7aee30b52882e5202b16461413780b0), and the entry updates of C11 against
+src/implicit/implicit_hydro.cpp:326-332@e894700ff7aee30b52882e5202b16461413780b0 with the block convention of
+src/implicit/forward_sweep_impl.h:35-49, 89-126@e894700ff7aee30b52882e5202b16461413780b0 (B_i multiplies delta_{i-1}, C_i
 delta_{i+1}). The column-major entry selection (select(-2, 0).select(-1, m - 1) = row E,
 column total mass) is checked by reading, not by this script.
 
@@ -47,7 +49,7 @@ resolutions that are not yet fully asymptotic.
 
 Run: python3 d_face_work_pe_check.py   (numpy, sympy; a few seconds). Exit status = number of
 failed claims. The committed d_face_work_pe_check.out is this script's stdout; it also writes
-d_face_work_pe_check.json (the C6 ladders), which ../figures/fig_D_face_work_pe.py plots.
+d_face_work_pe_check.json (the C6 ladders), which the chapter's order figure plots.
 """
 import json
 import os
@@ -73,7 +75,7 @@ def slope_fit(n, e):
 
 
 # ---------------------------------------------------------------------------------------
-# numpy ports of src/hydro/gravity_work_radial.hpp@dae902b (line numbers in comments)
+# numpy ports of src/hydro/gravity_work_radial.hpp@e894700ff7aee30b52882e5202b16461413780b0 (line numbers in comments)
 # ---------------------------------------------------------------------------------------
 def x1_variance(x1f, spherical):  # :13-22
     n = x1f.shape[0] - 1
@@ -145,7 +147,7 @@ class Column:
 
 
 def face_work(col, F, g1):
-    """W^face per unit volume and time (hydro_forward.cpp:803-820@dae902b, divided by dt)"""
+    """W^face per unit volume and time (src/hydro/hydro_forward.cpp:794-811@e894700ff7aee30b52882e5202b16461413780b0, divided by dt)"""
     phi_f, phi_c = -g1 * col.f, -g1 * col.x
     return phi_c * col.div(F) - col.div(phi_f * F)
 
@@ -161,7 +163,7 @@ def d_work(col, F, g1, blocks=None):
 
 
 def P_of(col, rho, g1, blocks=None):
-    """P = sum V [rho phi - g1 sigma^2 s[rho]] (meshblock.cpp:1047-1056@dae902b), per block"""
+    """P = sum V [rho phi - g1 sigma^2 s[rho]] (src/mesh/meshblock.cpp:1047-1056@e894700ff7aee30b52882e5202b16461413780b0), per block"""
     pe = rho * (-g1 * col.x)
     for lo, hi in blocks or [(0, col.n)]:
         pe[..., lo:hi] = pe[..., lo:hi] - corrected_pe_work(
@@ -371,12 +373,12 @@ def rhs_1d(col, U, dt, g1, blocks):
     Fm[0], Fm[-1] = 0.05, -0.05  # wall momentum flux: enters the momentum row only
     div = col.div(F)
     du = {"rho": -dt * div, "m": -dt * col.div(Fm) + 0.3 * dt * np.sin(3. * rho), "E": -dt * col.div(FE)}
-    du["E"] += dt * rho * m / rho * g1  # const_gravity.cpp:48-52: cell work rho v1 g1
-    face = dt * face_work(col, F, g1)  # hydro_forward.cpp:818-820
-    for lo, hi in blocks:  # :826-831, per block (one-sided at every block end)
+    du["E"] += dt * rho * m / rho * g1  # src/forcing/const_gravity.cpp:48-52@e894700ff7aee30b52882e5202b16461413780b0: cell work rho v1 g1
+    face = dt * face_work(col, F, g1)  # src/hydro/hydro_forward.cpp:809-811@e894700ff7aee30b52882e5202b16461413780b0
+    for lo, hi in blocks:  # src/hydro/hydro_forward.cpp:817-822@e894700ff7aee30b52882e5202b16461413780b0, per block
         face[lo:hi] += corrected_pe_work(-dt * div[lo:hi], col.f[lo:hi + 1], col.x[lo:hi], 0,
                                          hi - lo, g1, col.sph)
-    du["E"] += face - dt * rho * m / rho * g1  # :900, face - original
+    du["E"] += face - dt * rho * m / rho * g1  # src/hydro/hydro_forward.cpp:891@e894700ff7aee30b52882e5202b16461413780b0, face - original
     return du
 
 
@@ -462,7 +464,7 @@ def check_C7_conservation():
 
 
 def lumped(col, g1):
-    """rx_tri of implicit_hydro.cpp:293-318@dae902b (one column)"""
+    """rx_tri of src/implicit/implicit_hydro.cpp:293-318@e894700ff7aee30b52882e5202b16461413780b0 (one column)"""
     n = col.n
     S = centroid_slope(np.eye(n), col.x)  # S[k][i]: weight of cell k in the slope of cell i
     gv = g1 * x1_variance(col.f, col.sph)
@@ -589,7 +591,7 @@ def check_C11_vic_row():
             A = J0 + np.eye(m)[None] / dt
             B, C = B0.copy(), C0.copy()
             lo, hi = (rx_hi, rx_lo) if swap else (rx_lo, rx_hi)
-            A[:, 2, 0] -= sign * rx_mid / dt  # implicit_hydro.cpp:326 entry(_a).sub_(rx_mid / dt)
+            A[:, 2, 0] -= sign * rx_mid / dt  # src/implicit/implicit_hydro.cpp:326@e894700ff7aee30b52882e5202b16461413780b0 entry(_a).sub_(rx_mid / dt)
             B[:, 2, 0] -= sign * lo / dt      # :327 entry(_b): multiplies delta_{i-1}
             C[:, 2, 0] -= sign * hi / dt      # :328 entry(_c): multiplies delta_{i+1}
             rhs = du0.copy()
@@ -598,7 +600,7 @@ def check_C11_vic_row():
             tri[1:] += rx_lo[1:] * q[:-1]
             tri[:-1] += rx_hi[:-1] * q[1:]
             rhs[:, 2] -= tri                  # :332 du[IPR] -= rx_tri(rx_mass0)
-            rhs /= dt                         # forward_sweep_impl.h:35-49 rhs = DU / dt
+            rhs /= dt                         # src/implicit/forward_sweep_impl.h:35-49@e894700ff7aee30b52882e5202b16461413780b0 rhs = DU / dt
             M = np.zeros((n * m, n * m))
             for i in range(n):
                 M[i * m:(i + 1) * m, i * m:(i + 1) * m] = A[i]
