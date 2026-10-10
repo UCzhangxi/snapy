@@ -1,0 +1,83 @@
+## Radial velocity mean correction (`SNAP_X1_MASS_COVARIANCE`) {#sec-ch12-mass-covariance}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **off**. Enable with `SNAP_X1_MASS_COVARIANCE=1`. The well-balanced x1 path converts density-weighted radial velocity to a
+plain mean before reconstruction. Nonzero radial gravity requires at least three owned x1 cells at setup.
+There is an existing setup-guard test, but no identified numerical accuracy oracle for this switch.
+:::
+
+### Derivation
+
+On a Cartesian cell of width $h$ in metres, integrate two linear fields about its midpoint:
+$h^{-1}\int_{-h/2}^{h/2}x_1\,\mathrm{d}x_1=0$ and
+$h^{-1}\int_{-h/2}^{h/2}x_1^2\,\mathrm{d}x_1=h^2/12$.
+Consequently the density-weighted velocity exceeds the plain velocity mean by
+$(h^2/12)\partial_1\rho\partial_1v_1/\rho$. The code subtracts that leading term:
+
+$$
+\frac1h\int_{x_{1,i-1/2}}^{x_{1,i+1/2}}v_1\,\mathrm{d}x_1
+\simeq\frac{\langle\rho v_1\rangle_{V_i}}{\langle\rho\rangle_{V_i}}
+-\frac{h^2}{12\rho_i}\partial_1\rho_i\partial_1v_{1,i}.
+$$ {#eq-ch12-mass-covariance-mean}
+
+The left side is integration with the uniform radial measure, not a newly stored field.
+`rho_1` and `w1` implement @eq-ch12-mass-covariance-mean ([`hydro_forward.cpp:314-352`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L352)).
+The integral identity is exact for linear fields; substituting finite differences and nonlinear profiles introduces
+truncation. `configuration_check.py` verifies the identity with rational polynomial integration.
+This is re-derived from the implementation; no standalone derivation note was identified.
+
+### Numerical method
+
+The radial gravity/non-shallow-water path computes centered density and velocity differences. At reflecting walls,
+a three-owned-cell one-sided density slope replaces the slope through the reflected ghost. The corrected velocity
+has odd wall ghosts, is reconstructed with the density/pressure perturbations, and is then restored in the input
+array. The correction is part of each explicit hydro call; it is not a new implicit matrix term.
+
+```{python}
+#| label: fig-ch12-mass-covariance-flow
+#| fig-cap: "Radial velocity mean correction: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "rho-weighted velocity; centered slopes; wall: three owned cells; subtract covariance; reconstruct and restore."
+#| echo: false
+from snapy_report.ch12.fig_mass_covariance_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| flags | [`hydro.cpp:217-259`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L217-L259) | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
+| guards | [`hydro.cpp:55-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L126) | `TORCH_CHECK` | `SNAP_X1_MASS_COVARIANCE` |
+| mc | [`hydro_forward.cpp:314-352`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L352) | `rho_1` | `SNAP_X1_MASS_COVARIANCE` |
+| mctest | [`test_x1_seam_split.cpp:327-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L327-L360) | `x1_mass_covariance_needs_3_x1_cells` | `SNAP_X1_MASS_COVARIANCE` |
+
+: Pinned implementation anchors. {#tbl-ch12-mass-covariance-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_x1_seam_split_x1_mass_covariance.<b>` | reject two owned cells; accept three | exception text and no-throw | [`test_x1_seam_split.cpp:327-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L327-L360) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-mass-covariance-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+The frozen outline's “no tests” entry is stale at this pin: a guard exists. Interior, wall, seam, CUDA, MPI and
+combined-switch accuracy remain unmeasured. The Cartesian coefficient does not establish curved-measure exactness.
+
+The complete switch inventory is @sec-ch12-matrix.

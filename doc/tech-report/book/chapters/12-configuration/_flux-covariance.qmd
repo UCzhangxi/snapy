@@ -1,0 +1,97 @@
+## Lateral face covariance and centroid correction (`SNAP_FLUX_COVARIANCE`) {#sec-ch12-flux-covariance}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+Local symbols (pending notation integration): $\sigma^{2,\mathrm{face}}_i$ is the x1 variance
+on the lateral face measure in $\mathrm{m^2}$; $\delta^{\mathrm{face}}_i$ is the cell centroid minus
+that face's radial centroid in $\mathrm m$. These are distinct from the cell variance $\sigma_i^2$
+and the cell-minus-midpoint offset $\delta_i$.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **off**. Enable with `SNAP_FLUX_COVARIANCE=1`. The x2/x3 correction has both a covariance term and a cell-to-face centroid
+term. Each direction's geometric pressure source is corrected only if that direction's flux correction exists.
+It is a leading smooth-gradient correction, not a fourth-order solver switch.
+:::
+
+### Derivation
+
+Expand two smooth fields about the cell centroid. The average of their linear product is the product of their
+averages plus $\sigma_i^2\partial_1a\partial_1b$, where $\sigma_i^2$ is the second central moment in $\mathrm{m^2}$.
+For density-weighted primitives, expansion of the ratios cancels the density-gradient pairs: a transported scalar
+has leading covariance $\sigma_i^2\rho\partial_1v_a\partial_1q$. Total mass is linear in stored momentum,
+so its covariance is zero. Species covariance is subtracted from dry mass, preserving their total.
+A face has its own centroid; shifting from the cell centroid adds
+$-\delta^{\mathrm{face}}_i\partial_1\mathbf F_a$ to the advective flux being corrected. Thus the implemented enthalpy correction has two pieces:
+
+$$
+(\Delta\mathbf F_a)_E=
+\sigma^{2,\mathrm{face}}_i\rho\,\partial_1\!\left(\frac{\rho e+p}{\rho}\right)\partial_1v_a
+-\delta^{\mathrm{face}}_i\partial_1\!\left[(\rho e+p)v_a\right],\qquad a\in\{2,3\}.
+$$ {#eq-ch12-flux-covariance-energy}
+
+Here $e$ is specific internal energy in $\mathrm{J\,kg^{-1}}$ and $v_a$ is the face-local normal speed in
+$\mathrm{m\,s^{-1}}$. The subscript $E$ selects the energy row of the flux vector; the correction shown uses enthalpy, excluding kinetic energy.
+The flux density has units $\mathrm{W\,m^{-2}}$.
+`_flux_covariance` implements @eq-ch12-flux-covariance-energy ([`hydro_forward.cpp:54-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L191)); the face variance is used in this
+formula, rather than substituting the cell variance on curved grids. Adding the term to a shared face flux makes
+its two neighboring volume-integrated increments cancel. This telescoping is exact; dropping horizontal-gradient
+products, velocity-squared covariance and the pressure Hessian is a truncation assumption.
+`configuration_check.py` checks the linear covariance identity and two-cell telescoping.
+Source derivation: `docs/derivations/289-covariance-x3-curved.md@e894700ff7aee30b52882e5202b16461413780b0` §2A and 4B.
+
+### Numerical method
+
+At each hydro call, average the reconstructed left/right primitives, project a copy into the face-local frame,
+and difference along x1. Fewer than three x1 entries or shallow water returns no correction. Add the correction
+to each active lateral face flux. The corresponding geometric source uses pressure reduced by the centroid shift
+times its x1 derivative, while an inactive direction retains ordinary pressure. No separate MPI synchronization
+is introduced by this switch.
+
+```{python}
+#| label: fig-ch12-flux-covariance-flow
+#| fig-cap: "Lateral face covariance and centroid correction: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "cell centroid; face centroid: shift; x1 covariance + shift; x2 or x3 flux; matching source gate."
+#| echo: false
+from snapy_report.ch12.fig_flux_covariance_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| flags | [`hydro.cpp:217-259`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L217-L259) | `flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| fc | [`hydro_forward.cpp:54-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L191) | `_flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| fcapply | [`hydro_forward.cpp:594-629`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L594-L629) | `cov2` | `SNAP_FLUX_COVARIANCE` |
+| fcsource | [`hydro_forward.cpp:715-746`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L715-L746) | `face_centroid_shift_x1` | `SNAP_FLUX_COVARIANCE` |
+
+: Pinned implementation anchors. {#tbl-ch12-flux-covariance-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_horizontal_flux_covariance_python` | on/off signal, default equality, plain energy budget | scaled onset error below 0.04; drift at most $10^{-12}$ | [`test_horizontal_flux_covariance.py:33-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_horizontal_flux_covariance.py#L33-L41) |
+| `test_flux_covariance_rows_python` | rest, uniform species, energy-offset invariance | rest $10^{-9}$; fraction $10^{-13}$; offset $10^{-10}$ | [`test_flux_covariance_rows.py:32-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_rows.py#L32-L40) |
+| `test_flux_covariance_seams_python` | six-panel budgets and direction gating | relative total drift below $10^{-12}$ | [`test_flux_covariance_seams.py:33-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_seams.py#L33-L37) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-flux-covariance-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+No new order fit is supplied. Curved-grid centroid terms do not vanish for an isothermal moving state; exact rest
+requires zero velocity. MPI-rank seams and XC+FC are unmeasured here.
+
+The complete switch inventory is @sec-ch12-matrix.

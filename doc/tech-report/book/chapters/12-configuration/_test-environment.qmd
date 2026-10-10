@@ -1,0 +1,83 @@
+## Test harness environment (`test environment`) {#sec-ch12-test-environment}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **per registration**. Harness variables select test arms and evidence provenance; they are not new hydro schemes.
+`SNAPY_BUILD_CUDA=0` is installed for non-CUDA builds even if a GPU is visible.
+:::
+
+| variable | purpose |
+|---|---|
+| `SNAPY_BUILD_CUDA` | suppress unavailable CUDA arms |
+| `GTEST_FILTER` | select exactly one seam case per registered arm |
+| `BLOCKS_PER_PROCESS` | exchange topology size |
+| `EXPECT_LOCAL_NEIGHBOR`, `EXPECT_REMOTE_NEIGHBOR` | assert selected exchange topology |
+| `SNAPY_RUN_HYDRO` | locate the cycle-abort test executable |
+| `WB_REF_WALL_DUMP`, `WB_REF_WALL_BETAS` | wall-reference scan/dump aids |
+
+`SNAPY_TEST_PYTHONPATH` is a CMake cache path, not one of these solver variables. The generated test environment
+prepends it while retaining the caller's path.
+
+### Derivation
+
+No numerical derivation applies. A selected test must actually execute its assertion: a filter that selects no tests
+cannot certify a scheme. The seam-arm registration therefore requires a one-test pass marker, and Python CUDA arms
+use skip code 125 when unavailable.
+
+### Numerical method
+
+Register the arm with its environment, select its case, verify its execution marker, then interpret its assertions.
+Record disabled and skipped tests separately from passes. Supply all scheme flags explicitly or unset them before
+starting evidence runs: inherited user environment can otherwise contaminate a nominal default arm.
+
+```{python}
+#| label: fig-ch12-test-environment-flow
+#| fig-cap: "Test harness environment: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "CTest arm environment; one selected test; assert execution marker; pass / fail / skip."
+#| echo: false
+from snapy_report.ch12.fig_test_environment_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| registration | [`CMakeLists.txt:38-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L38-L104) | `seam_arm` | `test environment` |
+| importreg | [`CMakeLists.txt:316-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L316-L363) | `SNAPY_TEST_PYTHONPATH` | `test environment` |
+| cudagate | [`CMakeLists.txt:515-536`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L515-L536) | `SNAPY_BUILD_CUDA` | `test environment` |
+| exchangeenv | [`test_exchange.cpp:219-224`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L219-L224) | `BLOCKS_PER_PROCESS` | `test environment` |
+| exchangeexpect | [`test_exchange.cpp:303-306`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L303-L306) | `EXPECT_REMOTE_NEIGHBOR` | `test environment` |
+| runenv | [`test_uranus_cycle1_abort.cpp:45-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_uranus_cycle1_abort.cpp#L45-L52) | `SNAPY_RUN_HYDRO` | `test environment` |
+| dumpenv | [`test_wb_ref_wall.cpp:159-167`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref_wall.cpp#L159-L167) | `WB_REF_WALL_DUMP` | `test environment` |
+| betaenv | [`test_wb_ref_wall.cpp:191-201`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref_wall.cpp#L191-L201) | `WB_REF_WALL_BETAS` | `test environment` |
+
+: Pinned implementation anchors. {#tbl-ch12-test-environment-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_python_import_path_python` | correct imported package and preserved caller entry | exact paths; skip 125 if unconfigured | [`test_python_import_path.py:7-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L7-L23) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-test-environment-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+Harness coverage is not solver coverage. This draft performs no registered CTest run, and a visible GPU is not
+used to infer CUDA support.
+
+The complete switch inventory is @sec-ch12-matrix.

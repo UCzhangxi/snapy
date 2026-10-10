@@ -1,0 +1,91 @@
+## Spherical cell-to-plain-mean conversion (`SNAP_X1_CENTROID_EXACT`) {#sec-ch12-centroid}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **off**. Enable with `SNAP_X1_CENTROID_EXACT=1`. The conversion acts on spherical-polar x1 inputs and implies WB even on
+Cartesian grids. It inherits the nonzero-gravity three-ghost guard. The five-cell moment solve and six-face pressure
+source remove a measure mismatch; neither is a claim of arbitrary-order time integration.
+:::
+
+### Derivation
+
+A spherical cell stores $\langle q\rangle_{V^{(1)}_i}=\int r^2q\,\mathrm{d}r/V^{(1)}_i$,
+where radius $r$ is in $\mathrm m$ and $V^{(1)}_i=\int r^2\,\mathrm{d}r$ per unit solid angle is in $\mathrm{m^3}$.
+The x1 reconstruction instead needs $h^{-1}\int q\,\mathrm{d}r$. Choose a quartic polynomial whose five
+$r^2$ cell integrals match five input means, and integrate that polynomial with the plain measure over the target cell.
+Linearity gives five weights; requiring equality for degrees zero through four fixes them uniquely.
+`x1_plain_mean_stencils` forms and solves those five equations ([`x1_centroid.cpp:104-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L182)).
+For pressure $p$ in Pa, integration by parts gives the radial pressure acceleration density
+
+$$
+-\frac1{V^{(1)}_i}\int_{r_{i-1/2}}^{r_{i+1/2}}r^2\partial_1p\,\mathrm{d}r
+=-\frac{\Delta_i[r^2p]}{V^{(1)}_i}+
+\frac2{V^{(1)}_i}\int_{r_{i-1/2}}^{r_{i+1/2}}rp\,\mathrm{d}r.
+$$ {#eq-ch12-centroid-pressure}
+
+The surface term is the pressure flux. `x1_pressure_source_stencils` integrates the second term from the quintic
+through six face pressures ([`x1_centroid.cpp:184-229`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L229)). Four-point quadrature integrates the degree-six product exactly.
+The polynomial identities are exact; general smooth fields retain interpolation truncation.
+`configuration_check.py` verifies the five moments and the integrated pressure identity.
+Source derivation: `docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §2–4.
+
+### Numerical method
+
+Five-cell windows move inside the owned region at a clamped wall. Ghost corrections are mirrored, odd for radial
+velocity at a reflecting wall; seam ghost rows are replaced by the neighbor's own converted values. The pressure
+operator needs six faces, with two neighbor faces beyond a seam. Unusable stencils return the original means.
+Only x1 inputs are converted; lateral fluxes retain the original primitives. The spherical pressure operator is also
+used for the non-hydrostatic split correction. `balance_column` accepts only Cartesian geometry when XC is on.
+
+```{python}
+#| label: fig-ch12-centroid-flow
+#| fig-cap: "Spherical conversion: sky-blue circles denote five cell means and orange face markers denote the six pressure values. The two polynomial degrees differ."
+#| fig-alt: "five r-squared cell means; solve moments of degree 0..4; plain means for x1; six faces: pressure source."
+#| echo: false
+from snapy_report.ch12.fig_centroid_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| xcflag | [`x1_centroid.cpp:92-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L92-L101) | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| xcmean | [`x1_centroid.cpp:104-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L182) | `x1_plain_means` | `SNAP_X1_CENTROID_EXACT` |
+| xcpressure | [`x1_centroid.cpp:184-229`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L229) | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
+| xcrun | [`hydro_forward.cpp:262-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L262-L285) | `wx1` | `SNAP_X1_CENTROID_EXACT` |
+| xcnh | [`hydro_forward.cpp:504-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L504-L538) | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
+| wbflag | [`wb_ref4.cpp:83-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L83-L118) | `wb_ref4_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| guards | [`hydro.cpp:55-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L126) | `TORCH_CHECK` | `SNAP_X1_CENTROID_EXACT` |
+| balance | [`balance_column.cpp:29-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L29-L49) | `TORCH_CHECK` | `SNAP_X1_CENTROID_EXACT` |
+
+: Pinned implementation anchors. {#tbl-ch12-centroid-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_x1_centroid_rest_python` (CUDA variant registered) | force balance with implicit 0/1 and non-hydrostatic 0/1 | on below $10^{-10}$; off above $10^{-8}$ near origin | [`test_x1_centroid_rest.py:37-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_centroid_rest.py#L37-L44) |
+| `test_x1_seam_split_x1_centroid.<b>` | split/unsplit comparison | relative gap at most $10^{-13}$ | [`test_x1_seam_split.cpp:232-297`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L232-L297) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-centroid-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+XC does not provide a gnomonic measure conversion. XC with face work, radial exact or FC needs new runtime evidence.
+Cartesian activation still changes the reference through WB; it is not a universal no-op.
+
+The complete switch inventory is @sec-ch12-matrix.

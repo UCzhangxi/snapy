@@ -1,0 +1,101 @@
+## YAML scheme selection and setup guards (`YAML keys`) {#sec-ch12-yaml}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **see table**. YAML selects the local numerical options; process-global study switches remain environment settings.
+Recognized parser blocks reject unknown keys. Direct Python option construction bypasses YAML parsing, so hydro reset
+rechecks gravity-work constraints.
+:::
+
+| key | default | coupling |
+|---|---|---|
+| `forcing/const-gravity/gravity-work` | cell | cell, face-wallc or face |
+| `gravity-work-fixer` in that block | true for cell | requires radial-only gravity and nonperiodic x1; non-cell reset clears it |
+| `grav1`, `grav2`, `grav3` | 0 | disabled flux direction zeros its gravity |
+| `non-hydrostatic` | 1 | must lie in [0,1] |
+| `dynamics/wb-wall-clamp` | true | required by balance_column |
+| `dynamics/disable-flux-x1/x2/x3`, `verbose` | false | flux/source direction gates |
+| `dynamics/equation-of-state/type` | moist-mixture | shallow-water bypasses radial WB |
+| EOS `limiter` | false | positivity correction |
+| EOS density, pressure, temperature floors | $10^{-6}$ kg m$^{-3}$, $10^{-3}$ Pa, 20 K | state floors |
+| reconstruction vertical/horizontal `type,scale,shock` | dc,false,false | spatial reconstruction |
+| `dynamics/riemann-solver/type,dir` | roe,omni | interface flux solver |
+| `integration/implicit-scheme` | absent / 0 | accepts 0, 1, 9 only |
+| `implicit-advection-cfl`, `shear-cfl` | 1, 0 | require active implicit scheme; positive / nonnegative finite values |
+| `geometry/cells/nghost` | 1 | WB/XC with gravity requires at least 3 |
+| `geometry/type` | cartesian | controls XC and corrected-work availability |
+| `distribute/layout,nb1,nb2,nb3` | slab,1,1,1 | block decomposition |
+| external x1/x2/x3 boundaries | reflecting | periodic x1 incompatible with active fixer |
+| `forcing/fric-heat` | removed | explicit parse error |
+
+
+### Derivation
+
+No separate continuum equation is introduced by the parser. The configuration resolves into the schemes described
+in the preceding sections. In particular, changing face work changes the budget functional; it is not just an
+output label. Validation is part of the numerical contract because incompatible options must not silently run.
+
+### Numerical method
+
+Parse the recognized sub-blocks, instantiate component options, then reset hydro. YAML rejects a true fixer with
+non-cell work and nonzero radial gravity; direct option construction is normalized by reset before its remaining
+guards. Implicit non-cell work without an in-operator path warns. A missing implicit scheme returns explicit options;
+setting its CFL controls without an active scheme fails.
+
+```{python}
+#| label: fig-ch12-yaml-flow
+#| fig-cap: "YAML scheme selection and setup guards: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "YAML recognized blocks; component options; hydro reset guards; selected spatial/time schemes."
+#| echo: false
+from snapy_report.ch12.fig_yaml_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| yaml | [`hydro_options.cpp:24-87`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L24-L87) | `check_keys` | `YAML keys` |
+| gravity | [`const_gravity.cpp:13-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L13-L44) | `gravity_work` | `YAML keys` |
+| implicit | [`implicit_hydro.cpp:26-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L26-L98) | `implicit-scheme` | `YAML keys` |
+| eos | [`equation_of_state.cpp:50-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L50-L78) | `density_floor` | `YAML keys` |
+| recon | [`reconstruct.cpp:24-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L24-L38) | `shock` | `YAML keys` |
+| riemann | [`riemann_solver.cpp:23-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L23-L31) | `roe` | `YAML keys` |
+| coord | [`coordinate.cpp:156-169`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L156-L169) | `nghost` | `YAML keys` |
+| geometry | [`coordinate.cpp:63-74`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L63-L74) | `cartesian` | `YAML keys` |
+| boundary | [`meshblock_options.cpp:100-193`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L100-L193) | `reflecting` | `YAML keys` |
+| guards | [`hydro.cpp:55-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L126) | `TORCH_CHECK` | `YAML keys` |
+| operator | [`hydro.cpp:305-309`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L305-L309) | `face_work_in_operator` | `YAML keys` |
+| yamltest | [`test_yaml_keys.cpp:63-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L63-L93) | `TEST` | `YAML keys` |
+| hydrotest | [`test_hydro_options.cpp:195-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_hydro_options.cpp#L195-L258) | `wb_wall_clamp_ships_enabled` | `YAML keys` |
+
+: Pinned implementation anchors. {#tbl-ch12-yaml-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_hydro_options.<b>`, `test_yaml_keys.<b>` | known/default keys and invalid choices | exact booleans and exceptions | source anchors in the verification catalogue |
+| `test_implicit_options_type_python` | implicit type contract | integer/string and exception checks | registration [`CMakeLists.txt:206-277`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L206-L277) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-yaml-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+Individual keys have tests, but the Cartesian product of every YAML value and study switch is not covered.
+Use @sec-ch12-matrix to distinguish constrained combinations from missing numerical evidence.
+
+The complete switch inventory is @sec-ch12-matrix.

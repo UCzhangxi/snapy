@@ -1,0 +1,82 @@
+## Generated macros and compile definitions (`configure.h`) {#sec-ch12-macros}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **generated**. CMake generates the macro interface used to select compiled readers. No runtime environment assignment can add a
+backend that was excluded at compile time. This layer has no numerical order.
+:::
+
+| definition | producer | reader or role |
+|---|---|---|
+| `USE_C10D_GLOO` | always defined | no source reader found; not a backend choice |
+| `USE_UCX` / `NOT_USE_UCX` | UCX option | process-group implementation and platform default |
+| `USE_CUDA` / `NOT_USE_CUDA` | CUDA option | mesh/device dispatch and test availability |
+| `NETCDFOUTPUT` / `NO_NETCDFOUTPUT` | NETCDF option | output implementation |
+| `PNETCDFOUTPUT` / `NO_PNETCDFOUTPUT` | PNETCDF option | parallel output implementation |
+| `NMASS` | cache value | legacy indices; use zero |
+| `DISPATCH_MACRO` | nvcc detection | host/device annotation under nvcc, empty otherwise |
+| `KINTERA_ROOT_DIR`, `HARP_ROOT_DIR` | configure source directory | no source reader found |
+| `_GLIBCXX_USE_CXX11_ABI` | Torch probe | all compiled translation units |
+| `HAVE_AVX512_CPU_DEFINITION`, `HAVE_AVX2_CPU_DEFINITION` | non-Apple compiler setup | Torch headers |
+| `COMMUX_WITH_CUDA_RUNTIME` | CUDA with UCX | commux CUDA integration |
+
+
+### Derivation
+
+No physical derivation applies. Macro substitution happens before compilation, so runtime selection is restricted to
+compiled alternatives. The complement macros document an excluded feature rather than implementing a fallback.
+
+### Numerical method
+
+Generation uses `configure_file`; readers then compile the available path. ABI and backend selection must agree across
+linked libraries. These definitions have no cell location, ghost stencil or RK-stage dependence.
+
+```{python}
+#| label: fig-ch12-macros-flow
+#| fig-cap: "Generated macros and compile definitions: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "option/cache; configure.h; compiled reader; runtime options."
+#| echo: false
+from snapy_report.ch12.fig_macros_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| macro | [`configure.h.in:1-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/configure.h.in#L1-L28) | `DISPATCH_MACRO` | `configure.h` |
+| params | [`parameters.cmake:1-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/parameters.cmake#L1-L46) | `NMASS` | `configure.h` |
+| compiler | [`compilers.cmake:4-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/compilers.cmake#L4-L35) | `HAVE_AVX2_CPU_DEFINITION` | `configure.h` |
+| abi | [`CMakeLists.txt:33-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L33-L47) | `_GLIBCXX_USE_CXX11_ABI` | `configure.h` |
+| sidecar | [`CMakeLists.txt:78-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L78-L106) | `COMMUX_WITH_CUDA_RUNTIME` | `configure.h` |
+| layoutdefault | [`layout.cpp:41-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L41-L50) | `default_backend` | `configure.h` |
+
+: Pinned implementation anchors. {#tbl-ch12-macros-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_process_group.<b>` | platform backend default | exact equality | [`test_process_group.cpp:74-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L186) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-macros-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+Indirect default-backend tests do not constitute exhaustive preprocessor coverage. The unused definitions are retained
+as code facts, not promises of a public runtime API.
+
+The complete switch inventory is @sec-ch12-matrix.

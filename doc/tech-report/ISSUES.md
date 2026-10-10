@@ -15,3 +15,10 @@
 ## Chapter 1 local transfer notation (draft)
 
 `book/chapters/01-overview/_stage.qmd` proposes $J^{\mathrm d}_{i+1/2}$ for the time-integrated implicit dry transfer [kg] and $J^{\mathrm{tr}}_{n,i+1/2}$ for its upwind passive-tracer transfer [kg]. These avoid collision with $P$ (corrected potential energy) and $G$ (total mass flow). Superscripts $\mathrm{base}$, $\mathrm{entry}$ and $\mathrm{source}$ (with $\mathrm{carry}$ for the selected ratio) identify source-free, entry and source quantities. The editor should add or replace these in NOTATION and then remove the scheme's local-symbol note. Chapter 1 contains no new runtime measurement.
+
+8. Chapter 12 local symbols awaiting notation integration: lateral face variance
+   $\sigma^{2,\mathrm{face}}_i$ and cell-to-lateral-face centroid offset $\delta^{\mathrm{face}}_i$
+   in the flux-covariance section. Neither replaces the cell variance or cell-minus-midpoint offset.
+   Delete the local-symbol note when these enter NOTATION.md.
+9. Chapter 12 distinguishes the mass-covariance setup guard from missing numerical accuracy evidence.
+   The coverage matrix needs new runtime evidence for its explicitly listed combinations.

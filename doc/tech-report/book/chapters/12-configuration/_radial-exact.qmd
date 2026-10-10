@@ -1,0 +1,89 @@
+## Corrected potential-energy face work (`SNAP_GRAVITY_WORK_RADIAL_EXACT`) {#sec-ch12-radial-exact}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **on**. This switch defaults on, including an empty string. It acts only with nonzero radial gravity, `gravity-work: face` and
+Cartesian or spherical-polar geometry. Unsupported geometry warns once and retains ordinary face work.
+Use the corrected potential energy in @eq-ch12-radial-exact-budget for its budget, not the plain centroid sum.
+The internal alias is option F (corrected-PE work).
+:::
+
+### Derivation
+
+For constant $g_1$ in $\mathrm{m\,s^{-2}}$, $\phi=-g_1x_1$ in $\mathrm{J\,kg^{-1}}$.
+Integrating the product of locally linear density and potential gives
+$\langle\rho\phi\rangle_{V_i}=\rho_i\phi_i-g_1\sigma_i^2\partial_1\rho$.
+Replace the derivative by the centroid quadratic slope $s_i[\rho]$ to define $P$.
+On a fixed mesh this is a linear functional of density, so its time difference uses exactly the same slope:
+
+$$
+\begin{aligned}
+P&=\sum_iV_i\left(\rho_i\phi_i-g_1\sigma_i^2s_i[\rho]\right),\\
+\Delta P&=\sum_iV_i\left(\phi_i\Delta\rho_i-g_1\sigma_i^2s_i[\Delta\rho]\right).
+\end{aligned}
+$$ {#eq-ch12-radial-exact-budget}
+
+Ordinary face work cancels the first term (with the boundary potential-energy flux). Adding
+$g_1\sigma_i^2s_i[\Delta\rho]$ to the energy increment cancels the second term, cell by cell.
+`corrected_pe_work` implements that increment ([`gravity_work_radial.hpp:13-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/gravity_work_radial.hpp#L13-L65)).
+For implicit work the density increment must be the actual post-clamp increment. The conserved discrete budget is exact
+up to arithmetic and boundary fluxes; its approximation of smooth continuous potential energy has truncation error.
+`configuration_check.py` verifies the cancellation for a fixed linear slope matrix.
+Source derivation: `docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0` §7.
+
+### Numerical method
+
+The slope is quadratic through three centroids, one-sided at each block end, including block seams.
+Use the cell measure variance, not the lateral face variance. Explicit face work and the implicit operator use the
+same corrected budget; active solids mask energy deposition. On unsupported grids the setup warning does not abort.
+The switch is inactive for `face-wallc`, whose wall cells keep cell work. Corrected work replaces the cp3/cp5/weno5 curvature work instead of adding to it, avoiding a double correction.
+
+```{python}
+#| label: fig-ch12-radial-exact-flow
+#| fig-cap: "Corrected potential-energy face work: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "actual density increment; cell variance and slope; corrected energy increment; measure energy + P."
+#| echo: false
+from snapy_report.ch12.fig_radial_exact_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| flags | [`hydro.cpp:217-259`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L217-L259) | `radial_exact_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| guards | [`hydro.cpp:55-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L126) | `TORCH_CHECK` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| radial | [`gravity_work_radial.hpp:13-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/gravity_work_radial.hpp#L13-L65) | `corrected_pe_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| operator | [`hydro.cpp:305-309`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L305-L309) | `face_work_in_operator` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| curvature | [`hydro_forward.cpp:798-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L798-L849) | `radial_exact` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+
+: Pinned implementation anchors. {#tbl-ch12-radial-exact-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_gravity_work_radial_exact_python` (CUDA variant registered) | explicit/VIC, diagnostic budget, clamp and solids | per-step relative budget $10^{-14}$; printed budget $10^{-11}$ | [`test_gravity_work_radial_exact.py:50-57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_gravity_work_radial_exact.py#L50-L57) |
+| `test_x1_seam_split_radial_exact.<b>` | split column corrected budget | relative drift at most $10^{-13}$ | [`test_x1_seam_split.cpp:232-297`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L232-L297) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-radial-exact-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+The gnomonic grid does not receive corrected work at this pin. Split/unsplit states need not agree because their
+one-sided slope functionals differ. A new gnomonic convergence study cannot be replaced by the warning assertion.
+
+The complete switch inventory is @sec-ch12-matrix.
