@@ -51,3 +51,5 @@ OUTLINE.md generated from five research inventories + ch6 (152 schemes, 439 cita
    $E+\mathrm{PE}_d$ change under D as $-g_1\sum V\sigma^2s[\Delta\rho]$. It is $+$. The report's eq. (6.4.13) uses
    the corrected sign, and check C7 asserts it. The code is not affected. Should the note be corrected on
    `next/final-batch`? C0 does not touch other branches.
+
+C0 DONE (round 1): see the commit message of the C0 DONE commit for the summary.
