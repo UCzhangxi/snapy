@@ -267,7 +267,7 @@ src/snapy_report/figstyle.py                    # shared style: palette, fonts, 
   after a clean re-render is a bug.
 
 ### 6.2 Look
-- Size: single column 3.4 in wide, double column 7.0 in wide; height as needed. Vector output (SVG for HTML, PDF for
+- Size: full width 6.2 in (the PDF text width), half width 3.05 in; height as needed. Vector output (SVG for HTML, PDF for
   the PDF; section 10.4); no raster line drawings.
 - Fonts: matplotlib's DejaVu Sans at 9 pt for labels, 8 pt for ticks and annotations; math in the default mathtext.
   Do not depend on a TeX installation.
@@ -386,7 +386,8 @@ files, so every construct below must work in both. When in doubt, render both an
 - References in prose use Quarto's syntax only: `@sec-ch05-wbref`, `@eq-ch06-dwork-pe`, `@fig-...`, `@tbl-...`. Write
   "as shown in @fig-ch06-dwork-stencil", not "Figure 3" or "the figure above". A bare equation number is always
   written in parentheses, `([-@eq-ch06-dwork-pe])`; a range is `([-@eq-a])–([-@eq-b])`.
-- The table of contents lists chapters and schemes only (`toc-depth: 2`). Layers and their subsections are numbered
+- The table of contents lists chapters and schemes only (`toc-depth: 2`; the printed PDF lists chapters and its
+  bookmarks the rest, section 10.10). Layers and their subsections are numbered
   and may be referenced (`@sec-...` on a `###` or `####` heading that the text cites). An `{.unnumbered}` heading is
   linked as `[text](#sec-id)`, never with `@sec`.
 
@@ -478,7 +479,7 @@ files, so every construct below must work in both. When in doubt, render both an
   figure can be understood without the text. Define every symbol, colour and line style in the caption or the legend.
   The source data and sha go in the function's docstring, not in the caption.
 - `fig-alt` is required (accessibility, and it is what a reviewer reads first).
-- Size: set by `figstyle` (3.4 in single, 7.0 in double width; section 6.2). Do not use `fig-width` or `out-width` in
+- Size: set by `figstyle` (3.05 in single, 6.2 in double width; section 6.2). Do not use `fig-width` or `out-width` in
   cells. Formats: SVG for HTML and PDF for the PDF (set in `_quarto.yml`), so lines and text stay sharp. Never use a
   raster image for a line drawing.
 - Panels: one function makes the whole multi-panel figure with panel letters (a), (b) in the top left of each panel;
@@ -522,8 +523,15 @@ files, so every construct below must work in both. When in doubt, render both an
   the default and the couplings, in at most 6 short lines. The rest of the Summary is prose.
 - The Limits layer may use one `::: {.callout-warning title="Limits"}` box for the limits a user can hit by
   configuration.
-- No other callouts. Never use `collapse`: the PDF prints everything, so text that only works folded is wrong in the
-  PDF.
+- Four callout kinds, and no others. Each is a Quarto callout with a short title; the PDF theme (section 10.10)
+  gives each kind its own colour, a light tint and a left bar, so a reader can scan for them:
+  - `::: {.callout-note title="..."}`: definition or derivation, and the Summary's "At a glance" box. Titles:
+    "At a glance", "Definition", "Derivation".
+  - `::: {.callout-tip title="Code"}`: code anchor, the `basename:lines` links a passage rests on, with the symbol
+    and the switch.
+  - `::: {.callout-important title="Check"}` (or `"Test"`): a check or test, with its name and tolerance.
+  - `::: {.callout-warning title="Limits"}` (or `"Open issue"`): limits and open issues.
+  Never use `collapse`: the PDF prints everything, so text that only works folded is wrong in the PDF.
 - An exact identity that the tests check (e.g. "E+P is conserved per step") is stated as a proposition,
   `::: {#prp-ch06-dwork-ep}` ... `:::`, so the Tests layer can cite it; a supporting result as `{#lem-...}`.
 - Footnotes (`[^n]`) carry evidence tags and asides that would break the flow.
@@ -549,3 +557,18 @@ files, so every construct below must work in both. When in doubt, render both an
 - The author looks at every page of their chapter in the PDF before asking for review: equation lines inside the
   margin, tables inside the text width, figures legible at print size.
 - `_book/` is build output and is not committed; `_freeze/` is committed.
+
+### 10.10 Page layout and theme
+- The look of the PDF is set once and chapters never set colours, fonts, page breaks or float placement:
+  - `book/_quarto.yml`: KOMA `scrreprt`, A4, one-sided, chapters open on any page, `DIV=12`, 10 pt, compact
+    headings, no dot after numbers; printed TOC at depth 1; figures placed `htbp` and drawn at the text width,
+    6.2 in (`fig-width`), never shrunk with `out-width`.
+  - `book/_tex/theme.tex`: one accent colour plus greys; title page and chapter openers; the four callout kinds
+    of section 10.7; long tables in `\footnotesize` with a shaded header; light code blocks; links in the accent
+    colour; numbered PDF bookmarks to depth 3, opened at the chapter level; float fractions.
+  - `book/_filters/codemap-widths.lua`: fixed column widths for the Code-layer tables of section 2.
+  - `snapy_report.figstyle` (and the package defaults in `snapy_report/__init__.py`): 9 pt serif text, STIX
+    mathtext, fonts embedded as TrueType (`pdf.fonttype` 42), widths 3.05 and 6.2 in.
+- The render gate reports, by file and line, every `?@` left in the rendered output and every hand-typed
+  "Chapter N" in a `.qmd`; a chapter is named by `@sec-chNN`, or in words if it is not written yet. Both checks
+  run in report mode until the editor switches them to fail (`REPORT_ONLY` in `tools/render_gate.py`).

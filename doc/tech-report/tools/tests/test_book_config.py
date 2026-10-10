@@ -23,8 +23,12 @@ def test_the_book_config_follows_style_10():
     assert cfg["execute"]["freeze"] == "auto"
     assert cfg["format"]["html"]["html-math-method"] == "mathml"
     assert cfg["format"]["html"]["code-overflow"] == "wrap"
-    assert cfg["format"]["pdf"]["documentclass"] == "scrbook"
-    assert cfg["format"]["pdf"]["include-in-header"] == [{"file": "_tex/inline-code-breaks.tex"}]
+    pdf = cfg["format"]["pdf"]
+    assert pdf["documentclass"] == "scrreprt"
+    assert {"a4paper", "oneside", "openany", "DIV=12", "numbers=noenddot"} <= set(pdf["classoption"])
+    assert pdf["fontsize"] == "10pt" and pdf["toc-depth"] == 1 and pdf["fig-width"] == 6.2
+    assert pdf["include-in-header"] == [{"file": "_tex/inline-code-breaks.tex"}, {"file": "_tex/theme.tex"}]
+    assert (BOOK / "_tex" / "theme.tex").exists() and (BOOK / "_filters" / "codemap-widths.lua").exists()
     tex = (BOOK / "_tex" / "inline-code-breaks.tex").read_text()
     assert "\\automark[chapter]{chapter}" in tex            # running heads: the chapter title only
     assert "pre_linebreak_filter" in tex                     # long hex strings break inside

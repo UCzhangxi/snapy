@@ -1121,6 +1121,56 @@ def gate_chapter_list(book):
     return 0 if status == 0 else max(1, len([m for m in msgs if not m.startswith("fix:")]))
 
 
+#: The two report-mode checks below list every hit by file:line but do not fail the gate while this is True.
+#: Set it to False to make them fail (the editor calls the switch once the chapters' cross-ref commits are in).
+REPORT_ONLY = True
+
+_HAND_CHAPTER = re.compile(r"\b[Cc]hapter [0-9]+")
+
+
+def _report(name, hits, where=()):
+    """Print the hits of a report-mode check (and, uncounted, where they come from); return the number
+    that counts as failures."""
+    mode = "REPORT mode, not failing" if REPORT_ONLY else "failing"
+    print(f"\n[{name} gate] {len(hits)} hit(s)" + (f" ({mode})" if hits else ""))
+    for h in hits:
+        print(f"  {'·' if REPORT_ONLY else '✗'} {h}")
+    for w in where:
+        print(f"      at {w}")
+    return 0 if REPORT_ONLY else len(hits)
+
+
+def gate_hand_typed_chapters(book):
+    """A chapter named by a hand-typed number ("Chapter 7", "chapter 12") instead of a cross-ref
+    (@sec-chNN) or, for a chapter not written yet, its name in words (STYLE 10.1)."""
+    hits = []
+    for q in _chapter_sources(book):
+        for n, line in enumerate(q.read_text().splitlines(), 1):
+            for m in _HAND_CHAPTER.finditer(line):
+                hits.append(f"{_rel(book, q)}:{n}: {m.group(0)}")
+    return _report("hand-typed chapter", hits)
+
+
+def gate_unresolved_in_output(book):
+    """Any reference quarto could not resolve, in the rendered output, whatever the gates above saw: '?@...'
+    on a page of the PDF (pdftotext), and the quarto-unresolved-ref spans of the HTML, by file and line."""
+    import shutil
+    out = book / "_book"
+    hits = []
+    for pdf in sorted(out.glob("*.pdf")) if out.is_dir() and shutil.which("pdftotext") else []:
+        text = subprocess.run(["pdftotext", str(pdf), "-"], capture_output=True, text=True).stdout
+        for page, body in enumerate(text.split("\f"), 1):
+            for m in re.finditer(r"\?@[\w-]*\w", body):
+                hits.append(f"{pdf.name} p{page}: {m.group(0)}")
+    html = []
+    for f in sorted(out.rglob("*.html")) if out.is_dir() else []:
+        for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            for m in re.finditer(r'quarto-unresolved-ref">\??@?([\w-]+)<|\?@([\w-]*\w)', line):
+                html.append(f"{f.relative_to(book)}:{n}: ?@{m.group(1) or m.group(2)}")
+    # the PDF count is the measure when there is a PDF; the HTML lines say where to look
+    return _report("unresolved-in-output", hits or html, html if hits else ())
+
+
 def _option(argv, name, default):
     if name in argv:
         i = argv.index(name)
@@ -1200,7 +1250,8 @@ def main(argv):
                     ("quotes", gate_unbalanced_quotes),
                     ("maths spans", gate_maths_span_broken_by_a_bullet),
                     ("freeze tracked", gate_freeze_is_tracked),
-                    ("chapter list", gate_chapter_list))
+                    ("chapter list", gate_chapter_list),
+                    ("hand-typed chapter", gate_hand_typed_chapters))
     for name, gate in source_gates:
         record(name, gate(book))
     expected = {"unwritten-chapter refs": sorted(unwritten_chapter_refs(book)),
@@ -1226,6 +1277,7 @@ def main(argv):
         return _verdict(results, release, expected)
 
     record("outputs", gate_outputs(book))
+    record("unresolved-in-output", gate_unresolved_in_output(book))
 
     hits = gate_stdout(out, {t for ts in expected.values() for t in ts})
     print(f"\n[stdout gate] {len(hits)} matching lines"
