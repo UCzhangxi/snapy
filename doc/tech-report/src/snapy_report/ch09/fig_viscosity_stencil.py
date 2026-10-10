@@ -34,7 +34,7 @@ def make_fig():
     ax.text(4.3, 2.3, "green: $\\partial_1 v$ across the face (two cells)", fontsize=8)
     ax.text(4.3, 1.75, "dashed: $\\partial_2 v_1$ centred in $i-1$ and $i$, averaged", fontsize=8)
     ax.text(4.3, 1.2, "orange: face value; coefficient $\\rho$ or $\\rho c_v$ is the", fontsize=8)
-    ax.text(4.3, 0.85, "two-cell average (wall faces: Section 9.5)", fontsize=8)
+    ax.text(4.3, 0.85, "two-cell average (one-sided at a wall)", fontsize=8)
     ax.set_xlim(-0.6, 9.5)
     ax.set_ylim(-0.5, 3.1)
     return fig

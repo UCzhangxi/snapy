@@ -48,11 +48,11 @@ for rk1, rk2, rk3 and rk3s4. No closed form is involved, so no executable check 
 
 @fig-ch09-user-forcing shows the interface. The modules are moved to the block's device when they are loaded by `set_user_stage_forcings`
 ([`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109)) and are called on that device. They run once per stage of every step, and
-again in a redone step (Chapter 7).
+again in a redone step (the time-integration chapter).
 
 ```{python}
 #| label: fig-ch09-user-forcing
-#| fig-cap: "Interface of a user stage forcing. The sky-blue box is the dictionary the block builds once per stage; the white box is the user module; the orange boxes are the two keys it may return and where each is added. The green note marks the dry-air part that carries passive tracers; the vermillion note the inputs the block refuses."
+#| fig-cap: "Interface of a user stage forcing. The sky-blue box is the dictionary the block builds once per stage; the white box is the user module; the orange boxes are the two keys it may return, increments over the full step $\\Delta t$, and where each is added. The green note marks the dry-air part that carries passive tracers; the vermillion note the inputs the block refuses."
 #| fig-alt: "Flow diagram: a dictionary box, an arrow to a module box, two arrows to boxes labelled hydro_du and scalar_ds, with notes above and below."
 #| echo: false
 from snapy_report.ch09.fig_user_forcing import make_fig
@@ -95,15 +95,17 @@ make_fig()
 
 : Tests of the user stage forcings. {#tbl-ch09-user-tests}
 
+::: {.callout-important title="Check"}
 **Evidence.** No number is quoted. **Pending: pinned ctest run** of both tests at the pin.
 **Coverage.** CPU in CI. `test_stage_forcing_dry_tracer.py` takes `--device cuda`; whether a CUDA arm is
 registered at the pin is not checked here. No multi-rank arm.
+:::
 
 ### Limits
 
 1. **No time scaling.** A module that returns a rate instead of $\Delta t$ times the rate is wrong by a factor
    $\Delta t$, with no warning.
 2. **Through the limited EOS.** A module whose increment drives the state through a floor makes the step redo
-   (chengcli/snapy#226); the redo machinery is Chapter 7 and Chapter 8.
+   (chengcli/snapy#226); the redo machinery is in the time-integration chapter and @sec-ch08.
 3. **Ordering.** User modules see the stage variables, not the native increment; a module cannot react to what the
    native forcings did in the same stage.

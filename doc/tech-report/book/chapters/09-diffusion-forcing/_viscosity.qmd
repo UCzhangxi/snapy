@@ -30,7 +30,7 @@ The heat flux acts on the temperature, not on the potential temperature; so a re
 neutrally stable, is heated in the interior and at the walls (Limits).
 
 The module adds its own time-step bound, $\Delta t\le h_{\min}^2/(2n_{\mathrm{dim}}K)$, which the solver takes
-together with the hyperbolic bound before the Courant factor is applied (Chapter 7).
+together with the hyperbolic bound before the Courant factor is applied (the time-integration chapter).
 
 *Aliases.* The removed option `on_theta` (chengcli/snapy#253, #259; removed in #268, which closed #261) is not
 part of the code at the pin. Legacy keys `K` and `type` are refused.
@@ -138,7 +138,7 @@ the normal stress is first order.
 
 ```{python}
 #| label: fig-ch09-viscosity-stencil
-#| fig-cap: "Stencil of the diffusive flux through the x1 face i-1/2 (orange triangle on the orange face) on a 2-D Cartesian grid. Sky-blue circles are cell-centre primitives. The bluish-green arrow is the face-normal difference across the face; the dashed black arrows are the centred x2 differences in cells i-1 and i whose average gives the cross term of the shear stress. The face coefficient is the two-cell average except at a wall."
+#| fig-cap: "Stencil of the diffusive flux through the $x_1$ face $i-\\tfrac12$ (orange triangle on the orange face) on a 2-D Cartesian grid. Sky-blue circles are cell-centre primitives. The bluish-green arrow is the face-normal difference $\\partial_1 v$ across the face; the dashed black arrows are the centred $x_2$ differences in cells $i-1$ and $i$ whose average gives the cross term $\\partial_2 v_1$ of the shear stress. The face coefficient, $\\nu\\rho$ in $\\mathrm{Pa\\,s}$ or $\\kappa\\rho c_v$ in $\\mathrm{W\\,m^{-1}\\,K^{-1}}$, is the two-cell average except at a wall."
 #| fig-alt: "Grid of four by three cells with cell centres as circles, one vertical face highlighted with a triangle, a horizontal double arrow across it and two vertical dashed double arrows in the cells on either side."
 #| echo: false
 from snapy_report.ch09.fig_viscosity_stencil import make_fig
@@ -148,7 +148,7 @@ make_fig()
 Each face flux of @eq-ch09-viscosity-stencil reads the two cells across the face and, for the cross terms and the divergence, their neighbours
 in the tangential directions: one ghost layer for conduction, two for viscosity (the face average of a centred
 difference reaches two cells), hence the setup check $n_{\mathrm{ghost}}\ge2$. Ghosts are filled by the boundary
-functions and the block exchange before the stage (Chapter 11, Chapter 14). Faces at a reflecting $x_1$ wall take
+functions and the block exchange before the stage (the boundary-conditions and parallelism chapters). Faces at a reflecting $x_1$ wall take
 the one-sided coefficient of @sec-ch09-wallcoef; every other face, including seams between blocks, takes the
 two-cell average. The module runs in every Runge–Kutta stage, explicit, third in the forcing loop
 (@sec-ch09-framework). Evidence for the orders: interior second order from `[C2]`, `[C3]` and `[C8]` (fitted slope
@@ -202,12 +202,14 @@ operator at a wall through the solver is **not measured**.
 
 : Tests of the isotropic viscosity and heat conduction. {#tbl-ch09-viscosity-tests}
 
+::: {.callout-important title="Check"}
 **Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
 line; deck: the check itself; run: `python3 viscosity_check.py`, numpy 2.4.6, double]. ctest cases:
 **pending: pinned ctest run**. A data figure of the sine-mode decay against $e^{-\nu t}$ from the ctest is
 **pending** the same run.
 **Coverage.** The `DeviceTest` cases run on CPU in float32 and float64 and on CUDA in both when a device is present
 (`tests/device_testing.hpp`). No multi-rank test of the module.
+:::
 
 ### Limits
 
@@ -229,11 +231,11 @@ coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer 
    error in the kernel of the normal stress that the wall coefficient does not remove
    (`sources/canoe__diffusion_ghost_TECH_REPORT.md` §5, "What the fix deliberately does not touch").
 4. **Block edges.** Viscosity created $v_2$ beside $x_2$ block edges at an $x_1$ wall row (chengcli/snapy#264),
-   fixed by the corner refresh of #265 (Chapter 11). Not re-measured at the pin.
+   fixed by the corner refresh of #265 (the boundary-conditions chapter). Not re-measured at the pin.
 5. **Python setters** on `DiffusionOptions` bypass the YAML checks of step 1 of the walk-through (chengcli/snapy#216).
 6. **Time step.** The bound uses the largest coefficient everywhere and the smallest cell width in any direction;
    the one-sided wall coefficient can exceed the cell value by about 17 % at $h/H=0.35$
    (`sources/canoe__diffusion_ghost_TECH_REPORT.md` §7, off-pin) and is not included. The default `cfl` of 0.9
    covers it; not measured at the pin.
 7. **Untested combinations.** Diffusion with an implicit scheme, with sedimentation, or on several ranks is not run
-   by any ctest listed here. See the switch coverage matrix (Chapter 12).
+   by any ctest listed here. See the switch coverage matrix in the configuration chapter.
