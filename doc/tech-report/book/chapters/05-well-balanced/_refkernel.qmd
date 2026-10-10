@@ -1,0 +1,239 @@
+## Hydrostatic reference kernel: face-pressure scan, cell pressure and density reference (with the WB path) {#sec-ch05-refkernel}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.2; src/hydro/hydro_ref_x1_impl.h; src/hydro/hydro.cpp; src/hydro/hydro_dispatch.cpp;
+         src/hydro/hydro_dispatch.cu; docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0 §§1, 2, 6;
+         sources/canoe__tall_column_instability_TECH_REPORT.md §§3d, 4-5
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Builds, per column and per call, the face pressures $p_{\mathrm{sf}}$ by a top-down hydrostatic
+scan, the cell pressure $p_{\mathrm{ref}}$ from them, and the density references $\rho_{\mathrm{ref}}$ and
+$\rho_{\mathrm{sf}}$ from a smoothed $\rho/p$.
+**Switch.** None: always with the well-balanced path (@sec-ch05-wbx1).
+**Order.** $p_{\mathrm{sf}}$ exact up to one column constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ on uniform grids;
+$\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
+**Defining equation.** @eq-ch05-refkernel-scan.
+:::
+
+The kernel is the reference of @eq-ch05-wbx1-split. Its face pressures are the discrete hydrostatic balance itself,
+summed from an anchor at the top of the column, so the rest balance of the well-balanced reconstruction holds
+identically. Its cell pressure is the cell average of a quintic through six face pressures, which matches the
+cell average of a smooth hydrostatic pressure to sixth order up to the same column constant; on a non-uniform grid it
+is a log-mean instead, exact only for an isothermal cell. Its density reference is the cell pressure times a
+smoothed $\rho/p$: smoothed, because an unsmoothed ratio makes the density perturbation a copy of the pressure
+perturbation and the entropy mode would bypass the reconstruction.
+
+The kernel has a C++ implementation shared by the CPU and CUDA paths and a tensor implementation for MPS. The wall
+closure of the smoothed ratio and of the six-face rows is @sec-ch05-wallclamp; the anchor relay across $x_1$ seams is
+@sec-ch05-seam; the fourth-order replacement of the density reference is @sec-ch05-wbref4.
+
+*Aliases.* "smooth5" (the five-point binomial) and "the base reference" in
+`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1.
+
+### Derivation
+
+Units as in @sec-ch05-wbx1; $g=-g_1>0$ [m s$^{-2}$] is the downward magnitude the kernel takes; $r=\rho/p$
+[s$^2$ m$^{-2}$]. Cell $i$ spans $[x_{1,i-1/2},x_{1,i+1/2}]$, and $\Delta x_{1,i}$ is its width.
+
+#### Face pressures
+
+Hydrostatic balance integrated over cell $i$ gives
+$p(x_{1,i-1/2})-p(x_{1,i+1/2})=g\int_{\mathrm{cell}}\rho\,\mathrm{d}x_1=g\,\overline\rho_i\Delta x_{1,i}$ exactly, for
+the cell average $\overline\rho_i$. The kernel defines the face pressures by this relation,
+
+$$
+p_{\mathrm{sf},i-1/2} = p_{\mathrm{sf},i+1/2} + g\,\overline{\rho}_i\,\Delta x_{1,i},
+$$ {#eq-ch05-refkernel-scan}
+
+downward from the top face of the top interior cell $i_u$ and upward into the upper ghosts, clipped below at the
+smallest positive normal number. @eq-ch05-refkernel-scan is `hydro_ref_x1_scan_impl`
+([`hydro_ref_x1_impl.h:22-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L22-L60)).
+Since each step is exact, $p_{\mathrm{sf}}$ equals the exact face pressure of a hydrostatic column plus one constant
+per column, set by the anchor (`[C13]`: spread of $p_{\mathrm{sf}}-p(x_{1,f})$ $2.2\times10^{-16}$ of $p$). On a
+single block the anchor extrapolates the top cell isothermally by half a cell,
+
+$$
+p_{\mathrm{sf},i_u+1/2} = \overline{p}_{i_u}\exp\!\left(-\frac{g\,\Delta x_{1,i_u}}{2\,\overline{p}_{i_u}/\overline{\rho}_{i_u}}\right),
+$$ {#eq-ch05-refkernel-anchor}
+
+the branch that sets `top_anchor`
+([`hydro_ref_x1_impl.h:30-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L30-L38)).
+It uses the cell averages, so even on an isothermal column it is off by the factor
+$\sinh a/a=1+a^2/6+O(a^4)$, $a=\Delta x_1/2H$ with $H=p/(\rho g)$ (`[C10]`). That offset is a column constant and drops
+out of the rest balance (@eq-ch05-wbx1-rest holds for any $c$).
+
+#### Cell pressure
+
+On a uniform grid the cell pressure is the cell average of the quintic through the six faces
+$i-\tfrac52,\dots,i+\tfrac52$:
+
+$$
+\begin{aligned}
+p_{\mathrm{ref},i} = \tfrac{1}{1440}\big(&11\,p_{\mathrm{sf},i-5/2} - 93\,p_{\mathrm{sf},i-3/2} + 802\,p_{\mathrm{sf},i-1/2} \\
+&\qquad + 802\,p_{\mathrm{sf},i+1/2} - 93\,p_{\mathrm{sf},i+3/2} + 11\,p_{\mathrm{sf},i+5/2}\big),
+\end{aligned}
+$$ {#eq-ch05-refkernel-pref}
+
+weights derived exactly in `[C1]` and coded as `w6`
+([`hydro_ref_x1_impl.h:140-156`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L140-L156)).
+In the two cells next to an array end or a clamped wall the same average is taken over six one-sided faces, rows
+`w6e` (`[C2]`, @sec-ch05-wallclamp). A value outside $[\min,\max]$ of the cell's own two face pressures is rejected
+and the face mean is kept. Because the faces are exact up to $c$, $p_{\mathrm{ref},i}=\overline p_i+c+O(\Delta
+x_1^6)$ (`[C13]`: fitted order 5.87 on an isothermal column, $n_1$ = 8, 16, 32).
+
+On a non-uniform grid, where the relative spread of the face widths is $10^{-10}$ of their mean or more (`[C20]`),
+the cell pressure is the log-mean
+
+$$
+p_{\mathrm{ref},i} = \frac{g\,\overline{\rho}_i\,\Delta x_{1,i}}{\ln(p_{\mathrm{sf},i-1/2}/p_{\mathrm{sf},i+1/2})},
+$$ {#eq-ch05-refkernel-logmean}
+
+or the face mean when `ratio` is within $10^{-6}$ of one
+([`hydro_ref_x1_impl.h:181-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L181-L186)).
+For an isothermal cell $p$ is exponential in $x_1$, and its cell average is exactly @eq-ch05-refkernel-logmean; for a
+polytrope it is $O(\Delta x_1^2)$ (`[C9]`: relative error $1.5\times10^{-4}$ at $\Delta x_1=0.05$, order 2.02).
+
+#### Density references
+
+With $r_i=\overline\rho_i/\overline p_i$, the smoothed ratio is the binomial $r^{s}_i=\tfrac1{16}(r_{i-2}+4r_{i-1}+6r_i+4r_{i+1}+r_{i+2})$,
+and the references are
+
+$$
+\begin{aligned}
+\rho_{\mathrm{ref},i} &= p_{\mathrm{ref},i}\,r^{s}_i, \\
+\rho_{\mathrm{sf},i-1/2} &= p_{\mathrm{sf},i-1/2}\,\tfrac12\big(r^{s}_{i-1}+r^{s}_i\big),
+\end{aligned}
+$$ {#eq-ch05-refkernel-dens}
+
+coded as `dref` and `dsf`
+([`hydro_ref_x1_impl.h:193-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L193-L200)),
+with the binomial in `hydro_ref_x1_rop_smooth`
+([`hydro_ref_x1_impl.h:86-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L86-L108)).
+At array index 0 the face density uses $r^s_0$ alone.
+
+*Why smoothed.* Take the unsmoothed ratio instead, $\rho_{\mathrm{ref},i}=p_{\mathrm{ref},i}\overline\rho_i/\overline p_i$.
+Then $\rho'_i=\overline\rho_i-p_{\mathrm{ref},i}\overline\rho_i/\overline p_i=\overline\rho_i\,p'_i/\overline p_i$, so
+$\rho'/\overline\rho=p'/\overline p$ in every cell: the density perturbation carries no information the pressure
+perturbation does not, and an entropy (buoyancy) anomaly is not reconstructed as a density perturbation at all. The
+binomial keeps the reference on the large scales of the column only. It has unit sum, zero first moment and second
+moment 1 in cells, and zero response at the grid scale (`[C3]`), so $r^{s}_i=r_i+\tfrac{\Delta x_1^2}{2}r''+O(\Delta
+x_1^4)$. This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smooth`; the measurements behind
+it are in `sources/canoe__tall_column_instability_TECH_REPORT.md` §§3d, 4-5.
+
+*Face-density offset.* What the solver uses is $\rho_{\mathrm{sf}}+\mathcal R[\overline\rho-\rho_{\mathrm{ref}}]
+=\mathcal R[\overline\rho]+\delta\rho_f$ with $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]$. Expanding
+the ratio of averages, the binomial bias, the two-cell mean and the cell pressure,
+`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §2 obtains
+
+$$
+\delta\rho_f = \frac{\Delta x_1^2}{12}\big(p'R'+2pR''\big) + O(\Delta x_1^4),
+$$ {#eq-ch05-refkernel-offset}
+
+with $R=\rho/p$ the point ratio and primes $x_1$ derivatives (this paragraph only). `[C14]` measures $\delta\rho_f$ at
+the middle face of a polytrope against fifth-order linear reconstruction and finds the ratio to
+@eq-ch05-refkernel-offset 1.0022, 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
+
+*Exact and truncated.* Exact: the scan step, hence the rest balance. $O(\Delta x_1^6)$: the uniform cell pressure.
+$O(\Delta x_1^2)$: the log-mean on non-isothermal cells, the smoothed ratio and the face density reference.
+
+### Numerical method
+
+@fig-ch05-refkernel-scan shows the stencils. The scan is serial along each column; the per-cell part reads six face
+pressures and five ratios. The kernel runs once per $x_1$ sweep, in every RK stage, on cell averages (on plain means
+under @sec-ch05-x1cent), including ghost cells: ghosts get face pressures from the upward scan and, without the wall
+clamp, ghost ratios enter the binomial. Uniformity is decided once per block from its own `dx1f`.
+
+```{python}
+#| label: fig-ch05-refkernel-scan
+#| fig-cap: "The reference kernel on one column between two walls (thick black lines), x1 to the right. Top: the scan (bluish-green arrow) starts from the top anchor and adds g rho_i dx1 cell by cell; face pressures are orange triangles. Bottom: the six faces whose quintic gives the interior cell pressure of cell i, and the one-sided six-face window used for the two cells next to a wall. Shaded cells are the cells whose pressure the windows define."
+#| fig-alt: "Two rows of eight cells between thick wall lines; an arrow over the top row runs from right to left, triangles mark faces; brackets in the bottom row span six faces around cell i and six faces starting at the wall."
+#| echo: false
+from snapy_report.ch05.fig_refkernel_scan import make_fig
+make_fig()
+```
+
+**Paths.** CPU and CUDA run the same header functions: one CPU loop over columns, one CUDA block per column whose
+thread 0 scans and whose threads then fill the cells. The MPS path rebuilds the same quantities with tensor
+operations (cumulative sums, a padded binomial), and `test_hydro_ref_x1` compares it with the CPU path.
+
+**Order.** As in the Derivation layer, interior; at walls see @sec-ch05-wallclamp; at seams the reference is the
+neighbour's (@sec-ch05-seam).
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| the call and the uniform test | [`hydro.cpp:535-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L535-L556) | `x1_uniform_` | spread $<10^{-10}$ |
+| scan and anchor | [`hydro_ref_x1_impl.h:22-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L22-L60) | `hydro_ref_x1_scan_impl` | |
+| binomial ratio | [`hydro_ref_x1_impl.h:86-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L86-L108) | `hydro_ref_x1_rop_smooth` | |
+| cell pressure, both grids | [`hydro_ref_x1_impl.h:136-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L136-L186) | `use_six_faces` | uniform |
+| thin-block and fit guards | [`hydro_ref_x1_impl.h:124-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L124-L135) | `fits` | |
+| density references | [`hydro_ref_x1_impl.h:188-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L188-L200) | `dsf` | |
+| CPU path | [`hydro_dispatch.cpp:14-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L14-L35) | `hydro_ref_x1_cpu` | |
+| MPS tensor path | [`hydro_dispatch.cpp:37-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L37-L200) | `hydro_ref_x1_mps` | |
+| CUDA kernel | [`hydro_dispatch.cu:12-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cu#L12-L31) | `hydro_ref_x1_cuda_kernel` | CUDA build |
+
+: Code map of the reference kernel. {#tbl-ch05-refkernel-code}
+
+1. `HydroImpl::_hydro_ref_x1` classifies the block once as uniform or not and caches it in `x1_uniform_`
+   ([`hydro.cpp:535-541`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L535-L541)).
+2. It reads whether each $x_1$ end is a physical boundary and calls the dispatch stub `call_hydro_ref_x1` with the
+   wall-clamp option
+   ([`hydro.cpp:550-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L550-L556)).
+3. Per column, `hydro_ref_x1_impl` runs the scan and then the cell function for every cell
+   ([`hydro_ref_x1_impl.h:203-215`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L203-L215)).
+4. In the cell function, the guards `thin` and `fits` decide whether one-sided rows may be used
+   ([`hydro_ref_x1_impl.h:124-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L124-L135)),
+   then the cell pressure is formed by `use_six_faces` or the log-mean
+   ([`hydro_ref_x1_impl.h:136-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L136-L186)),
+   and the two density references by @eq-ch05-refkernel-dens.
+5. The fourth-order replacement (@sec-ch05-wbref4) and the seam exchange (@sec-ch05-seam) follow in `_hydro_ref_x1`.
+
+No switch is read and no warning is issued by the kernel. A block with fewer interior $x_1$ cells than ghosts makes
+the one-sided rows unusable (`fits` false), and the face mean is kept.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| `tests/test_hydro_ref_x1.cpp` (`test_hydro_ref_x1.release`), `cpu_matches_tensor_reference` | the CPU path equals the MPS tensor implementation run on CPU | $2\times10^{-12}$ double, $2\times10^{-5}$ float | round-off of two summation orders |
+| same, `wall_clamp_keeps_the_interior_free_of_the_ghosts` and its control | with the clamp, changing ghosts leaves interior references unchanged; without, they change | exact (`torch::equal`) | the property is structural |
+| same, `a_thin_block_keeps_the_interior_free_of_the_ghosts` and control | as above on a block of fewer than five cells | exact | structural |
+| same, `the_wall_reference_does_not_depend_on_the_blocks_x1_size` | the wall-cell reference is the same on blocks of different $x_1$ size | $10^{-14}$ relative | round-off |
+| same, `cuda_matches_cpu` | CUDA equals CPU | per dtype | round-off |
+| `tests/test_hydro_options.cpp` (`test_hydro_options.release`), `wb_wall_clamp_ships_enabled`, `wb_wall_clamp_reaches_the_x1_reference` | the clamp defaults on and changes the reference | differ by more than $10^{-13}$ | non-vacuity |
+| this chapter's check | `[C1]`–`[C3]`, `[C9]`, `[C10]`, `[C13]`, `[C14]`, `[C20]` | per claim | stated in the check |
+
+: Tests of the reference kernel. {#tbl-ch05-refkernel-tests}
+
+**Evidence.** `test_hydro_ref_x1.release` (6 passed, `cuda_matches_cpu` skipped) and `test_hydro_options.release`
+(11 passed, the `_cuda` case skipped) pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the
+test files; run: `ctest -V`, Release build, 2026-10-10, CPU, double, 1 rank]. Check numbers: [sha: the formulas of
+snapy@e894700ff7aee30b52882e5202b16461413780b0, rebuilt from this section's equations; deck: the check itself; run:
+`python3 wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double].
+**Coverage.** CPU in the run above; CUDA cases exist but were not run (**pending: a CUDA run at the pin**); the MPS
+path itself is compared only through its CPU execution; multi-rank through @sec-ch05-seam.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+On a stretched $x_1$ grid the cell pressure is the log-mean, exact only for isothermal cells, so a column at rest is
+at rest to round-off only after `balance_column`.
+:::
+
+1. **Non-uniform grids.** The log-mean is a different operator from the six-face rows, not a lower-order version of
+   them, and the reconstruction weights are uniform-spacing on every grid. A stretched-grid rest residual of
+   $7.37\times10^{-4}$, the same for every density form, is reported in chengcli/snapy#250
+   (`sources/gh__ISSUE_THREADS_138-250.md`; measured before the pin, not re-run here); chengcli/snapy#280 tracks it.
+   chengcli/snapy#280 also states that the face interpolation uses fixed rationals on stretched grids; at the pin the
+   rationals are used only on a uniform block and the log-mean otherwise.
+2. **No positivity guard on $\rho/p$.** The ratio divides by the cell pressure without a guard (chengcli/snapy#250
+   §2). Not measured at the pin.
+3. **One classification per block.** A grid uniform over part of the column gives different operators to different
+   blocks; `balance_column` must make the same choice (@sec-ch05-balcol).
+4. **Untested combinations.** See the switch coverage matrix of Chapter 12.

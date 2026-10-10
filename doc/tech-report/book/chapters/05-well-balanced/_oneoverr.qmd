@@ -1,0 +1,118 @@
+## The $1/R$ remainder on spherical-polar grids: what is left after the corrections (no switch) {#sec-ch05-oneoverr}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.9; docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0 §6;
+         sources/study__next-1overR_README.md §§0-3; sources/gw__ONEOVERR_split_RESULT.md §§1-2;
+         sources/study__next-1overR-remainder_README.md §§0-4; ISSUES.md item 5
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it is.** The part of the $1/R$ error of a spherical column that survives `SNAP_FLUX_COVARIANCE` and
+`SNAP_X1_CENTROID_EXACT`: an $O(h^2/R)$ term from reconstructing the Favre velocity
+$\langle\rho w\rangle/\langle\rho\rangle$ as if it were a plain mean.
+**Switch.** None; a property of the scheme. The related switches are `SNAP_FLUX_COVARIANCE` (Chapter 4),
+`SNAP_X1_CENTROID_EXACT` (@sec-ch05-x1cent) and `SNAP_GRAVITY_WORK_RADIAL_EXACT` (Chapter 6).
+**Order.** $O(h^2/R)$.
+**Defining equation.** @eq-ch05-oneoverr-favre.
+:::
+
+On a spherical-polar grid the $r^2$ cell measure adds terms of relative size $h/R$ to every cell-to-face map, and the
+divergence adds a $2/r$ factor to every flux error. Chapter 4's covariance corrections and the plain-mean maps of
+@sec-ch05-x1cent remove the leading such terms of the face fluxes, the reference and the pressure force. What remains
+is not a defect of any map but of an input: the $x_1$ velocity the maps reconstruct is a ratio of two $r^2$ means, not a
+mean, and the conversion of @eq-ch05-x1cent-conv makes means plain, not ratios exact. This section records that
+remainder, its signature, and what evidence exists for it at the pin; it has no code of its own.
+
+*Aliases.* "the 1/R term", "leg (d)" of #289; "hypothesis H1" in `sources/gw__ONEOVERR_split_RESULT.md`.
+
+### Derivation
+
+Notation as in @sec-ch05-x1cent; $R$ [m] is the radius of the column, $w=v_1$. The stored velocity of cell $i$ is the
+Favre mean $\tilde w_i=\langle\rho w\rangle_i/\langle\rho\rangle_i$. Expanding $\rho$ and $w$ about the mid-radius with the
+moments of @eq-ch05-x1cent-defect, and the plain mean likewise,
+
+$$
+\tilde w_i - \overline w_i = \frac{h_i^2}{12}\,\frac{\rho'\,w'}{\rho} + \delta_i\,w' + O(h^4) ,
+$$ {#eq-ch05-oneoverr-favre}
+
+where the first term is the Cartesian covariance of a density-weighted mean and the second the centroid offset of the
+$r^2$ measure (this paragraph only: primes are $r$-derivatives; derived for linear $\rho$ and $w$ in `[C21]`, exact in
+sympy). The conversion of @eq-ch05-x1cent-conv treats $\tilde w$ as an $r^2$ mean and so removes the $\delta_iw'$ part;
+the covariance part stays. Reconstructing the converted value with weights for plain means therefore leaves an $O(h^2)$
+face error, which the $2/r$ of the radial divergence turns into an $O(h^2/R)$ tendency. The
+same holds for $T=p/\rho$ and for $\rho/p$ inside the reference filter. The expansion follows
+`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §6; the harness and the
+$+g/(6c_pR)$ signature of the remainder in the effective stratification are in `sources/study__next-1overR_README.md`
+§§0-3, and the completeness of the face fluxes to $O(h^4)$ including $h^2/R$ is
+`sources/gw__ONEOVERR_split_RESULT.md` §§1-2.
+
+*Exact and truncated.* The remainder is $O(h^2/R)$ and vanishes for $R\to\infty$ (Cartesian).
+
+### Numerical method
+
+@fig-ch05-oneoverr-favre shows the effect in one cell. The terms involved live in the $x_1$ block of `HydroImpl::forward`
+(the plain-mean view of @sec-ch05-x1cent), in the covariance corrections of Chapter 4 and in the geometric sources of
+`SphericalPolarImpl::forward`; none of them is specific to this section.
+
+```{python}
+#| label: fig-ch05-oneoverr-favre
+#| fig-cap: "Why a ratio of means is not a mean, in one radial cell. Black: a velocity profile w(r) across the cell; dashed blue: its plain mean; dotted vermillion: the Favre mean <rho w>/<rho> with density falling outward and the r^2 weight. The two means differ by O(h^2), which the x1 maps treat as if it were zero. Illustrative profiles."
+#| fig-alt: "A rising curve across the cell with two horizontal lines at slightly different heights, a dashed one and a dotted one."
+#| echo: false
+from snapy_report.ch05.fig_oneoverr_favre import make_fig
+make_fig()
+```
+
+The measured remainder needs a closure run in snapy at the pin (ISSUES.md item 5): $R[\varepsilon n_1^2(R)-\varepsilon
+n_1^2(\infty)]$ against $R/H$ for the off and on arms, from a committed deck.
+
+```{python}
+#| label: fig-ch05-oneoverr-remainder
+#| fig-cap: "The 1/R content of the one-step effective stratification, R times the difference from the Cartesian limit, against R/H, with SNAP_X1_CENTROID_EXACT off and on. Pending: needs the in-snapy closure run at the pin."
+#| fig-alt: "Placeholder for a plot of the 1/R content against R/H for two switch settings."
+#| echo: false
+from snapy_report.ch05.fig_oneoverr_remainder import make_fig
+make_fig()
+```
+
+### Code
+
+No dedicated code. The pieces it depends on are listed in their own sections.
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| the plain-mean view the maps read | [`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285) | `x1_plain_means` | `SNAP_X1_CENTROID_EXACT` |
+| the radial source | [`spherical_polar.cpp:243-279`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L243-L279) | `src1` | |
+
+: Code map of the $1/R$ remainder. {#tbl-ch05-oneoverr-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| none in ctest | no test asserts the remainder; `test_x1_centroid_rest_python` covers rest only | — | — |
+| this chapter's check, `[C21]` | the Favre-ratio expansion @eq-ch05-oneoverr-favre for linear profiles | exact | sympy |
+
+: Tests of the $1/R$ remainder. {#tbl-ch05-oneoverr-tests}
+
+**Evidence.** The derivation note quotes code values of the $1/R$ content, off and on, at $R/H$ = 5 to 1000 and $n_1$ =
+64 and 128, with no committed script or deck: **missing evidence**, and per ISSUES.md item 5 the one-step harness
+numbers from commits not in snapy are not used. **Pending: an in-snapy closure run at the pin, with a committed deck,
+to rebuild the table and @fig-ch05-oneoverr-remainder.**
+**Coverage.** None.
+
+### Limits
+
+1. **Not removed.** The remainder is a known $O(h^2/R)$ term of the scheme; removing it would need the ratios
+   themselves made exact, which no switch does.
+2. **Metric of the harness.** The note reports column means with unit weight per cell; weighted by cell volume the
+   metric carries its own $1/R$ across the column's error profile and does not measure the scheme's term (same note,
+   §6).
+3. **Gravity-work interplay.** The face-form gravity work and its curvature flux on radial grids contribute their own
+   $1/R$ content; that is Chapter 6 (`sources/study__next-1overR-remainder_README.md` §§0-4).
+4. **Stale references.** The study READMEs were written before chengcli/snapy#293 merged; their file and line references
+   do not match the pin.

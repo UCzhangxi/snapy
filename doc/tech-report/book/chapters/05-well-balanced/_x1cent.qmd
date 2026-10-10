@@ -1,0 +1,201 @@
+## $r^2$-exact $x_1$ maps on spherical-polar grids (`SNAP_X1_CENTROID_EXACT`) {#sec-ch05-x1cent}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.8; src/coord/x1_centroid.cpp; src/coord/spherical_polar.cpp; src/hydro/hydro_forward.cpp;
+         src/hydro/hydro.cpp; docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0 §§1-5, 7;
+         sources/study__next-1overR_README.md §§0-3
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** On spherical-polar blocks, feeds every $x_1$ map (reconstruction, scan, reference) the plain means
+of the cells instead of their $r^2$ means, and replaces the radial pressure source by the $r$-moment of a quintic, so a
+hydrostatic column of $r^2$ means is balanced to round-off.
+**Switch.** Environment variable `SNAP_X1_CENTROID_EXACT`, read once per process, default off. Implies `SNAP_WB_REF4`.
+Requires $n_g\ge3$. Acts on `spherical-polar` only.
+**Order.** Conversion exact to degree 4; rest exact for densities of degree $\le4$.
+**Defining equation.** @eq-ch05-x1cent-source.
+:::
+
+A finite-volume cell on a spherical-polar grid holds the $r^2$ mean of a quantity, whose centroid sits
+$h^2/(6\overline r)$ above the mid-radius. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
+scan and the six-face cell pressure, is a formula for plain means. Fed $r^2$ means they are off by $O(h^2/r)$: the face
+values, the scan step, and the pressure force, whose plain difference balances gravity only against the wrong scan.
+The switch converts the inputs of the maps, for the maps only, to plain means with a five-cell stencil exact to degree
+4, and makes the radial pressure force the $r^2$ mean of the gradient of a quintic through six face pressures. The
+reference on plain means is then the Cartesian one, and the switch implies `SNAP_WB_REF4` so that it is fourth order.
+
+On Cartesian blocks the switch only implies `SNAP_WB_REF4`; on cubed-sphere blocks it does nothing (their $x_{1v}$ is
+the mid-radius). `balance_column` balances only a column declared Cartesian under it.
+
+*Aliases.* #289 legs (i)-(iii) in comments; "the centroid switch".
+
+### Derivation
+
+Units: $r$ and $h$ [m]; $A_{i\pm1/2}=r_{i\pm1/2}^2$ and $V_i=(r_{i+1/2}^3-r_{i-1/2}^3)/3$ are per unit solid angle, as the
+code forms them. $\langle q\rangle_i=V_i^{-1}\int r^2q\,\mathrm{d}r$ is the $r^2$ mean, $\overline q_i=h_i^{-1}\int q\,\mathrm{d}r$ the plain
+mean, and $x=(r-\overline r_i)/h_i$ the local coordinate. Re-written from
+`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §§1-5.
+
+#### The defect
+
+Expanding $q$ about the mid-radius,
+
+$$
+\begin{aligned}
+\langle q\rangle_i &= \overline q_i + \delta_i\,q'(\overline r_i) + O(h^4/\overline r^2), \\
+\delta_i &= \frac{2h_i^2\,\overline r_i}{h_i^2 + 12\,\overline r_i^2} = \frac{h_i^2}{6\overline r_i} - \frac{h_i^4}{72\,\overline r_i^3} + \cdots
+\end{aligned}
+$$ {#eq-ch05-x1cent-defect}
+
+(`[C18]`, exact). Each uniform-measure map fed $\langle q\rangle$ is off by $\delta q'=O(h^2/r)$; in particular the scan
+step becomes $gh\langle\rho\rangle$ instead of $g\int\rho\,\mathrm{d}r=gh\overline\rho$, and the perturbation of a resting
+column is $O(h^2/r)$ instead of a constant.
+
+#### Plain means
+
+For the $x_1$ maps only, each primitive row is replaced by
+
+$$
+\begin{aligned}
+\overline q_i &= \sum_{k=0}^{4} c_{i,k}\,\langle q\rangle_{s_i+k}, \\
+\sum_k c_{i,k}\,\langle x^n\rangle_{s_i+k} &= \overline{x^n}_i = \big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80}\big)_n,
+\end{aligned}
+$$ {#eq-ch05-x1cent-conv}
+
+for the monomials $n=0..4$, window $s_i=\max(\mathrm{lo},\min(\mathrm{hi}-4,i-2))$, centred, inside the owned cells at a physical wall and inside the
+array at a seam. The moments are integrated by four-point Gauss-Legendre, exact for degree 6, and the $5\times5$ system
+is solved once per block. The conversion is exact for degree 4 and not 5, on uniform and stretched grids and in the
+wall windows, and its weights sum to 1 (`[C16]`). @eq-ch05-x1cent-conv is `x1_plain_mean_stencils`
+([`x1_centroid.cpp:104-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L155)).
+Ghosts past a clamped wall get the mirrored correction of the owned cells, odd for the normal velocity, in
+`x1_plain_means`
+([`x1_centroid.cpp:157-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L157-L182));
+at a seam the outer ghosts' windows are off-centre, so their plain means are replaced by the neighbour's.
+
+#### The pressure source
+
+With $\tilde p$ the quintic through the six face pressures nearest cell $i$ (window over faces, one-sided at a wall,
+reaching two faces past a seam), the radial pressure source is
+
+$$
+S_i = \frac{2}{V_i}\int_{r_{i-1/2}}^{r_{i+1/2}} r\,\tilde p\,\mathrm{d}r = \sum_{j=0}^{5}w_{i,j}\,p^{*}_{s+j},
+$$ {#eq-ch05-x1cent-source}
+
+and integration by parts, with $\tilde p$ through both faces of the cell, gives
+$-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i=-V_i^{-1}\int r^2\tilde p'\,\mathrm{d}r$: the net pressure force is
+the $r^2$ mean of $-\partial_r\tilde p$. A constant pressure gives $S_iV_i=A_{i+1/2}-A_{i-1/2}$ exactly, with $V_i$ in the
+cube form of the cell volume (`[C17]`, both identities in exact rationals). @eq-ch05-x1cent-source is
+`x1_pressure_source_stencils`
+([`x1_centroid.cpp:184-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L222)),
+used in place of the plain difference by the branch that tests `exact_x1`
+([`spherical_polar.cpp:251-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L251-L264)).
+The hydrostatic mode takes the same operator (@sec-ch05-hsmode).
+
+#### Rest balance
+
+On a hydrostatic column of $r^2$ means: the conversion gives $\overline\rho$ to $O(h^6/r)$; the scan then gives the
+exact face pressures plus one constant; the reference on plain means is the Cartesian fourth-order one; and the net
+force $-V^{-1}\int r^2(\tilde p'+g\rho)\,\mathrm{d}r$ has the constant drop out. For a density of degree $\le4$ every step
+is exact and the column is balanced exactly, which is the oracle of the test.
+
+*Exact and truncated.* Exact: the conversion for degree 4, both source identities, rest for degree $\le4$. For a
+smooth column the curvature part of the residual is $O(h^6/r)$; what remains is the truncation of the reference itself.
+Ratios of means (the Favre velocity, $T=p/\rho$, $\rho/p$ inside $F$) are not made exact (@sec-ch05-oneoverr).
+
+### Numerical method
+
+@fig-ch05-x1cent-window shows the windows. In `HydroImpl::forward` the plain-mean view `wx1` is computed before the
+reference, its seam ghost rows are taken from the neighbour, and the reconstruction and the reference read it; the
+primitives themselves are unchanged. After the Riemann solve the two ghost face pressures each side of a seam are taken
+from the neighbour, so the source window is the centred one-block window. Everything runs in every RK stage,
+explicitly; the stencils are built once per block in double precision.
+
+```{python}
+#| label: fig-ch05-x1cent-window
+#| fig-cap: "The maps of SNAP_X1_CENTROID_EXACT, x1 = r to the right. Top: a radial cell, its mid-radius (dotted) and its r^2 centroid x1v (bluish-green line) h^2/(6 r) further out. Middle: the five-cell window that converts r^2 means to the plain mean of cell i, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
+#| fig-alt: "A single wide cell with two vertical lines inside, below it a row of nine cells with brackets over five cells, and a third row of cells with a dashed seam and six triangles crossing it."
+#| echo: false
+from snapy_report.ch05.fig_x1cent_window import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| the switch | [`x1_centroid.cpp:92-102`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L92-L102) | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| conversion stencils | [`x1_centroid.cpp:104-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L155) | `x1_plain_mean_stencils` | |
+| conversion and mirrored ghosts | [`x1_centroid.cpp:157-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L157-L182) | `x1_plain_means` | |
+| source stencils | [`x1_centroid.cpp:184-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L222) | `x1_pressure_source_stencils` | |
+| plain-mean view and seam ghosts | [`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285) | `x1_plain_means` | spherical-polar |
+| ghost face pressures at a seam | [`hydro_forward.cpp:501-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L501-L508) | `_x1_ghost_rows` | |
+| the source in the momentum equation | [`spherical_polar.cpp:251-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L251-L264) | `x1_pressure_source` | |
+| ghost-row exchange | [`hydro.cpp:270-303`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L270-L303) | `_x1_ghost_rows` | $x_1$ split |
+| implies `SNAP_WB_REF4` | [`wb_ref4.cpp:92-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L92-L94) | `x1_centroid_exact_enabled` | |
+
+: Code map of `SNAP_X1_CENTROID_EXACT`. {#tbl-ch05-x1cent-code}
+
+1. `x1_centroid_exact_enabled` reads the environment once
+   ([`x1_centroid.cpp:92-102`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L92-L102)).
+2. On a spherical-polar block `HydroImpl::forward` builds the view with `x1_plain_means` and exchanges its seam ghost
+   rows with `_x1_ghost_rows`
+   ([`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285)).
+3. The reference and the reconstruction of @sec-ch05-wbx1 read the view; `SNAP_WB_REF4` acts through
+   `wb_ref4_enabled` (@sec-ch05-wbref4).
+4. After the Riemann solve the face-pressure ghost rows are exchanged with `_x1_ghost_rows`
+   ([`hydro_forward.cpp:501-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L501-L508)).
+5. `SphericalPolarImpl::forward` adds `x1_pressure_source` in place of the plain-difference correction
+   ([`spherical_polar.cpp:251-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L251-L264)).
+
+The ghost-depth check of @sec-ch05-wbref4 covers this switch, since it implies `SNAP_WB_REF4`; `balance_column` refuses
+a non-Cartesian geometry under it. A block too thin for the stencils (`usable` false) keeps the plain path silently.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | linear-density column of $r^2$ means, $r_0/H$ = 5 and 1000, explicit and vertically implicit, $n_h$ = 1 and 0: on, $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)<10^{-10}$ in interior and wall cells; off, $>10^{-8}$ at $r_0/H=5$ | `TOL_ON 1e-10`, `TOL_OFF 1e-8` | round-off margin; an ignored switch fails |
+| `tests/test_x1_seam_split.cpp` (`test_x1_seam_split_x1_centroid.release`), `centroid_exact_split_matches_one_block` | split equals one block after 20 steps, $n_h$ = 1 and 0 | $10^{-13}$ | round-off |
+| `test_x1_seam_split_mp_x1_centroid` (2 ranks) | two ranks equal two blocks and one block | $10^{-13}$ | round-off |
+| `test_balance_column_x1_centroid`, `test_face_floor_x1_centroid` | the balance and floor tests with the switch | as in their sections | as there |
+| this chapter's check | `[C16]`–`[C18]` | per claim | stated in the check |
+
+: Tests of `SNAP_X1_CENTROID_EXACT`. {#tbl-ch05-x1cent-tests}
+
+| $r_0/H$ | implicit | $n_h$ | off, interior / wall | on, interior / wall |
+|---|---|---|---|---|
+| 5 | 0 | 1 | $2.377\times10^{-5}$ / $2.700\times10^{-5}$ | $2.162\times10^{-14}$ / $1.547\times10^{-14}$ |
+| 5 | 0 | 0 | $6.001\times10^{-8}$ / $7.447\times10^{-7}$ | $8.347\times10^{-15}$ / $1.415\times10^{-14}$ |
+| 5 | 1 | 1 | $2.363\times10^{-5}$ / $2.367\times10^{-5}$ | $1.432\times10^{-14}$ / $9.680\times10^{-15}$ |
+| 1000 | 0 | 1 | $6.510\times10^{-10}$ / $6.984\times10^{-10}$ | $2.421\times10^{-14}$ / $3.261\times10^{-14}$ |
+| 1000 | 1 | 0 | $1.403\times10^{-12}$ / $1.022\times10^{-11}$ | $8.888\times10^{-15}$ / $8.469\times10^{-15}$ |
+
+: Rest force $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)$ after one RK3 step, five of the eight cases the test prints.
+Evidence: sha `e894700ff7aee30b52882e5202b16461413780b0`; deck `tests/test_x1_centroid_rest.py`; run `python
+tests/test_x1_centroid_rest.py` against the pin's build, 2026-10-10, CPU, double, 1 rank. {#tbl-ch05-x1cent-rest}
+
+**Evidence.** @tbl-ch05-x1cent-rest: with the switch the rest force is at round-off in every case; without it the
+$r_0/H=5$ column feels $2.4\times10^{-5}$. The seam arm prints a split-against-one-block gap of 0 in both modes, and
+the 2-rank arm 0 against both two blocks and one block [same sha; decks the test files; run `ctest -V`, 2026-10-10,
+CPU, double, 1 and 2 ranks].
+**Coverage.** CPU; the CUDA twins were not run (**pending: a CUDA run at the pin**).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The switch does nothing on cubed-sphere grids. Under it `balance_column` balances only a column declared
+`geometry='cartesian'`.
+:::
+
+1. **Ratios of means.** The Favre velocity, $T$ and $\rho/p$ are still treated as means; the $O(h^2/R)$ remainder is
+   @sec-ch05-oneoverr.
+2. **Cubed sphere.** Not implemented: the gnomonic grids store the mid-radius as $x_{1v}$ and would need the
+   conversion with their own radial measure.
+3. **Note history.** The copy of the derivation in `sources/deriv__x1-centroid-spherical.md` predates the seam
+   exchange and says the switch leaves the reference unchanged; at the pin it implies `SNAP_WB_REF4` and seam ghosts
+   are exchanged.
+4. **Untested combinations.** See the switch coverage matrix of Chapter 12.

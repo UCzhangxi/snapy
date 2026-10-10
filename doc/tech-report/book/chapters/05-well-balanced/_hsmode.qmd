@@ -1,0 +1,142 @@
+## Hydrostatic mode: gravity replaced by the cell's own pressure difference (`forcing/const-gravity/non-hydrostatic`) {#sec-ch05-hsmode}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.5; src/hydro/hydro_forward.cpp; src/forcing/const_gravity.cpp;
+         docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0 §4 (re-derived from the code)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Replaces the fraction $1-n_h$ of the $x_1$ gravity force $\rho g_1$ by the difference of the cell's
+own reconstructed face pressures, and books the same replacement in the energy.
+**Switch.** YAML `forcing/const-gravity/non-hydrostatic` $=n_h\in[0,1]$, default 1 (mode off).
+**Requires.** $g_1\neq0$. Under `SNAP_X1_CENTROID_EXACT` it uses the $r^2$ operator of @sec-ch05-x1cent.
+**Order.** Exact cancellation at rest; away from rest the force is the difference between Riemann and reconstructed
+face pressures.
+**Defining equation.** @eq-ch05-hsmode-force.
+:::
+
+In the default, non-hydrostatic mode ($n_h=1$) gravity enters as the body force $\overline\rho_ig_1$ of the constant
+gravity forcing, and vertical motion responds to the imbalance between that force and the pressure fluxes. With
+$n_h<1$ part of the body force is replaced by $(p^L_{i+1/2}-p^R_{i-1/2})/\Delta x_1$, the pressure difference between
+the cell's own reconstructed states at its upper and lower face. At $n_h=0$ the vertical momentum of a cell then
+changes only by the jumps $p^{*}-p^{L,R}$ that the Riemann solver introduces at its faces, which vanish in a column
+at rest whatever the column is.
+
+The value is checked to lie in $[0,1]$ when the YAML is read. The mode is independent of the well-balanced
+reconstruction, but the two are normally used together: the face states it differences are the restored states of
+@eq-ch05-wbx1-split.
+
+*Aliases.* "hydrostatic-split pressure", "nh" in tests; `rho_grav` in the code.
+
+### Derivation
+
+Units as in @sec-ch05-wbx1. The constant gravity forcing adds $n_h\overline\rho_ig_1$ to the momentum and
+$n_h\overline\rho_i\overline v_{1,i}g_1$ to the energy. The hydrostatic mode adds, in Cartesian geometry,
+
+$$
+\begin{aligned}
+G_i &= \frac{p^{L}_{i+1/2} - p^{R}_{i-1/2}}{\Delta x_{1,i}}, \\
+\Delta(\rho v_1)_i &= \Delta t\,(1-n_h)\,G_i, \\
+\Delta E_i &= \Delta t\,(1-n_h)\,\overline v_{1,i}\,G_i,
+\end{aligned}
+$$ {#eq-ch05-hsmode-force}
+
+with $p^{L}_{i+1/2}$ the left state at the upper face and $p^{R}_{i-1/2}$ the right state at the lower face, both
+belonging to cell $i$. $G$ is `rho_grav`
+([`hydro_forward.cpp:389-397`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L389-L397)),
+applied by the increments that use `non_hydrostatic`
+([`hydro_forward.cpp:901-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L901-L906)).
+At $n_h=0$ the momentum balance of cell $i$ becomes
+
+$$
+\frac{\mathrm{d}}{\mathrm{d}t}(\overline{\rho v_1})_i = -\frac{\Delta_i[\rho v_1^2]}{\Delta x_1}
+- \frac{(p^{*}-p^{L})_{i+1/2} - (p^{*}-p^{R})_{i-1/2}}{\Delta x_1} ,
+$$
+
+so the cell's own pressure difference no longer drives it; only the face jumps do. At rest the two states of every
+face agree and $p^{*}=p^{L}=p^{R}$, so the force vanishes exactly for any column, balanced or not (`[C19]`). For
+$0<n_h<1$ the force is the blend of the two forms.
+
+Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the pressure force is
+$-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i$ with the source $S_i$ of @eq-ch05-x1cent-source, and $G$ takes
+the same operator on the cell's own states,
+$G_i=(A_{i+1/2}p^{L}_{i+1/2}-A_{i-1/2}p^{R}_{i-1/2})/V_i-S_i$, so the two cancel at rest again
+(`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §4). This form is the branch
+that calls `x1_pressure_source`
+([`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539)).
+
+*Exact and truncated.* Exact: the cancellation at rest, in both forms. Away from rest the momentum source has the
+accuracy of $p^{*}-p^{L,R}$, which depends on the reconstruction and the Riemann solver (Chapter 4).
+
+### Numerical method
+
+@fig-ch05-hsmode-cell shows the quantities. $G$ is formed right after the $x_1$ reconstruction (and the
+immersed-solid face treatment), from the interior faces of each cell, and applied once per stage together with the
+other source increments of `HydroImpl::forward`. It is explicit. The energy row books $\overline v_1G$, and the
+gravity-work bookkeeping of Chapter 6 counts the same term (`original_gravity_work`).
+
+```{python}
+#| label: fig-ch05-hsmode-cell
+#| fig-cap: "Hydrostatic mode in one cell, x1 upward. Orange triangles: the cell's own reconstructed face pressures, the left state at its upper face and the right state at its lower face; orange arrows: the Riemann face pressures p* at both faces. The vermillion arrow is the fraction (1 - n_h) of the body force that is removed, the bluish-green arrow the difference of the cell's own face pressures that replaces it."
+#| fig-alt: "A single shaded cell with triangles at its top and bottom face, arrows through both faces, and two vertical arrows of opposite direction beside it."
+#| echo: false
+from snapy_report.ch05.fig_hsmode_cell import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| the key, default and range | [`const_gravity.cpp:25-26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L25-L26) | `non_hydrostatic` | default 1 |
+| the remaining body force | [`const_gravity.cpp:46-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L52) | `forward` | |
+| $G$, Cartesian form | [`hydro_forward.cpp:389-397`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L389-L397) | `rho_grav` | $n_h<1$ |
+| $G$, $r^2$ form | [`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539) | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
+| work counted in the gravity-work budget | [`hydro_forward.cpp:850-857`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L850-L857) | `original_gravity_work` | |
+| momentum and energy increments | [`hydro_forward.cpp:901-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L901-L906) | `non_hydrostatic` | |
+
+: Code map of the hydrostatic mode. {#tbl-ch05-hsmode-code}
+
+1. The YAML value is read into `non_hydrostatic` with default 1 and checked to lie in $[0,1]$
+   ([`const_gravity.cpp:25-26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L25-L26)).
+2. `ConstGravityImpl::forward` adds $n_h$ times the body force and its work
+   ([`const_gravity.cpp:46-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L52)).
+3. After the $x_1$ reconstruction, `rho_grav` is filled for the interior cells
+   ([`hydro_forward.cpp:389-397`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L389-L397)),
+   and overwritten by the $r^2$ form with `x1_pressure_source` when that switch acts
+   ([`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539)).
+4. The increments are added with the weight $1-n_h$ read from `non_hydrostatic`
+   ([`hydro_forward.cpp:901-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L901-L906)).
+
+A value outside $[0,1]$ fails the `TORCH_CHECK` of step 1. There is no warning.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| `tests/test_hydrostatic.cpp` (`test_hydrostatic.release`), `cubed_sphere_remains_at_rest` | `non-hydrostatic: 0.`; a cubed-sphere hydrostatic atmosphere keeps its vertical velocity below the bound for 100 steps | $10^{-8}$ | round-off margin |
+| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | rest force at $n_h$ = 1 and 0, with and without the switch | $10^{-10}$ on, $>10^{-8}$ off | @sec-ch05-x1cent |
+| `tests/test_x1_seam_split.cpp`, `tests/test_x1_seam_split_mp.cpp` arms | split equals one block at $n_h$ = 1 and 0 | $10^{-13}$ | round-off |
+| this chapter's check, `[C19]` | cancellation at rest, both forms | $10^{-12}$ | round-off |
+
+: Tests of the hydrostatic mode. {#tbl-ch05-hsmode-tests}
+
+**Evidence.** At the pin, `test_hydrostatic` prints a maximum spurious vertical velocity after 100 steps of
+$7.84\times10^{-15}$, and the $n_h=0$ rows of `test_x1_centroid_rest` read, switch off and on, $6.0\times10^{-8}$ and
+$8.3\times10^{-15}$ (interior, $r_0/H=5$, explicit) [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test
+files; run: `ctest -V` and `python tests/test_x1_centroid_rest.py` against the pin's build, 2026-10-10, CPU, double,
+1 rank].
+**Coverage.** CPU; CUDA twins exist and were not run (**pending: a CUDA run at the pin**); 2 ranks through the seam
+tests. No test measures the mode away from rest.
+
+### Limits
+
+1. **Not a hydrostatic model.** $n_h=0$ removes the cell's own pressure difference from the vertical momentum, but
+   the vertical velocity is still prognostic; this is not a hydrostatic primitive-equation solver.
+2. **Gravity-work interplay.** The energy term enters the gravity-work bookkeeping of Chapter 6 through
+   `original_gravity_work`; its interaction with the face forms is described there.
+3. **Untested combinations.** See the switch coverage matrix of Chapter 12.

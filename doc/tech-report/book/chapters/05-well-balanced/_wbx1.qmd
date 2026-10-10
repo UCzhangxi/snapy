@@ -1,0 +1,201 @@
+## Well-balanced $x_1$ reconstruction: perturbations about a hydrostatic reference (gravity on) {#sec-ch05-wbx1}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.1; src/hydro/hydro_forward.cpp; src/recon/reconstruct.cpp;
+         docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0 §§1, 6
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ instead of $p$ and
+$\rho$, then adds the reference face values back, so a discretely hydrostatic column produces no $x_1$ force.
+**Switch.** None. On whenever $g_1\neq0$, the state has a pressure row and the EOS is not `shallow-water`; also
+under an $x_1$ block split.
+**Requires.** The reference kernel (@sec-ch05-refkernel).
+**Order.** Exact rest balance; the face states keep the order of the reconstruction.
+**Defining equation.** @eq-ch05-wbx1-split.
+:::
+
+A column in hydrostatic balance has pressure and density that fall by orders of magnitude along $x_1$. A high-order
+reconstruction of $p$ itself returns face values whose difference across a cell is not exactly $\rho g_1\Delta x_1$,
+so a resting column feels a spurious vertical force of the size of the reconstruction error and starts to move.
+snapy removes that force by construction: it builds, on every call, a reference $(p_{\mathrm{ref}},
+\rho_{\mathrm{ref}})$ whose face pressures satisfy the discrete hydrostatic balance exactly, reconstructs only the
+perturbations about it, and restores the reference at the faces. The perturbation of a resting column is a constant,
+which every reconstruction reproduces, so the restored faces carry exactly the balanced pressure difference.
+
+The scheme has no switch and no default to change: it is the $x_1$ path whenever gravity acts in $x_1$. The
+perturbation ghosts at a physical, non-outflow $x_1$ wall are filled with even parity; the reconstruction runs with
+its density and pressure floors off; and a face value that comes out non-positive falls back to the reference
+pressure or to the density of the adjacent cell. The $x_2$ and $x_3$ sweeps have no such treatment.
+
+*Aliases.* "WB" or "well-balanced reconstruction" in comments and commit messages; the "base" reference of
+`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1.
+
+### Derivation
+
+Units: $p$ [Pa], $\rho$ [kg m$^{-3}$], $g_1$ [m s$^{-2}$], $x_1$ and $\Delta x_1$ [m]. This layer uses cell averages
+and face point values; a cell average carries an overbar only where a point value of the same quantity appears.
+
+The $x_1$ momentum equation with constant gravity is $\partial_t(\rho v_1)+\partial_1(\rho v_1^2+p)=\rho g_1$.
+Integrated over cell $i$ of a Cartesian column, with $p^{*}_{i\pm1/2}$ the face pressures of the Riemann solver,
+
+$$
+\frac{\mathrm{d}}{\mathrm{d}t}(\overline{\rho v_1})_i = -\frac{\Delta_i[\rho v_1^2+p^{*}]}{\Delta x_1} + \overline{\rho}_i g_1 .
+$$
+
+At rest the advective part vanishes and the cell stays at rest exactly when
+$p^{*}_{i+1/2}-p^{*}_{i-1/2}=g_1\overline{\rho}_i\Delta x_1$. The reference kernel (@sec-ch05-refkernel) builds face
+pressures $p_{\mathrm{sf}}$ that satisfy this difference identically, @eq-ch05-refkernel-scan, together with a cell
+pressure $p_{\mathrm{ref},i}$, a cell density $\rho_{\mathrm{ref},i}$ and a face density $\rho_{\mathrm{sf}}$. The
+reconstruction then works on the perturbations and restores the reference at the faces:
+
+$$
+\begin{aligned}
+p'_i &= \overline{p}_i - p_{\mathrm{ref},i}, \\
+\rho'_i &= \overline{\rho}_i - \rho_{\mathrm{ref},i}, \\
+p^{L,R}_{i-1/2} &= \mathcal R^{L,R}[p']_{i-1/2} + p_{\mathrm{sf},i-1/2}, \\
+\rho^{L,R}_{i-1/2} &= \mathcal R^{L,R}[\rho']_{i-1/2} + \rho_{\mathrm{sf},i-1/2},
+\end{aligned}
+$$ {#eq-ch05-wbx1-split}
+
+with $\mathcal R^{L,R}$ the left and right face values of the configured $x_1$ reconstruction. The subtraction in
+@eq-ch05-wbx1-split is done by `_hydro_ref_x1` and the two in-place updates that follow it
+([`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293)),
+and the restore by `psf_lo` added back to both states
+([`hydro_forward.cpp:357-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L363)).
+
+Suppose now that $p'_i=c$ in every cell, for one constant $c$, and $v_1=0$. Every reconstruction of snapy returns a
+constant exactly, so $p^{L}=p^{R}=p_{\mathrm{sf}}+c$ at every face, the two states agree, and the Riemann solver
+returns $p^{*}=p_{\mathrm{sf}}+c$ with zero mass and energy flux. The momentum balance above then reads
+$-(p_{\mathrm{sf},i+1/2}-p_{\mathrm{sf},i-1/2})/\Delta x_1+\overline{\rho}_ig_1=0$ by @eq-ch05-refkernel-scan. The
+discrete rest state of the scheme is therefore
+
+$$
+\overline{p}_i = p_{\mathrm{ref},i}(\overline{p},\overline{\rho}) + c \quad\text{in every cell},
+$$ {#eq-ch05-wbx1-rest}
+
+whatever the density reference is: with $v_1=0$ the face density enters no flux. Because $p_{\mathrm{ref}}$ is rebuilt
+from the state, @eq-ch05-wbx1-rest is a fixed-point condition on the column, which `balance_column` solves
+(@sec-ch05-balcol). On spherical-polar grids the face areas and the geometric pressure source enter the same
+cancellation; the plain-mean form is @sec-ch05-x1cent. The derivation follows
+`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §§1, 6.
+
+*Exact and truncated.* The rest balance is exact for any column satisfying @eq-ch05-wbx1-rest. Away from rest the
+face states carry the reconstruction's truncation error on the perturbation plus the offset
+$\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]$ of the density reference, which is $O(\Delta x_1^2)$ for the
+default reference (`[C14]`) and $O(\Delta x_1^4)$ with @sec-ch05-wbref4. The identity used in the cancellation,
+that the hydrostatic correction and the pressure force cancel at rest, is `[C19]`.
+
+### Numerical method
+
+Where things live: $\overline p$, $\overline\rho$ and the perturbations are cell averages; $p_{\mathrm{sf}}$ and
+$\rho_{\mathrm{sf}}$ are face point values at the lower face of each cell; the reconstructed states are face
+values. The scheme runs in every RK stage, in the $x_1$ block of `HydroImpl::forward`, explicitly.
+
+**Ghosts.** At a physical $x_1$ wall whose boundary function is not an outflow, the $n_g$ ghost cells of $p'$ and
+$\rho'$ are overwritten with the mirror image of the first $n_g$ interior cells, even parity, while the velocity keeps
+the odd ghosts of the reflecting boundary (@fig-ch05-wbx1-ghosts). A resting perturbation ($p'=c$) is then constant
+across the wall too. At an $x_1$ seam the ghosts are the neighbour's cells and the reference is made continuous by
+@sec-ch05-seam; at an outflow boundary the ghosts are left as the boundary function wrote them.
+
+```{python}
+#| label: fig-ch05-wbx1-ghosts
+#| fig-cap: "Perturbation ghosts at a reflecting x1 wall (thick black line), x1 increasing to the right. Top row: the perturbations p' and rho' (sky-blue circles) in three interior cells are mirrored with even parity into the three hatched reddish-purple ghost cells. Bottom row: the normal velocity (black arrows) is mirrored with odd parity. A constant perturbation stays constant across the wall, so a resting column sees no wall force."
+#| fig-alt: "Two rows of cells with a thick wall line between three hatched ghost cells on the left and three interior cells on the right; circles mirrored at equal heights in the top row, arrows mirrored with reversed direction in the bottom row."
+#| echo: false
+from snapy_report.ch05.fig_wbx1_ghosts import make_fig
+make_fig()
+```
+
+**Floors.** The reconstruction of the perturbations is called with `floor=false`, because a perturbation is
+legitimately negative and the density and pressure floors would clamp it; the passive-species rows are still
+clamped at zero when the EOS limiter is on. After the restore, a non-positive face pressure is replaced by
+$p_{\mathrm{sf}}$; a non-positive left density at face $i-\tfrac12$ by $\overline\rho_{i-1}$ and a non-positive
+right density by $\overline\rho_i$, the cell on the same side. The adjacent cell, and not $\rho_{\mathrm{sf}}$, is
+used because a reference that overestimates the density aloft turns every floor event at a reflecting top wall into
+a large spurious impedance. The shift that builds $\overline\rho_{i-1}$ replicates the first cell instead of
+wrapping around the column. @sec-ch08 owns the positivity floors in general.
+
+**Order.** In the interior the face states have the order of the reconstruction applied to a smooth perturbation,
+plus the density-reference offset above; at rest the result is exact in interior, wall and seam cells alike. A
+column that is not at the fixed point @eq-ch05-wbx1-rest has a residual force of the size of
+$p'_i-c$, which is what `balance_column` removes.
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| the gate | [`hydro_forward.cpp:262-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L262-L263) | `wb_x1` | $g_1\neq0$, not shallow water |
+| reference and subtraction | [`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293) | `_hydro_ref_x1` | |
+| even-parity ghosts | [`hydro_forward.cpp:300-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L300-L312) | `is_outflow` | physical, non-outflow walls |
+| reconstruction without floors | [`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348) | `precon1` | |
+| pressure restore and fallback | [`hydro_forward.cpp:357-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L360) | `psf_lo` | |
+| density restore and fallback | [`hydro_forward.cpp:362-377`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L377) | `rho_below` | |
+| species clamp that stays | [`reconstruct.cpp:150-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L150-L155) | `clamp_min_` | EOS limiter |
+| the non-WB $x_1$ path | [`hydro_forward.cpp:378-384`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L378-L384) | `_revise_x1inner_lr` | shallow water, $g_1=0$ |
+
+: Code map of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-code}
+
+In the $x_1$ block of `HydroImpl::forward`, in step order (code indices `is`, `iu` are the first and last interior
+cell, $i_s$ and $i_u$):
+
+1. `wb_x1` is set from the gravity, the number of state rows and the EOS type
+   ([`hydro_forward.cpp:262-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L262-L263)).
+2. Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the input `wx1` becomes the plain-mean view of
+   @sec-ch05-x1cent; otherwise `wx1` is the state itself.
+3. `_hydro_ref_x1` returns $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{sf}}$ and $\rho_{\mathrm{ref}}$, and the
+   two rows of `wx1` are replaced by the perturbations
+   ([`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293)).
+4. The even-parity ghosts are written where `is_outflow` is false at a physical wall
+   ([`hydro_forward.cpp:300-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L300-L312)).
+5. Under `SNAP_X1_MASS_COVARIANCE` the velocity row is corrected before the reconstruction (Chapter 4).
+6. `precon1` reconstructs with `floor=false`
+   ([`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348)).
+7. The rows of `wx1` are restored, `psf_lo` is added to both pressure states with its fallback
+   ([`hydro_forward.cpp:357-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L360)),
+   and the density states get `dsf` with the `rho_below` and own-cell fallbacks
+   ([`hydro_forward.cpp:362-377`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L377)).
+
+No switch is read here and no warning is issued; the setup checks of the reference are in @sec-ch05-refkernel and
+@sec-ch05-wbref4.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| `tests/test_face_floor.cpp` (`test_face_floor.release`), `face_floor_uses_adjacent_density` | dipped column: lower-face mass flux 4.07888; at the dipped face $\lvert$mass flux$\rvert<10^{-9}$ and momentum flux $>0.03042$ | $10^{-3}$ abs; $10^{-9}$; bound | the adjacent-density floor gives $-6.3\times10^{-11}$, a $\rho_{\mathrm{sf}}$ floor $-9.5\times10^{-8}$ (test header) |
+| same, `face_floor_fires_on_an_unresolved_column` | an unresolved column floors to the adjacent density in every arm: flux $2.83191\times10^{-8}$ | $10^{-5}$ relative | pinned value of the wall closure |
+| `tests/test_wb_wall_corner.cpp` (`test_wb_wall_corner.release`) | a uniform-in-$x_2$ balanced polytrope keeps $\lvert u_2\rvert/c_s$ and $\lvert v\rvert/c_s\le10^{-12}$; an $x_2$ split equals one block | $10^{-12}$; exact | round-off of a balanced column |
+| `tests/test_hydrostatic.cpp` (`test_hydrostatic.release`) | a cubed-sphere hydrostatic atmosphere stays at rest for 100 steps | $10^{-8}$ | round-off margin |
+| this chapter's check, `[C14]`, `[C19]` | density-reference offset; cancellation at rest | per claim | stated in the check |
+
+: Tests of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-tests}
+
+**Evidence.** All entries above pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test
+files named; run: `ctest -V` of the chapter's 28 entries on a Release build of the pin, 2026-10-10, CPU, double,
+1 rank except the `_mp` entries (2 ranks)]. Printed values from that run: `test_hydrostatic` maximum spurious
+vertical velocity after 100 steps $7.84\times10^{-15}$; `test_face_floor` unresolved-column dipped-face mass flux
+$2.8319\times10^{-8}$ in the default, `_wb_ref4` and `_x1_centroid` arms; `test_wb_wall_corner` CPU corner errors 0.
+**Coverage.** CPU only in that run (the build had CUDA off, so every `_cuda` case was skipped); the CUDA arms
+`face_floor_*_cuda` and `*_cuda` of `test_wb_wall_corner` exist and compare CUDA with CPU to $10^{-5}$ relative
+and exactly: **pending: a CUDA run at the pin**. Multi-rank: through the seam tests of @sec-ch05-seam only.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The $x_2$ and $x_3$ reconstructions have no well-balanced treatment. A column that is hydrostatic in the continuum
+but not at the discrete fixed point @eq-ch05-wbx1-rest is not at rest.
+:::
+
+1. **No horizontal treatment.** The $x_2$ and $x_3$ sweeps reconstruct the full state
+   (`precon23` [`hydro_forward.cpp:549-551`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L549-L551));
+   on a curved grid a stratified column is therefore balanced in $x_1$ only.
+2. **Floors off for the perturbation, but not for species.** The species clamp at zero still applies under the EOS
+   limiter (table above). Not measured as a source of imbalance.
+3. **Moist columns.** No reference meets the floor of a moist column in every case; the choice of reference is a
+   parked study (chengcli/snapy#275) and there is no YAML key to choose it (chengcli/snapy#281).
+4. **Untested combinations.** See the switch coverage matrix of Chapter 12.

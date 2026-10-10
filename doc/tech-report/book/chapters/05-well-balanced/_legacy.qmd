@@ -1,0 +1,79 @@
+## Legacy $x_1$ wall routines: isentropic wall ghosts and the wall-face state copy (no switch) {#sec-ch05-legacy}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.10; src/hydro/hydro.cpp; src/hydro/hydro_forward.cpp (described from the code)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Two older wall treatments of the non-well-balanced $x_1$ path: an isentropic extrapolation of $p$ and
+$\rho$ into the wall ghosts (defined, never called) and a copy of the right state's $p$ and $\rho$ into the left state
+at the wall face (called only on the non-well-balanced path with gravity on).
+**Switch.** None.
+**Status.** Effectively unreachable: with gravity on and any EOS other than `shallow-water` the well-balanced path of
+@sec-ch05-wbx1 runs instead, and the shallow-water EOS has no pressure row for these routines to use.
+**Defining equation.** @eq-ch05-legacy-copy.
+:::
+
+Before the well-balanced reconstruction, a stratified column at a wall was handled by filling the ghost cells with an
+isentropic continuation of the wall cell and by making the two states at the wall face agree. Both routines are still
+in the code. The ghost fill's call in `HydroImpl::forward` is commented out; the face copy runs only on the $x_1$ path
+taken when `wb_x1` is false and gravity is on, a combination no configuration reaches with a pressure row.
+
+### Derivation
+
+The face copy sets, at the lower wall face $i_s-\tfrac12$ (and symmetrically at the upper one),
+
+$$
+\begin{aligned}
+p^{L}_{i_s-1/2} &\leftarrow p^{R}_{i_s-1/2}, \\
+\rho^{L}_{i_s-1/2} &\leftarrow \rho^{R}_{i_s-1/2},
+\end{aligned}
+$$ {#eq-ch05-legacy-copy}
+
+in `_revise_x1inner_lr`
+([`hydro.cpp:448-453`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L448-L453)),
+so the Riemann solver sees no pressure jump at the wall. The ghost fill holds $K=p/\rho^\gamma$ of the wall cell and
+integrates $\mathrm{d}(p^{a})/\mathrm{d}x_1=-a\,g/K^{1/\gamma}$, $a=(\gamma-1)/\gamma$, cell by cell into the ghosts, the
+isentropic hydrostatic profile, in `_revise_x1inner_ghost`
+([`hydro.cpp:462-480`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L462-L480)).
+Neither is used at the pin, so neither has a check.
+
+### Numerical method
+
+@fig-ch05-legacy-lr shows the copy. It would run after the $x_1$ reconstruction, in every stage, on the faces of
+physical $x_1$ walls.
+
+```{python}
+#| label: fig-ch05-legacy-lr
+#| fig-cap: "The legacy wall-face copy at a bottom wall (thick black line), x1 to the right: the left state's p and rho at the wall face (orange triangle on the ghost side) are overwritten by the right state's (bluish-green arrow). The vermillion line under the hatched ghost cells marks the isentropic ghost fill, whose call is commented out."
+#| fig-alt: "Two hatched ghost cells and three interior cells meeting at a wall; two triangles at the wall face with an arrow from the right one to the left one; a line under the ghost cells."
+#| echo: false
+from snapy_report.ch05.fig_legacy_lr import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| face copy, lower and upper | [`hydro.cpp:448-460`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L448-L460) | `_revise_x1outer_lr` | |
+| isentropic ghosts, lower and upper | [`hydro.cpp:462-500`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L462-L500) | `_revise_x1outer_ghost` | |
+| the commented-out call | [`hydro_forward.cpp:247-250`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L247-L250) | `_revise_x1inner_ghost` | |
+| the only live call | [`hydro_forward.cpp:378-384`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L378-L384) | `_revise_x1inner_lr` | `wb_x1` false, gravity on |
+
+: Code map of the legacy wall routines. {#tbl-ch05-legacy-code}
+
+### Tests
+
+No test exercises either routine at the pin; the live call is unreachable in every registered test.
+
+### Limits
+
+1. **Dead code.** The ghost fill is never called and the face copy is unreachable with a pressure row; they are kept,
+   not maintained.
+2. **If revived.** The isentropic fill assumes one $\gamma$ for the column and an isentropic wall region; it would
+   conflict with the even-parity perturbation ghosts of @sec-ch05-wbx1.
