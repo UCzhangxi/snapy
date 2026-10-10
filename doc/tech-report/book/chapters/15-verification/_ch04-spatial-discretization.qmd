@@ -1,0 +1,109 @@
+## Spatial discretization evidence {#sec-ch15-ch04-tests}
+
+This catalogue accompanies @sec-ch04. The source pin is
+`snapy@e894700ff7aee30b52882e5202b16461413780b0`. It is a source inventory and a record of this
+report's own CPU checks, not a run log: no compiled snapy test, no CUDA arm and no multi-rank
+test was executed for this draft. The report's checks verify derivation identities and the
+numerics of ported formulas in CPU float64 or in symbolic algebra; they cannot certify dispatch,
+CUDA kernels, communication, or that the compiled code is the code that was ported.
+
+### Independent report checks
+
+Three scripts carry twenty-one claims, all passing, with their stdout committed beside them and
+reproduced byte for byte. Each ports the formula from the file it cites rather than restating the
+formula the chapter asserts.
+
+`src/snapy_report/ch04/recon_check.py`, seven claims, ports the interpolants from `interp_cp2` to `interp_weno5`
+([`interp_simple.hpp:43-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L43-L153))
+and the selection in `create`
+([`interpolation.cpp:6-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L6-L39)):
+
+| claim | what it establishes |
+|---|---|
+| `[C1]` | each centred face stencil reproduces cell averages of polynomials exactly to its nominal degree, found by raising the degree until it fails rather than by assertion |
+| `[C2]` | the weno3 linear weights rebuild `cp3` exactly, symbolically, difference zero |
+| `[C3]` | the weno5 linear weights rebuild `cp5` exactly, symbolically, difference zero |
+| `[C4]` | measured face order in two regimes: design order with no critical point, and the fall of weno3 to 2.09 through two critical points while `cp3` keeps 2.99 |
+| `[C5]` | the plm slope is the van Leer harmonic mean: TVD on random triples, zero slope at every extremum, centred in the smooth limit |
+| `[C6]` | `interp_ppm` returns the cell value unchanged, so `type: ppm` is donor cell |
+| `[C7]` | donor cell is first order at the face, fitted 1.00 |
+
+`src/snapy_report/ch04/covariance_check.py`, six claims, ports `_flux_covariance`
+([`hydro_forward.cpp:54-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L150))
+and the `x1_mass_covariance` block at
+[`hydro_forward.cpp:314-344`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L344):
+
+| claim | what it establishes |
+|---|---|
+| `[C1]` | the mean of a product is the product of means plus $h^2/12\,f'g'$ to $O(h^4)$, by series expansion of both sides, with the remainder's leading coefficient printed |
+| `[C2]` | the $x_1$ second moment of the face measure: exactly $h^2/12$ in Cartesian, $h^2/12 - h^4/(144r^2)$ on the curved $x_2$ or $x_3$ face |
+| `[C3]` | the centroid offset vanishes identically in Cartesian and is $h^2/(12r) + O(h^4)$ on a curved grid |
+| `[C4]` | the stored $m_1/\rho$ differs from the cell average of the velocity at fitted order 2.00, and the correction recovers it at 3.99 |
+| `[C5]` | both corrections are bitwise zero at rest, not merely small |
+| `[C6]` | the one-sided wall density slope is second order, fitted 1.98 |
+
+`src/snapy_report/ch04/operator_check.py`, eight claims, ports `divergence`
+([`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553)),
+the spherical-polar `face_area1` and `cell_volume`
+([`spherical_polar.cpp:178-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L211))
+and `lmars_impl`
+([`lmars_impl.h:17-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L17-L78)):
+
+| claim | what it establishes |
+|---|---|
+| `[C1]` | a uniform flux on a Cartesian block gives a bitwise zero tendency, not a round-off one |
+| `[C2]` | the coded areas and volume give $\nabla\!\cdot\!(r\hat r) = 3$ to $3.6\times10^{-15}$ |
+| `[C3]` | the cell volume is the exact radial integral; the midpoint form would be short by $h^3/12$ per unit solid angle |
+| `[C4]` | the sum of $V$ times the divergence is the net boundary flux, on random face fluxes, so the operator is in flux form |
+| `[C5]` | lmars is consistent: equal states give the exact physical flux to $8.9\times10^{-16}$ |
+| `[C6]` | the face velocity carries the pressure jump over $\rho c$ and the face pressure the velocity jump times $\rho c$, each checked on its own |
+| `[C7]` | the dry row plus every species row is the total mass flux, exactly, with three species |
+| `[C8]` | the face-local index map is a permutation of the three momentum rows for each direction |
+
+### Registered tests of the compiled code
+
+These are registrations read from the source, not measured passes. `test_plm` asserts that a
+constant field is reconstructed exactly for `dc`, `plm` and `weno5` in all three directions.
+`test_weno` and `test_weno5_cuda_line` cover the WENO interpolants and the CUDA line.
+`test_riemann` covers the registered solvers. `test_coordinate` covers the gnomonic areas and
+volumes, the frame projections and the radial source. `test_cubed_sphere_cell_volume_python`
+asserts the six panel volumes sum to the shell volume and the radial identity per cell at
+$10^{-12}$. `test_radial_face_moments` asserts the curved face centroid shift and second moment
+against exact rationals at $10^{-14}$. `test_hydrostatic` holds a six-panel isentropic shell at
+rest over 100 steps below $10^{-8}$. `test_x1_seam_split_mp` matches a two-rank split against the
+one-block answer at $10^{-13}$. The flux-covariance family is covered by
+`test_flux_covariance_rows`, `test_flux_covariance_seams` and `test_horizontal_flux_covariance`.
+
+### What is not verified here
+
+The gaps matter more than the coverage, and they are listed rather than implied.
+
+**No check of its own for HLLC.** @sec-ch04-hllc is the one scheme in the chapter with no ported
+check. Its consistency, and that it resolves an isolated contact exactly, are properties of
+textbook HLLC; neither is asserted by a test in the repository nor measured here. They should be
+read as expected, not as verified. The same is true of the Roe solver, whose section is written
+from reading alone, and of `plume-roe`, which no test selects at all.
+
+**No render.** This machine has no Quarto and the book has no project file, so no chapter was
+rendered for this draft and no cross-reference, figure cell or include chain is build-verified.
+`tools/check_citations.py` does not exist either; the chapter's 191 citations were checked by a
+local verifier for path, range and anchor at the pin, which is not the same as the gate passing.
+
+**Ported, not executed.** Every claim above runs a numpy or sympy port of the formula, not the
+compiled code. A divergence between the port and the compiled behaviour, from dispatch, from a
+CUDA kernel or from a compiler, would not be caught. `[C6]` of `recon_check` is the one claim
+whose subject is the absence of an implementation rather than its behaviour.
+
+**Not measured anywhere.** The order of the corrected horizontal flux end to end has no committed
+convergence ladder; the row and seam tests are the only evidence for it. The seam averaging is
+shown to restore conservation and is not shown to be accurate: the size of the disagreement it
+averages away is unmeasured. No test covers the reconstruction row split, so exchanging `interp1`
+and `interp2` would be caught only by an accuracy test.
+
+### Reproduction
+
+Run `python3 src/snapy_report/ch04/recon_check.py`, `covariance_check.py` and
+`operator_check.py`. Each exits with the number of failed claims and prints the lines recorded in
+the sibling `.out`, which is committed and must match byte for byte. The two data figures of
+@sec-ch04 read `src/snapy_report/ch04/data/*.json`, written by the same scripts, so a figure that
+changes after a clean re-run is a defect.
