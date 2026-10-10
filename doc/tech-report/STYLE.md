@@ -109,8 +109,11 @@ Rules for the layers:
 In a rendered chapter a code citation is always the link of section 10.6: link text `basename:lines`, target
 the file at the pinned **full** sha on GitHub. The notation `path:lines@<short-sha>` names a location in this
 guide, in OUTLINE.md, in a review and in a pre-conversion draft; it never appears in a `.qmd`. Converting one
-to the other is mechanical: `src/hydro/hydro_forward.cpp:826-831@dae902b` becomes
+to the other is mechanical. **The old form, forbidden in a `.qmd`,** is
+`src/hydro/hydro_forward.cpp:826-831@dae902b`; it becomes
 `` [`hydro_forward.cpp:826-831`](https://github.com/UCzhangxi/snapy/blob/dae902b04d217a824634762dd4e07790a12add5e/src/hydro/hydro_forward.cpp#L826-L831) ``.
+That line is the one place in this guide where a short sha is allowed, and it is allowed because it is
+explicitly labelled as the old form (section 3.2).
 In prose the symbol comes first, then the link:
 
 > The slope stencil is `centroid_slope` ([`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<sha>/src/hydro/gravity_work_radial.hpp#L28-L51)).
@@ -169,9 +172,15 @@ In prose the symbol comes first, then the link:
   sentence that says a defect was "flagged to its author".
 - Pull requests and issues: `chengcli/snapy#NNN` or `UCzhangxi/snapy#NNN`, always with the owner/repo.
 - Commit: `snapy@<full-sha>`, the full 40 characters, with its subject line in quotes when the subject carries
-  the meaning. A short sha appears nowhere in the report, in any file, including this guide, OUTLINE.md and
-  NOTATION.md: it is not stable as the repository grows and `git fetch` does not accept it. Where a short form
-  is wanted for reading, write the full sha and let the link text carry the short form.
+  the meaning. A short sha appears nowhere in a rendered file: it is not stable as the repository grows and
+  `git fetch` does not accept it. Where a short form is wanted for reading, write the full sha and let the link
+  text carry the short form. Two exceptions, and no others:
+  - **a short sha may appear only inside an example that is explicitly labelled as the old or forbidden form**,
+    so that a rule can show what it converts away from. The example in section 3.1 is the only such example in
+    this guide;
+  - planning files are exempt (section 10.2): OUTLINE.md and the sources keep the short-sha notation of
+    section 3.1, and it is converted when the text moves into a `.qmd`. They are never swept for short shas,
+    and a short sha in one of them is not a defect.
 
 ## 4. Numbers and evidence
 
@@ -210,6 +219,10 @@ Every number that is a measurement (an error, a drift, a rate, a timing, a growt
   level is $n+\tfrac12$. Matrix block labels $(E,\rho)$ (row, column) are a superscript in parentheses. A bare
   subscript $0$ is a cell index only; a background or reference state is subscript $\mathrm{ref}$ (NOTATION.md
   §6), and a domain end is named ($r_{\mathrm{in}}$, $z_{\mathrm{bot}}$).
+- Superscript $(0)$ is reserved for the explicit RK increment, $\Delta\mathbf U^{(0)}$, and means nothing else.
+  A quantity at the thermodynamic reference state carries a star, not a zero: $u^{\star}_n$, $s^{\star}_n$, to
+  match the $T_\star, p_\star$ of NOTATION.md §2a. Never write $u^{(0)}_n$ for a reference energy; the two
+  would otherwise collide in chapter 6, which uses both.
 - Face quantities: subscript $f$ or $i\pm\tfrac12$. Operators are only those of NOTATION.md §4, written exactly
   as that table writes them: $\Delta_i[q]$, $\langle q\rangle_{V_i}$, $\nabla_{\!1}\!\cdot G$, $s_i[q]$,
   $\operatorname{cov}_i(a,b)$, $[q]_{\mathrm{walls}}$. A chapter that needs another operator defines it at first
@@ -379,8 +392,11 @@ files, so every construct below must work in both. When in doubt, render both an
 
 ### 10.2 Inline text
 - Inline code (identifiers, switches, YAML keys, file names): backticks. Math symbols: `$...$`, never backticks.
-- OUTLINE.md and the sources are planning files and are not rendered; they may use Unicode symbols, and text
-  copied from them into a `.qmd` is converted to math mode on the way. NOTATION.md is different: it is rendered,
+- OUTLINE.md and the sources are planning files and are not rendered. They may use Unicode symbols, and they
+  may use the short-sha citation notation `path:lines@<short-sha>` of section 3.1. Text copied from them into a
+  `.qmd` is converted on the way: Unicode to math mode, and every short sha to the full-sha link of section
+  10.6. Because the conversion happens at that point and not before, neither a Unicode symbol nor a short sha in
+  a planning file is a defect, and these files are never swept for either. NOTATION.md is different: it is rendered,
   as Appendix A. The editor keeps it in the markup of this section (ASCII only, every symbol in `$...$`, pipe
   tables within the column limits of section 10.5) and converts it to `book/chapters/appa-notation.qmd` with the
   label `{#sec-appa}`; chapters reference it as `@sec-appa`. Authors edit NOTATION.md, never the generated

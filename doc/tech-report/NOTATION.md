@@ -60,10 +60,10 @@ all $N_y$ species and excludes dry air.
 | $p$ | pressure [Pa] | `w[IPR]` | |
 | $T$ | temperature [K] | `"W->T"` | |
 | $e$ | specific internal energy [J kg$^{-1}$] | | |
-| $u^{(0)}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{(0)}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$]; the energy zero of each species, not a fitted constant | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) | |
-| $L_{n\to m}$ | latent heat of the phase change from species $n$ to species $m$ at the reference state, $L_{n\to m} = u^{(0)}_n - u^{(0)}_m$ (plus the $\mathcal R T/\mu$ term where the vapour side is a gas) [J kg$^{-1}$]; snapy stores no latent heat, only the $u^{(0)}_n$ it is a difference of | (derived) | |
+| $u^{\star}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{\star}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$]; the energy zero of each species, not a fitted constant. The star, not a superscript $(0)$, because $(0)$ is the explicit RK increment (§7) | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) | |
+| $L_{n\to m}$ | latent heat of the phase change from species $n$ to species $m$ at the reference state, $L_{n\to m} = u^{\star}_n - u^{\star}_m$ (plus the $\mathcal R T/\mu$ term where the vapour side is a gas) [J kg$^{-1}$]; snapy stores no latent heat, only the $u^{\star}_n$ it is a difference of | (derived) | |
 | $\hat s_n$ | specific entropy of species $n$ [J kg$^{-1}$ K$^{-1}$]; the hat distinguishes it from the centroid slope $s_i$ of §4, which is never a thermodynamic quantity | | |
-| $s^{(0)}_n$ | reference specific entropy of species $n$ at the thermodynamic reference state, $s^{(0)}_n = s^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$ K$^{-1}$] | `sref_R` | |
+| $s^{\star}_n$ | reference specific entropy of species $n$ at the thermodynamic reference state, $s^{\star}_n = s^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$ K$^{-1}$]; starred for the same reason as $u^{\star}_n$ | `sref_R` | |
 | $\hat h$ | specific enthalpy $e + p/\rho$ [J kg$^{-1}$] | | $h$ (not used: $h$ is the cell width) |
 | $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy | conserved `u[IPR]` | $E$ |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` | |
@@ -101,7 +101,7 @@ the symbol in math, and never let the two touch.
 | $K_k$ | equilibrium constant of reaction $k$ [units stated per reaction]; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3) | |
 | $Z_n$ | compressibility factor of gas species $n$, $p_n = Z_n\rho_nR_nT$, dimensionless [-]; $Z_n=1$ at the pin, because kintera's `func2` registry is empty. Capital, because $z$ is the Cartesian height (§1) | `czh` |
 | $\tilde c_n$ | molar concentration of species $n$ [mol m$^{-3}$]; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$ | kintera state `V` |
-| $\hat h_n$ | specific enthalpy of species $n$ [J kg$^{-1}$], $\hat h_n = u^{(0)}_n + c_{p,n}T$ for a gas and without the $R_nT$ term for a condensate; always with the hat, because $h$ is the cell width (§1) | `species_enthalpy` |
+| $\hat h_n$ | specific enthalpy of species $n$ [J kg$^{-1}$], $\hat h_n = u^{\star}_n + c_{p,n}T$ for a gas and without the $R_nT$ term for a condensate; always with the hat, because $h$ is the cell width (§1) | `species_enthalpy` |
 | $c_T$ | isothermal sound speed [m s$^{-1}$], $c_s = \sqrt{\gamma}\,c_T$ | `_isothermal_sound_speed` |
 
 ## 3. Fluxes, reconstruction and Riemann solver
@@ -260,6 +260,9 @@ $\chi$ ($\rho/p$), $\varepsilon$ (onset error), $\rho'$ (reference perturbation)
 - $q$ is a generic placeholder for any field in §3 and §4 and is never a composition variable: write $y_n$ for a
   mass fraction and $r_n$ for a mixing ratio, never $q_n$ and never "specific humidity", which the code does not
   have. $r_n$ with a species subscript is a mixing ratio; $r$ bare is the radius.
+- Superscript $(0)$ is the explicit RK increment ($\Delta\mathbf U^{(0)}$, §7) and nothing else. A quantity at
+  the thermodynamic reference state carries a star, $u^{\star}_n$, $s^{\star}_n$, matching $T_\star, p_\star$
+  (§2a). Chapter 6 uses both, so the two are never written the same way.
 - $\mu$ is the dynamic viscosity (§8) and $\nu$ the kinematic viscosity; a molar mass is $\mu_n$ and a
   stoichiometric coefficient is $\nu_{nk}$, each always with its indices. $k$ is the $x_3$ cell index (§1); a
   reaction index is also $k$ only where no $x_3$ index appears, and $\varkappa$ otherwise.
