@@ -1,11 +1,12 @@
-"""Discover the report's executable derivation checks."""
-import importlib.util
+"""Discover executable derivation checks through their script entry points."""
 from pathlib import Path
+import runpy
 
 
 def test_derivation_checks():
     for path in sorted((Path(__file__).parents[1] / 'snapy_report').glob('ch*/*_check.py')):
-        spec = importlib.util.spec_from_file_location(path.stem, path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        assert module.main() == 0, path.name
+        # Scripts may return normally or use SystemExit; neither requires main().
+        try:
+            runpy.run_path(str(path), run_name='__main__')
+        except SystemExit as status:
+            assert status.code in (None, 0), path.name

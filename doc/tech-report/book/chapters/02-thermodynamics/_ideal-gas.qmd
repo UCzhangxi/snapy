@@ -15,6 +15,8 @@ Constant heat capacity and no reference-energy offset.
 The cell-local algebra is exact before floors, as in @eq-ch02-ideal-gas-pressure.
 :::
 
+The ideal gas maps total energy to pressure after subtracting kinetic energy with the metric contraction. Floors can prevent the reverse map from being an exact inverse. The factory alias is `ideal-gas`.
+
 ### Derivation
 
 For a calorically perfect gas, $e=c_{v,\mathrm d}T$ and $p=\rho R_{\mathrm d}T$,
@@ -24,7 +26,7 @@ $R_{\mathrm d}=(\gamma_{\mathrm d}-1)c_{v,\mathrm d}$ gives
 
 $$
 \begin{aligned}
-\rho e&=E-\tfrac12\sum_{a=1}^3v_a m_a,\\
+\rho e&=E-\tfrac12\sum_{a=1}^3v^a m_a,\\
 p&=(\gamma_{\mathrm d}-1)\rho e,\\
 T&=p/(\rho R_{\mathrm d}),\\
 c_s^2&=\gamma_{\mathrm d}p/\rho.
@@ -41,14 +43,15 @@ averages, this is a closure on the average state, not an exact average of a nonl
 
 ### Numerical method
 
-`_prim2cons` applies primitive floors, multiplies velocities by density, lowers momentum and adds kinetic energy.
+`_prim2cons` applies primitive floors, multiplies velocities by density, lowers momentum and adds kinetic energy,
+then applies the conserved limiter (`apply_conserved_limiter_`) in [`ideal_gas.cpp:74-87`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_gas.cpp#L74-L87).
 `_cons2prim` applies conserved floors, dispatches the fused conversion, then applies primitive floors.
 The operation is local to each supplied cell, with no special wall, seam or RK-stage stencil.
 
 ```{python}
 #| label: fig-ch02-ideal-gas-flow
-#| fig-cap: "Ideal gas conversion: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
-#| fig-alt: "Cell-local data and operation flow for Ideal gas conversion."
+#| fig-cap: "Density and covariant momentum determine velocity; subtracting kinetic energy exposes pressure."
+#| fig-alt: "Density and covariant momentum determine velocity; subtracting kinetic energy exposes pressure."
 #| echo: false
 from snapy_report.ch02.fig_ideal_gas_flow import make_fig
 make_fig()
@@ -79,12 +82,12 @@ Read the implementation in this order:
 
 : Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-ideal-gas-tests}
 
+::: {.callout-important title="Check"}
 The independent derivation check is `src/snapy_report/ch02/ideal-gas_check.py`;
 its committed output is `src/snapy_report/ch02/ideal-gas_check.out`, line `[C1]`.
 
-::: {.callout-important title="Check"}
 No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
 :::
 
 The CPU TensorIterator loop and MPS tensor path are `ideal_gas_cons2prim_cpu` and

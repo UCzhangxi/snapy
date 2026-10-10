@@ -25,14 +25,21 @@ def main():
         assert 1 <= lo <= hi <= len(code), key
         assert anchor['symbol'] in '\n'.join(code[lo-1:hi]), key
         known.add((anchor['path'], str(lo), str(hi)))
-    files = sorted((root / 'book').rglob('*.qmd')) + [root / 'reviews/ch01-opening.qmd']
+    # Each chapter owns its citation manifest; other chapters supply labels only.
+    files = sorted((root / 'book/chapters/01-overview').glob('*.qmd')) + [
+        root / 'book/chapters/15-tests/_ch01.qmd', root / 'book/chapters/01-overview.qmd']
+    book_labels = set()
+    for file in (root / 'book').rglob('*.qmd'):
+        text = file.read_text()
+        book_labels.update(re.findall(r'\{#((?:sec|eq|tbl|fig)-[a-z0-9-]+)\}', text))
+        book_labels.update(re.findall(r'^#\| label: (fig-[a-z0-9-]+)$', text, re.M))
     labels = []
     references = set()
     links = 0
     for file in files:
         text = file.read_text()
         assert text.isascii(), file
-        if file.name.startswith('_'):
+        if file.name.startswith('_') and file.name != '_opening.qmd':
             headings = re.findall(r'^### (.+)$', text, re.M)
             assert headings == ['Summary','Derivation','Numerical method','Code','Tests','Limits'], file
         labels += re.findall(r'\{#((?:sec|eq|tbl|fig)-[a-z0-9-]+)\}', text)
@@ -43,11 +50,11 @@ def main():
             assert (path,lo,hi) in known, (file,path,lo,hi)
             links += 1
     assert len(labels) == len(set(labels)), 'duplicate label'
-    missing = references - set(labels)
+    missing = references - (set(labels) | book_labels)
     assert missing <= {'sec-ch12-matrix'}, missing
     print(f'PASS: {len(manifest["anchors"])} pinned file/range/anchor records; {links} code links; {len(files)} QMD files')
     print(f'PASS: six layers, ASCII and {len(labels)} unique labels')
-    print('PENDING external reference: '+', '.join(sorted(missing)))
+    print('Unresolved external references: '+(', '.join(sorted(missing)) or 'none'))
     print('Official citation checker and Quarto render gate: NOT RUN by this script')
 
 
