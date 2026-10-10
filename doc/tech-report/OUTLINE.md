@@ -20,8 +20,8 @@
   Most entries also carry **Limits / known issues** and **Discrepancies** (source vs code; the code wins).
 - Each scheme becomes one section file `chapters/NN-slug/<scheme>.md` written in the six layers of STYLE.md, modelled
   on the worked example `chapters/06-gravity-energy/D_face_work_pe.md`.
-- The small line `inventory X: ...` under each heading names the research inventory entry it came from (kept in this
-  branch's history at the commit that added this outline), so a reviewer can trace it.
+- The small line `inventory X: ...` under each heading names the research inventory entry it came from (the inventories
+  are in this branch's history at commit `e15dd04`, `doc/tech-report/outline/`, with the one-off merge script), so a reviewer can trace it.
 - "Research note" boxes keep the inventory's own scope paragraph and recommendations for that chapter.
 
 ## Changes to the proposed chapter list, and why
