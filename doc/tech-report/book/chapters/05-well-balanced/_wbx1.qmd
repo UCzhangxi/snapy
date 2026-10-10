@@ -62,8 +62,8 @@ p^{L,R}_{i-1/2} &= \mathcal R^{L,R}[p']_{i-1/2} + p_{\mathrm{sf},i-1/2}, \\
 \end{aligned}
 $$ {#eq-ch05-wbx1-split}
 
-with $\mathcal R^{L,R}$ the left and right face values of the configured $x_1$ reconstruction. The subtraction in
-@eq-ch05-wbx1-split is done by `_hydro_ref_x1` and the two in-place updates that follow it
+with $\mathcal R^{L,R}$ the left and right face values of the configured $x_1$ reconstruction. The subtraction
+in @eq-ch05-wbx1-split is done by `_hydro_ref_x1` and the two in-place updates that follow it
 ([`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293)),
 and the restore by `psf_lo` added back to both states
 ([`hydro_forward.cpp:357-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L363)).
@@ -99,12 +99,12 @@ values. The scheme runs in every RK stage, in the $x_1$ block of `HydroImpl::for
 **Ghosts.** At a physical $x_1$ wall whose boundary function is not an outflow, the $n_g$ ghost cells of $p'$ and
 $\rho'$ are overwritten with the mirror image of the first $n_g$ interior cells, even parity, while the velocity keeps
 the odd ghosts of the reflecting boundary (@fig-ch05-wbx1-ghosts). A resting perturbation ($p'=c$) is then constant
-across the wall too. At an $x_1$ seam the ghosts are the neighbour's cells and the reference is made continuous by
-@sec-ch05-seam; at an outflow boundary the ghosts are left as the boundary function wrote them.
+across the wall too. At an $x_1$ seam the ghosts are the neighbour's cells and the reference is made continuous
+by @sec-ch05-seam; at an outflow boundary the ghosts are left as the boundary function wrote them.
 
 ```{python}
 #| label: fig-ch05-wbx1-ghosts
-#| fig-cap: "Perturbation ghosts at a reflecting x1 wall (thick black line), x1 increasing to the right. Top row: the perturbations p' and rho' (sky-blue circles) in three interior cells are mirrored with even parity into the three hatched reddish-purple ghost cells. Bottom row: the normal velocity (black arrows) is mirrored with odd parity. A constant perturbation stays constant across the wall, so a resting column sees no wall force."
+#| fig-cap: "Perturbation ghosts at a reflecting $x_1$ wall (thick black line), $x_1$ increasing to the right. Top row: the perturbations $p'$ and $\\rho'$ (sky-blue circles) in three interior cells are mirrored with even parity into the three hatched reddish-purple ghost cells. Bottom row: the normal velocity $v_1$ (black arrows) is mirrored with odd parity. A constant perturbation stays constant across the wall, so a resting column sees no wall force."
 #| fig-alt: "Two rows of cells with a thick wall line between three hatched ghost cells on the left and three interior cells on the right; circles mirrored at equal heights in the top row, arrows mirrored with reversed direction in the bottom row."
 #| echo: false
 from snapy_report.ch05.fig_wbx1_ghosts import make_fig
@@ -145,14 +145,14 @@ cell, $i_s$ and $i_u$):
 
 1. `wb_x1` is set from the gravity, the number of state rows and the EOS type
    ([`hydro_forward.cpp:262-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L262-L263)).
-2. Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the input `wx1` becomes the plain-mean view of
-   @sec-ch05-x1cent; otherwise `wx1` is the state itself.
+2. Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the input `wx1` becomes the plain-mean view
+   of @sec-ch05-x1cent; otherwise `wx1` is the state itself.
 3. `_hydro_ref_x1` returns $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{sf}}$ and $\rho_{\mathrm{ref}}$, and the
    two rows of `wx1` are replaced by the perturbations
    ([`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293)).
 4. The even-parity ghosts are written where `is_outflow` is false at a physical wall
    ([`hydro_forward.cpp:300-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L300-L312)).
-5. Under `SNAP_X1_MASS_COVARIANCE` the velocity row is corrected before the reconstruction (Chapter 4).
+5. Under `SNAP_X1_MASS_COVARIANCE` the velocity row is corrected before the reconstruction (@sec-ch04).
 6. `precon1` reconstructs with `floor=false`
    ([`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348)).
 7. The rows of `wx1` are restored, `psf_lo` is added to both pressure states with its fallback
@@ -160,8 +160,8 @@ cell, $i_s$ and $i_u$):
    and the density states get `dsf` with the `rho_below` and own-cell fallbacks
    ([`hydro_forward.cpp:362-377`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L377)).
 
-No switch is read here and no warning is issued; the setup checks of the reference are in @sec-ch05-refkernel and
-@sec-ch05-wbref4.
+No switch is read here and no warning is issued; the setup checks of the reference are in @sec-ch05-refkernel
+and @sec-ch05-wbref4.
 
 ### Tests
 
@@ -175,6 +175,7 @@ No switch is read here and no warning is issued; the setup checks of the referen
 
 : Tests of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** All entries above pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test
 files named; run: `ctest -V` of the chapter's 28 entries on a Release build of the pin, 2026-10-10, CPU, double,
 1 rank except the `_mp` entries (2 ranks)]. Printed values from that run: `test_hydrostatic` maximum spurious
@@ -183,6 +184,7 @@ $2.8319\times10^{-8}$ in the default, `_wb_ref4` and `_x1_centroid` arms; `test_
 **Coverage.** CPU only in that run (the build had CUDA off, so every `_cuda` case was skipped); the CUDA arms
 `face_floor_*_cuda` and `*_cuda` of `test_wb_wall_corner` exist and compare CUDA with CPU to $10^{-5}$ relative
 and exactly: **pending: a CUDA run at the pin**. Multi-rank: through the seam tests of @sec-ch05-seam only.
+:::
 
 ### Limits
 
@@ -198,4 +200,4 @@ but not at the discrete fixed point @eq-ch05-wbx1-rest is not at rest.
    limiter (table above). Not measured as a source of imbalance.
 3. **Moist columns.** No reference meets the floor of a moist column in every case; the choice of reference is a
    parked study (chengcli/snapy#275) and there is no YAML key to choose it (chengcli/snapy#281).
-4. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

@@ -27,8 +27,8 @@ changes only by the jumps $p^{*}-p^{L,R}$ that the Riemann solver introduces at 
 at rest whatever the column is.
 
 The value is checked to lie in $[0,1]$ when the YAML is read. The mode is independent of the well-balanced
-reconstruction, but the two are normally used together: the face states it differences are the restored states of
-@eq-ch05-wbx1-split.
+reconstruction, but the two are normally used together: the face states it differences are the restored states
+of @eq-ch05-wbx1-split.
 
 *Aliases.* "hydrostatic-split pressure", "nh" in tests; `rho_grav` in the code.
 
@@ -70,18 +70,18 @@ that calls `x1_pressure_source`
 ([`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539)).
 
 *Exact and truncated.* Exact: the cancellation at rest, in both forms. Away from rest the momentum source has the
-accuracy of $p^{*}-p^{L,R}$, which depends on the reconstruction and the Riemann solver (Chapter 4).
+accuracy of $p^{*}-p^{L,R}$, which depends on the reconstruction and the Riemann solver (@sec-ch04).
 
 ### Numerical method
 
-@fig-ch05-hsmode-cell shows the quantities. $G$ is formed right after the $x_1$ reconstruction (and the
+The quantities are shown in @fig-ch05-hsmode-cell. $G$ is formed right after the $x_1$ reconstruction (and the
 immersed-solid face treatment), from the interior faces of each cell, and applied once per stage together with the
 other source increments of `HydroImpl::forward`. It is explicit. The energy row books $\overline v_1G$, and the
-gravity-work bookkeeping of Chapter 6 counts the same term (`original_gravity_work`).
+gravity-work bookkeeping of @sec-ch06 counts the same term (`original_gravity_work`).
 
 ```{python}
 #| label: fig-ch05-hsmode-cell
-#| fig-cap: "Hydrostatic mode in one cell, x1 upward. Orange triangles: the cell's own reconstructed face pressures, the left state at its upper face and the right state at its lower face; orange arrows: the Riemann face pressures p* at both faces. The vermillion arrow is the fraction (1 - n_h) of the body force that is removed, the bluish-green arrow the difference of the cell's own face pressures that replaces it."
+#| fig-cap: "Hydrostatic mode in one cell, $x_1$ upward. Orange triangles: the cell's own reconstructed face pressures [Pa], the left state $p^{L}_{i+1/2}$ at its upper face and the right state $p^{R}_{i-1/2}$ at its lower face; orange arrows: the Riemann face pressures $p^{*}$ [Pa] at both faces. The vermillion arrow is the fraction $(1 - n_h)$ of the body force $\\overline{\\rho}_i g_1$ [N m$^{-3}$] that is removed, the bluish-green arrow the difference of the cell's own face pressures that replaces it."
 #| fig-alt: "A single shaded cell with triangles at its top and bottom face, arrows through both faces, and two vertical arrows of opposite direction beside it."
 #| echo: false
 from snapy_report.ch05.fig_hsmode_cell import make_fig
@@ -125,6 +125,7 @@ A value outside $[0,1]$ fails the `TORCH_CHECK` of step 1. There is no warning.
 
 : Tests of the hydrostatic mode. {#tbl-ch05-hsmode-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** At the pin, `test_hydrostatic` prints a maximum spurious vertical velocity after 100 steps of
 $7.84\times10^{-15}$, and the $n_h=0$ rows of `test_x1_centroid_rest` read, switch off and on, $6.0\times10^{-8}$ and
 $8.3\times10^{-15}$ (interior, $r_0/H=5$, explicit) [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test
@@ -132,11 +133,12 @@ files; run: `ctest -V` and `python tests/test_x1_centroid_rest.py` against the p
 1 rank].
 **Coverage.** CPU; CUDA twins exist and were not run (**pending: a CUDA run at the pin**); 2 ranks through the seam
 tests. No test measures the mode away from rest.
+:::
 
 ### Limits
 
 1. **Not a hydrostatic model.** $n_h=0$ removes the cell's own pressure difference from the vertical momentum, but
    the vertical velocity is still prognostic; this is not a hydrostatic primitive-equation solver.
-2. **Gravity-work interplay.** The energy term enters the gravity-work bookkeeping of Chapter 6 through
+2. **Gravity-work interplay.** The energy term enters the gravity-work bookkeeping of @sec-ch06 through
    `original_gravity_work`; its interaction with the face forms is described there.
-3. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+3. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

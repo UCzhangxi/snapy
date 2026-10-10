@@ -74,8 +74,8 @@ $$ {#eq-ch05-wallclamp-cont}
 and $r_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
 `hydro_ref_x1_wall_rop`
 ([`hydro_ref_x1_impl.h:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L68-L72)).
-The binomial reproduces a linear profile exactly, so with the linear branch the $O(a)$ errors of
-@eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(a^2)$, errors
+The binomial reproduces a linear profile exactly, so with the linear branch the $O(a)$ errors
+of @eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(a^2)$, errors
 $\tfrac{31}{32}a^2/r_0$, $\tfrac14a^2/r_0$, $\tfrac1{32}a^2/r_0$ (`[C5]`, exact series). Either way faces 0-2 keep
 the interior's $O(\Delta x_1^2)$, and for constant $r$ the linear branch returns $r_0$ exactly, so an isothermal
 column is unchanged bit for bit.
@@ -89,8 +89,8 @@ $[r_0(r_0/r_1)^k,\ r_0(1+k)]$ and is positive (`[C6]`, 60000 random samples, non
 
 The two wall cells take the cell average of the quintic through the six faces starting at the wall, weights `w6e`
 derived exactly in `[C2]`: $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/160)$ for the wall cell and
-$(-3/160, 637/1440, 511/720, -43/240, 77/1440, -11/1440)$ for the next. They keep the sixth order of
-@eq-ch05-refkernel-pref and read no ghost face.
+$(-3/160, 637/1440, 511/720, -43/240, 77/1440, -11/1440)$ for the next. They keep the sixth order
+of @eq-ch05-refkernel-pref and read no ghost face.
 
 *Exact and truncated.* Exact: the continuation for linear $r$ (linear branch), the rows for a quintic. Second
 order: $\rho_{\mathrm{sf}}$ at faces 0-2. The independent rebuild of `[C12]` gives the face-1 error first order with
@@ -98,7 +98,7 @@ the repeated wall cell (order 1.03) and second order with @eq-ch05-wallclamp-con
 
 ### Numerical method
 
-@fig-ch05-wallclamp-continuation shows the two branches. The clamp applies on a side when the option is on and that
+The two branches are shown in @fig-ch05-wallclamp-continuation. The clamp applies on a side when the option is on and that
 side is a physical boundary; the continuation additionally needs the wall side to own at least two cells, so that
 only owned cells are read. The one-sided rows need the block to fit them (at least five interior cells, or a seam at
 the other end), else the face mean is kept. The rule runs inside the kernel, in every call, on the CPU, CUDA and MPS
@@ -106,7 +106,7 @@ paths alike.
 
 ```{python}
 #| label: fig-ch05-wallclamp-continuation
-#| fig-cap: "rho/p next to a clamped bottom wall (thick black line; ghost side shaded reddish purple), x1 to the right. Sky-blue circles: the three owned cells; dashed blue curve: the true profile; vermillion squares: the repeated wall cell; bluish-green diamonds: the continuation the code uses at one and two cells past the wall. (a) rho/p rises away from the wall, so the ln-linear branch applies; (b) it falls, so the linear branch applies. The repeated value misses the trend in both."
+#| fig-cap: "$\\rho/p$ [s$^2$ m$^{-2}$] next to a clamped bottom wall (thick black line; ghost side shaded reddish purple), $x_1$ to the right. Sky-blue circles: the three owned cells; dashed blue curve: the true profile; vermillion squares: the repeated wall cell; bluish-green diamonds: the continuation the code uses at one and two cells past the wall. (a) $\\rho/p$ rises away from the wall ($r_1 > r_0$), so the ln-linear branch applies; (b) it falls ($r_1 \\le r_0$), so the linear branch applies. The repeated value misses the trend in both."
 #| fig-alt: "Two panels, each with a curve through three circles to the right of a thick wall line and, left of it, squares at the wall value and diamonds that follow the curve's trend."
 #| echo: false
 from snapy_report.ch05.fig_wallclamp_continuation import make_fig
@@ -118,7 +118,7 @@ second order and stays below the largest interior error.
 
 ```{python}
 #| label: fig-ch05-wallclamp-order
-#| fig-cap: "Relative error of the face density reference next to the walls and in the interior, polytrope T = 1 - z/2 one pressure scale height deep, against the number of cells. Bluish-green solid circles and dashed squares: first and second face above the bottom wall; orange solid and dashed triangles: first and second face below the top wall; black dotted diamonds: largest interior error. The dotted black line has slope -2. Every series falls at second order."
+#| fig-cap: "Relative error [-] of the face density reference $\\rho_{\\mathrm{sf}}$ next to the walls and in the interior, polytrope $T = 1 - z/2$ one pressure scale height deep, against the number of cells $n_1$. Bluish-green solid circles and dashed squares: first and second face above the bottom wall; orange solid and dashed triangles: first and second face below the top wall; black dotted diamonds: largest interior error. The dotted black line has slope $-2$. Every series falls at second order."
 #| fig-alt: "Log-log plot of error against cell count 16 to 128 with five falling lines, all parallel to a slope-two guide, the interior line on top."
 #| echo: false
 from snapy_report.ch05.fig_wallclamp_order import make_fig
@@ -169,6 +169,7 @@ An unknown key in `dynamics` is refused by the key check of the options parser; 
 
 : Tests of the wall clamp and continuation. {#tbl-ch05-wallclamp-tests}
 
+::: {.callout-important title="Test"}
 **Evidence.** At the pin, `test_wb_ref_wall.release` prints the face errors of @fig-ch05-wallclamp-order and the
 observed orders 2.02, 2.03, 2.03 (bottom face 1: $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom
 face 2), 1.96, 1.81, 1.97 (top face 1) and 1.94, 1.94, 2.12 (top face 2), $n_1$ 32 $\to$ 64; on the isothermal column
@@ -185,6 +186,7 @@ face-1 error $2.880\times10^{-3}$, $1.392\times10^{-3}$, $6.840\times10^{-4}$, $
 256 (`[C12]`).
 **Coverage.** CPU; the CUDA cases exist and were not run (**pending: a CUDA run at the pin**); the MPS path was not
 run (no MPS device; the derivation note says the same); multi-rank only through @sec-ch05-seam.
+:::
 
 ### Limits
 
@@ -201,4 +203,4 @@ the second-order argument. With `wb-wall-clamp: false`, `balance_column` cannot 
    the near-zero linear continuation as the cause of the linear form's failure there is a hypothesis of that note.
 4. **Stale text in the notes.** `docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1 still
    describes the binomial as edge-replicated at a clamped wall; the code at the pin continues the ratio as above.
-5. **Untested combinations.** See the switch coverage matrix of Chapter 12.
+5. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
