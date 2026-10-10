@@ -1,9 +1,18 @@
 # Style guide for the snapy Technical Report
 
-This file is binding for every chapter author. The worked example that applies all of it is
-`chapters/06-gravity-energy/D_face_work_pe.md` (to be converted to `book/chapters/06-gravity-energy.qmd` as the first
-drafting step); when this file and the example disagree, this file wins and the
-example is a bug to report.
+This file is binding for every chapter author. The worked example is
+`chapters/06-gravity-energy/D_face_work_pe.md`; it is a **pre-conversion draft**, so sections 1-9 bind it in
+full but section 10 (Quarto markup) does not. A pre-conversion draft may hand-number its equations
+(`\tag{N.n}`) and its headings and may write code locations as `path:lines@sha`; it may not deviate from any
+other rule. Converting a draft to `book/chapters/NN-slug/_<scheme>.qmd` is a mechanical step with exactly four
+parts: every `\tag{N.n}` becomes a `{#eq-chNN-<scheme>-<what>}` label and every `(N.n)` in prose becomes
+`([-@eq-chNN-<scheme>-<what>])`; every hand-typed heading number is deleted; every `path:lines@sha` becomes the
+link of section 10.6; every Unicode symbol becomes math. The author does the conversion and reruns the review
+checklist of section 9 afterwards. Where this file and a converted chapter disagree, this file wins and the
+chapter is a bug to report.
+
+The binding example is the converted `.qmd`, not the draft: `book/chapters/06-gravity-energy/_dwork.qmd` is the
+first real scheme file and the one every other author copies.
 
 Contents: 1 Scope and voice, 2 the six-layer scheme template, 3 citations, 4 numbers and evidence, 5 equations and
 notation, 6 figures, 7 executable checks, 8 directory layout, 9 review checklist, 10 Quarto markup.
@@ -146,8 +155,17 @@ Every number that is a measurement (an error, a drift, a rate, a timing, a growt
   `il`, `iu`) appear only in the Code layer, mapped to math indices once.
 - Cell averages carry an overbar only where a point value of the same quantity also appears: $\bar\rho_i$ against
   $\rho(x_{1,i})$. In a section that uses only cell averages, say so and drop the bar.
-- Face quantities: subscript $f$ or $i\pm\tfrac12$. Operators are written as in NOTATION.md §4 ($\Delta_i$,
-  $\delta_{x}$, $\langle\cdot\rangle_V$, ...).
+- Scripts are written in this order and no other: quantity, then the upright kind-label as a superscript, then
+  the space index as a subscript, then the time level or RK stage as a trailing superscript in parentheses:
+  $W^{\mathrm{D}}_i$, $F^{\mathrm{ref}}_{i+1/2}$, $\rho_i^{n}$, $\mathbf U^{(s)}$, $\Delta\mathbf U^{(0)}_{i}$,
+  $\mathsf A^{(E,\rho)}_{i}$. Time levels are $n$ (step) and $(s)$ (RK stage), never both at once; a half time
+  level is $n+\tfrac12$. Matrix block labels $(E,\rho)$ (row, column) are a superscript in parentheses. A bare
+  subscript $0$ is a cell index only; a background or reference state is subscript $\mathrm{ref}$ (NOTATION.md
+  §6), and a domain end is named ($r_{\mathrm{in}}$, $z_{\mathrm{bot}}$).
+- Face quantities: subscript $f$ or $i\pm\tfrac12$. Operators are only those of NOTATION.md §4, written exactly
+  as that table writes them: $\Delta_i[q]$, $\langle q\rangle_{V_i}$, $\nabla_{\!1}\!\cdot G$, $s_i[q]$,
+  $\operatorname{cov}_i(a,b)$, $[q]_{\mathrm{walls}}$. A chapter that needs another operator defines it at first
+  use and the editor adds it to §4; it does not invent a short form for an operator the table already has.
 - Equations that are referenced or that the code implements carry a Quarto label and are numbered by Quarto
   (section 10.3); never type an equation number by hand. Each such equation is tagged in the text with its code site.
 - Orders: write $O(h^2)$ with $h$ the local x1 cell width, or $\Delta x_1$ when the section is about x1 specifically.
@@ -160,6 +178,11 @@ Every number that is a measurement (an error, a drift, a rate, a timing, a growt
 - Bold Greek with `\boldsymbol{}`, never `\mathbf{}` (which drops Greek). Bold Latin vectors with `\mathbf{}`.
 - No math macros: write every symbol out (`\overline{\rho}_i`, `\mathrm{d}`, `\partial`). The HTML uses MathML
   (as the house books do), which has no macro layer.
+- Differential and operator symbols are upright: `\mathrm{d}` in `\mathrm{d}V`, `\mathrm{d}x_1`,
+  `\frac{\mathrm{d}}{\mathrm{d}t}`; `\partial` for partial derivatives; `\mathrm{D}/\mathrm{D}t` for a material
+  derivative. Italic $d$ is never a differential; it is free for a symbol. A prime denotes a derivative with
+  respect to $x_1$ only where the section says so in words at first use, and never in a chapter that also uses
+  the perturbation notation of NOTATION.md §6 (see NOTATION.md §10).
 - Approximate values: the number goes inside the math, `$\sim\!0.1$`, never `$\sim$0.1`.
 - Relations and arrows in prose are math too: `$\le$`, `$\to$`, `$\times$`; never the Unicode characters ≤, →, ×.
 
@@ -328,18 +351,42 @@ files, so every construct below must work in both. When in doubt, render both an
 - Multi-line derivations use `\begin{aligned} ... \end{aligned}` inside one `$$` block, with one label for the
   block (tested: one number, in HTML and PDF). Never use `align`, `equation` or `eqnarray` environments: they break
   the cross-references. Use `&` to align at `=`, and `\\` to break lines.
-- Two formulas never share a line joined by `\qquad`: each is its own `aligned` row. A display wider than the text
-  block is split in `aligned` at a relation or a `+`, with a `\qquad` indent on the continuation line. Several
-  definitions or updates (`-=`, `+=`) are one row each.
-- Number only the equations that are cited in the text or implemented by the code. Textbook background (the
-  conservation laws in their usual form) is unlabelled.
-- A derivation step that needs a sentence of justification gets the sentence in prose between two display blocks,
-  not `\text{}` inside the math.
+- `\qquad` has exactly one legal use: indenting a continuation line inside `aligned`, where one formula was
+  broken at a relation or a `+` because it was wider than the text block. It is never used to put two formulas
+  on one line, and never used to separate a formula from a condition on it. Two formulas, two definitions, or a
+  formula and its side condition are separate `aligned` rows, aligned at `=` with `&`; a side condition that is
+  not an equation goes in the prose sentence that introduces the block. Several definitions or updates are one
+  row each. A row that still overflows is split at a relation or a `+`, with `\qquad` on the continuation line.
+- An in-place update is written as an assignment with `\leftarrow`, never with a composed `-=` or `+=` glyph and
+  never with `\mathrel`: `\mathsf A_i^{(E,\rho)} \leftarrow \mathsf A_i^{(E,\rho)} - g_1\sigma_i^2
+  \tilde{\mathsf S}_{ii}/\Delta t_c`. Each update is its own `aligned` row. Where several entries are updated by
+  the same expression, write one row per entry; do not collapse them with `\quad`. The code's `+=` and `-=`
+  appear only in the Code layer, in backticks.
+- Number only an equation that is referenced somewhere in the book or implemented by the code. Textbook
+  background — the conservation laws in their usual form, standard vector identities, the definition of a
+  standard operator — is unlabelled, even when the surrounding prose points at it; point at it in words ("the
+  continuity equation above"). If a later chapter needs to reference a background equation, the editor adds the
+  label then; do not pre-label. Before review, check that every label you wrote is used: an unreferenced label
+  is a defect, not a spare. In the worked example, (6.4.1) and (6.4.2) are background and lose their numbers.
+- A derivation step that needs a sentence of justification gets the sentence in prose between two display
+  blocks, never inside the math. `\text{}` is allowed for exactly two things: a short qualifier appended to a
+  result after `\quad` ("per stage", "in every cell"), at most six words; and a named placeholder for a group of
+  terms that is defined in the prose and not written out ("Jacobian terms"). Everything else — a reason, a
+  condition, a reference — is prose. Upright words that are part of a symbol are `\mathrm{}`, not `\text{}`
+  (section 5).
 - No macros (section 5): the HTML is rendered with `html-math-method: mathml`, as in the house books, so pages work
   offline, and MathML has no macro layer. Write every symbol out exactly as NOTATION.md gives it.
 - Matrices and stencils: `\begin{pmatrix}` or `\begin{bmatrix}`. Stencils with more than 5 points go in a figure.
-- Every equation that the code implements is followed, in the same paragraph, by its code link (section 10.6):
-  "@eq-ch06-dwork-pe is computed in [`hydro_forward.cpp:761-790`](...)".
+- Do not use `\boxed`, `\colorbox`, `\fbox` or any other framing construct in math: they are amsmath/LaTeX
+  macros and the MathML path for the HTML has no macro layer. The defining equation of a scheme is marked by
+  being the one the "At a glance" box references, not by a frame. The same applies to `\tag`, `\label`,
+  `\nonumber`, `\notag` and `\ref`: numbering and referencing are Quarto's (section 10.3), never TeX's.
+  **Status: pending CI.** Whether `\boxed` survives the MathML path has not been tested — there is no Quarto
+  on the authors' machines and tech-report has no CI yet. The rule above is the safe default until the first
+  CI render settles it; if CI shows `\boxed` renders in both HTML and PDF, the editor may relax this line.
+- Every equation that the code implements is followed, in the sentence after the display block, by its code link
+  (section 10.6): "@eq-ch06-dwork-pe is computed in [`hydro_forward.cpp:761-790`](...)". The link never precedes
+  the equation and never sits in a heading or a bold lead-in; a lead-in names the quantity only.
 
 ### 10.4 Figures
 - Every figure is a Python code cell, in the scheme's `_<scheme>.qmd`, that calls a function of the `snapy_report`
