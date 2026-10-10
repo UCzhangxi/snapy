@@ -1,0 +1,79 @@
+## Shallow-water Roe and plume-roe (`type: shallow-roe`, `plume-roe`) {#sec-ch04-shallow}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Two special-purpose solvers for equation sets that are not the compressible one.
+- Switches: `type: shallow-roe` for the shallow-water system, `type: plume-roe` for the plume system.
+- Shallow-roe carries a height and two momenta, with no energy row and no face pressure.
+- Plume-roe is not a Roe solver: it falls back to a Lax-Friedrichs flux.
+:::
+
+Both of these exist for equation sets outside the main compressible path, and both are registered through the
+same factory as the others. They are grouped here because neither can be selected for a compressible deck and
+neither carries the face pressure the curved-grid path needs.
+
+### Derivation
+
+The shallow-water system has no internal energy, so the wave structure reduces to two gravity waves around a
+height-weighted average. The body at [`shallow_roe_impl.h:15-77`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/shallow_roe_impl.h#L15-L77) uses the same square-root
+weighting as @sec-ch04-roe, with the height taking the place of the density at
+`sqrtdl` ([`shallow_roe_impl.h:28-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/shallow_roe_impl.h#L28-L34)).
+
+That the flux covariance of @sec-ch04-fluxcov excludes the shallow-water equation of state follows directly:
+the correction acts on an enthalpy flux, and this system has no row to correct.
+
+Plume-roe is named for Roe and is not one. `forward` at [`plume_roe.cpp:45-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/plume_roe.cpp#L45-L103) builds the two
+physical fluxes at `calculate_flux` ([`plume_roe.cpp:14-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/plume_roe.cpp#L14-L25)) and combines them with a Lax-Friedrichs average at
+[`plume_roe.cpp:26-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/plume_roe.cpp#L26-L40): the centred flux minus half the maximum signal speed times the jump. That
+is the most dissipative of the usual choices and makes no use of the characteristic structure. The name is
+misleading and is recorded as such.
+
+### Numerical method
+
+Neither solver writes a face pressure, so neither inherits the pressure-force path of @sec-ch04-sphsrc. On a
+curved grid that is not a restriction for shallow water, which is solved on the sphere through its own
+geometry, but it does mean that the `prim` and face-pressure arguments of the coordinate `forward` are unused
+whenever these solvers run.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| shallow-water body | [`shallow_roe_impl.h:15-77`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/shallow_roe_impl.h#L15-L77) | `shallow_roe_impl` | `type: shallow-roe` |
+| height-weighted averaging | [`shallow_roe_impl.h:28-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/shallow_roe_impl.h#L28-L34) | `sqrtdl` | |
+| plume forward | [`plume_roe.cpp:45-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/plume_roe.cpp#L45-L103) | `forward` | `type: plume-roe` |
+| its physical flux | [`plume_roe.cpp:14-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/plume_roe.cpp#L14-L25) | `calculate_flux` | |
+| its Lax-Friedrichs average | [`plume_roe.cpp:26-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/plume_roe.cpp#L26-L40) | `lax_friedrichs_flux` | |
+| registration | [`riemann_solver.cpp:64-67`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L64-L67) | `ShallowRoeSolver` | |
+
+: Code map of the two special-purpose solvers. {#tbl-ch04-shallow-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/run_shallow_xy.cmake` | a shallow-water deck end to end | reference |
+| `tests/test_shallow_splash.py` | a shallow-water splash case | per test |
+
+: Tests of the two special-purpose solvers. {#tbl-ch04-shallow-tests}
+
+No test selects `plume-roe`.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `plume-roe` is a Lax-Friedrichs flux under a name that promises a characteristic solver. A reader choosing it
+  for its dissipation properties will get the opposite of what the name suggests.
+:::
+
+1. **Untested.** Nothing in the repository runs the plume solver, so its behaviour is recorded from reading
+   alone.
+2. **No face pressure.** Neither solver can drive the curved-grid pressure force or the well-balanced path of
+   chapter 5.

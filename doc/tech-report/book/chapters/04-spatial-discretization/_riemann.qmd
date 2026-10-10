@@ -1,0 +1,96 @@
+## The Riemann solver framework and the face-local frame {#sec-ch04-riemann}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.8
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Takes the two face states of a direction and returns one flux per face.
+- Switches: `dynamics/riemann-solver/{type,dir}`; YAML defaults `roe` and `omni`.
+- Six types are registered: `roe`, `lmars`, `hllc`, `upwind`, `shallow-roe`, `plume-roe`.
+- The momentum rows are rotated into a face-local frame by an index map, not by a matrix.
+- Only some solvers can return a face pressure; the base class refuses the request outright.
+:::
+
+Every face carries one flux, and the solver's job is to produce it from the two one-sided states the
+reconstruction left there. Which solver is chosen changes the numbers but not the structure of the operator:
+the divergence of @sec-ch04-divergence consumes the result the same way whatever produced it.
+
+### Derivation
+
+The physical flux through a face depends only on the component of velocity normal to it and on the two
+tangential components as passive quantities. Rather than rotate the state with a matrix, the code renames the
+rows: for direction `dim` the normal momentum row is
+
+$$
+\mathrm{ivx} = \mathrm{IPR} - \mathrm{dim},
+$$ {#eq-ch04-riemann-frame}
+
+and the two tangential rows follow by cycling. `[C8]` checks that this is a permutation of the three momentum
+rows for each of the three directions, which is what makes a single solver body correct for all of them. The
+cost is that the row index of "the normal velocity" is not fixed, and reading any solver body requires holding
+@eq-ch04-riemann-frame in mind.
+
+The rotation is only the labelling. On a curved grid the face-local frame is also a genuine change of basis,
+and that projection is done by the coordinate object before the solver is called, not inside it.
+
+### Numerical method
+
+```{python}
+#| label: fig-ch04-riemann-face
+#| fig-cap: "One face and what the solver sees. The reconstruction leaves a left state (green) and a right state (blue) on the two sides of the face (thick orange line); the solver returns a single face velocity and face pressure (orange) from which the flux of every row is built. The arrow labelled n is the face normal, and the normal momentum row is selected by the index map rather than by a rotation matrix."
+#| fig-alt: "Two adjacent cells separated by a thick vertical line, with an arrow pointing right from the left cell labelled w L, an arrow pointing left from the right cell labelled w R, a normal direction arrow, and a label for the face velocity and pressure."
+#| echo: false
+from snapy_report.ch04.fig_riemann_face import make_fig
+make_fig()
+```
+
+The factory is `create` ([`riemann_solver.cpp:50-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L50-L71)) and the option parsing
+[`riemann_solver.cpp:23-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L23-L31), where the default type is `roe` and the default direction scope is
+`omni`. Note that the default is `roe` and not the `lmars` that the example decks select: a deck that omits
+the key does not get the production solver.
+
+The base class `forward` at [`riemann_solver.cpp:39-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L39-L48) is the `upwind` solver, and it is also the
+place where the face-pressure contract is enforced: it fails outright if a caller asks it for a face pressure.
+That matters because the well-balanced $x_1$ path of chapter 5 and the geometric source of @sec-ch04-sphsrc
+both need a face pressure, so choosing a solver that cannot produce one silently changes which pressure force
+the $x_1$ momentum row sees. Of the six types, `lmars`, `hllc` and `roe` write one.
+
+Each solver is declared in `LmarsSolverImpl` ([`riemann_solver.hpp:79-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.hpp#L79-L207)) as a thin module wrapping a dispatch call,
+and the numerics live in a header shared between the CPU and CUDA paths.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| option keys and defaults | [`riemann_solver.cpp:23-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L23-L31) | `from_yaml` | type `roe`, dir `omni` |
+| the factory | [`riemann_solver.cpp:50-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L50-L71) | `create` | six registered types |
+| upwind, and the face-pressure contract | [`riemann_solver.cpp:39-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L39-L48) | `forward` | `type: upwind` |
+| the solver modules | [`riemann_solver.hpp:79-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.hpp#L79-L207) | `LmarsSolverImpl` | |
+| the face-local index map | [`lmars_impl.h:20-22`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L20-L22) | `ivx` | every direction |
+
+: Code map of the Riemann framework. {#tbl-ch04-riemann-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_riemann.cpp` | the registered solvers against reference states | per test |
+| this chapter's check | `[C8]` the index map is a permutation of the momentum rows for all three directions | exact |
+
+: Tests of the Riemann framework. {#tbl-ch04-riemann-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The YAML default solver is `roe`, not the `lmars` the shipped decks use. Omitting the key changes the scheme.
+- Three of the six types cannot return a face pressure. Selecting one of those changes the $x_1$ pressure force
+  on a curved grid and in the well-balanced path, and the only signal is a hard failure if something asks.
+:::
+
+1. **`dir` is parsed and its effect is not documented.** The key is read into the options and no source in the
+   repository explains what scope `omni` selects against the alternatives.

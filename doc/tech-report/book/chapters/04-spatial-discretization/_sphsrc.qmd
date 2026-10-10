@@ -1,0 +1,88 @@
+## Geometric sources on the spherical-polar grid {#sec-ch04-sphsrc}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.14
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- The part of the curvature that is not a difference of face fluxes, added after the divergence.
+- Switch: none; it is what the spherical-polar coordinate does instead of the Cartesian pass-through.
+- The radial source carries the centrifugal terms of the two tangential velocities.
+- The radial pressure force uses the face pressures when a solver provides them.
+- Areas and volume are exact integrals, not midpoint values.
+:::
+
+In curvilinear coordinates the divergence of a tensor is not a difference of face fluxes alone: the basis
+vectors turn from face to face, and the leftover is a source. The coordinate object adds it on top of the same
+divergence every grid uses, which is why @sec-ch04-divergence can be written once for all geometries.
+
+### Derivation
+
+The geometric factors are built once in the coordinate's own buffers and the source is assembled at
+`forward` ([`spherical_polar.cpp:224-250`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L224-L250)). The radial source is the centrifugal pair
+
+$$
+S_1 = \frac{A_{23}}{V}\,\rho\,(v_\theta^2 + v_\phi^2),
+$$ {#eq-ch04-sphsrc-src1}
+
+at `coord_src1_i` ([`spherical_polar.cpp:243-244`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L243-L244)): a parcel moving tangentially at constant radius needs an inward
+force to stay there, and in a radial momentum equation written in fluxes that force appears as a source. The
+coefficient is a ratio of the cell's own tangential area to its volume, not a nominal $1/r$, so the identity
+survives on a stretched radial grid.
+
+The areas and volume themselves are exact integrals of the metric, not midpoint approximations:
+`face_area1` ([`spherical_polar.cpp:178-183`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L183)) for the radial face, `cell_volume` ([`spherical_polar.cpp:200-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L200-L211)) for
+the volume, which carries the exact $(r_+^3 - r_-^3)/3$. `[C3]` shows what that buys: the midpoint form
+$r^2h$ would be short by $h^3/12$ per unit solid angle, so the exact form removes a second-order volume error
+that would otherwise appear in every tendency. `[C2]` then confirms that the areas and volume together
+reproduce $\nabla\!\cdot\!(r\hat r) = 3$ to $3.6\times10^{-15}$ over a test block, which is the identity the
+cubed-sphere volume test asserts cell by cell.
+
+The radial pressure force is the part with a choice in it. With a solver that returns a face pressure the force
+can be built from those face values; without one it is a plain difference. The code comment at
+`exact_x1` ([`spherical_polar.cpp:246-251`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L246-L251)) states the consequence carefully: with the face pressures the
+pressure force is the $r^2$-weighted average of the gradient, which balances $g\rho$ for a hydrostatic column
+of $r^2$ means, while the plain difference balances $g\langle\rho\rangle$ instead. Which of those is wanted is
+the subject of chapter 5, and the exact-centroid switch that selects it belongs there, not here.
+
+### Numerical method
+
+The source is added after `CoordinateImpl::forward` has produced the divergence, at
+[`spherical_polar.cpp:233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L233), so the flux part and the source part are never mixed. The shallow-water
+equation of state takes a different branch at `eos_type` ([`spherical_polar.cpp:245`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L245)), since it has no pressure
+row of the kind the force needs.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the source assembly | [`spherical_polar.cpp:224-250`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L224-L250) | `forward` | spherical-polar |
+| divergence first | [`spherical_polar.cpp:233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L233) | `CoordinateImpl` | |
+| centrifugal radial source | [`spherical_polar.cpp:243-244`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L243-L244) | `coord_src1_i` | |
+| the exact radial face area | [`spherical_polar.cpp:178-183`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L183) | `face_area1` | |
+| the exact cell volume | [`spherical_polar.cpp:200-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L200-L211) | `cell_volume` | |
+| face moments for section 4B | [`spherical_polar.cpp:213-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L213-L222) | `face_moment2_x1` | |
+
+: Code map of the spherical-polar geometric source. {#tbl-ch04-sphsrc-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_coordinate.cpp` | the geometry against reference formulas, and the frame projections | allclose defaults |
+| `tests/test_radial_face_moments.cpp` | the curved face centroid shift and second moment equal the exact rationals | `1e-14` |
+| this chapter's check | `[C2]` the radial identity to round-off; `[C3]` the exact volume against the midpoint form | round-off, symbolic |
+
+: Tests of the spherical-polar geometric source. {#tbl-ch04-sphsrc-tests}
+
+### Limits
+
+1. **The pressure force depends on the solver.** A solver that returns no face pressure gets the plain
+   difference, so the balance the column achieves depends on a key in a different section of the deck. The
+   consequences are chapter 5's subject.
+2. **Only the radial source is covered here.** The tangential sources and their metric coefficients are part of
+   the same `forward` and are described with the grid they belong to in chapter 3.

@@ -1,0 +1,96 @@
+# Spatial discretization {#sec-ch04}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4
+status: draft
+-->
+
+This chapter is the semi-discrete operator of one Runge-Kutta stage: everything that turns a cell-averaged
+state into a tendency, and nothing that advances it in time. A stage reconstructs the primitive variables to
+the faces, solves a Riemann problem on each face to get a single flux there, makes that flux single-valued
+across a process seam, takes its divergence, and adds the part of the curvature that is not a flux difference.
+Time integration is chapter 7, the well-balanced treatment of the vertical is chapter 5, and the positivity
+limiter that runs between the Riemann solve and the divergence is chapter 8.
+
+The chapter has two halves because the second has a derivation thread the first does not. Section 4A is the
+operator and its interchangeable parts: the divergence, the reconstruction framework with its six interpolants,
+the Riemann framework with its five solvers, seam averaging and the geometric sources. Almost none of that is
+written down anywhere in the repository, so it is re-derived here from the code. Section 4B is one idea applied
+twice: a finite-volume flux is an average over a face, a solver computes a flux from averages over cells, and
+the difference between those is second order in the direction that carries the stratification. That half has a
+committed derivation behind it and its own test family.
+
+```{python}
+#| label: fig-ch04-deps
+#| fig-cap: "The dependency map of this chapter. A solid black arrow reads requires, a dashed green arrow reads implies. The reconstruction framework implies a pair of interpolants, and selecting either WENO type implies the matching linear polynomial for the velocity and pressure rows. The geometric sources require a solver that returns a face pressure, which only three of the five provide. Both O(dx1^2) corrections require something of the rest of the chapter: the horizontal one needs the face pressure and the curved-grid moments, and the x1 one acts on the reconstructed velocity. Every edge is stated and cited in the section it comes from."
+#| fig-alt: "Ten labelled boxes joined by arrows, with solid arrows for requires and dashed green arrows for implies, and a legend below."
+#| echo: false
+from snapy_report.ch04.fig_ch04_deps import make_fig
+make_fig()
+```
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| Finite-volume update (@sec-ch04-divergence) | `disable-flux-x1\|x2\|x3` | all on | exact in flux form | `test_cubed_sphere_cell_volume_python` |
+| Reconstruction framework (@sec-ch04-framework) | `reconstruct/{type,scale,shock}` | `dc`, false, false | set by the interpolant | `test_plm` |
+| Donor cell (@sec-ch04-dc) | `type: dc` | the default | 1 | `test_plm` |
+| PLM (@sec-ch04-plm) | `type: plm` | off | 2, 1 at an extremum | `test_plm` |
+| Centred cp3, cp5 (@sec-ch04-cp) | `type: cp3`, `cp5` | off | 3, 5 | this chapter's check |
+| WENO3, WENO5 (@sec-ch04-weno) | `type: weno3`, `weno5` | off | 3, 5; weno3 is 2 at a critical point | `test_weno` |
+| PPM (@sec-ch04-ppm) | `type: ppm` | off | 1: the interpolant is a stub | none |
+| Riemann framework (@sec-ch04-riemann) | `riemann-solver/{type,dir}` | `roe`, `omni` | — | `test_riemann` |
+| LMARS (@sec-ch04-lmars) | `type: lmars` | off; the decks select it | consistent, 1 in the upwind branch | `test_riemann` |
+| HLLC (@sec-ch04-hllc) | `type: hllc` | off | three-wave | `test_riemann` |
+| Roe (@sec-ch04-roe) | `type: roe` | the default | linearised, no entropy fix | `test_riemann` |
+| Shallow and plume Roe (@sec-ch04-shallow) | `type: shallow-roe`, `plume-roe` | off | plume-roe is Lax-Friedrichs | `test_shallow_splash` |
+| Seam averaging (@sec-ch04-seam) | none; split $x_1$ axis | automatic | restores telescoping | `test_x1_seam_split_mp` |
+| Spherical-polar sources (@sec-ch04-sphsrc) | none; coordinate type | automatic | exact areas and volume | `test_radial_face_moments` |
+| Gnomonic sources (@sec-ch04-gnomonic) | none; coordinate type | automatic | exact solid angle and volume | `test_hydrostatic` |
+| Horizontal flux covariance (@sec-ch04-fluxcov) | `SNAP_FLUX_COVARIANCE` | off | removes two $O(\Delta x_1^2)$ terms | `test_flux_covariance_rows` |
+| $x_1$ mass covariance (@sec-ch04-x1masscov) | `SNAP_X1_MASS_COVARIANCE` | off | 2 becomes 4 in the stored velocity | this chapter's check |
+
+: The schemes of this chapter. "Order" is the spatial order of the discrete operator where that is meaningful;
+the Riemann solvers are characterised by their wave structure instead. {#tbl-ch04-schemes}
+
+Three of the entries above record code that does not do what its name says, and they are flagged where they
+appear rather than collected here: the PPM interpolant is a stub that returns the cell value, the `plume-roe`
+solver is a Lax-Friedrichs flux, and four limiter functions beside the PLM slope are never called.
+
+## 4A. Reconstruction, Riemann solvers, divergence and sources
+
+{{< include 04-spatial-discretization/_divergence.qmd >}}
+
+{{< include 04-spatial-discretization/_framework.qmd >}}
+
+{{< include 04-spatial-discretization/_dc.qmd >}}
+
+{{< include 04-spatial-discretization/_plm.qmd >}}
+
+{{< include 04-spatial-discretization/_cp.qmd >}}
+
+{{< include 04-spatial-discretization/_weno.qmd >}}
+
+{{< include 04-spatial-discretization/_ppm.qmd >}}
+
+{{< include 04-spatial-discretization/_riemann.qmd >}}
+
+{{< include 04-spatial-discretization/_lmars.qmd >}}
+
+{{< include 04-spatial-discretization/_hllc.qmd >}}
+
+{{< include 04-spatial-discretization/_roe.qmd >}}
+
+{{< include 04-spatial-discretization/_shallow.qmd >}}
+
+{{< include 04-spatial-discretization/_seam.qmd >}}
+
+{{< include 04-spatial-discretization/_sphsrc.qmd >}}
+
+{{< include 04-spatial-discretization/_gnomonic.qmd >}}
+
+## 4B. Face averages against cell averages: the $O(\Delta x_1^2)$ corrections
+
+{{< include 04-spatial-discretization/_fluxcov.qmd >}}
+
+{{< include 04-spatial-discretization/_x1masscov.qmd >}}

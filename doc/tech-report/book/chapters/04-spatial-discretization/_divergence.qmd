@@ -1,0 +1,144 @@
+## The finite-volume update and the flux divergence {#sec-ch04-divergence}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.1
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- One stage forms $\Delta u = -\Delta t\,\nabla\!\cdot\!F$ on interior cells, then adds sources.
+- The divergence is a difference of $AF$ over the two faces of each direction, divided by $V$.
+- Switch: `dynamics/disable-flux-x1|x2|x3`, default false; disabling a direction also zeroes that gravity component.
+- Flux form, so the operator conserves by construction on any grid.
+- Geometric sources are added by the coordinate object, not by the divergence.
+:::
+
+Every scheme in this chapter feeds one operator. A Runge-Kutta stage reconstructs the primitive state to the
+faces, solves a Riemann problem on each face to get a single flux there, and then books the net flux through the
+cell. Written for one cell $i$ and one direction,
+
+$$
+\Delta u_i = -\Delta t\,\frac{A_{i+1/2}F_{i+1/2} - A_{i-1/2}F_{i-1/2}}{V_i},
+$$ {#eq-ch04-divergence-fv}
+
+summed over $x_1$, $x_2$ and $x_3$. Nothing in @eq-ch04-divergence-fv depends on how $F$ was obtained: the
+reconstructions of @sec-ch04-framework and the Riemann solvers of @sec-ch04-riemann only decide the number that
+sits on the face. That separation is what makes the operator conservative whatever is plugged into it, and it is
+why the two correction schemes of @sec-ch04-fluxcov and @sec-ch04-x1masscov can act on the face value alone.
+
+### Derivation
+
+The finite-volume balance over a cell is exact, not an approximation: integrating $\partial_t u +
+\nabla\!\cdot\!F = 0$ over the cell and applying the divergence theorem gives
+
+$$
+\frac{\mathrm{d}}{\mathrm{d}t}\int_{V_i} u\,\mathrm{d}V
+ = -\oint_{\partial V_i} F\cdot n\,\mathrm{d}A .
+$$ {#eq-ch04-divergence-exact}
+
+The only approximation in @eq-ch04-divergence-fv is that each face integral is replaced by one number times the
+face area, so $F_{i\pm1/2}$ stands for the *face average* of the normal flux. Section 4B is entirely about the
+difference between that face average and the value a solver returns from cell data.
+
+Two properties follow directly, and `[C1]` and `[C4]` check them. First, on a Cartesian block the two face areas
+of a direction are equal, so a flux that does not vary in that direction cancels exactly and a uniform state
+keeps a bitwise zero tendency. Second, summing $V_i$ times @eq-ch04-divergence-fv over any set of cells leaves
+only the fluxes through the outer boundary: interior faces appear twice with opposite signs. That telescoping is
+the whole conservation argument, and it is why a seam between two processes must carry a *single* value
+(@sec-ch04-seam) and why both terms of the 4B corrections are added to the face flux rather than to the cell
+tendency.
+
+On a curved grid the areas differ between the two faces of a direction and the cancellation is no longer
+pointwise. What survives is the integral identity: `[C2]` reproduces $\nabla\!\cdot\!(r\hat r) = 3$ to
+round-off from the code's own areas and volume, which is the identity the cubed-sphere volume test asserts cell
+by cell. The remainder of the curvature, the part that is not a difference of face fluxes, is the geometric
+source of @sec-ch04-sphsrc and @sec-ch04-gnomonic.
+
+### Numerical method
+
+```{python}
+#| label: fig-ch04-divergence-cell
+#| fig-cap: "One finite-volume cell and the six face fluxes that update it. The cell value (sky-blue circle) carries the volume average over the cell; each face carries one number (orange triangle) times its area. The two x1 arrows are drawn with their own areas, which differ on a curved grid. The green arrow is the geometric source, which the coordinate object adds and the divergence does not."
+#| fig-alt: "A square cell with a centre dot, arrows through the left and right faces labelled area times flux, smaller arrows through the top and bottom faces, and a separate arrow labelled geometric source."
+#| echo: false
+from snapy_report.ch04.fig_fv_cell import make_fig
+make_fig()
+```
+
+```{python}
+#| label: fig-ch04-divergence-stage
+#| fig-cap: "The order of one Runge-Kutta stage. Each box is a step of the stage operator, in the order the code runs them; the colour marks which chapter owns the step, with orange the face work of this chapter, green the fourth-order face corrections of section 4B, vermillion the species limiter of chapter 8 and blue the implicit correction of chapter 7. The divergence is the seventh box: every face value is final before it runs."
+#| fig-alt: "A left-to-right strip of nine labelled boxes joined by arrows, from the equation of state to the implicit correction."
+#| echo: false
+from snapy_report.ch04.fig_stage_pipeline import make_fig
+make_fig()
+```
+
+The stage is `forward` at [`hydro_forward.cpp:198-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L198-L209), which converts the conserved state to
+primitive with `peos` and then runs the sweeps in the order of @fig-ch04-divergence-stage. The divergence itself
+is `divergence` at [`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553): it allocates one tendency tensor, adds the $AF$
+difference of each defined direction over the interior index range, and divides by the cell volume. A direction
+that is switched off simply has no flux tensor, so the same code covers one, two and three dimensions.
+
+The index convention matters when reading the code. Cells run from the first interior index to the last, and the
+faces of the same direction run one further, so the slices at `face_area1` ([`coordinate.cpp:534-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L534-L538)) read one more
+face than there are cells. The tendency is written on interior cells only; ghost columns never receive one,
+which is why a correction that writes a ghost column is harmless.
+
+The base `forward` at [`coordinate.cpp:585-591`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L585-L591) is the Cartesian case: it discards the primitive
+state and the face pressure and returns the divergence alone. Every curved coordinate overrides it and adds its
+source on top of the same divergence.
+
+| quantity | lives at | from |
+|---|---|---|
+| $F_1$, $F_2$, $F_3$ | faces of its own direction | the Riemann solver, then the species limiter |
+| $A_{i\pm1/2}$, $V_i$ | faces, cells | `face_area1`, `cell_volume` |
+| $\Delta u$ | interior cells | minus $\Delta t$ times the divergence |
+
+: Where each quantity of the stage operator lives. {#tbl-ch04-divergence-lives}
+
+### Code
+
+Every link below is at the pin snapy@e894700ff7aee30b52882e5202b16461413780b0. The symbol column is the
+citation's anchor: it is the identifier the cited range contains.
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the stage operator | [`hydro_forward.cpp:198-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L198-L209) | `forward` | every stage |
+| conserved to primitive | [`hydro_forward.cpp:209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L209) | `peos` | |
+| the divergence | [`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553) | `divergence` | |
+| the $x_1$ term | [`coordinate.cpp:534-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L534-L538) | `face_area1` | $x_1$ flux defined |
+| Cartesian: divergence only | [`coordinate.cpp:585-591`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L585-L591) | `forward` | cartesian |
+| per-direction switch | [`hydro_options.cpp:54-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L54-L56) | `disable_flux_x1` | YAML, default false |
+
+: Code map of the finite-volume update. {#tbl-ch04-divergence-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| this section's check | `[C1]` bitwise zero tendency on a uniform Cartesian block; `[C2]` the radial identity; `[C3]` the volume is the exact radial integral; `[C4]` the sum of $V\,\nabla\!\cdot\!F$ is the boundary flux | round-off |
+| `tests/test_cubed_sphere_cell_volume.py` | six panel volumes sum to $\tfrac43\pi(r_o^3-r_i^3)$, and the radial identity per cell | `1e-12`, rest `1e-6` |
+| `tests/test_coordinate.cpp` | gnomonic areas and volumes, frame projections | allclose defaults |
+
+: Tests of the finite-volume update. {#tbl-ch04-divergence-tests}
+
+The check is `src/snapy_report/ch04/operator_check.py`, output `src/snapy_report/ch04/operator_check.out`,
+8 of 8 claims passing.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Cylindrical coordinates are not built: the source file carries a trailing underscore and is not compiled.
+- A uniform state is preserved bitwise only on a Cartesian block; on a curved grid the cancellation is an
+  integral identity and holds to round-off, not bitwise.
+:::
+
+1. **Ghost tendencies.** No tendency is ever formed on a ghost cell, so a correction that writes one cannot
+   reach the state. That is a property of the current index ranges, not something the code asserts.
+2. **One value per face.** The operator assumes each face carries one number. Where two processes own the same
+   face that has to be arranged explicitly (@sec-ch04-seam); where the two sides disagree, averaging hides the
+   disagreement rather than removing it.

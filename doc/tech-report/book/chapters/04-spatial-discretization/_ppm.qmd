@@ -1,0 +1,60 @@
+## PPM (`type: ppm`) {#sec-ch04-ppm}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.7
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- The type is accepted and registered, but the interpolant is a stub: it returns the cell value.
+- Switch: `type: ppm`. Selecting it gives donor cell, at donor cell's accuracy, under another name.
+- Nothing warns. A deck naming `ppm` runs first order and reports no error.
+:::
+
+PPM is selectable and does nothing. The factory accepts the string and registers an interpolant, but the
+function behind it returns its centre argument unchanged, which is precisely the donor-cell reconstruction of
+@sec-ch04-dc. This section exists to record that, because the switch is live and silent.
+
+### Derivation
+
+There is nothing to derive. `[C6]` evaluates the function on a thousand random five-cell stencils and finds
+the returned face value equal to the centre cell value in every one, to the last bit.
+
+### Numerical method
+
+The body is one line, at `interp_ppm` ([`interp_simple.hpp:67-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L67-L69)): the five arguments are accepted and the middle
+one is returned. The surrounding machinery is complete, so the stub is reached through the ordinary path: the
+factory registers it at `PPMInterp` ([`interpolation.cpp:15-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L15-L16)) and the framework calls it exactly as it calls
+any other interpolant.
+
+Because the declared stencil width is that of a five-point scheme, a block selecting `ppm` is also required to
+carry the ghost width of a five-point scheme, so the stub costs the ghost cells of a method it does not
+implement.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the stub | [`interp_simple.hpp:67-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L67-L69) | `interp_ppm` | `type: ppm` |
+| registration | [`interpolation.cpp:15-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L15-L16) | `PPMInterp` | |
+
+: Code map of PPM. {#tbl-ch04-ppm-code}
+
+### Tests
+
+No test selects `type: ppm`. The only check on it is this chapter's `[C6]`, which asserts the stub behaviour
+rather than any reconstruction property.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Selecting `ppm` silently gives a first-order scheme. There is no warning, and the accuracy loss relative to
+  the name is total.
+:::
+
+1. **Open question.** Whether PPM should be implemented or the type removed is a decision for the maintainers.
+   Leaving it selectable is the one option with no defensible reading, since a deck can ask for it and be
+   answered with donor cell.

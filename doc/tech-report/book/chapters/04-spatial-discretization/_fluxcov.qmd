@@ -1,0 +1,139 @@
+## The $x_2$ and $x_3$ face-flux covariance and centroid terms (`SNAP_FLUX_COVARIANCE`) {#sec-ch04-fluxcov}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.16; docs/derivations/289-covariance-x3-curved.md@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A horizontal face flux built from cell values is short by two terms at $O(\Delta x_1^2)$: a covariance and a centroid offset.
+- Switch: `SNAP_FLUX_COVARIANCE`, a build-time flag.
+- The covariance term is the $x_1$ second moment times the product of two $x_1$ derivatives.
+- The centroid term vanishes identically in Cartesian and is of relative size $L/r$ on a curved grid.
+- Both are added to the face flux, so they telescope exactly like the flux they correct.
+- Zero at rest by construction, bitwise.
+:::
+
+A finite-volume flux through an $x_2$ or $x_3$ face is the *average over that face* of the point flux. The
+solver does not compute that: it computes a flux *from cell values*, which are averages over the cell. The two
+differ, and on a stratified atmosphere they differ at an order that matters, because the $x_1$ direction is the
+one carrying an $O(1)$ background gradient across the face.
+
+### Derivation
+
+The whole scheme rests on one identity, and `[C1]` establishes it symbolically rather than by assertion: for
+any two smooth fields,
+
+$$
+\langle fg\rangle = \langle f\rangle\langle g\rangle
+ + \frac{h^2}{12}\,f'g' + O(h^4),
+$$ {#eq-ch04-fluxcov-identity}
+
+where the averages are over a cell of width $h$ in $x_1$. The check expands both sides and finds the $h^0$ and
+$h^2$ parts cancel identically, leaving a remainder whose leading coefficient it prints. A product of averages
+is not the average of a product, and @eq-ch04-fluxcov-identity is exactly how much they differ by.
+
+The coefficient $h^2/12$ is the $x_1$ second central moment of the face's own measure. `[C2]` computes it for
+both geometries: it is exactly $h^2/12$ in Cartesian, and for an $x_2$ or $x_3$ face of a spherical-polar cell,
+whose measure is $r$, it is $h^2/12 - h^4/(144 r^2)$, which tends to $h^2/12$ as $r$ grows. The code reads it
+from the coordinate object rather than assuming the Cartesian value.
+
+The second term has no analogue in a flat geometry. A cell stores the average over the *cell* measure, whose
+$x_1$ centroid is $r_v$, while the flux needs the average over the *face* measure, whose centroid is $r_c$.
+`[C3]` computes both: in Cartesian the two measures are the same and the offset is identically zero, while on
+a spherical-polar grid $r_v - r_c = h^2/(12r) + O(h^4)$. So the correction is
+
+$$
+\mathrm{d}F = \sigma_1^2\,\rho\,h_1 (u_n)_1 \;-\; (r_v - r_c)\,\partial_1\!\left(\rho h u_n\right),
+$$ {#eq-ch04-fluxcov-dF}
+
+the first a covariance and the second a centroid offset. Their ratio is of order $L/r$ with $L$ the local
+gradient scale, so the centroid term is not a small correction to the covariance term on a curved grid: it is
+comparable, and dropping it would leave the scheme no better than it started.
+
+Two exact properties follow and `[C5]` checks the first. Every term of @eq-ch04-fluxcov-dF carries a factor of
+the face-normal velocity or its $x_1$ difference, both exactly zero at rest, so a balanced state keeps its
+exact zero tendency bitwise. The covariance term is also zero for an isothermal state; the centroid term is
+not, so that second exact zero holds in Cartesian only.
+
+The rows are not all alike, and the code comment at `sigma1` ([`hydro_forward.cpp:132-147`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L132-L147)) sets out the
+breakdown that the all-rows treatment rests on. Because cell values are density-weighted, the total mass flux
+is linear in the stored state and has no covariance at all; a tracer row carries the covariance of its own
+mass fraction with the velocity; the dry mass row carries minus the sum of the tracer parts; the energy row
+carries the covariance of the specific enthalpy with the velocity; and the momentum rows carry no covariance,
+only their centroid part, taken in the face-local frame. That last choice is what keeps rest exact: the
+pressure part of the momentum centroid term is mirrored in the geometric source of @sec-ch04-sphsrc.
+
+What is deliberately left out is recorded in the same comment: the velocity-squared parts of the momentum and
+energy gaps, which are the scheme's ordinary second-order truncation, and the Hessian of $p/\rho$ along the
+gradient, estimated there at about $10^{-3}$ of the energy term. The covariance along the *other* in-face
+coordinate is dropped too, because only $x_1$ carries an $O(1)$ background gradient and the horizontal one is
+quadratic in the perturbation.
+
+### Numerical method
+
+The correction is `_flux_covariance` at [`hydro_forward.cpp:54-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L150). It builds the arithmetic mean
+of the two face states, forms the enthalpy density from the equation of state's own call so that every
+species' energy offset is included, and projects the mean state into the face-local frame on its own copy at
+`prim2local2_` ([`hydro_forward.cpp:106-111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L106-L111)) rather than relying on whether the solver projected in place.
+
+The moments come from the coordinate at `face_moment2_x1` ([`hydro_forward.cpp:113-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L113-L128)): the second moment and the
+centroid shift are both coordinate methods, so the same code is correct on every grid. The per-row assembly
+uses two small closures, a covariance and a centroid rule, at `cov` ([`hydro_forward.cpp:149-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L149-L158)).
+
+Two guards sit at the top. A column with fewer than three cells returns nothing at
+`n1` ([`hydro_forward.cpp:88-92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L88-L92)), because a centred $x_1$ difference needs both neighbours; and the
+shallow-water equation of state returns nothing at `peos` ([`hydro_forward.cpp:93-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L93-L94)), because it has no
+internal energy row to correct. The correction is applied to the $x_2$ and $x_3$ fluxes at
+`dcov` ([`hydro_forward.cpp:599-600`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L599-L600)) and `dcov` ([`hydro_forward.cpp:622-623`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L622-L623)).
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the correction | [`hydro_forward.cpp:54-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L150) | `_flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| the two-term statement | [`hydro_forward.cpp:57-86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L57-L86) | `sigma1` | |
+| guards | [`hydro_forward.cpp:88-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L88-L94) | `n1` | $n_1 < 3$, shallow water |
+| face-local projection | [`hydro_forward.cpp:106-111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L106-L111) | `prim2local2_` | |
+| moments from the coordinate | [`hydro_forward.cpp:113-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L113-L128) | `face_moment2_x1` | |
+| the per-row breakdown | [`hydro_forward.cpp:132-147`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L132-L147) | `sigma1` | |
+| the two closures | [`hydro_forward.cpp:149-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L149-L158) | `ctr` | |
+| applied to $x_2$ | [`hydro_forward.cpp:599-600`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L599-L600) | `dcov` | |
+| applied to $x_3$ | [`hydro_forward.cpp:622-623`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L622-L623) | `dcov` | |
+
+: Code map of the horizontal flux covariance. {#tbl-ch04-fluxcov-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_flux_covariance_rows.py` | the per-row correction | per test |
+| `tests/test_flux_covariance_seams.py` | the correction across a seam | per test |
+| `tests/test_horizontal_flux_covariance.py` | the horizontal correction | per test |
+| this chapter's check | `[C1]` the identity; `[C2]` the second moment on both grids; `[C3]` the centroid offset; `[C5]` bitwise zero at rest | symbolic, bitwise |
+
+: Tests of the horizontal flux covariance. {#tbl-ch04-fluxcov-tests}
+
+The check is `src/snapy_report/ch04/covariance_check.py`, output
+`src/snapy_report/ch04/covariance_check.out`, 6 of 6 claims passing.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The exact zero for an isothermal state holds in Cartesian only: the centroid term does not vanish there on a
+  curved grid.
+- A column with fewer than three $x_1$ cells gets no correction at all, silently.
+:::
+
+1. **Terms left out on purpose.** The velocity-squared parts and the pressure Hessian are omitted. The comment
+   estimates the Hessian at about $10^{-3}$ of the energy term; that estimate is recorded in the code and is
+   not re-derived or measured here.
+2. **The other in-face coordinate.** Dropping its covariance assumes only $x_1$ carries an $O(1)$ gradient.
+   That is a statement about the intended application, a stratified atmosphere, not about the discretization,
+   and it would not hold for a problem with a strong horizontal background gradient.
+3. **Order not measured here.** This chapter's check establishes the identity, the coefficients and the exact
+   zeros. It does not measure the order of the corrected horizontal flux end to end; the repository's own row
+   and seam tests are the evidence for that, and no convergence ladder for it is committed.

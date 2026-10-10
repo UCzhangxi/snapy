@@ -1,0 +1,94 @@
+## Single-valued $x_1$ seam fluxes {#sec-ch04-seam}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.13
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Two ranks sharing an $x_1$ face each compute their own flux there; both are replaced by the average.
+- Switch: none. Active whenever the $x_1$ axis is split across processes.
+- Restores the telescoping of @sec-ch04-divergence, which a two-valued face breaks.
+- A same-process seam is not averaged: after the ghost exchange the two sides already agree.
+- The face pressure and the background mass flux travel in the same message.
+:::
+
+The conservation argument of @sec-ch04-divergence depends on every interior face carrying exactly one number,
+so that it cancels between the two cells it separates. Across a process boundary that is not automatic: each
+rank reconstructs from its own ghost cells and solves its own Riemann problem, and the two answers need not
+agree bit for bit. The difference is a source or sink of mass, momentum and energy sitting on the seam.
+
+### Derivation
+
+There is nothing to derive beyond the telescoping identity itself. If the two ranks book $F^{(0)}$ and
+$F^{(1)}$ on the same face, the pair of cells on either side exchange $A(F^{(0)} - F^{(1)})$ that no other cell
+balances, so the global sum is no longer the boundary flux. Setting both to any common value restores it, and
+the average is the choice that is symmetric in the two ranks.
+
+It is worth being precise about what this fixes and what it does not. It makes the scheme conservative; it does
+not make it *right*. If the two reconstructions disagree, the averaged flux is no better than either, and the
+disagreement has been hidden rather than removed. The size of that disagreement is not measured anywhere in the
+repository, and this section does not claim it is small.
+
+A same-process seam is handled differently: the reference ghost exchange has already given both sides the same
+inputs, so the two face states agree and no averaging is needed. That is an argument about the ghost exchange,
+recorded in the code comment at `playout` ([`hydro_forward.cpp:425-440`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L440)), not a measurement.
+
+### Numerical method
+
+```{python}
+#| label: fig-ch04-seam-average
+#| fig-cap: "A process seam in x1. Both ranks own the face on the dashed reddish-purple seam line and each reconstructs its own flux there, the green and blue triangles. Each sends its slab to the other and both then set the face to the arithmetic average, so the two cells on either side book the same number and the sum telescopes."
+#| fig-alt: "Two cells side by side separated by a dashed vertical line, each with its own face flux marker, and a double-headed arrow beneath labelled exchange then average."
+#| echo: false
+from snapy_report.ch04.fig_seam_average import make_fig
+make_fig()
+```
+
+The exchange is at `_flux1` ([`hydro_forward.cpp:425-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L508)). Two tags distinguish the two travel directions, at
+`kSeamFluxUpTag` ([`hydro_forward.cpp:447-448`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L447-L448)), so an upward and a downward payload on the same rank cannot be
+confused.
+
+Everything that lives on the seam face travels in one message rather than several. The packing at
+`pack` ([`hydro_forward.cpp:460-468`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L460-L468)) concatenates the flux rows with the face pressure and the background
+mass flux when those are present, and the unpacking at [`hydro_forward.cpp:468-480`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L468-L480) takes them apart
+in the same order. That matters for correctness and not only for cost: the face pressure feeds the geometric
+source of @sec-ch04-sphsrc and the background mass flux feeds the gravity work of chapter 6, so if those were
+averaged on a different schedule from the flux they would stop being consistent with it.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| why, and the same-process case | [`hydro_forward.cpp:425-440`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L440) | `seam` | |
+| the exchange | [`hydro_forward.cpp:425-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L508) | `_flux1` | more than one $x_1$ block per axis |
+| the two tags | [`hydro_forward.cpp:447-448`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L447-L448) | `kSeamFluxUpTag` | |
+| packing | [`hydro_forward.cpp:460-468`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L460-L468) | `pack` | |
+| unpacking | [`hydro_forward.cpp:468-480`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L468-L480) | `unpack` | |
+
+: Code map of the seam averaging. {#tbl-ch04-seam-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_x1_seam_split_mp.cpp` | a column split across two ranks matches the one-block answer, for the switch arms | `1e-13` |
+| `tests/test_x1_seam_split.cpp` | the in-process split, which this scheme does not average | `1e-13` |
+
+: Tests of the seam averaging. {#tbl-ch04-seam-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Averaging masks a disagreement between the two reconstructions rather than removing it. Conservation is
+  restored; accuracy at the seam is not analysed anywhere.
+:::
+
+1. **Coverage.** Multi-process $x_1$ seams of the well-balanced reference are exercised only through these
+   split tests, with no separate check of the seam flux itself.
+2. **Hypothesis, not measured.** That a same-process seam needs no averaging rests on the two sides receiving
+   identical ghost data. That is stated in the code comment and is consistent with the in-process seam test
+   passing bitwise, but no test isolates the claim.
