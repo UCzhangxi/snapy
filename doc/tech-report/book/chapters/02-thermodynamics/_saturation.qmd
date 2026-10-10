@@ -1,0 +1,132 @@
+## Fixed-volume fixed-energy phase equilibrium (`uv-solver`) {#sec-ch02-saturation}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: OUTLINE.md section 2; code links below
+status: draft
+-->
+
+Local symbols: $\zeta_k$ is reaction extent per volume; $\mathbf b$ is the dimensionless linearized
+residual; $\mathsf J$ its extent Jacobian; $\boldsymbol\lambda$ are constraint multipliers.
+$e_n(T)$ is species specific internal energy. These are tracked in ISSUES.md.
+### Summary
+
+::: {.callout-note title="At a glance"}
+Runs after the last stage when thermo reactions exist. `uv-solver` defaults to `auto`.
+`kkt` selects the constrained solve; `partition` requires disjoint vapor-cloud reactions.
+The fixed-energy constraint is @eq-ch02-saturation-energy; this is an operator-split solve.
+:::
+
+`uv_solver` defaults to `auto`, `max_iter` to 10 and `ftol` to $10^{-6}$ in
+[`kintera thermo.hpp:80-87`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo.hpp#L80-L87).
+
+### Derivation
+
+A local phase change has no transport across the cell boundary. Integrating the energy equation over that
+closed cell fixes $V_i\rho e$; with fixed volume this fixes internal energy density. Stoichiometric extents
+change concentrations without changing conserved elemental totals. Write an extent $\zeta_k$ in
+$\mathrm{mol\,m^{-3}}$ for each reaction:
+
+$$
+\begin{aligned}
+\tilde c_n^{\mathrm{new}}&=\tilde c_n+\sum_k\nu_{nk}\zeta_k\ge0,\\
+\rho e&=\sum_{n\in\{\mathrm d\}\cup\mathcal V\cup\mathcal C}
+\mu_n\tilde c_n^{\mathrm{new}}e_n(T).
+\end{aligned}
+$$ {#eq-ch02-saturation-energy}
+
+@eq-ch02-saturation-energy is implemented by `conc` in [`kintera equilibrate_uv.h:507-586`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/equilibrate_uv.h#L507-L586).
+
+For one vapor-cloud pair, a present cloud requires $S_n=1$; an absent cloud permits $S_n\le1$.
+The general implementation compares the stoichiometrically weighted logarithm of gaseous reactant and product concentrations
+with the fitted log saturation pressure minus the net gaseous stoichiometry sum times $\ln(\mathcal RT)$.
+At constant energy, differentiating the energy constraint gives
+$$
+\mathrm dT=-\frac{\sum_n\mu_ne_n\,\mathrm d\tilde c_n}
+{\sum_n\mu_n\tilde c_nc_{v,n}},
+$$
+where both sums include dry air. Substitute this into the differential of the log saturation residual.
+The concentration derivative of each gaseous logarithm is $-\nu_{nk}/\tilde c_n$; the temperature derivative
+adds the log-saturation derivative times the energy coefficient divided by volumetric heat capacity.
+These are precisely the two contributions to `weight`. Multiplying this row by the active stoichiometry
+forms `gain`.
+
+The constrained least-squares step minimizes the squared linearized residual subject to
+$\tilde{\mathbf c}+\mathsf N\boldsymbol\zeta\ge0$.
+With local residual vector $\mathbf b$, Jacobian $\mathsf J$, and multipliers $\boldsymbol\lambda$, its
+stationarity and complementarity conditions are
+$$
+\begin{aligned}
+\mathsf J^\mathsf T(\mathsf J\boldsymbol\zeta-\mathbf b)-\mathsf N^\mathsf T\boldsymbol\lambda&=0,\\
+\boldsymbol\lambda&\ge0,\\
+\lambda_n(\tilde c_n+(\mathsf N\boldsymbol\zeta)_n)&=0.
+\end{aligned}
+$$
+Both gaseous sides enter with their signed stoichiometry. A reaction with required gases absent on both
+sides is deferred. The zero-extent point is feasible for nonnegative input concentrations. The source additionally limits each
+reaction to available reactants, damps large gas-concentration changes, then Newton-solves the energy
+constraint with a precision-aware tolerance and a bound of 100 temperature iterations.
+The tolerance is the larger of $10^{-4}\,\mathrm K$ and $8\epsilon_{\mathrm m}|T|$. These safeguards mean a raw KKT solution is not the complete update.
+`saturation_check.py` verifies mass conservation for a balanced reaction, fixed-energy temperature recovery,
+and an interior constrained least-squares solution. It is not a replica of active-set selection or a proof
+of global nonlinear convergence.
+
+### Numerical method
+
+`MeshBlockImpl` subtracts kinetic energy and passes interior density, internal energy and mass fractions
+to `ThermoYImpl::forward`, with warm start enabled. Momentum and the total-energy row are not rewritten by
+the phase solver. It rewrites species fractions; physical ghosts are refreshed afterward. Warm-start
+reuse requires matching shape and device. Failures are counted from negative diagnostics; CPU warns
+immediately, while device counters are consumed by the caller. Chapters 7 and 10 own rejection and rollback.
+
+```{python}
+#| label: fig-ch02-saturation-flow
+#| fig-cap: "Fixed-volume fixed-energy phase equilibrium: labelled boxes show the data flow; arrows show evaluation order. Blue boxes hold cell data, green boxes apply the operation."
+#| fig-alt: "Cell-local data and operation flow for Fixed-volume fixed-energy phase equilibrium."
+#| echo: false
+from snapy_report.ch02.fig_saturation_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| snapy call | [`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816) | `pthermo` | `uv-solver` |
+| warm start and solver | [`kintera thermo_y.cpp:275-356`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L275-L356) | `uv_solver` | `uv-solver` |
+| failure counter | [`kintera thermo_y.cpp:358-389`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L358-L389) | `nfail_` | `uv-solver` |
+| active equations | [`kintera equilibrate_uv.h:383-504`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/equilibrate_uv.h#L383-L504) | `weight` | `uv-solver` |
+| diagnostic encoding | [`kintera equilibrate_uv.h:609-612`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/equilibrate_uv.h#L609-L612) | `diag` | `uv-solver` |
+
+: Code map. {#tbl-ch02-saturation-code}
+
+
+Read the implementation in this order:
+
+1. Snapy call: `pthermo` in [`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816).
+2. Warm start and solver: `uv_solver` in [`kintera thermo_y.cpp:275-356`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L275-L356).
+3. Failure counter: `nfail_` in [`kintera thermo_y.cpp:358-389`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L358-L389).
+4. Active equations: `weight` in [`kintera equilibrate_uv.h:383-504`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/equilibrate_uv.h#L383-L504).
+5. Diagnostic encoding: `diag` in [`kintera equilibrate_uv.h:609-612`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/equilibrate_uv.h#L609-L612).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_check_redo_saturation_python` | failed solve triggers rejection | logical assertions | failure protocol |
+| `test_wall_saturation.release` | phase change and wall budgets | relative $10^{-12}$ | test threshold |
+
+: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-saturation-tests}
+
+The independent derivation check is `src/snapy_report/ch02/saturation_check.py`;
+its committed output is `src/snapy_report/ch02/saturation_check.out`, line `[C1]`.
+No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
+@sec-ch15-ch02-tests; no multi-rank thermodynamic result is claimed.
+
+### Limits
+
+The energy kernel receives constant capacities and optional extra-energy function pointers. A matching
+NASA-9/H2 phase closure is not established by the tensor EOS energy function. Negative input concentrations
+are clamped with a warning, and nonpositive temperature fails. No full active-set convergence or multi-rank
+phase-equilibrium run is supplied by this draft.
+Switch-combination coverage remains pending in @sec-ch12-matrix.
