@@ -1,0 +1,90 @@
+## Cell/face-consistent reference (`SNAP_WB_REF4`) {#sec-ch12-wb-reference}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **off**. Enable the fourth-order reference with `SNAP_WB_REF4=1`; centroid conversion also enables it.
+With nonzero radial gravity, setup requires at least three ghost cells. The filter preserves cubics on a uniform grid;
+this algebraic order is not a measured solver convergence rate. The defining filter is @eq-ch12-wb-reference-filter.
+:::
+
+### Derivation
+
+Let $\chi=\rho/p$ in $\mathrm{s^2\,m^{-2}}$. Taylor expansion of $\chi(x_{1,i}+l h)$,
+with integer offset $l$, gives one term for each weighted moment. For weights
+$(-1,4,10,4,-1)/16$, the zeroth moment is one and the first three moments vanish.
+The fourth moment is $-3/2$, so the leading smooth error is $-h^4\partial_1^4\chi/16$.
+The cell reference is therefore
+
+$$
+\rho_{\mathrm{ref},i}=p_{\mathrm{ref},i}
+\frac{-\chi_{i-2}+4\chi_{i-1}+10\chi_i+4\chi_{i+1}-\chi_{i+2}}{16}.
+$$ {#eq-ch12-wb-reference-filter}
+
+`wb_ref4_cells` implements @eq-ch12-wb-reference-filter ([`wb_ref4.cpp:233-287`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L233-L287)).
+Cell means have integral $h\rho_{\mathrm{ref},i}$ on a Cartesian cell. Accumulating these integrals at five faces
+and differentiating their quartic interpolant returns the four-cell face rule $(-1,7,7,-1)/12$ in a uniform interior.
+Thus the face density comes from the same cell field, rather than an independently averaged ratio.
+At a clamped wall the missing filter values are cubic extrapolations: the first missing value has weights
+$(4,-6,4,-1)$ and the second $(10,-20,15,-4)$. Substitution reproduces all cubics.
+`configuration_check.py` checks both these moment identities and the face rule by exact rational integration.
+Source derivation: `docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §3–5.
+
+### Numerical method
+
+The filter uses five cell ratios and the face map uses four cell means. Clamped walls use owned cells only;
+seams read exchanged neighbors. The pressure-drop flag is dilated by two cells, which makes its effective reach
+three cells across a seam. Range or resolution failures retain the base reference. Nonuniform cell pressure uses
+a cubic face interpolant. With zero gravity no radial reference is built and the ghost-depth guard is inactive.
+Reference construction precedes x1 perturbation reconstruction on each hydro call.
+
+```{python}
+#| label: fig-ch12-wb-reference-flow
+#| fig-cap: "Five-cell reference filter: sky-blue circles are cell ratios, black ticks are faces, and labels give filter and wall-continuation weights."
+#| fig-alt: "five cells: -1,4,10,4,-1; wall: cubic continuation; cell density reference; four-cell face integral."
+#| echo: false
+from snapy_report.ch12.fig_wb_reference_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| wbflag | [`wb_ref4.cpp:83-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L83-L118) | `wb_ref4_enabled` | `SNAP_WB_REF4` |
+| guards | [`hydro.cpp:55-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L126) | `TORCH_CHECK` | `SNAP_WB_REF4` |
+| wbweights | [`wb_ref4.cpp:120-163`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L120-L163) | `F` | `SNAP_WB_REF4` |
+| wbface | [`wb_ref4.cpp:190-221`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L190-L221) | `lagrange_deriv` | `SNAP_WB_REF4` |
+| wbcells | [`wb_ref4.cpp:233-287`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L233-L287) | `wb_ref4_faces` | `SNAP_WB_REF4` |
+| wbcall | [`hydro.cpp:564-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L564-L579) | `wb_ref4_stencils` | `SNAP_WB_REF4` |
+| wbfacecall | [`hydro.cpp:642-646`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L642-L646) | `wb_ref4_faces` | `SNAP_WB_REF4` |
+
+: Pinned implementation anchors. {#tbl-ch12-wb-reference-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_wb_ref4_order_python` (CUDA variant registered) | three-resolution order; on/off arms with FC | on at least 2.75; off below 2.5 | [`test_wb_ref4_order.py:34-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref4_order.py#L34-L44) |
+| `test_x1_seam_split_wb_ref4.<b>` | one versus two blocks; bad ghost depth rejected | relative gap at most $10^{-13}$ | [`test_x1_seam_split.cpp:232-297`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L232-L297) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-wb-reference-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+No fitted order is measured here. Guards can lower the effective order; wall and gnomonic convergence must not be
+inferred from the interior moments. The gnomonic and extra switch combinations remain gaps in @sec-ch12-matrix.
+
+The complete switch inventory is @sec-ch12-matrix.

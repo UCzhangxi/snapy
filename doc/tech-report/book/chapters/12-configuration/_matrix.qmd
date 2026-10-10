@@ -1,0 +1,96 @@
+## Switch-combination coverage matrix (`combined configuration`) {#sec-ch12-matrix}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **as above**. WB = `SNAP_WB_REF4`, XC = `SNAP_X1_CENTROID_EXACT`, FC = `SNAP_FLUX_COVARIANCE`,
+MC = `SNAP_X1_MASS_COVARIANCE`, RE = `SNAP_GRAVITY_WORK_RADIAL_EXACT`.
+XC implies WB. `<b>` is the build suffix, normally `release`.
+“child” means a script creates fresh processes; “CTest” means the registration sets the variable.
+Unspecified flags must be sanitized when reproducing a row. The table lists selected evidence, not every test in the project.
+:::
+
+| combination | work / grid | registered evidence | meaning |
+|---|---|---|---|
+| defaults: WB/XC/FC/MC off, RE on | cell+fixer | `test_gravity_work_fixer_python` cell arms (RE forced off, inactive for cell) | default cell contract; not an assertion about every example |
+| RE unset/0/1 (child) | face; Cartesian/spherical | `test_gravity_work_radial_exact_python`; CUDA variant | default equality and corrected/plain budgets |
+| RE 0/1 (child) | face; tall column | `test_implicit_gravity_tall_column_python` | implicit rest comparison |
+| RE=0 (CTest) | face and cell arms | `test_forcing.<b>`, `test_gravity_work_fixer_python`, `test_implicit_face_work_operator_python`, `test_implicit_stratified_solid_python` | ordinary face-work invariant |
+| RE=1 (CTest) | face; Cartesian/spherical | `test_implicit_face_work_operator_radial_exact_python`, `test_implicit_stratified_solid_radial_exact_python` | corrected implicit budget |
+| RE=0/1 (CTest) | face; x1 split | `test_x1_seam_split_radial_exact[_off].<b>`; CUDA variants; `test_x1_seam_split_mp_radial_exact[_off].<b>` | one-sided seam functional; split budget |
+| WB=1 (CTest) | cell; Cartesian | `test_balance_column_wb_ref4.<b>`, `test_face_floor_wb_ref4.<b>`, `test_x1_seam_split_wb_ref4.<b>`; CUDA seam variant; `test_x1_seam_split_mp_wb_ref4.<b>` | fixed point, face floor, seam |
+| WB=1, zero gravity (CTest) | cell; one ghost | `test_x1_seam_split_wb_ref4_gravity_0.<b>` | guard inactive without gravity |
+| WB off/on (child), FC=1, RE default on | face; Cartesian | `test_wb_ref4_order_python`; CUDA variant | combined order oracle |
+| XC=1 (CTest), hence WB | cell; spherical seam / Cartesian balance | `test_balance_column_x1_centroid.<b>`, `test_face_floor_x1_centroid.<b>`, `test_x1_seam_split_x1_centroid.<b>`; CUDA seam variant; `test_x1_seam_split_mp_x1_centroid.<b>` | implied reference and seam conversion |
+| XC off/on (child), implicit 0/1, non-hydrostatic 1/0 | cell; spherical | `test_x1_centroid_rest_python`; CUDA variant | pressure/gravity rest |
+| FC unset/0/1 (child), RE=0 (CTest) | face; Cartesian | `test_horizontal_flux_covariance_python` | onset signal and plain budget |
+| FC off/on (child), RE=0 (CTest) | Cartesian/spherical/gnomonic | `test_flux_covariance_rows_python` | rest, species, energy offsets |
+| FC off/on (child) | cell+fixer; six panels and spherical | `test_flux_covariance_seams_python` | panel conservation and direction gating; one process |
+| study flags off, one ghost | cell; spherical | `test_x1_seam_split.<b>`, `test_x1_seam_split_mp.<b>` | baseline thin ghost setup |
+| MC=1 (CTest) | cell; two/three owned cells | `test_x1_seam_split_x1_mass_covariance.<b>` | setup rejection/acceptance only |
+
+: Registered combinations at the pinned code; none is a new runtime result. {#tbl-ch12-matrix-coverage}
+
+
+### Derivation
+
+Coverage is a relation between a configuration and a test assertion, not a probability or an accuracy estimate.
+A row is supported only when both the registration and the test's actual arm agree. A guard assertion supports
+setup behavior; it does not support an error norm. The anchor audit checks these sources without executing them.
+
+### Numerical method
+
+First select a build that contains the required entries, then establish import provenance, sanitize scheme variables,
+and launch the named arm. Compare the invariant selected by the gravity-work mode. Record CPU/CUDA and rank count
+with every measured result. The dependency figure shows logical constraints rather than measured performance.
+
+```{python}
+#| label: fig-ch12-matrix-flow
+#| fig-cap: "Logical dependencies: labelled arrows mean implies, requires, or acts only with. The diagram is not a sequence of numerical operations."
+#| fig-alt: "XC implies WB; WB + gravity: 3 ghosts; MC + gravity: 3 owned cells; RE + face + supported grid; FC: per-direction source."
+#| echo: false
+from snapy_report.ch12.fig_matrix_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| registration | [`CMakeLists.txt:38-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L38-L104) | `seam_arm` | `combined configuration` |
+| pytests | [`CMakeLists.txt:206-277`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L206-L277) | `SNAPY_PYTHON_TESTS` | `combined configuration` |
+| cuda | [`CMakeLists.txt:280-314`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L280-L314) | `CUDA` | `combined configuration` |
+| mctest | [`test_x1_seam_split.cpp:327-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L327-L360) | `x1_mass_covariance_needs_3_x1_cells` | `combined configuration` |
+| wbarms | [`test_wb_ref4_order.py:130-144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref4_order.py#L130-L144) | `SNAP_FLUX_COVARIANCE` | `combined configuration` |
+| fcrowsarms | [`test_flux_covariance_rows.py:260-318`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_rows.py#L260-L318) | `SNAP_FLUX_COVARIANCE` | `combined configuration` |
+| fcseamsarms | [`test_flux_covariance_seams.py:109-160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_seams.py#L109-L160) | `SNAP_FLUX_COVARIANCE` | `combined configuration` |
+
+: Pinned implementation anchors. {#tbl-ch12-matrix-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| all entries in the matrix | registered assertions only | see individual scheme tables | no runtime results in this draft |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-matrix-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+New evidence is needed for numerical MC behavior; XC with face work/RE; XC+FC; WB/XC on gnomonic grids;
+WB with RE=0 under face work; FC across MPI ranks; and broader simultaneous study-switch combinations.
+WB+FC+RE has a registered order oracle. All-flags combinations are not thereby covered.
+
+The complete switch inventory is @sec-ch12-matrix.

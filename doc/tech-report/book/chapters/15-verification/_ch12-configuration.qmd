@@ -1,0 +1,70 @@
+## Configuration and switch evidence {#sec-ch15-ch12-tests}
+
+This catalogue accompanies @sec-ch12-matrix. The source pin is
+`snapy@e894700ff7aee30b52882e5202b16461413780b0`.
+No snapy executable, installed snapy package, CUDA test or multi-rank test was run for this draft.
+“Registered” below describes source evidence, not a measured pass.
+
+### Independent report checks
+
+The command `python src/snapy_report/ch12/configuration_check.py` runs exact rational/symbolic identities
+on CPU without importing snapy. The committed output is
+`src/snapy_report/ch12/configuration_check.out`. The pytest wrapper is `src/tests/test_ch12_checks.py`.
+
+| output label | assertion | tolerance | what it does not establish |
+|---|---|---|---|
+| `[C1]` | 18 parser cases and 8 implication cases | exact truth table | execution of C++ static caching |
+| `[C2]` | filter, wall continuation and face moments | exact rational zero | measured solver order |
+| `[C3]` | five spherical moments and six pressure identities | exact symbolic zero | compiled geometry/ghost behavior |
+| `[C4]` | covariance, mass-weighted mean and shared-face cancellation | exact symbolic zero | nonlinear MC accuracy or MPI exchange |
+| `[C5]` | energy increment cancels the change of corrected potential energy | exact symbolic zero | limiter, solid and implicit implementation |
+
+: Independent checks and their limits. {#tbl-ch15-ch12-independent}
+
+### Registered setup and provenance tests
+
+| test (ctest name) | assertion | tolerance | pinned source |
+|---|---|---|---|
+| `test_python_import_path_python` | package under supplied root and caller entry retained | exact paths; 125 when unconfigured | [`test_python_import_path.py:7-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L7-L23) |
+| `test_process_group.<b>` | backend precedence and rendezvous port rules | exact strings/exception | [`test_process_group.cpp:74-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L186) |
+| `test_x1_seam_split_x1_mass_covariance.<b>` | two owned cells rejected, three accepted | exception/no-throw | [`test_x1_seam_split.cpp:327-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L327-L360) |
+| `test_hydro_options.<b>` | implicit type rejection and wall-clamp default/override | exception and boolean | [`test_hydro_options.cpp:195-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_hydro_options.cpp#L195-L258) |
+| `test_yaml_keys.<b>` | unknown gravity, geometry, reconstruction and solver keys rejected | exception | [`test_yaml_keys.cpp:63-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L63-L93) |
+
+: Source-level setup evidence. {#tbl-ch15-ch12-setup}
+
+The ghost-depth rejection and zero-gravity exception are included with the seam tests. A CTest filter must execute
+its one selected assertion; registration's pass marker guards against an empty filter. Positive mass-covariance
+accuracy remains missing even though its minimum-cell guard is present.
+
+### Numerical switch oracles
+
+| family | registered devices / ranks | assertion tolerance (not a new measurement) | source |
+|---|---|---|---|
+| WB order | CPU and CUDA; one process | on order at least 2.75; off below 2.5, at three resolutions | [`test_wb_ref4_order.py:34-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref4_order.py#L34-L44) |
+| XC rest | CPU and CUDA; one process | on below $10^{-10}$; near-origin off above $10^{-8}$ | [`test_x1_centroid_rest.py:37-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_centroid_rest.py#L37-L44) |
+| radial exact | CPU and CUDA; one process | relative budget $10^{-14}$ per step; log agreement $10^{-11}$ | [`test_gravity_work_radial_exact.py:50-57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_gravity_work_radial_exact.py#L50-L57) |
+| FC onset | CPU Python registration | scaled onset error below 0.04; budget $10^{-12}$ | [`test_horizontal_flux_covariance.py:33-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_horizontal_flux_covariance.py#L33-L41) |
+| FC rows | CPU Python registration | rest $10^{-9}$, fraction $10^{-13}$, offset $10^{-10}$ | [`test_flux_covariance_rows.py:32-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_rows.py#L32-L40) |
+| FC panel seams | CPU; six blocks in one process | relative total drift below $10^{-12}$ | [`test_flux_covariance_seams.py:33-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_seams.py#L33-L37) |
+| x1 split | CPU/CUDA single-process and separate CPU two-rank registrations | one-process state/budget gap at most $10^{-13}$ as selected by arm | [`test_x1_seam_split.cpp:232-297`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L232-L297) |
+
+: Source thresholds are acceptance criteria, not observed values. {#tbl-ch15-ch12-numerical}
+
+The tolerance choices separate roundoff budgets, deliberate nonzero controls and discretization-order thresholds.
+They are the pinned tests' contracts, not new tolerance recommendations. Read @sec-ch12-matrix for the exact names
+and environment of each arm. The two-rank registration does not turn the FC panel test into an MPI test.
+
+### Reproduction and missing evidence
+
+Use a CPU-only build for new configuration evidence. Record the full source pin, cache options, package import
+origin, test name, complete scheme environment, device, precision and rank count with each result. First run the
+import-path and setup tests, then the desired numerical arms in fresh processes. The model used by a Python
+assertion must come from the intended checkout rather than an unrelated installed package.
+
+No build is required for the exact report identities. Official citation checking and HTML/PDF rendering remain
+pending because the frozen tree has neither the official checker nor the book skeleton, and Quarto is not installed.
+The chapter provides scheme includes for editor integration rather than modifying editor-owned chapter/configuration files.
+Missing combinations are numerical MC; XC+face/RE; XC+FC; WB/XC gnomonic; WB+face with RE off; and FC across ranks.
+
+The two-rank assertions are `split_across_two_ranks_matches_one_process` in [`test_x1_seam_split_mp.cpp:247-299`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split_mp.cpp#L247-L299).

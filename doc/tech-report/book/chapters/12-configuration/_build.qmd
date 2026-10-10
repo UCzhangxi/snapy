@@ -1,0 +1,94 @@
+## Build options and test registration (`cmake -DNAME=value`) {#sec-ch12-build}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
+sources: pinned code below; frozen outline section 12
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Default: **see table**. Set build options during CMake configuration. `BUILD_TESTS=ON`, `FULL_TESTS=OFF` and `CUDA=OFF` are the defaults.
+Registration, enablement and execution are separate states; a registered CUDA test is not evidence of a CUDA run.
+There is no numerical order for a build selector.
+:::
+
+| option or cache value | default | effect and coupling |
+|---|---|---|
+| `BUILD_TESTS` | ON | enters the tests subdirectory |
+| `FULL_TESTS` | OFF | adds long reference/decomposition cases |
+| `BUILD_EXAMPLES` | OFF | ineffective: examples subdirectory is unconditional |
+| `CUDA` | OFF | enables CUDA compilation; with UCX needs the commux CUDA sidecar |
+| `NETCDF` | ON | requires NetCDF and emits output macro |
+| `UCX`, `PNETCDF` | ON except Apple OFF | require commux/UCX headers and Python pinc respectively |
+| `NMASS` | 0 | legacy mass-index offset; positive values fail the static index assertion |
+| `CMAKE_BUILD_TYPE` | Release | GNU/Clang Release optimisation or Debug sanitizers |
+| `SNAPY_TEST_PYTHONPATH` | empty | prepends the intended package to Python test imports |
+| `KINTERA_DATA_DIR` | unset | supplies the test nasa9.dat symlink |
+| `EIGEN`, `FMT`, `GTEST`, `YAML-CPP` | ON in package calls | dependency fetching and cached archives |
+
+The CUDA architecture list starts at 60, 61, 70, 75, 80, 86, 89; toolkit 12 adds 90, 12.8 adds 120,
+and 13 removes 60, 61 and 70. The Torch ABI probe supplies the global C++ ABI definition.
+
+
+### Derivation
+
+No continuum or discrete equation is selected here. The dependency chain is configure, generate, compile, register,
+then execute. `BUILD_TESTS=OFF` stops before registration; a non-CUDA build disables matching GPU entries after registration.
+These are configuration predicates, not a convergence derivation.
+
+### Numerical method
+
+Build flags act before any mesh or RK stage exists. Test names use the lower-case build type suffix, represented here by `<b>`.
+The Python import-path probe must run before numerical Python evidence can be attributed to this checkout.
+
+```{python}
+#| label: fig-ch12-build-flow
+#| fig-cap: "Build options and test registration: labelled boxes show inputs and decisions in evaluation order. This is a configuration or stencil diagram, not measured data."
+#| fig-alt: "CMake options; generated definitions; register tests; enable or disable; execute separately."
+#| echo: false
+from snapy_report.ch12.fig_build_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| build | [`CMakeLists.txt:7-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L7-L18) | `BUILD_TESTS` | `cmake -DNAME=value` |
+| release | [`CMakeLists.txt:61-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L61-L68) | `CMAKE_BUILD_TYPE` | `cmake -DNAME=value` |
+| arches | [`CMakeLists.txt:109-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L109-L143) | `CMAKE_CUDA_ARCHITECTURES` | `cmake -DNAME=value` |
+| abi | [`CMakeLists.txt:33-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L33-L47) | `_GLIBCXX_USE_CXX11_ABI` | `cmake -DNAME=value` |
+| examples | [`CMakeLists.txt:146-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L146-L158) | `BUILD_EXAMPLES` | `cmake -DNAME=value` |
+| params | [`parameters.cmake:1-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/parameters.cmake#L1-L46) | `NMASS` | `cmake -DNAME=value` |
+| indices | [`snap.h:34-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L55) | `static_assert` | `cmake -DNAME=value` |
+| packages | [`macro_add_package.cmake:1-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/macros/macro_add_package.cmake#L1-L34) | `option` | `cmake -DNAME=value` |
+| ucx | [`ucx.cmake:1-73`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/ucx.cmake#L1-L73) | `UCX_FOUND` | `cmake -DNAME=value` |
+| sidecar | [`CMakeLists.txt:78-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L78-L106) | `COMMUX_WITH_CUDA_RUNTIME` | `cmake -DNAME=value` |
+| importreg | [`CMakeLists.txt:316-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L316-L363) | `SNAPY_TEST_PYTHONPATH` | `cmake -DNAME=value` |
+| fulltests | [`CMakeLists.txt:368-385`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L368-L385) | `FULL_TESTS` | `cmake -DNAME=value` |
+| cudagate | [`CMakeLists.txt:515-536`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L515-L536) | `SNAPY_BUILD_CUDA` | `cmake -DNAME=value` |
+
+: Pinned implementation anchors. {#tbl-ch12-build-code}
+
+Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
+The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_python_import_path_python` | package origin; caller path retained | exact path equality | [`test_python_import_path.py:7-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L7-L23) |
+
+: Source assertions, not new solver measurements. {#tbl-ch12-build-tests}
+
+No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
+Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+### Limits
+
+No configure/build is run for this draft. `BUILD_EXAMPLES`, positive `NMASS` and `NETCDF=OFF` have no dedicated test here.
+The Torch/package/toolchain combination still needs a CPU configure smoke test before claiming build compatibility.
+
+The complete switch inventory is @sec-ch12-matrix.
