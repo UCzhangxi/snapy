@@ -136,7 +136,7 @@ In prose the symbol comes first, then the link:
   |---|---|---|
   | snapy base | `aea71ed852effb09e6aa155dd26349f1210ef556` | the commit of `chengcli/snapy` on which the gravity-work round is based |
   | snapy round | `e894700ff7aee30b52882e5202b16461413780b0` | the gravity-work round as squash-merged by `chengcli/snapy#297`, on `chengcli/snapy` main |
-  | kintera | `4dc613d04f24621b3119d343c5c7c9b93628895b` | the kintera commit the round builds against |
+  | kintera | `c55b13b2204997d2d09e04498558ab9495d8ee77` | `chengcli/kintera` main (tag `v2.6.2`) when `chengcli/snapy#297` merged; every kintera citation uses it |
   | pyharp | `4721715855e937c1e8b218e964c0655f46e56e29` | the pyharp commit the round builds against |
 
   Code that differs between the base and the round is cited at the round pin. A branch name may be given as a
