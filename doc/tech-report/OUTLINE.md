@@ -3479,6 +3479,12 @@ pin. Out of scope; mention at most as external users of `max_time_step`/stage fo
   with `type: evaporation` reactions), not a snapy library option.
 - Derivations:
   - Steady-diffusion evaporation rate, the two-product extent quadratic, and the no-overshoot property of one implicit step. exists: `sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md` §4 (step-by-step) and the overshoot analysis that follows. Code: `kintera src/kinetics/evaporation.cpp:128`, `:165-191@4dc613d`.
+  - Notation: this is the only derivation in chapters 2 and 10 that exists rather than needs re-deriving, and it
+    is written in symbols that NOTATION.md reserves for other quantities — $r$ (radius), $\kappa$ (thermal
+    diffusivity), $C$ (Courant number), $D$ ($\mathcal D$, the gravity-work defect), $K$ ($K_f$, a face
+    diffusion coefficient), $F$ (mass flux density), $\mathbf v$ (velocity), and $x$ (a coordinate). Re-writing
+    it in the report's notation (STYLE.md §2) needs NOTATION.md §2a first. The chapter author writes a
+    translation table as the first thing in the Derivation layer and does not paste the note's symbols.
   - Energy bookkeeping of a species-only update with reference energies. re-derive from `examples/run_hydro.cpp:171-191`.
 - Figures:
   - Operator-split diagram: RK stages (dynamics + saturation adjustment) → cons→prim refresh → kinetics implicit step → check_redo.
@@ -5244,6 +5250,11 @@ are written.
 | 10.6 | Precipitation and evaporation kinetics (driver-level coupling, kintera rates) | 1 | 1 |
 | 10.7 | Passive scalar (tracer) transport per dry air, with optional upper bound | 0 | 2 |
 | 10.8 | Sedimentation of condensates (recommended to move to Ch. 10) | 0 | 3 |
+
+Chapters 2 and 10 carry 22 `re-derive` entries and 1 `exists` between them, and no chapter author. The
+notation they need (NOTATION.md §2a, latent heat, entropy, the vapour/condensate split, the thermodynamic
+reference state) does not exist yet; settle it with the rules in round 1, before the chapters are assigned,
+or they will be written twice.
 | 11.1 | Boundary-function registry, YAML parsing, and face classification | 0 | 0 |
 | 11.2 | Reflecting wall | 0 | 0 |
 | 11.3 | Periodic | 0 | 0 |

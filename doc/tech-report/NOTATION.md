@@ -4,7 +4,10 @@ One symbol, one meaning, across all chapters. A chapter that needs a symbol not 
 and flags it to the editor, who adds it here or picks another. Where a source note uses a different letter, the
 chapter translates to this table; the "source letter" column records the common translations.
 
-Units are SI. "per unit volume" means per m$^3$ of the cell's own measure (on spherical-polar grids that includes
+Units are SI and every dimensional symbol carries them in its row; a dimensionless symbol is marked [-] and a
+count is marked "count", so that an empty unit cell always means the row is unfinished. $\mathcal R$ is the
+only molar quantity in the table (J mol$^{-1}$ K$^{-1}$); every other thermodynamic quantity is specific, per
+kilogram. "per unit volume" means per m$^3$ of the cell's own measure (on spherical-polar grids that includes
 the $r^2\sin\theta$ metric).
 
 ## 1. Coordinates and grids
@@ -38,31 +41,68 @@ the $r^2\sin\theta$ metric).
 
 ## 2. State, thermodynamics and species
 
+Species are numbered $n = 1..N_y$, with $n=\mathrm{d}$ reserved for dry air, which is not one of the $N_y$.
+Math species $n$ is code row `ICY + n - 1`; the rows are dry (`IDN`), then the $N_v$ vapours, then the $N_c$
+condensates. Chapters state which of $\mathcal V$ or $\mathcal C$ a sum runs over; a bare $\sum_n$ runs over
+all $N_y$ species and excludes dry air.
+
 | symbol | meaning | code | source letter |
 |---|---|---|---|
-| $\rho$ | total density, dry plus every species that carries mass [kg m$^{-3}$] | primitive `w[IDN]`; conserved $\sum$ `u[IDN]`+`u[ICY+n]` | |
-| $\rho_d$ | dry-air density | conserved `u[IDN]` | |
-| $y_n$ | mass fraction of species $n$ (vapour or condensate), $n = 1..N_y$ | primitive `w[ICY+n]` | $q_n$ |
-| $\rho_n$ | partial density of species $n$, $\rho y_n$ | conserved `u[ICY+n]` | |
-| $N_y$ | number of species rows | `ny` | |
+| $\rho$ | total density, dry plus every species that carries mass [kg m$^{-3}$] | primitive `w[IDN]`; conserved `u[IDN]` $+\sum$ `u[ICY+n-1]` | |
+| $\rho_{\mathrm{d}}$ | dry-air density [kg m$^{-3}$] | conserved `u[IDN]` | |
+| $y_n$ | mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries | primitive `w[ICY+n-1]` | $q_n$ |
+| $r_n$ | mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, chapter 10.7). Never written $r$ without its species subscript, because $r$ alone is the radius (§1) | `s/rho_d` in `src/scalar` | |
+| $\rho_n$ | partial density of species $n$, $\rho y_n$ [kg m$^{-3}$] | conserved `u[ICY+n-1]` | |
+| $\mathcal V, \mathcal C$ | the vapour and condensate index sets; $n\in\mathcal V$ runs $1..N_v$ and $n\in\mathcal C$ runs $N_v+1..N_y$, in that order, as the rows are stored | `vapor_ids`, `cloud_ids` | |
+| $N_v, N_c, N_y$ | the number of vapours, of condensates, and of species rows, $N_y=N_v+N_c$ (count) | `nvapor`, `ncloud`, `ny` | |
 | $\mathbf v = (v_1,v_2,v_3)$ | velocity [m s$^{-1}$] | `w[IVX]`, `w[IVY]`, `w[IVZ]` | $u, w$ |
 | $m_1, m_2, m_3$ | momentum density $\rho v_a$ | `u[IVX]`.. | $m$ |
 | $p$ | pressure [Pa] | `w[IPR]` | |
 | $T$ | temperature [K] | `"W->T"` | |
 | $e$ | specific internal energy [J kg$^{-1}$] | | |
-| $\hat h$ | specific enthalpy $e + p/\rho$ | | $h$ (not used: $h$ is the cell width) |
+| $u^{(0)}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{(0)}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$]; the energy zero of each species, not a fitted constant | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) | |
+| $L_{n\to m}$ | latent heat of the phase change from species $n$ to species $m$ at the reference state, $L_{n\to m} = u^{(0)}_n - u^{(0)}_m$ (plus the $\mathcal R T/\mu$ term where the vapour side is a gas) [J kg$^{-1}$]; snapy stores no latent heat, only the $u^{(0)}_n$ it is a difference of | (derived) | |
+| $\hat s_n$ | specific entropy of species $n$ [J kg$^{-1}$ K$^{-1}$]; the hat distinguishes it from the centroid slope $s_i$ of §4, which is never a thermodynamic quantity | | |
+| $s^{(0)}_n$ | reference specific entropy of species $n$ at the thermodynamic reference state, $s^{(0)}_n = s^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$ K$^{-1}$] | `sref_R` | |
+| $\hat h$ | specific enthalpy $e + p/\rho$ [J kg$^{-1}$] | | $h$ (not used: $h$ is the cell width) |
 | $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy | conserved `u[IPR]` | $E$ |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` | |
 | $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | `hydro_w` | |
-| $\gamma$ | ratio of specific heats (local, may vary with composition) | `gamma` | |
-| $c_v, c_p$ | specific heats at constant volume and pressure | | |
-| $R_d$, $R_n$ | specific gas constants of dry air and species $n$ | | $R$ |
-| $\mathcal R$ | universal gas constant | | |
-| $c_s$ | sound speed | `"W->L"` | $a$ |
-| $p_{\mathrm{sat}}$ | saturation vapour pressure | | $e_s$ (not used: $e$ is internal energy) |
+| $c_{v,n}, c_{p,n}$ | specific heats of species $n$ at constant volume and pressure, **per unit mass of that species** [J kg$^{-1}$ K$^{-1}$]; $c_{v,n} = c^{\mathrm{ref}}_n R_n$ with $c^{\mathrm{ref}}_n$ the dimensionless table value. $n=\mathrm{d}$ is dry air: $c_{v,\mathrm{d}}, c_{p,\mathrm{d}}$ | `cref_R` | |
+| $c_v, c_p$ | mixture specific heats **per unit total mass**, $c_v = \sum_n y_n c_{v,n}$ over dry air and every species [J kg$^{-1}$ K$^{-1}$]; a chapter that needs the per-dry-mass form writes it out and says so | `"VT->cv"` | |
+| $\gamma$ | mixture ratio of specific heats $c_p/c_v$, local, varies with composition, dimensionless [-]; $\gamma_{\mathrm{d}}$ is the dry value | `gamma`, `"W->A"` | |
+| $f_\varepsilon, f_\sigma$ | the ideal-moist mixture factors, $f_\varepsilon = 1+\sum_{n\in\mathcal V}y_n(\mu_{\mathrm{d}}/\mu_n-1)-\sum_{n\in\mathcal C}y_n$ and $f_\sigma = 1+\sum_n y_n(c_{v,n}/c_{v,\mathrm{d}}-1)$, both dimensionless [-] | `f_eps`, `f_sig` | |
+| $R_{\mathrm{d}}$, $R_n$ | specific gas constants of dry air and species $n$ [J kg$^{-1}$ K$^{-1}$] | | $R$ |
+| $\mathcal R$ | universal gas constant [J mol$^{-1}$ K$^{-1}$]; the only molar quantity in this table | `Rgas` | |
+| $c_s$ | sound speed [m s$^{-1}$] | `"W->L"` | $a$ |
+| $p_{\mathrm{sat},k}(T)$ | saturation vapour pressure of the condensing reaction $k$ [Pa], valid only on $[T_{\min,k}, T_{\max,k}]$; the code fits $\ln p_{\mathrm{sat},k}$, so a chapter that quotes the fit quotes the logarithm. Never $e_s$: $e$ is the specific internal energy | `logsvp`, `svp_params`, `minT`, `maxT` | $e_s$ |
+| $y_{\mathrm{sat},n}$ | the mass fraction of vapour $n$ in equilibrium with its condensate at the cell's $T$ and $\rho$, dimensionless [-]; the target of the saturation adjustment, not a stored variable | | $q_s$ |
+| $S_n = y_n/y_{\mathrm{sat},n}$ | saturation ratio of vapour $n$, dimensionless [-]; never $\mathsf S$ (slope matrix, §4) or $\hat s$ (entropy, §2) | | |
 | $\chi$ | the ratio $\rho/p$ used by the default reference and its wall continuation [s$^2$ m$^{-2}$] | `rop` | $r$ (not used: $r$ is radius) |
-| $\theta_p$ | potential temperature | | $\theta$ (not used: $\theta$ is colatitude) |
+| $\theta_p$ | dry potential temperature, $\theta_p = T(p_\star/p)^{R_{\mathrm{d}}/c_{p,\mathrm{d}}}$ [K], referred to the thermodynamic reference pressure $p_\star$ of §2a and formed with the **dry** constants whatever the composition | | $\theta$ (not used: $\theta$ is colatitude) |
+| $\theta_v$ | virtual potential temperature: $\theta_p$ of the dry-equivalent state with the same density [K]; defined in the chapter that first uses it | | |
+| $\Theta$ | the positivity limiter's donor factor in $[0,1]$: the fraction of a requested face flux the limiter allows. Capital, because $\theta$ is the colatitude | `theta`, meters `thetamin`, `thetasevere` | |
 | $H$ | a density or pressure scale height [m] | | $H$ |
+
+## 2a. Species thermodynamics, phase change and reactions
+
+kintera's state keys (`DY->V`, `VU->T`, `VT->P`) name tensors, not symbols. `V` there is the
+molar-concentration vector $\tilde c$, not the cell volume $V_i$ of §1; chapters write the key in backticks and
+the symbol in math, and never let the two touch.
+
+| symbol | meaning | code |
+|---|---|---|
+| $\mu_n$ | molar mass of species $n$ [kg mol$^{-1}$]; $\mu_{\mathrm{d}}$ for dry air. Never bare $\mu$, which is dynamic viscosity (§8); the code stores the inverse | `mu`, `inv_mu` |
+| $R_n = \mathcal R/\mu_n$ | specific gas constant of species $n$ [J kg$^{-1}$ K$^{-1}$]; defined for gases only — a condensate has no $R_n$ and contributes no pressure | |
+| $T_\star, p_\star$ | the **thermodynamic** reference state: the single temperature and pressure at which $c^{\mathrm{ref}}_n$, $u^{\mathrm{ref}}_n$ and $s^{\mathrm{ref}}_n$ are tabulated (defaults $300$ K and $10^5$ Pa) [K], [Pa]. The star is never used for the hydrostatic reference state of §6, which is a per-cell field written with the subscript $\mathrm{ref}$ | kintera `reference-state/{Tref,Pref}` |
+| $\nu_{nk}$ | stoichiometric coefficient of species $n$ in reaction $k$, always with both indices; never bare $\nu$, which is kinematic viscosity (§8) | `stoich` |
+| $\mathsf N$ | the stoichiometry matrix, $\mathsf N_{nk} = \nu_{nk}$, species by reaction; never $\mathsf S$, which is the centroid-slope matrix (§4) | `stoich` |
+| $k = 1..N_r$ | reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so | `nreaction` |
+| $K_k$ | equilibrium constant of reaction $k$ [units stated per reaction]; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3) | |
+| $Z_n$ | compressibility factor of gas species $n$, $p_n = Z_n\rho_nR_nT$, dimensionless [-]; $Z_n=1$ at the pin, because kintera's `func2` registry is empty. Capital, because $z$ is the Cartesian height (§1) | `czh` |
+| $\tilde c_n$ | molar concentration of species $n$ [mol m$^{-3}$]; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$ | kintera state `V` |
+| $\hat h_n$ | specific enthalpy of species $n$ [J kg$^{-1}$], $\hat h_n = u^{(0)}_n + c_{p,n}T$ for a gas and without the $R_nT$ term for a condensate; always with the hat, because $h$ is the cell width (§1) | `species_enthalpy` |
+| $c_T$ | isothermal sound speed [m s$^{-1}$], $c_s = \sqrt{\gamma}\,c_T$ | `_isothermal_sound_speed` |
 
 ## 3. Fluxes, reconstruction and Riemann solver
 
@@ -119,6 +159,11 @@ the $r^2\sin\theta$ metric).
 | $F^{\mathrm{ref}}$ | the reference-state part of the $x_1$ mass flux | `bflux1` |
 
 ## 6. Hydrostatic reference state
+
+This section is the *hydrostatic* reference state: a per-cell field the $x_1$ reconstruction is written about.
+It has nothing to do with the thermodynamic reference state $(T_\star, p_\star)$ of §2a, which is two
+constants. The subscript $\mathrm{ref}$ always means this one; the star always means that one. No chapter uses
+$p_{\mathrm{ref}}$ for $10^5$ Pa.
 
 | symbol | meaning | code |
 |---|---|---|
@@ -185,9 +230,9 @@ reference to pyharp or pydisort.
 
 | symbol | meaning |
 |---|---|
-| $\mathrm{KE}, \mathrm{IE}$ | kinetic and internal energy totals (logged `ke=`, `ie=`) |
+| $\mathrm{KE}, \mathrm{IE}$ | kinetic and internal energy **totals** over the domain (logged `ke=`, `ie=`) [J]; the per-cell internal energy density is $\rho e$ [J m$^{-3}$] and is never written `ie` |
 | $\varepsilon$ | relative error of the linear convective onset growth rate against its oracle; $\varepsilon_{\mathrm{eff}}$ the one-step effective value |
-| $e_\infty$, $e_1$ | max-norm and 1-norm errors (named quantity) |
+| $\lVert\cdot\rVert_\infty$, $\lVert\cdot\rVert_1$ | max-norm and 1-norm errors of a named quantity, e.g. $\lVert W^{\mathrm{D}}-g_1\langle F\rangle\rVert_\infty$; never $e_\infty$ or $e_1$, because $e$ is the specific internal energy (§2), and never $\mathcal E$, which is the conserved energy functional (§5) |
 | $\mathcal O$ | an oracle (exact or reference value) |
 | $\lambda_w$ | a wavelength (named) |
 
@@ -210,6 +255,17 @@ $\chi$ ($\rho/p$), $\varepsilon$ (onset error), $\rho'$ (reference perturbation)
 - $O(\cdot)$, upright-weight italic capital O, is always the Landau order symbol. $\mathcal O$, calligraphic, is
   always an oracle (§9). Never write $\mathcal O$ for an order, and never write $O$ for an oracle. Where a
   sentence uses both, name the oracle ($\mathcal O_{\mathrm{EVP}}$).
+- $s_i$ with a cell subscript is always the centroid slope; a specific entropy always carries a hat,
+  $\hat s_n$. The two never appear without their marks.
+- $q$ is a generic placeholder for any field in §3 and §4 and is never a composition variable: write $y_n$ for a
+  mass fraction and $r_n$ for a mixing ratio, never $q_n$ and never "specific humidity", which the code does not
+  have. $r_n$ with a species subscript is a mixing ratio; $r$ bare is the radius.
+- $\mu$ is the dynamic viscosity (§8) and $\nu$ the kinematic viscosity; a molar mass is $\mu_n$ and a
+  stoichiometric coefficient is $\nu_{nk}$, each always with its indices. $k$ is the $x_3$ cell index (§1); a
+  reaction index is also $k$ only where no $x_3$ index appears, and $\varkappa$ otherwise.
+- $\theta$ is the colatitude (§1) and nothing else; the potential temperature is $\theta_p$ or $\theta_v$ with
+  its subscript, the limiter's donor factor is capital $\Theta$, and a rotational temperature from kintera is
+  written $T_{\mathrm{rot}}$, not $\theta_{\mathrm{rot}}$.
 - $\kappa$ is the thermal diffusivity, never an opacity (use $\kappa_{\mathrm{R}}$, §8a) and never a wavenumber.
   $\sigma$ is the cell variance, never the Stefan-Boltzmann constant ($\sigma_{\mathrm{SB}}$, §8a).
   $\varepsilon$ is the onset error, never an escape probability ($\varepsilon_{\mathrm{esc}}$, §8a) and never a
