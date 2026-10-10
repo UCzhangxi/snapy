@@ -23,14 +23,18 @@ VERMILLION = "#D55E00"  # errors, defects, the term removed
 PURPLE = "#CC79A7"     # ghosts, other blocks
 GREY = "#999999"       # de-emphasised context (not a data colour)
 
-SINGLE = 3.4  # in, single-column width
-DOUBLE = 7.0  # in, double-column width
+DOUBLE = 6.2  # in, the PDF text width (textwidth 448.13 pt: scrreprt, A4, DIV=12, 10 pt)
+SINGLE = 3.05  # in, half of it less the gap between two figures side by side
 DPI = 200
 
 
 def apply():
     plt.rcParams.update({
-        "font.family": "DejaVu Sans",
+        "font.family": "serif",
+        "font.serif": ["STIXGeneral", "DejaVu Serif"],
+        "mathtext.fontset": "stix",
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
         "font.size": 9,
         "axes.labelsize": 9,
         "axes.titlesize": 9,

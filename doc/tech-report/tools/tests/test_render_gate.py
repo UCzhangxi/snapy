@@ -263,3 +263,21 @@ def test_depmap_status_that_raises_fails(book):
     pending, errors = render_gate.gate_snapy_report(b)
     assert pending == {}
     assert any("depmap ch07" in e and "ValueError: bad registry" in e for e in errors), errors
+
+
+def test_report_mode_checks_list_hits_and_switch_to_fail(tmp_path, monkeypatch, capsys):
+    """The '?@' (rendered output) and hand-typed 'Chapter N' (sources) checks list every hit as file:line; they do
+    not fail while REPORT_ONLY is True, and fail with one count per hit when it is False."""
+    book = tmp_path / "book"
+    (book / "chapters").mkdir(parents=True)
+    (book / "chapters" / "03-demo.qmd").write_text("# Demo {#sec-ch03}\n\nSee Chapter 7 and chapter 12.\n")
+    (book / "_book" / "chapters").mkdir(parents=True)
+    (book / "_book" / "chapters" / "03-demo.html").write_text('<p>see <span class="quarto-unresolved-ref">?sec-ch05</span></p>\n')
+    assert render_gate.gate_hand_typed_chapters(book) == 0
+    assert render_gate.gate_unresolved_in_output(book) == 0
+    out = capsys.readouterr().out
+    assert "chapters/03-demo.qmd:3: Chapter 7" in out and "chapters/03-demo.qmd:3: chapter 12" in out
+    assert "_book/chapters/03-demo.html:1: ?@sec-ch05" in out and "REPORT mode, not failing" in out
+    monkeypatch.setattr(render_gate, "REPORT_ONLY", False)
+    assert render_gate.gate_hand_typed_chapters(book) == 2
+    assert render_gate.gate_unresolved_in_output(book) == 1
