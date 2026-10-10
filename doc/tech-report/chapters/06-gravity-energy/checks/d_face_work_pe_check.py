@@ -15,23 +15,39 @@ What it checks, from the discrete formulas of snapy at dae902b (next/final-batch
   C6  W^D - g1 <F>_V is O(h^4) in interior and wall cells, W^face only O(h^2)          [numpy]
   C7  E + P is conserved to round-off per RK3 step (snapy's rk3 weights) on closed
       columns: Cartesian non-uniform, spherical R/H = 1, 5, 1000, two x1 blocks, and a
-      2-D Cartesian box with x2 fluxes; E + PE_d is not                               [numpy]
-  C8  the implicit split: the tridiagonal (lumped) slope held by the matrix annihilates
-      constants and equals s inside; matrix part + post-solve remainder books
-      g1 sigma^2 s[drho_solved] exactly; E + P closes over a mock implicit solve whose
-      redistribution changes the face masses, and would not with the raw change      [numpy]
-  C9  the grid-scale ratio: for a face-flux wave of wavelength 3h the sigma^2 s term is
-      a quarter of the face work (why booking it after the solve is not small)        [sympy]
+      2-D Cartesian box with x2 fluxes; E + PE_d is not, and changes per stage by exactly
+      +g1 sum V sigma^2 s[Delta rho]                                                  [numpy]
+  C8  the lumped slope s~ of the implicit matrix: it annihilates constants, equals s inside,
+      and at the end cells is (2a+b)/(a(a+b)) (rho_1 - rho_0), not a consistent slope; the
+      bookkeeping of the matrix part and the post-solve remainder (an identity by
+      construction, printed for the record); a mock solve whose redistribution changes the
+      face masses closes E + P, and would not if D were booked on the raw change       [numpy]
+  C9  the grid-scale ratio of the sigma^2 s term to the face work is sin^2(theta)/3,
+      theta = pi h / lambda: a quarter at wavelength 3h, up to a third at 2h          [sympy]
   C10 an x1 seam: P of a column split into two blocks differs from the one-block P only
       through the one-sided slopes of the two seam cells, by O(h^4) relative          [numpy]
+  C11 the VIC energy row: a toy block-tridiagonal column with the code's entry updates
+      and right-hand side, solved in the ForwardSweep convention, gives
+      dE - dE0 + dt (J delta)_E = +g1 sigma^2 s~[d rho - d rho0] (6.4.18); flipping the
+      coupling's sign or swapping its lower/upper weights breaks it                   [numpy]
 
 The numpy ports of x1_variance, centroid_slope and corrected_pe_work below are line for
 line against src/hydro/gravity_work_radial.hpp:13-63@dae902b; the lumped matrix stencil is
-line for line against src/implicit/implicit_hydro.cpp:290-323@dae902b.
+line for line against src/implicit/implicit_hydro.cpp:301-318@dae902b (rx_tri: :293-300),
+and the entry updates of C11 against :326-332@dae902b with the block convention of
+src/implicit/forward_sweep_impl.h:35-49, 89-126@dae902b (B_i multiplies delta_{i-1}, C_i
+delta_{i+1}). The column-major entry selection (select(-2, 0).select(-1, m - 1) = row E,
+column total mass) is checked by reading, not by this script.
+
+Orders are least-squares fits over the last three resolutions (n1 = 64, 128, 256 unless
+stated). Tolerances: "round-off" gates are 1e-14 relative to the conserved total (about 50
+ulp of double precision for sums of O(10^2-10^3) terms of one sign); order windows accept
++-0.2 around the predicted order (3.8 for "fourth order") because the fits use three
+resolutions that are not yet fully asymptotic.
 
 Run: python3 d_face_work_pe_check.py   (numpy, sympy; a few seconds). Exit status = number of
 failed claims. The committed d_face_work_pe_check.out is this script's stdout; it also writes
-d_face_work_pe_check.json (the C6 ladders), which figures/fig_D_face_work_pe_order.py plots.
+d_face_work_pe_check.json (the C6 ladders), which ../figures/fig_D_face_work_pe.py plots.
 """
 import json
 import os
@@ -158,7 +174,7 @@ def PEd_of(col, rho, g1):
 
 
 # ---------------------------------------------------------------------------------------
-def check_C1():
+def check_C1_variance():
     a, h = sp.symbols("a h", positive=True)
     r = sp.symbols("r", positive=True)
     V = sp.integrate(r ** 2, (r, a, a + h))
@@ -184,7 +200,7 @@ def check_C1():
                   f"r/h = 1e6 relative error {rel:.1e}")
 
 
-def check_C2():
+def check_C2_slope_weights():
     x0, x1, x2, q0, q1, q2, X = sp.symbols("x0 x1 x2 q0 q1 q2 X")
     L = sp.interpolate([(x0, q0), (x1, q1), (x2, q2)], X)
     dL = sp.diff(L, X)
@@ -201,7 +217,7 @@ def check_C2():
                   f"symbolic differences {d}")
 
 
-def check_C3():
+def check_C3_cell_pe():
     h, g1, zc = sp.symbols("h g1 z_c")
     c = sp.symbols("c0:6")
     z = sp.symbols("z")
@@ -232,7 +248,7 @@ def check_C3():
                   f"h^0..h^3 coefficients {low}, h^4 coefficient {sp.factor(c4)}")
 
 
-def check_C4():
+def check_C4_P_order():
     g1, H = -10., 1.
     out, ok = [], True
     for name, sph, r0 in (("Cartesian, stretched", False, 0.), ("spherical R=5H", True, 5.)):
@@ -267,7 +283,7 @@ def check_C4():
                   "; ".join(out))
 
 
-def check_C5():
+def check_C5_closed_forms():
     h, g1 = sp.symbols("h g1")
     Fs = sp.symbols("F0:6")  # F_k = F at face k - 1/2, k = 0..5; F0 = wall
     rdot = [-(Fs[k + 1] - Fs[k]) / h for k in range(5)]
@@ -300,7 +316,7 @@ def check_C5():
                   f"(a4 = F''''/24)")
 
 
-def check_C6():
+def check_C6_work_order():
     g1, H, out, ok = -10., 1., [], True
     for name, sph, r0 in (("spherical R=5H", True, 5.), ("Cartesian", False, 0.)):
         ns = [16, 32, 64, 128, 256]
@@ -364,7 +380,7 @@ def rhs_1d(col, U, dt, g1, blocks):
     return du
 
 
-def check_C7():
+def check_C7_conservation():
     g1, H, out, ok = -10., 1., [], True
     rng = np.random.default_rng(7)
     cases = (("Cartesian stretched", False, 0., [(0, 32)]),
@@ -372,6 +388,7 @@ def check_C7():
              ("spherical R=5H", True, 5., [(0, 32)]),
              ("spherical R=1000H", True, 1000., [(0, 32)]),
              ("spherical R=5H, 2 x1 blocks", True, 5., [(0, 13), (13, 32)]))
+    pe_id = []
     for name, sph, r0, blocks in cases:
         t = np.linspace(0., 1., 33)
         f = r0 + 3. * H * (t + (0. if sph else 0.15 * np.sin(np.pi * t) * t))
@@ -382,6 +399,16 @@ def check_C7():
         dt = 0.2 * (f[1] - f[0])
         EP = lambda U: (U["E"] * col.V).sum() + P_of(col, U["rho"], g1, blocks)
         EPd = lambda U: (U["E"] * col.V).sum() + PEd_of(col, U["rho"], g1)
+        # one stage: E + PE_d changes by +g1 sum V sigma^2 s[Delta rho] (the sign of section 2.6)
+        du = rhs_1d(col, U, dt, g1, blocks)
+        lhs = (du["E"] * col.V).sum() + PEd_of(col, du["rho"], g1)
+        rhs = sum((corrected_pe_work(du["rho"][lo:hi], col.f[lo:hi + 1], col.x[lo:hi], 0, hi - lo, g1, sph)
+                   * col.V[lo:hi]).sum() for lo, hi in blocks)
+        # lhs is a difference of terms of size |du_E V| and |du_rho phi V| (large at R = 1000H), so the
+        # round-off gate is relative to their sum, not to the (small) result
+        mag = (np.abs(du["E"]) * col.V).sum() + (np.abs(du["rho"] * g1 * col.x) * col.V).sum()
+        pe_id.append(abs(lhs - rhs) / mag)
+        ok &= abs(lhs - rhs) <= 1e-14 * mag and abs(rhs) > 1e3 * abs(lhs - rhs)
         dEP = dEPd = 0.
         rho_start = U["rho"].copy()
         for _ in range(20):
@@ -428,12 +455,14 @@ def check_C7():
         dEP2 = d if not np.isfinite(d) else max(dEP2, d)
     ok &= dEP2 <= 1e-14
     out.append(f"2-D Cartesian 8x24, periodic x2 fluxes: max per-step |d(E+P)|/|E+P| {dEP2:.1e}")
+    out.append("one stage, |d(E+PE_d) - g1 sum V sigma^2 s[d rho]| / (sum|dE V| + sum|d rho phi V|) per case: "
+               + ", ".join(f"{v:.1e}" for v in pe_id))
     return report("C7", ok, "E + P per RK3 step, 20 steps, closed x1 walls (tolerance 1e-14 relative)",
                   "; ".join(out))
 
 
 def lumped(col, g1):
-    """rx_lo, rx_mid, rx_hi of implicit_hydro.cpp:290-323@dae902b (one column)"""
+    """rx_tri of implicit_hydro.cpp:293-318@dae902b (one column)"""
     n = col.n
     S = centroid_slope(np.eye(n), col.x)  # S[k][i]: weight of cell k in the slope of cell i
     gv = g1 * x1_variance(col.f, col.sph)
@@ -455,7 +484,7 @@ def lumped(col, g1):
     return rx_tri
 
 
-def check_C8():
+def check_C8_lumped_slope():
     g1, out, ok = -10., [], True
     rng = np.random.default_rng(3)
     for name, sph, r0 in (("Cartesian", False, 0.), ("spherical R=5H", True, 5.)):
@@ -467,6 +496,8 @@ def check_C8():
         q = rng.standard_normal(n)
         inside = np.abs(rx_tri(q)[1:-1] - gv[1:-1] * centroid_slope(q, col.x)[1:-1]).max()
         ends = np.abs(rx_tri(q)[[0, -1]] - (gv * centroid_slope(q, col.x))[[0, -1]]).max()
+        a, b = col.x[1] - col.x[0], col.x[2] - col.x[1]  # the lumped first-cell slope, (6.4.16)
+        end0 = abs(rx_tri(q)[0] - gv[0] * (2 * a + b) / (a * (a + b)) * (q[1] - q[0])) / abs(rx_tri(q)[0])
         # mock implicit solve: the solve moves mass with face masses M (kg per unit area or per sr),
         # closed walls; redistribution/clamps change them to M' (the solved change); the energy
         # row books the face form of M' (matrix rows + post-solve projection/clamp work, ch. 7)
@@ -488,27 +519,36 @@ def check_C8():
         defect = (dE * col.V).sum() + P_of(col, moved, g1)
         mut = ((dE_face + gv * centroid_slope(raw - drho0, col.x)) * col.V).sum() + P_of(col, moved, g1)
         scale = (np.abs(dE) * col.V).sum()
-        ok &= const < 1e-12 * np.abs(gv).max() * 10 and inside < 1e-12 and ends > 1e-6 \
-            and total < 1e-15 * scale * 100 and abs(defect) <= 1e-14 * scale and abs(mut) > 1e3 * abs(defect)
-        out.append(f"{name}: |s~[const]| {const:.1e}, |s~-s| inside {inside:.1e}, at the ends {ends:.1e}; "
-                   f"|matrix + post - g1 sigma^2 s[moved]| {total:.1e}; E+P defect {defect:.1e} "
-                   f"(sum|dE V| {scale:.1e}), with the raw change instead {mut:.1e}")
-    return report("C8", ok, "implicit split (lumped tridiagonal slope in the matrix, remainder after the solve)",
+        # gates: s~[const] and s~ - s inside are sums of three O(|g1 sigma^2| / h) terms that cancel
+        # exactly in exact arithmetic, so round-off of 1e-13 |g1 sigma^2| max |weight| (weights ~ 1/h ~ 10);
+        # the ends must differ at O(1) of the slope (not a round-off difference): > 1e-3 relative.
+        wmax = np.abs(gv).max() * 2. / (col.x[1] - col.x[0])
+        ok &= const < 1e-13 * wmax and inside < 1e-13 * wmax \
+            and ends > 1e-3 * np.abs(rx_tri(q)).max() and end0 < 1e-13 \
+            and abs(defect) <= 1e-14 * scale and abs(mut) > 1e3 * abs(defect)
+        out.append(f"{name}: |s~[const]| {const:.1e}, |s~-s| inside {inside:.1e}, at the ends {ends:.1e} "
+                   f"(first cell = (2a+b)/(a(a+b)) (q1-q0) to {end0:.1e}); bookkeeping identity "
+                   f"|matrix + post - g1 sigma^2 s[moved]| {total:.1e} (by construction); mock solve: E+P defect "
+                   f"{defect:.1e} (sum|dE V| {scale:.1e}), booked on the raw change instead {mut:.1e}")
+    return report("C8", ok, "the lumped slope of the implicit matrix, and the raw-vs-solved booking",
                   "; ".join(out))
 
 
-def check_C9():
+def check_C9_grid_scale():
     th = sp.symbols("theta")
-    face = sp.cos(th)  # F_{i+-1/2} = cos(kappa h / 2) for F = cos(kappa x), cell centred at 0
+    face = sp.cos(th)  # F_{i+-1/2} = cos(theta) for F = cos(2 pi x / lambda), theta = pi h / lambda
     corr = (sp.cos(th) - sp.cos(3 * th)) / 12  # -(F_{i+3/2} - F_+ - F_- + F_{i-3/2}) / 24
     ratio = sp.simplify((corr / face).subs(th, sp.pi / 3))
     small = sp.series(corr / face, th, 0, 4).removeO()
-    return report("C9", ratio == sp.Rational(1, 4),
-                  "sigma^2 s term / face work for a face-flux wave of wavelength 3h (theta = kappa h/2 = pi/3)",
-                  f"ratio {ratio}; long waves: ratio = {small} (theta = kappa h / 2), i.e. O(h^2)")
+    closed = sp.simplify(sp.expand_trig(corr / face) - sp.sin(th) ** 2 / 3)
+    at2h = sp.limit(corr / face, th, sp.pi / 2)
+    return report("C9", ratio == sp.Rational(1, 4) and closed == 0 and at2h == sp.Rational(1, 3),
+                  "sigma^2 s term / face work for a face-flux wave F = cos(2 pi x / lambda), theta = pi h / lambda",
+                  f"ratio = sin^2(theta)/3 (difference {closed}); wavelength 3h: {ratio}; limit at 2h: {at2h}; "
+                  f"long waves: {small}, i.e. O(h^2)")
 
 
-def check_C10():
+def check_C10_seam():
     g1, H, out, e = -10., 1., [], []
     ns = [32, 64, 128, 256]
     for n in ns:
@@ -522,13 +562,79 @@ def check_C10():
                   f"nz {ns}: {[f'{v:.2e}' for v in e]}, order {p:.2f}")
 
 
+def check_C11_vic_row():
+    """toy column: m = 3 unknowns per cell (total mass, normal momentum, energy) as in the partial VIC"""
+    g1, out, ok = -10., [], True
+    rng = np.random.default_rng(11)
+    for name, sph, r0 in (("Cartesian", False, 0.), ("spherical R=5H", True, 5.)):
+        n, m, dt = 12, 3, 0.3
+        col = Column(r0 + 3. * np.linspace(0., 1., n + 1) ** 1.1, sph)
+        S = centroid_slope(np.eye(n), col.x)  # code convention: S[k][i], cell k in the slope of i
+        gv = g1 * x1_variance(col.f, sph)
+        rx_mid = gv * np.diagonal(S)
+        rx_lo, rx_hi = np.zeros(n), np.zeros(n)
+        rx_lo[1:] = np.diagonal(S, 1)
+        rx_hi[:-1] = np.diagonal(S, -1)
+        rx_hi[0] += S[2][0]
+        rx_lo[n - 1] += S[n - 3][n - 1]
+        rx_lo, rx_hi = rx_lo * gv, rx_hi * gv
+        J0 = 0.3 * rng.standard_normal((n, m, m))  # the Jacobian terms of A_i (without I/dt)
+        B0 = 0.3 * rng.standard_normal((n, m, m))
+        C0 = 0.3 * rng.standard_normal((n, m, m))
+        B0[0] = 0.
+        C0[-1] = 0.
+        du0 = rng.standard_normal((n, m))  # explicit increment (du0), rows (mass, momentum, energy)
+
+        def solve(sign=1., swap=False):
+            A = J0 + np.eye(m)[None] / dt
+            B, C = B0.copy(), C0.copy()
+            lo, hi = (rx_hi, rx_lo) if swap else (rx_lo, rx_hi)
+            A[:, 2, 0] -= sign * rx_mid / dt  # implicit_hydro.cpp:326 entry(_a).sub_(rx_mid / dt)
+            B[:, 2, 0] -= sign * lo / dt      # :327 entry(_b): multiplies delta_{i-1}
+            C[:, 2, 0] -= sign * hi / dt      # :328 entry(_c): multiplies delta_{i+1}
+            rhs = du0.copy()
+            q = du0[:, 0]
+            tri = rx_mid * q
+            tri[1:] += rx_lo[1:] * q[:-1]
+            tri[:-1] += rx_hi[:-1] * q[1:]
+            rhs[:, 2] -= tri                  # :332 du[IPR] -= rx_tri(rx_mass0)
+            rhs /= dt                         # forward_sweep_impl.h:35-49 rhs = DU / dt
+            M = np.zeros((n * m, n * m))
+            for i in range(n):
+                M[i * m:(i + 1) * m, i * m:(i + 1) * m] = A[i]
+                if i > 0:
+                    M[i * m:(i + 1) * m, (i - 1) * m:i * m] = B[i]
+                if i < n - 1:
+                    M[i * m:(i + 1) * m, (i + 1) * m:(i + 2) * m] = C[i]
+            return np.linalg.solve(M, rhs.ravel()).reshape(n, m)
+
+        def residual(delta):
+            Jd = np.einsum("iab,ib->ia", J0, delta)
+            Jd[1:] += np.einsum("iab,ib->ia", B0[1:], delta[:-1])
+            Jd[:-1] += np.einsum("iab,ib->ia", C0[:-1], delta[1:])
+            q = delta[:, 0] - du0[:, 0]
+            tri = rx_mid * q
+            tri[1:] += rx_lo[1:] * q[:-1]
+            tri[:-1] += rx_hi[:-1] * q[1:]
+            lhs = delta[:, 2] - du0[:, 2] + dt * Jd[:, 2]
+            return np.abs(lhs - tri).max() / np.abs(tri).max()
+        r_ok, r_sign, r_swap = residual(solve()), residual(solve(-1.)), residual(solve(1., True))
+        # 1e-12: a dense solve of a 36x36 system with condition number ~1e2-1e3
+        ok &= r_ok < 1e-12 and r_sign > 1e-3 and r_swap > 1e-3
+        out.append(f"{name}: residual of (6.4.18) {r_ok:.1e}; coupling sign flipped {r_sign:.1e}; "
+                   f"lower/upper swapped {r_swap:.1e}")
+    return report("C11", ok, "VIC energy row with the D coupling: dE - dE0 + dt (J delta)_E = g1 sigma^2 s~[d rho - d rho0]",
+                  "; ".join(out))
+
+
 def main():
-    for chk in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8,
-                check_C9, check_C10):
+    for chk in (check_C1_variance, check_C2_slope_weights, check_C3_cell_pe, check_C4_P_order,
+                check_C5_closed_forms, check_C6_work_order, check_C7_conservation, check_C8_lumped_slope,
+                check_C9_grid_scale, check_C10_seam, check_C11_vic_row):
         try:
             chk()
         except Exception as exc:  # a crash is a failure, not a silent skip
-            report(chk.__name__[6:9].rstrip("_"), False, "raised", repr(exc))
+            report(chk.__name__.split("_")[1], False, "raised", repr(exc))
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "d_face_work_pe_check.json"), "w") as f:
         json.dump(DATA, f, indent=1)
     nfail = RESULTS.count(False)

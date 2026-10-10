@@ -28,7 +28,7 @@ the $r^2\sin\theta$ metric).
 | $\delta_i$ | centroid offset $x_{1,i}-\bar x_{1,i}$ (zero on Cartesian) | | $\delta$ |
 | $A_{i\pm1/2}$ | $x_1$ face area | `face_area1()` | $A_f$ |
 | $V_i$ | cell volume | `cell_volume()` | |
-| $\varpi_{jk}$ | solid-angle factor of a spherical-polar cell, $V = \varpi_{jk}\,\tfrac13(r_{+}^3-r_{-}^3)$ | | $\Omega(\theta,\varphi)$ |
+| $\varpi_{jk}$ | horizontal factor of a cell volume, $V_{ijk}=\varpi_{jk}V^{(1)}_i$: the solid angle on spherical-polar ($V^{(1)}_i=\tfrac13(r_{+}^3-r_{-}^3)$), $\Delta x_2\Delta x_3$ on Cartesian ($V^{(1)}_i=h_i$) | | $\Omega(\theta,\varphi)$ |
 | $\sigma_i^2$ | variance of $x_1$ about the centroid over cell $i$ on its own measure, $\langle (x_1-x_{1,i})^2\rangle_{V_i}$ | `x1_variance` | $\sigma^2$ |
 | $\mathcal I$ | the interior cells of a block; $\partial\mathcal I$ its boundary faces | `interior` part | |
 
@@ -84,9 +84,10 @@ the $r^2\sin\theta$ metric).
 | $q(x_{1,i})$ | point value at the centroid |
 | $\Delta_i[q]$ | $x_1$ face difference over cell $i$, $q_{i+1/2}-q_{i-1/2}$; with areas, $\Delta_i[Aq] = A_{i+1/2}q_{i+1/2}-A_{i-1/2}q_{i-1/2}$ |
 | $\nabla_{\!1}\!\cdot G$ | discrete $x_1$ divergence, $\Delta_i[AF]/V_i$ |
+| $\mathcal N_i$ | the stencil set of the centroid slope of cell $i$ (stencil cells indexed by $l$) |
 | $s_i[q]$ | centroid slope: the $x_1$ derivative at $x_{1,i}$ of the quadratic through $(x_{1,k}, q_k)$, $k\in\{i-1,i,i+1\}$ inside a block and the three cells next to the end at each $x_1$ end of a block (`centroid_slope`) |
 | $\tilde s_i[q]$ | the tridiagonal (lumped) form of $s_i$ held by the implicit matrix: identical inside, the third end weight added to the neighbour's |
-| $\mathsf S$ | the matrix of $s$: $(\mathsf S q)_i = s_i[q]$; $\tilde{\mathsf S}$ likewise for $\tilde s$ |
+| $\mathsf S$ | the matrix of $s$: $(\mathsf S q)_i = s_i[q] = \sum_l\mathsf S_{il}q_l$ (row $i$: the weights of the cells $l$ in the slope of $i$; the code stores the transpose); $\tilde{\mathsf S}$ likewise for $\tilde s$ |
 | $\operatorname{cov}_i(a,b)$ | the in-cell covariance $\langle ab\rangle_{V_i} - \langle a\rangle_{V_i}\langle b\rangle_{V_i}$; to leading order $\sigma_i^2\,\partial_1a\,\partial_1b$ |
 | $\dot q$ | time derivative of a cell average produced by one operator (stated each time) |
 | $[q]_{\rm walls}$ | $q$ at the top wall minus $q$ at the bottom wall |
@@ -129,8 +130,9 @@ the $r^2\sin\theta$ metric).
 | $w_{0,s}, w_{1,s}, w_{2,s}$ | the stage weights: $\mathbf U \leftarrow w_0\mathbf U^n + w_1\mathbf U + w_2\Delta t\,\mathcal L(\mathbf U)$ | `wght0()`, `wght1()`, `wght2()` |
 | $\mathcal L$ | the semi-discrete right-hand side (all explicit operators) | |
 | $\Delta\mathbf U^{(0)}$ | the explicit stage increment handed to the implicit solve | `du0` |
+| $\Delta t_c$ | the time step handed to the implicit solve: $w_{2,s}\Delta t$ under rk3, $\Delta t$ otherwise | `dt_corr` |
 | $\boldsymbol\delta_i$ | the implicit solve's unknown in cell $i$ (total mass, normal momentum, [tangential momenta], energy) | `delta` |
-| $\delta\rho_i$ | the total-mass component of $\boldsymbol\delta_i$ | `delta[...][0]` |
+| $\delta\rho_i$, $\delta E_i$ | the total-mass and energy components of $\boldsymbol\delta_i$ | `delta[...][0]`, `delta[...][m-1]` |
 | $\Delta\rho_i$ | the solved total density change after redistribution and clamps | `du[IDN] + sum du[ICY..]` |
 | $\mathsf A_i, \mathsf B_i, \mathsf C_i$ | the diagonal, lower and upper blocks of row $i$ of the block-tridiagonal system | `_a`, `_b`, `_c` |
 | $\mathsf A^{\pm}$ | the Roe dissipation matrices $\mathsf R|\Lambda|\mathsf R^{-1}$ at faces $i\pm\tfrac12$ | `Ap`, `Am` |
@@ -159,10 +161,11 @@ the $r^2\sin\theta$ metric).
 | $\varepsilon$ | relative error of the linear convective onset growth rate against its oracle; $\varepsilon_{\rm eff}$ the one-step effective value |
 | $e_\infty$, $e_1$ | max-norm and 1-norm errors (named quantity) |
 | $\mathcal O$ | an oracle (exact or reference value) |
+| $\lambda_w$ | a wavelength (named) |
 
 ## 10. Reserved letters (do not reuse)
 
-$h$ (cell width), $r$ (radius), $\phi$ (potential), $\varphi$ (azimuth), $\theta$ (colatitude), $e$ (specific internal
+$h$ (cell width), $k$ (x3 index; stencil cells use $l$), $\kappa$ (diffusivity; never a wavenumber), $r$ (radius), $\phi$ (potential), $\varphi$ (azimuth), $\theta$ (colatitude), $e$ (specific internal
 energy), $E$ (total energy density), $P$ (corrected PE), $W$ (gravity work), $\mathbf W$ (primitive vector, bold
 only), $H$ (scale height), $\mathcal K$ (curvature flux), $s$ (centroid slope; RK stage index is a superscript in
 parentheses), $\sigma^2$ (cell variance), $\chi$ ($\rho/p$), $\varepsilon$ (onset error).

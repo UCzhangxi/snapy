@@ -8,7 +8,8 @@
     cell is read.
 (c) An x1 seam between two blocks: each block takes one-sided slopes at its own ends, so
     P = P_A + P_B; the seam face's flux and potential are shared and telescope.
-(d) The implicit matrix: the energy row's coupling to the total-mass unknown, g1 sigma^2 s~/dt;
+(d) The implicit matrix: the energy row's coupling to the total-mass unknown, -g1 sigma^2 s~/dt_c
+    (row i: the weights of cells k in the slope of cell i);
     inside it is s, at each end the third weight of the one-sided slope is lumped onto the
     neighbour so the block system stays tridiagonal; the post-solve term books the difference.
 (e, f) Order of accuracy, max |W - g1 <F>_V| / |g1| over interior and wall cells, face form and
@@ -163,7 +164,7 @@ for col, (key, title) in enumerate((("C6 spherical R=5H", "(e) spherical-polar, 
     fs.slope_guide(ax, 32, d["D_in"][1] * 0.25, 200, 4)
     ax.set_xlabel("$n_1$ (cells over $4H$)")
     if col == 0:
-        ax.set_ylabel("max $|W-g_1\\langle F\\rangle_V|\\,/\\,|g_1|$\n[kg m$^{-2}$ s$^{-1}$]")
+        ax.set_ylabel("max $|W-g_1\\langle F\\rangle_V|\\,/\\,|g_1|$\n[-] (nondimensional: $g_1=-10$, $H=1$)")
     ax.set_title(title, loc="left")
     ax.set_xlim(12, 360)
     ax.set_xticks(nz)

@@ -2049,10 +2049,10 @@ How gravity's work enters the energy equation and what each form conserves: the 
   $W^{\rm D}=W^{\rm face}+g_1\sigma^2s[\dot\rho]$ conserves $E+P$ ($P$ exact to $O(h^4)$) to round-off and is $O(h^4)$
   in every cell; on by default with `gravity-work: face` on Cartesian and spherical-polar grids.
 - Derivations: exists: docs/derivations/curved-gravity-work-weight.md@dae902b §§7, 8, 10; re-written in the report
-  with checks C1-C10 (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass).
+  with checks C1-C11 (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass); note that §7 and §8.6 of the note give the $E+\mathrm{PE}_d$ change under D with the wrong sign (corrected in the section, eq. 6.4.13).
 - Figures: done: `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (stencils interior/wall/seam, VIC
   lumping, order of accuracy).
-- Code: see the section's Code layer (27 citations, all resolve at dae902b).
+- Code: see the section's Code layer (48 citations, all resolve at dae902b).
 - Tests: `test_gravity_work_radial_exact_python` (checks 1-8), `test_x1_seam_split_radial_exact`,
   `test_x1_seam_split_mp_radial_exact`, `test_implicit_gravity_tall_column_python`, the `_radial_exact` arms of
   `test_implicit_face_work_operator` and `test_implicit_stratified_solid`.

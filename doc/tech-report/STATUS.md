@@ -11,8 +11,9 @@ OUTLINE.md generated from five research inventories + ch6 (152 schemes, 439 cita
 | style guide | `STYLE.md` | draft for review |
 | notation | `NOTATION.md` | draft for review |
 | outline | `OUTLINE.md` | for the lead's review, then the owner's approval |
+| review of the D section | (one adversarial review against the code; 20 findings, all applied) | done |
 | worked example (D) | `chapters/06-gravity-energy/D_face_work_pe.md` | draft, six layers |
-| its check | `chapters/06-gravity-energy/checks/d_face_work_pe_check.py` | 10/10 claims pass |
+| its check | `chapters/06-gravity-energy/checks/d_face_work_pe_check.py` | 11/11 claims pass |
 | its figure | `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (+ `.png`) | rebuilds bit for bit |
 | shared figure style | `chapters/common/figstyle.py` | |
 | citation checker | `build/check_citations.py` | all citations in OUTLINE.md and the D section resolve |
@@ -46,3 +47,7 @@ OUTLINE.md generated from five research inventories + ch6 (152 schemes, 439 cita
 8. **Pin move.** When `next/final-batch` merges, the pins move to the merge sha. `build/check_citations.py` then shows
    which citations moved, but line shifts must be fixed by hand. Proposal: a `build/move_pin.py` that remaps line
    numbers with `git blame -C`. Decide before the authors start.
+9. **Sign slip in a committed derivation.** `docs/derivations/curved-gravity-work-weight.md` §7 and §8.6 give the
+   $E+\mathrm{PE}_d$ change under D as $-g_1\sum V\sigma^2s[\Delta\rho]$. It is $+$. The report's eq. (6.4.13) uses
+   the corrected sign, and check C7 asserts it. The code is not affected. Should the note be corrected on
+   `next/final-batch`? C0 does not touch other branches.
