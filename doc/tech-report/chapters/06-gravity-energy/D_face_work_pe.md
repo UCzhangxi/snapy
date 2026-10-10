@@ -57,8 +57,9 @@ fourth-order potential energy $P$ and books exactly the work that conserves $E+P
 - "Option F" in `curved-gravity-work-weight.md` §7. That note's "option D" is a different, rejected two-point
   weight; do not confuse the two.
 - "Corrected-PE work", and "radial-exact" in identifiers.
-- Implemented by snapy@f256ab5 (in the operator; its subject cites (chengcli/snapy#296), which is not a PR on UCzhangxi/snapy and is taken to be chengcli/snapy(chengcli/snapy#296): to confirm) and made the default with face work by
-  snapy@84b037f.
+- History: the implicit part was moved into the VIC operator by snapy@f256ab5 (its subject cites #296, which is
+  not a PR on UCzhangxi/snapy and is taken to be chengcli/snapy#296; to confirm), and D was made the default with
+  `gravity-work: face` by snapy@84b037f.
 
 ---
 
