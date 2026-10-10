@@ -1,0 +1,63 @@
+# Hydrostatic and well-balanced treatment {#sec-ch05}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 5; docs/derivations/wb-ref4.md, wb-ref-wall.md, x1-centroid-spherical.md at the pin
+status: draft
+-->
+
+A stratified atmosphere at rest is the state snapy's $x_1$ sweep has to leave alone, and it is the hardest one:
+its pressure and density change by orders of magnitude along $x_1$, while the motions of interest are small
+perturbations of it. This chapter describes how the $x_1$ reconstruction keeps such a column at rest to round-off
+and how close the reference it uses comes to the column's own profile. It covers, in the order the code builds
+them: the well-balanced $x_1$ reconstruction, which reconstructs perturbations about a discretely hydrostatic
+reference; the reference kernel, which builds that reference from a top-down pressure scan; its closure at a
+physical wall; its continuity across $x_1$ block seams; the hydrostatic mode, which replaces gravity by the cell's
+own pressure difference; `balance_column`, which projects an initial column onto the scheme's discrete balance;
+the fourth-order reference `SNAP_WB_REF4`; the $r^2$-exact $x_1$ maps `SNAP_X1_CENTROID_EXACT` of spherical-polar
+grids; what is left of the $1/R$ term after them; and two legacy wall routines. The gravity work these schemes are
+used with is Chapter 6 (@sec-ch06); the switches and their tested combinations are Chapter 12.
+
+All derivations of this chapter are checked by one executable check, `src/snapy_report/ch05/wbref_check.py`,
+whose output `wbref_check.out` carries the claim tags `[C1]`–`[C21]`; claim `[C11]` is an independent rebuild of
+the default reference from the equations of this chapter that reproduces the numbers snapy's own wall test prints.
+
+<!-- PENDING: the chapter's dependency map (STYLE.md section 10.1) is drawn from the switch coverage matrix of
+     Chapter 12 through the house dependency-map function, which is not in this tree yet. -->
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| WB $x_1$ reconstruction (@sec-ch05-wbx1) | gravity on | on | rest exact | `test_face_floor` |
+| Reference kernel (@sec-ch05-refkernel) | with the WB path | on | 2 ($\rho_{\mathrm{sf}}$) | `test_hydro_ref_x1` |
+| Wall clamp and continuation (@sec-ch05-wallclamp) | `wb-wall-clamp` | on | 2 at walls | `test_wb_ref_wall` |
+| Seam continuity (@sec-ch05-seam) | $x_1$ split | on | exact | `test_pref_local_seam` |
+| Hydrostatic mode (@sec-ch05-hsmode) | `non-hydrostatic` | 1 (off) | rest exact | `test_hydrostatic` |
+| `balance_column` (@sec-ch05-balcol) | API call | not called | fixed point | `test_balance_column` |
+| Fourth-order reference (@sec-ch05-wbref4) | `SNAP_WB_REF4` | off | 4 ($\rho_{\mathrm{sf}}$) | `test_wb_ref4_order` |
+| $r^2$-exact $x_1$ maps (@sec-ch05-x1cent) | `SNAP_X1_CENTROID_EXACT` | off | rest exact | `test_x1_centroid_rest` |
+| $1/R$ remainder (@sec-ch05-oneoverr) | none | — | $O(h^2/R)$ | none |
+| Legacy wall routines (@sec-ch05-legacy) | none | unreachable | — | none |
+
+: The schemes of this chapter. "Order" is the order of the face density reference $\rho_{\mathrm{sf}}$ against the
+exact profile where a number is given; "rest exact" means a discretely balanced column stays at rest to round-off.
+Full ctest names and tolerances are in each scheme's Tests layer and in the chapter's catalogue in Chapter 15. {#tbl-ch05-schemes}
+
+{{< include 05-well-balanced/_wbx1.qmd >}}
+
+{{< include 05-well-balanced/_refkernel.qmd >}}
+
+{{< include 05-well-balanced/_wallclamp.qmd >}}
+
+{{< include 05-well-balanced/_seam.qmd >}}
+
+{{< include 05-well-balanced/_hsmode.qmd >}}
+
+{{< include 05-well-balanced/_balcol.qmd >}}
+
+{{< include 05-well-balanced/_wbref4.qmd >}}
+
+{{< include 05-well-balanced/_x1cent.qmd >}}
+
+{{< include 05-well-balanced/_oneoverr.qmd >}}
+
+{{< include 05-well-balanced/_legacy.qmd >}}

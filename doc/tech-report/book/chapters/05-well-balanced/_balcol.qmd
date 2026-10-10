@@ -1,0 +1,182 @@
+## `balance_column`: projection of a ghost-free column onto the scheme's discrete balance (C++ and Python API) {#sec-ch05-balcol}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.6; src/hydro/balance_column.cpp; src/hydro/balance_column.hpp; python/csrc/pyhydro.cpp;
+         examples/bryan.cpp; tests/test_balance_column.cpp; tests/run_bryan_balance_ic.cmake (re-derived from the code)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Moves a column of cell averages, at fixed $p/\rho$ per cell, to the fixed point
+$\overline p=p_{\mathrm{ref}}(\overline p)+C$ of @eq-ch05-wbx1-rest, so that the solver starts it at rest.
+**Switch.** None: an API function, `balance_column` in C++ and in the Python package, called by initial-condition
+builders. Requires `wb-wall-clamp` on, at least five cells, positive $p$ and $\rho$.
+**Order.** Fixed point to a residual below `rtol` (default $10^{-10}$, at most 120 sweeps).
+**Defining equation.** @eq-ch05-balcol-iter.
+:::
+
+A column integrated from the continuum hydrostatic equation is balanced to the truncation error of that integration,
+not to the scheme's own discrete balance. The well-balanced reconstruction then sees a perturbation $p'$ that is not
+constant and turns its variation into a standing force on an atmosphere that should be at rest. `balance_column`
+removes that force before the run starts: it iterates the column onto the discrete rest state, holding the
+temperature of each cell fixed for ideal mixtures, and returns the balanced column, the residual and the number of
+updates. The fixed point is defined only up to a free constant $C$, so the column moves; any pinned quantity (surface
+pressure, column mass) has to be re-pinned by the caller.
+
+Under `SNAP_WB_REF4` on a non-uniform grid it iterates against the switched cell pressure, which is the fixed point
+the solver then enforces. Under `SNAP_X1_CENTROID_EXACT` it balances only a column declared Cartesian.
+
+*Aliases.* "the balance-ic projection" (the bryan example's `balance-ic`), chengcli/snapy#250 D1.
+
+### Derivation
+
+Units as in @sec-ch05-wbx1. Let the column hold $n_1\ge5$ cells with no ghosts and both ends physical, and let
+$\theta_i=\overline p_i/\overline\rho_i$ be taken once from the input. One sweep evaluates the reference kernel on the
+whole column, reads the gauge at the top cell and updates
+
+$$
+\begin{aligned}
+C &= \overline{p}_{n_1-1} - p_{\mathrm{ref},n_1-1}, \\
+\overline{p}_i &\leftarrow p_{\mathrm{ref},i}(\overline{p},\overline{\rho}) + C, \\
+\overline{\rho}_i &\leftarrow \overline{p}_i/\theta_i ,
+\end{aligned}
+$$ {#eq-ch05-balcol-iter}
+
+and stops when
+
+$$
+\varepsilon = \max_i\frac{\lvert \overline{p}_i - p_{\mathrm{ref},i} - C\rvert}{\overline{\rho}_i\,g\,\Delta x_{1,i}} < \mathrm{rtol} .
+$$ {#eq-ch05-balcol-res}
+
+@eq-ch05-balcol-iter and @eq-ch05-balcol-res are the loop that calls `call_hydro_ref_x1`
+([`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104)).
+A fixed point of @eq-ch05-balcol-iter satisfies @eq-ch05-wbx1-rest with $c=C$, so it is at rest in the solver. The
+residual is checked before the update, so the returned column is the one it describes and an already balanced
+column comes back after zero updates. $\varepsilon$ bounds the residual acceleration in units of $g$: a perturbation
+difference $\delta p'$ across a cell drives an acceleration $\delta p'/(\overline\rho\Delta x_1)$.
+
+The gauge is read at the top cell, where the pressure is lowest, so the column moves least where it is thinnest; the
+code comment records that a gauge at the bottom diverges on a deep column. Holding $\theta_i$ fixed holds the
+temperature fixed for `ideal-gas` and for `ideal-moist` at fixed mass fractions. No convergence proof exists; the
+sweep is a contraction in practice, and the check shows it on a column that is not balanced to begin with
+(`[C15]`: a $\beta=0.3$ polytrope with a $10^{-3}$ pressure bump at fixed $p/\rho$, $n_1=64$, residual
+$4.64\times10^{-2}$ to $1.03\times10^{-11}$ in 12 updates, $p/\rho$ unchanged to $1.5\times10^{-16}$).
+
+*Why the result transfers to the blocks.* With the wall clamp on, the reference of a block's interior reads only owned
+cells at a physical wall (@sec-ch05-wallclamp), so a ghost-free column and a block holding the same cells get the same
+$p_{\mathrm{ref}}$, bitwise; that is what the first test below asserts. Without the clamp the wall rows read ghost
+faces that the ghost-free column does not have, and the two disagree, which is why the function refuses to run.
+$\rho_{\mathrm{sf}}$ differs at the bottom cell only (its fallback keys on the array index), and it plays no part in
+the fixed point.
+
+*Exact and truncated.* The returned column satisfies @eq-ch05-wbx1-rest to $\varepsilon<\mathrm{rtol}$; nothing is
+truncated beyond that.
+
+### Numerical method
+
+@fig-ch05-balcol-gauge shows what the projection does. Each sweep is one call of the reference kernel on the column
+(CPU, CUDA or MPS, with the column's device), plus the switched cell pressure of @sec-ch05-wbref4 when that switch is on
+and the column is non-uniform; uniformity is decided with the solver's test on the column's own widths.
+
+```{python}
+#| label: fig-ch05-balcol-gauge
+#| fig-cap: "What balance_column does to a column, x1 to the right. Vermillion dashed circles: the perturbation p - p_ref of a column marched from the continuum equation, which varies along the column; bluish-green squares: after the projection it is one constant C, the value at the top cell. The column itself moves by C everywhere. Illustrative values."
+#| fig-alt: "Line plot of a wavy dashed curve of circles and a flat line of squares meeting at the right end, with an arrow labelling the right end as the gauge."
+#| echo: false
+from snapy_report.ch05.fig_balcol_gauge import make_fig
+make_fig()
+```
+
+A moist initial condition needs one more loop. The projection holds the mass fractions fixed, and the run's first
+saturation adjustment moves the column off the balance again. The bryan example's `balance-ic` therefore alternates
+saturation and projection until saturation no longer moves the projected column (relative density change at most
+$4\epsilon_{\mathrm{mach}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `balance-ic-passes`
+(@fig-ch05-balcol-passes).
+
+```{python}
+#| label: fig-ch05-balcol-passes
+#| fig-cap: "The moist balance-ic loop of the bryan example, per pass. (a) Largest relative pressure change the saturation adjustment makes to the column just projected (bluish-green circles); the dotted line is the stop criterion 1e-13. (b) Projection sweeps balance_column needed in that pass (black squares). The change falls by about a factor 20 per pass and the loop stops after pass 6."
+#| fig-alt: "Two panels: a semilog plot falling linearly over six passes below a dotted threshold line, and a plot of sweeps falling from 13 to 4."
+#| echo: false
+from snapy_report.ch05.fig_balcol_passes import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| refusals: gravity, shape, clamp, geometry | [`balance_column.cpp:18-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L18-L40) | `TORCH_CHECK` | `wall_clamp` |
+| at least five cells, positive state | [`balance_column.cpp:42-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L42-L55) | `nc1` | |
+| uniform test and switched pressure | [`balance_column.cpp:65-79`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L65-L79) | `ref4` | `SNAP_WB_REF4` |
+| the sweep loop | [`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104) | `sweeps` | `rtol`, `max_iter` |
+| failure to converge | [`balance_column.cpp:106-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L106-L108) | `err` | |
+| declaration and defaults | [`balance_column.hpp:103-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.hpp#L103-L106) | `balance_column` | |
+| Python binding | [`pyhydro.cpp:49-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/pyhydro.cpp#L49-L64) | `balance_column` | |
+| moist caller | [`bryan.cpp:221-262`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/bryan.cpp#L221-L262) | `balance_ic` | `balance-ic` |
+
+: Code map of `balance_column`. {#tbl-ch05-balcol-code}
+
+1. The arguments are checked: $g>0$, shape, matching widths, positive `rtol` and `max_iter`, the clamp, and the
+   geometry under `SNAP_X1_CENTROID_EXACT`, each with a `TORCH_CHECK`
+   ([`balance_column.cpp:18-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L18-L40)).
+2. The column length `nc1` must be at least 5 and $p$, $\rho$ positive; $\theta_i$ is stored
+   ([`balance_column.cpp:42-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L42-L55)).
+3. Uniformity is decided and, for a switched non-uniform column, the stencils of @sec-ch05-wbref4 are built into
+   the flag `ref4`
+   ([`balance_column.cpp:65-79`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L65-L79)).
+4. The loop runs @eq-ch05-balcol-res and @eq-ch05-balcol-iter, counting `sweeps`, and raises if the pressure turns
+   non-positive
+   ([`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104)).
+5. A residual `err` still above `rtol` raises
+   ([`balance_column.cpp:106-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L106-L108)).
+
+Errors a user can hit: the clamp off, fewer than five cells, a non-positive input, a spherical-polar geometry under
+`SNAP_X1_CENTROID_EXACT`, a diverging column, and no convergence within `max_iter`. The caller also owns four
+conditions the function cannot check, listed in its header: physical $x_1$ ends, at least five cells per block of the
+later run, the same uniform classification in every block, and the saturation loop for moist columns.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| `tests/test_balance_column.cpp` (`test_balance_column.release`), `a_ghost_free_column_reproduces_a_blocks_own_reference` | the column's $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ equal the block's | bitwise ($\rho_{\mathrm{sf}}$ except the bottom cell) | the transfer property |
+| same, `without_the_clamp_the_two_references_disagree` | the control | $>10^{-4}$ before; $<\mathrm{rtol}$ after | non-vacuity |
+| same, `a_marched_column_comes_out_at_rest` | a marched column, projected, does not move | residual $<10^{-10}$ | `rtol` |
+| same, `the_last_allowed_update_can_converge` | convergence on the last allowed sweep is accepted (chengcli/snapy#278, chengcli/snapy#279) | $10^{-10}$ | `rtol` |
+| same, `the_temperature_and_every_other_channel_stay_put` | $p/\rho$ unchanged, other rows untouched | $10^{-14}$ relative | round-off |
+| same, `a_balanced_column_is_a_fixed_point`, `a_block_thinner_than_its_ghosts_keeps_its_columns_apart`, `it_refuses_what_it_cannot_deliver` | zero updates on a balanced column; column independence; refusals | exact | contract |
+| same, `x1_centroid_switch_implies_the_ref4_predicate`, `x1_centroid_switch_balances_only_a_cartesian_column` | switch predicates and the geometry refusal | exact | contract |
+| same, `a_moist_column_with_one_condensable_comes_out_at_rest` | moist column balanced and at rest after one step | $<10^{-10}$; marched $>10^{-6}$ | `rtol`; non-vacuity |
+| `test_balance_column_wb_ref4`, `test_balance_column_x1_centroid` | the same tests with each switch set | as above | as above |
+| `test_bryan_balance_ic` | one allowed pass fails with the cap error; the default converges; the dry case projects once | exit status, output match | contract |
+
+: Tests of `balance_column`. {#tbl-ch05-balcol-tests}
+
+**Evidence.** All pass at the pin. The moist test prints audit residual $3.357\times10^{-1}$ before and
+$8.896\times10^{-11}$ after, in 13 sweeps, and $\max\lvert v_1\rvert/(g\Delta t)$ after one step $2.58\times10^{-11}$
+balanced against $2.05\times10^{-2}$ marched, identical in all three arms. The bryan default case stops after pass 6
+with saturation changes falling from $8.76\times10^{-8}$ to $1.39\times10^{-14}$ (@fig-ch05-balcol-passes)
+[sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: `tests/test_balance_column.cpp`,
+`tests/run_bryan_balance_ic.cmake` on `examples/bryan.cpp`; run: `ctest -V`, Release build, 2026-10-10, CPU, double,
+1 rank; data `src/snapy_report/ch05/data/bryan_balance_ic.json`].
+**Coverage.** CPU; the `_cuda` cases exist and were not run (**pending: a CUDA run at the pin**); no multi-rank case
+(the function works on one column).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The balanced column moves by a free constant: the header of `balance_column.hpp` quotes $2.5\times10^{-4}$ of $p$ on a Neptune-like column
+and $1.2\times10^{-2}$ on a 300 km giant-planet one (no deck given; not re-measured). A spherical-polar column cannot be
+balanced under `SNAP_X1_CENTROID_EXACT`.
+:::
+
+1. **Free gauge.** Nothing ties the result to the input's surface pressure or mass; callers re-pin inside their own
+   loop.
+2. **Classification.** The uniform test is made once for the whole column and must match every block's own test.
+3. **Moist columns.** The caller must iterate with saturation adjustment, as the bryan example does.
+4. **No convergence proof.** Convergence is observed (`[C15]`, the tests), not proven.
+5. **Untested combinations.** See the switch coverage matrix of Chapter 12.

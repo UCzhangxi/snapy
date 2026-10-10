@@ -1,0 +1,204 @@
+## Wall clamp and the wall continuation of the default reference (`dynamics/wb-wall-clamp`) {#sec-ch05-wallclamp}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 5.3; src/hydro/hydro_ref_x1_impl.h; src/hydro/hydro_dispatch.cpp; src/hydro/hydro_options.cpp;
+         docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0 §§1-5; the wall-closure patches in
+         sources/team-notes/
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Keeps every reference stencil inside the owned cells at a physical $x_1$ wall: one-sided six-face
+rows for the two wall cells, and $\rho/p$ continued past the wall from the two owned cells next to it.
+**Switch.** YAML `dynamics/wb-wall-clamp`, default `true`.
+**Order.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 next to each wall (first order with the wall cell repeated).
+**Defining equation.** @eq-ch05-wallclamp-cont.
+:::
+
+The ghost cells of a reflecting wall hold the mirror image of the interior, which is the right input for the
+Riemann solver but not a hydrostatic continuation of the column: a stratified profile mirrored at the wall has a kink.
+Any reference stencil that reads a ghost therefore puts that kink into $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$
+next to the wall. With the clamp on, the cell pressure of the two cells next to a physical wall uses one-sided
+six-face rows, and the binomial of $\rho/p$ no longer reads ghosts. What it reads instead is the wall continuation:
+the ratio continued linearly from the two owned cells where it rises towards the wall, and ln-linearly where it
+falls. A plain repetition of the wall cell, the first version of the clamp, is exact only for constant $\rho/p$ and
+leaves the face density reference first order at the three faces next to each wall.
+
+The continuation changes only $\rho_{\mathrm{sf}}$ at faces 0-2 and $\rho_{\mathrm{ref}}$ at cells 0-1 next to each
+clamped wall (and their ghost rows); $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$ and the rest balance are untouched. It
+applies with `SNAP_WB_REF4` off; with it on, @sec-ch05-wbref4 replaces the density reference with its own cubic wall
+values. `balance_column` refuses to run with the clamp off.
+
+*Aliases.* "wb-wall-clamp", "the wall closure", "linear/ln closure". The continuation arrived as three wall-closure
+patches (linear, then ln-linear, then the two branches), kept as raw notes in `sources/team-notes/` and squash-merged
+into the pin by chengcli/snapy#297.
+
+### Derivation
+
+Notation as in @sec-ch05-refkernel; cells are counted from the wall, $j=0$ the wall cell, and $r_j=\overline\rho_j/\overline p_j$.
+
+#### The repeated wall cell is first order
+
+Near the wall write $r_j=r_0+j\,a+O(\Delta x_1^2)$ with $a=r'\Delta x_1=O(\Delta x_1)$. Repeating $r_0$ for every
+$j<0$ gives
+
+$$
+\begin{aligned}
+r^{s}_0 - r_0 &= \tfrac38\,a, \\
+r^{s}_1 - r_1 &= \tfrac1{16}\,a,
+\end{aligned}
+$$ {#eq-ch05-wallclamp-repeat}
+
+and errors $\tfrac{23}{32}a$, $\tfrac7{32}a$, $\tfrac1{32}a$ and $0$ in the face average $\tfrac12(r^s_{f-1}+r^s_f)$ at
+faces 0 to 3 (`[C4]`, exact). Relative to $r$ these are fixed multiples of $(r'/r)\Delta x_1$, so the face density
+reference is first order at faces 0-2. The even-parity perturbation ghosts (@sec-ch05-wbx1) copy the bias of
+$\rho'=\overline\rho-\rho_{\mathrm{ref}}$ into the ghosts, so the solver's face densities there are first order too;
+the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is
+(`docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0` §3).
+
+#### The continuation
+
+Past a clamped wall the binomial reads, $k$ cells beyond the wall,
+
+$$
+r_{-k} =
+\begin{cases}
+r_0 + k\,(r_0 - r_1), & r_1 \le r_0,\\
+r_0\,(r_0/r_1)^{k}, & r_1 > r_0,
+\end{cases}
+$$ {#eq-ch05-wallclamp-cont}
+
+and $r_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
+`hydro_ref_x1_wall_rop`
+([`hydro_ref_x1_impl.h:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L68-L72)).
+The binomial reproduces a linear profile exactly, so with the linear branch the $O(a)$ errors of
+@eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(a^2)$, errors
+$\tfrac{31}{32}a^2/r_0$, $\tfrac14a^2/r_0$, $\tfrac1{32}a^2/r_0$ (`[C5]`, exact series). Either way faces 0-2 keep
+the interior's $O(\Delta x_1^2)$, and for constant $r$ the linear branch returns $r_0$ exactly, so an isothermal
+column is unchanged bit for bit.
+
+Each branch is unbounded on one side: the linear one reaches zero when $r$ rises steeply away from the wall
+($r_{-3}=r_0(1-3d)$ with $d=(r_1-r_0)/r_0$), and the ln-linear one diverges when the neighbour is nearly empty. The
+code takes the branch that stays closer to $r_0$, so for $r_1\ge0$ the continuation lies in
+$[r_0(r_0/r_1)^k,\ r_0(1+k)]$ and is positive (`[C6]`, 60000 random samples, none outside).
+
+#### The one-sided cell-pressure rows
+
+The two wall cells take the cell average of the quintic through the six faces starting at the wall, weights `w6e`
+derived exactly in `[C2]`: $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/160)$ for the wall cell and
+$(-3/160, 637/1440, 511/720, -43/240, 77/1440, -11/1440)$ for the next. They keep the sixth order of
+@eq-ch05-refkernel-pref and read no ghost face.
+
+*Exact and truncated.* Exact: the continuation for linear $r$ (linear branch), the rows for a quintic. Second
+order: $\rho_{\mathrm{sf}}$ at faces 0-2. The independent rebuild of `[C12]` gives the face-1 error first order with
+the repeated wall cell (order 1.03) and second order with @eq-ch05-wallclamp-cont (order 2.01), $n_1$ = 32 to 256.
+
+### Numerical method
+
+@fig-ch05-wallclamp-continuation shows the two branches. The clamp applies on a side when the option is on and that
+side is a physical boundary; the continuation additionally needs the wall side to own at least two cells, so that
+only owned cells are read. The one-sided rows need the block to fit them (at least five interior cells, or a seam at
+the other end), else the face mean is kept. The rule runs inside the kernel, in every call, on the CPU, CUDA and MPS
+paths alike.
+
+```{python}
+#| label: fig-ch05-wallclamp-continuation
+#| fig-cap: "rho/p next to a clamped bottom wall (thick black line; ghost side shaded reddish purple), x1 to the right. Sky-blue circles: the three owned cells; dashed blue curve: the true profile; vermillion squares: the repeated wall cell; bluish-green diamonds: the continuation the code uses at one and two cells past the wall. (a) rho/p rises away from the wall, so the ln-linear branch applies; (b) it falls, so the linear branch applies. The repeated value misses the trend in both."
+#| fig-alt: "Two panels, each with a curve through three circles to the right of a thick wall line and, left of it, squares at the wall value and diamonds that follow the curve's trend."
+#| echo: false
+from snapy_report.ch05.fig_wallclamp_continuation import make_fig
+make_fig()
+```
+
+The measured effect at the pin is @fig-ch05-wallclamp-order: next to both walls the face density reference falls at
+second order and stays below the largest interior error.
+
+```{python}
+#| label: fig-ch05-wallclamp-order
+#| fig-cap: "Relative error of the face density reference next to the walls and in the interior, polytrope T = 1 - z/2 one pressure scale height deep, against the number of cells. Bluish-green solid circles and dashed squares: first and second face above the bottom wall; orange solid and dashed triangles: first and second face below the top wall; black dotted diamonds: largest interior error. The dotted black line has slope -2. Every series falls at second order."
+#| fig-alt: "Log-log plot of error against cell count 16 to 128 with five falling lines, all parallel to a slope-two guide, the interior line on top."
+#| echo: false
+from snapy_report.ch05.fig_wallclamp_order import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|--------|----------|----------|------|
+| the YAML key | [`hydro_options.cpp:57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L57) | `wb_wall_clamp` | `dynamics/wb-wall-clamp` |
+| its default | [`hydro.hpp:54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L54) | `wb_wall_clamp` | default `true` |
+| @eq-ch05-wallclamp-cont | [`hydro_ref_x1_impl.h:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L68-L72) | `hydro_ref_x1_wall_rop` | |
+| continuation inside the binomial | [`hydro_ref_x1_impl.h:91-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L91-L106) | `ext_lo` | |
+| clamp gates of the rows | [`hydro_ref_x1_impl.h:132-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L132-L135) | `clamp_in` | clamp on, physical side |
+| one-sided rows | [`hydro_ref_x1_impl.h:158-172`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L158-L172) | `w6e` | |
+| ratio range and continuation flags | [`hydro_ref_x1_impl.h:189-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L189-L192) | `ext_hi` | two owned cells |
+| MPS tensor path | [`hydro_dispatch.cpp:163-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L163-L190) | `wall_rop` | |
+
+: Code map of the wall clamp and continuation. {#tbl-ch05-wallclamp-code}
+
+1. The option is read from `dynamics` with default `true` as `wb_wall_clamp`
+   ([`hydro_options.cpp:57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L57))
+   and passed to the kernel by `_hydro_ref_x1`.
+2. In the cell function, `clamp_in` and `clamp_out` switch the two wall cells to the rows `w6e`
+   ([`hydro_ref_x1_impl.h:158-172`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L158-L172)).
+3. The owned range `jlo`..`jhi` and the flags `ext_lo`, `ext_hi` are set
+   ([`hydro_ref_x1_impl.h:189-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L189-L192)),
+   and the binomial replaces each index past the wall by `hydro_ref_x1_wall_rop`
+   ([`hydro_ref_x1_impl.h:91-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L91-L106)).
+4. The MPS path applies the same rule to its padded ratio with `wall_rop`
+   ([`hydro_dispatch.cpp:163-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L163-L190)).
+
+An unknown key in `dynamics` is refused by the key check of the options parser; the clamp itself issues no warning.
+`balance_column` raises if called with the clamp off (@sec-ch05-balcol).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| `tests/test_wb_ref_wall.cpp` (`test_wb_ref_wall.release`), `faces_next_to_the_walls_are_second_order` | observed order $n_1$ 32 $\to$ 64 of $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$ at faces 1-2 next to both walls; wall faces within the interior error | order $\ge1.7$; $\le1.5\times$ interior max | below the 1.81-2.12 the closure measures; above the 1.05 of the repeated cell |
+| same, `order_table` | prints the table of @fig-ch05-wallclamp-order | none | report aid |
+| same, `faces_next_to_the_walls_are_second_order_cuda`, `order_table_cuda_matches_cpu` | CUDA orders; CUDA equals CPU | as above; $10^{-13}$ | round-off |
+| `tests/test_face_floor.cpp` (`test_face_floor.release`), `face_floor_fires_on_an_unresolved_column` | dipped-face mass flux with the closure | $2.83191\times10^{-8}$, $10^{-5}$ relative | pinned value of the closure |
+| `tests/test_hydro_ref_x1.cpp` (`test_hydro_ref_x1.release`) clamp cases | with the clamp, ghosts do not reach the interior | exact | structural |
+| `test_straka_redo` | the straka deck at CFL 1.6 to $t=60$ s exits 0 and redoes at least one step | exit status; output match | robustness of the redo path, not accuracy |
+| this chapter's check | `[C2]`, `[C4]`–`[C6]`, `[C11]`, `[C12]` | per claim | stated in the check |
+
+: Tests of the wall clamp and continuation. {#tbl-ch05-wallclamp-tests}
+
+**Evidence.** At the pin, `test_wb_ref_wall.release` prints the face errors of @fig-ch05-wallclamp-order and the
+observed orders 2.02, 2.03, 2.03 (bottom face 1: $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom
+face 2), 1.96, 1.81, 1.97 (top face 1) and 1.94, 1.94, 2.12 (top face 2), $n_1$ 32 $\to$ 64; on the isothermal column
+($\beta=0$) the wall faces carry no first-order term [sha `e894700ff7aee30b52882e5202b16461413780b0`; deck:
+`tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one pressure scale height; run:
+ctest `test_wb_ref_wall.release`, 2026-10-10, CPU, double, 1 rank; data `src/snapy_report/ch05/data/wb_ref_wall_order.json`].
+`test_face_floor` (all three arms), `test_hydro_ref_x1` and `test_straka_redo` pass in the same run.
+The check's rebuild reproduces all 40 printed numbers of that table to the printed four digits (`[C11]`). It also
+shows that the test averages its cells over the full-precision column depth but writes `x1max` into the block's YAML
+with six significant digits, so the block's `dx1f`, which the scan uses, is $4.1\times10^{-7}$ relatively wider at
+$\beta=0.5$; with one consistent width the faces next to the bottom wall move by at most $2.6\times10^{-7}$ in
+relative error, far below the test's tolerances. The repeated-wall-cell numbers are the check's, not a snapy run:
+face-1 error $2.880\times10^{-3}$, $1.392\times10^{-3}$, $6.840\times10^{-4}$, $3.391\times10^{-4}$ at $n_1$ = 32 to
+256 (`[C12]`).
+**Coverage.** CPU; the CUDA cases exist and were not run (**pending: a CUDA run at the pin**); the MPS path was not
+run (no MPS device; the derivation note says the same); multi-rank only through @sec-ch05-seam.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The continuation is in cell index, not in physical spacing, so on a stretched grid the wall faces are not covered by
+the second-order argument. With `wb-wall-clamp: false`, `balance_column` cannot be used.
+:::
+
+1. **Stretched grids.** The continuation, like the binomial, assumes uniform spacing. Not measured.
+2. **MPS.** The tensor path implements the same rule and is compared with the CPU path only when run on CPU.
+3. **Straka at CFL 1.6.** `test_straka_redo` is a robustness test past the stability limit. The derivation note's
+   ensembles (`docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0` §5) were measured on the code
+   of the wall-closure commits, not at the pin, and its $\epsilon=10^{-4}$ ensemble does not separate the references;
+   the near-zero linear continuation as the cause of the linear form's failure there is a hypothesis of that note.
+4. **Stale text in the notes.** `docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1 still
+   describes the binomial as edge-replicated at a clamped wall; the code at the pin continues the ratio as above.
+5. **Untested combinations.** See the switch coverage matrix of Chapter 12.
