@@ -1,0 +1,90 @@
+## Wrap values through a callback or the layout (`periodic`) {#sec-ch11-periodic}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Use an in-block opposite-side copy when a callback remains, or a wrapped neighbour exchange when the layout owns periodicity.
+Default: off; external faces default reflecting.
+Order: exact discrete operation or local derivation below; coupled solver order not measured.
+:::
+
+### Derivation
+
+For a periodic field, translation by the domain length leaves its cell integral unchanged. On matched
+cells the discrete boundary operation is therefore an exact permutation of cell averages, not an interpolation.
+With owned cells $1,\ldots,n_1$ and ghost depth $l$, the x1 callback gives
+
+$$
+\begin{aligned}
+q_{1-l}&=q_{n_1+1-l},\\
+q_{n_1+l}&=q_l.
+\end{aligned}
+$$ {#eq-ch11-periodic-copy}
+
+`periodic_inner` and `periodic_outer` ([`bc_func.cpp:36-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L36-L50)) implement @eq-ch11-periodic-copy.
+For several blocks, the donor is the wrapped neighbour selected by `neighbor_rank` ([`slab_layout.cpp:41-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L41-L70)), and the same
+identity applies to the global cell index. This proves exact copying on a matching periodic mesh, not the
+conservation of independently reconstructed seam fluxes. C1 checks both callback copies and repeated fills.
+
+The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
+`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+
+### Numerical method
+
+The layout flag `periodic_x` refers to x2, `periodic_y` to x3, and `periodic_z` to x1. YAML sets the first
+two for periodic x2/x3; x1 sets the layout flag only for layout type `cubed`. A slab x1 periodic callback
+therefore copies inside the block. Layout-owned wraps have null callbacks and are filled at exchange time.
+No independent convergence order is associated with this exact permutation.
+
+@fig-ch11-periodic-stencil illustrates the operations, with labelled roles independent of colour.
+
+```{python}
+#| label: fig-ch11-periodic-stencil
+#| fig-cap: "Wrap values through a callback or the layout. Schematic only; no simulation measurements."
+#| fig-alt: "Labelled schematic of the periodic boundary operation; ghosts and owned cells have separate text labels."
+#| echo: false
+from snapy_report.ch11.fig_periodic_stencil import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| periodic | [`bc_func.cpp:36-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L36-L50) | `periodic_inner` | See Summary |
+| yaml | [`meshblock_options.cpp:88-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L88-L127) | `periodic_z` | See Summary |
+| yamlxy | [`meshblock_options.cpp:139-201`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L139-L201) | `periodic_x` | See Summary |
+| null | [`meshblock.cpp:138-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L138-L166) | `bfuncs` | See Summary |
+| wrap | [`slab_layout.cpp:41-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L41-L70) | `periodic_x` | See Summary |
+
+: Implementation sites for periodic. {#tbl-ch11-periodic-code}
+
+1. Parse periodic face names and set the appropriate layout flag. The anchor `periodic_x` is in [`meshblock_options.cpp:139-201`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L139-L201).
+2. Null layout-owned face callbacks; retain the x1 slab callback. The anchor `bfuncs` is in [`meshblock.cpp:138-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L138-L166).
+3. Copy the opposite owned slab or obtain the wrapped neighbour through the layout. The anchor `periodic_inner` is in [`bc_func.cpp:36-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L36-L50).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_mesh_exchange_python` | Neighbour identity in exchanged scalar ghosts | Exact equality | Test constant / assertion |
+
+: Source-defined assertions for periodic; no runtime results. {#tbl-ch11-periodic-tests}
+
+The assertion anchor `assert` is in [`test_mesh_exchange.py:24-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L24-L49).
+
+Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
+Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+### Limits
+
+In-block copy and neighbour exchange are distinct paths. The outline also inventories the multi-rank
+exchange and positivity seam suites; their runtime coverage remains pending in @sec-ch15-ch11. A copied donor
+factor must stay single-valued across its shared face; this section does not replace the positivity analysis.
+
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

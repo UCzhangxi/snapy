@@ -1,0 +1,152 @@
+## Boundary-condition verification (`Chapter 11`) {#sec-ch15-ch11}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Separate source-defined solver assertions from executed report checks.
+No solver tests run for this chapter; seven report formula checks are available.
+Default: catalogue only, no solver configuration change.
+:::
+
+### Derivation
+
+The boundary chapter derives the identities exercised by the report checks. No extra numerical scheme is
+introduced here. A source assertion is evidence of intended coverage, not evidence that a pinned build passed.
+All solver entries below refer to `e894700ff7aee30b52882e5202b16461413780b0`. Their numerical thresholds are test constants, not measured results.
+
+### Numerical method
+
+Run report checks without a compiled solver. For new solver evidence, first configure a CPU-only build at the
+pin and resolve the pinned dependencies. Record the complete command, deck, dtype, ranks and environment.
+Run a focused boundary filter before expanding coverage. CUDA and multi-process assertions remain separate
+claims and are not inferred from a CPU formula check.
+
+@fig-ch15-ch11-evidence distinguishes the two evidence paths.
+
+```{python}
+#| label: fig-ch15-ch11-evidence
+#| fig-cap: "Boundary verification paths: source assertions need a pinned runtime; report identities run independently. No solver result is implied."
+#| fig-alt: "Two evidence paths distinguish independent formula checks from source-defined solver assertions and missing runtime results."
+#| echo: false
+from snapy_report.ch11.fig_evidence import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| core test registrations | [`CMakeLists.txt:5-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L5-L33) | `test_radiating_boundary` | build configuration |
+| wall tests | [`CMakeLists.txt:91-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L91-L117) | `test_wb_ref_wall` | reference variants |
+| outflow Python API | [`CMakeLists.txt:192-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L192-L200) | `test_radiating_boundary_python` | Python |
+| implicit solid runner | [`CMakeLists.txt:232-235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L232-L235) | `test_implicit_stratified_solid` | Python |
+| two-process exchange | [`CMakeLists.txt:120-123`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L120-L123) | `test_exchange` | parallel |
+| Python exchange | [`CMakeLists.txt:223-225`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L223-L225) | `test_mesh_exchange` | Python |
+| positivity inventory | [`CMakeLists.txt:248-253`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L248-L253) | `test_flux_positivity` | Python |
+
+: Boundary test registration anchors. {#tbl-ch15-ch11-code}
+
+1. Execute the report derivation script and retain its output.
+2. Use `test_radiating_boundary` registration ([`CMakeLists.txt:5-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L5-L33)) for the compiled characteristic tests.
+3. Use `test_exchange` registration ([`CMakeLists.txt:120-123`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L120-L123)) for the distinct two-process exchange path.
+4. Retain failures and skips verbatim; no runtime result is attached to this draft.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_radiating_boundary.release` | Modes on six faces, three EOS types | 0.03 float32; 1e-8 float64 | `radiating_modes_all_faces` |
+| same test, mixed faces | Face order and representation | Hydro rtol 1e-12, atol 1e-9 | `mixed_faces_preserve_representation_and_order` |
+| same test, dry tracers | Per-dry-mass ratios | Below 1e-12 | Dry-tracer assertions |
+| same test, pulses | PLM/WENO5, both signs | Outflow reflection below 0.05 | `acoustic_pulses` |
+| same test, restart | Saved reference and continuation | Exact equality; missing reference throws | Restart assertions |
+| same test, joint factor | Composition/tracer convexity | Inequalities and allclose defaults | Joint-limiter assertions |
+| same test, devices | CPU/CUDA agreement | rtol = atol = 1e-10 | Device comparison |
+| `test_radiating_boundary_python` | Manual fill preserves reference/interior | Exact equality | Python assertions |
+| `test_yaml_keys.release` | Unknown key path rejected | Exact string containment | Validation helper |
+| `test_wb_wall_corner.release` | Rest after wall/corner fill | Mach at most 1e-12 | Rest assertions |
+| `test_wall_saturation.release` | Phase-change wall energy/water | Relative error below 1e-12 | Conservation assertions |
+| `test_rectify.release` | All ghost slabs solid | Integer equality | Mask fixture |
+| `test_flip_zero_count.release` | Parallel count equals serial | Integer equality, 20 repeats | Thread fixture |
+| `test_implicit_stratified_solid_python` | Fluid segment mass and finite state | Below 1e-12 | Runner thresholds |
+| `test_wb_ref_wall.release` | Near-wall reference order | Two-grid slope at least 1.7 | Reference assertions |
+| `test_hydro_ref_x1.release` | Clamp excludes ghost perturbations | Exact equality; off-arm inequality | Property tests |
+| `test_cubed_sphere_exchange.release` | Panel subdivision preserves fields | Exact equality | Panel assertions |
+| `test_mesh_exchange_python` | Neighbour identity | Exact equality | Scalar ghost assertions |
+| `test_cubed_sphere_vertical_velocity_exchange_python` | Uniform vertical velocity preserved | abs/rel 1e-12 | Explicit constants |
+
+: Source assertions only; all runtime results pending. {#tbl-ch15-ch11-tests}
+
+The `EXPECT` anchor is in [`test_radiating_boundary.cpp:46-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L46-L98).
+
+The `EXPECT` anchor is in [`test_radiating_boundary.cpp:177-259`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L177-L259).
+
+The `EXPECT` anchor is in [`test_radiating_boundary.cpp:288-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L288-L360).
+
+The `EXPECT_LT` anchor is in [`test_radiating_boundary.cpp:395-441`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L395-L441).
+
+The `EXPECT_THROW` anchor is in [`test_radiating_boundary.cpp:445-468`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L445-L468).
+
+The `alpha` anchor is in [`test_radiating_boundary.cpp:536-561`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L536-L561).
+
+The `allclose` anchor is in [`test_radiating_boundary.cpp:563-578`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L563-L578).
+
+The `assert` anchor is in [`test_radiating_boundary_python.py:16-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary_python.py#L16-L36).
+
+The `EXPECT` anchor is in [`test_yaml_keys.cpp:37-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L37-L64).
+
+The `EXPECT` anchor is in [`test_wb_wall_corner.cpp:166-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L166-L190).
+
+The `1.e-12` anchor is in [`test_wall_saturation.cpp:59-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wall_saturation.cpp#L59-L89).
+
+The `test2` anchor is in [`test_rectify.cpp:91-124`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_rectify.cpp#L91-L124).
+
+The `serial` anchor is in [`test_flip_zero_count.cpp:12-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flip_zero_count.cpp#L12-L48).
+
+The `solid_run` anchor is in [`test_implicit_stratified_solid.py:99-141`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_implicit_stratified_solid.py#L99-L141).
+
+The `1.e-12` anchor is in [`test_implicit_stratified_solid.py:277-291`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_implicit_stratified_solid.py#L277-L291).
+
+The `EXPECT_GE` anchor is in [`test_wb_ref_wall.cpp:229-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref_wall.cpp#L229-L264).
+
+The `EXPECT` anchor is in [`test_hydro_ref_x1.cpp:217-247`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_hydro_ref_x1.cpp#L217-L247).
+
+The `torch::equal` anchor is in [`test_cubed_sphere_exchange.cpp:161-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L161-L196).
+
+The `assert` anchor is in [`test_mesh_exchange.py:24-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L24-L49).
+
+The `ideal_match` anchor is in [`test_cubed_sphere_vertical_velocity_exchange.py:81-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L81-L109).
+
+The `ABS_TOL` anchor is in [`test_cubed_sphere_vertical_velocity_exchange.py:7-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L7-L15).
+
+The `saw_remote_neighbor` anchor is in [`test_exchange.cpp:292-317`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L292-L317).
+
+The all-face mode suite is device-parameterized; the explicit CPU/CUDA comparison skips when CUDA is
+unavailable. The panel and wall-reference suites have explicit CPU and conditional CUDA arms. Saturation
+instantiates CPU and CUDA when built with CUDA. Rectification chooses CUDA when the test helper enables it;
+the flip-count test is explicitly a CPU one-thread/eight-thread comparison. The Python solid runner exposes
+a device in its result, so the actual run must record that choice. A local multi-block panel assertion does
+not imply more than one process; the exchange registration separately requests two processes.
+
+The outline's positivity suites remain an inventory here: their detailed flux budgets belong to the positivity
+chapter. The source registration links above identify the dry and moist panel variants without claiming they
+passed. The pulse comparison does not assert the extrapolation arm. The two-grid reference threshold does
+not satisfy the three-resolution rule for a newly measured report order.
+
+The report checks are `src/snapy_report/ch11/boundary_check.py`, with committed output
+`src/snapy_report/ch11/boundary_check.out`. They check C1 copy/parity/corner ownership, C2 acoustic inversion,
+C3 shared admissibility, C4 corner averaging, C5 DP optimality against exhaustive enumeration, C6 block closure,
+and C7 reference moments/continuation. C5 covers 508 binary inputs; all checks use exact symbolic or rational
+identities, so their expected residual is exactly zero. These numbers are produced by that script, not snapy.
+
+### Limits
+
+No compiled CPU, CUDA or multi-rank solver test has run for this chapter. Runtime sound-speed/EOS behaviour,
+nonorthogonal momentum conversion, outflow with VIC/WB, thin solid geometries, scalar/diffusion solid coupling,
+and stretched-grid wall convergence remain missing evidence. A future measured wall-order claim needs at least
+three resolutions at the pin. The complete configuration inventory is @sec-ch12-matrix.
