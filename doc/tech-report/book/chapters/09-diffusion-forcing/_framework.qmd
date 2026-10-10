@@ -25,7 +25,7 @@ others' contributions, so the order does not change the result. The framework al
 density the forcings added, so that passive tracers can be carried with it.
 
 The YAML parser refuses unknown keys under `forcing:` and refuses the removed key `fric-heat` with a message
-that explains why. Twelve keys are accepted: `const-gravity` (Chapter 6), `coriolis`, `diffusion`, `body-heat`,
+that explains why. Twelve keys are accepted: `const-gravity` (@sec-ch06), `coriolis`, `diffusion`, `body-heat`,
 `top-cool`, `bot-heat`, `relax-bot-comp`, `relax-bot-temp`, `relax-bot-velo`, `top-sponge-lyr`,
 `bot-sponge-lyr` and `plume-forcing`. The last is accepted but never installed (@sec-ch09-plume).
 
@@ -41,7 +41,7 @@ $$
 \Delta\mathbf U_i = -\Delta t\,(\nabla\cdot\mathbf F)_i + \Delta t\sum_{m=1}^{M}\mathbf S^{m}_i(\mathbf W, T)
 $$ {#eq-ch09-framework-stage}
 
-and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U + w_2^{(s)}\Delta\mathbf U$ (Chapter 7). @eq-ch09-framework-stage is built in `HydroImpl::forward`
+and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U + w_2^{(s)}\Delta\mathbf U$ (the time-integration chapter). @eq-ch09-framework-stage is built in `HydroImpl::forward`
 ([`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765)): the divergence term on interior cells, then the module loop. Each
 $\mathbf S^m$ is evaluated on the same $\mathbf W$ and on $T$ computed once from it, so the sum does not depend on
 the order of the loop; only round-off does. Nothing here needs a derivation beyond this sentence: the framework
@@ -50,7 +50,7 @@ two properties the sum must have, linearity in $\Delta t$ and registration.
 
 The dry-air part of the forcings' increment, $\Delta\rho_{\mathrm{d}}^{\mathrm{forc}} = \Delta\mathbf U[\rho_{\mathrm{d}}]$
 after the loop minus before it, is stored as `_forcing_dry` only when the block carries passive scalars
-([`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765)). The tracer carry that consumes it is Chapter 10.
+([`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765)). The tracer carry that consumes it is in @sec-ch10.
 
 ### Numerical method
 
@@ -58,7 +58,7 @@ after the loop minus before it, is stored as `_forcing_dry` only when the block 
 
 ```{python}
 #| label: fig-ch09-framework-order
-#| fig-cap: "Registration order of the native forcing modules. Each sky-blue box is a module, numbered in the order it is installed; the dashed box is accepted by the parser but never installed at the pin. The orange line is the flux-divergence increment the loop starts from, and the green line what happens to the increment after the loop."
+#| fig-cap: "Registration order of the native forcing modules. Each sky-blue box is a module, numbered in the order it is installed; the dashed box is accepted by the parser but never installed at the pin. The orange line is the flux-divergence increment $\\Delta\\mathbf U=-\\Delta t\\,\\nabla\\cdot\\mathbf F$ the loop starts from, and the green line what happens to the increment after the loop."
 #| fig-alt: "Twelve boxes in three rows of four, numbered 1 to 12 and connected by arrows, with plume-forcing dashed; a text line above for the start of the increment and one below for what follows it."
 #| echo: false
 from snapy_report.ch09.fig_framework_order import make_fig
@@ -66,12 +66,12 @@ make_fig()
 ```
 
 The loop runs in every Runge–Kutta stage, inside `HydroImpl::forward`, after the flux divergence and before the
-gravity-work bookkeeping and the vertical implicit correction (Chapter 6 and Chapter 7). All modules are
+gravity-work bookkeeping and the vertical implicit correction (@sec-ch06 and the time-integration chapter). All modules are
 explicit. Each module decides itself which cells it touches: `body-heat` touches interior cells only, the
 diffusion module adds a divergence of face fluxes, and the boundary modules (`top-cool`, `bot-heat`, the three
 relaxations, the two sponges) act only on a block that owns the physical $x_1$ boundary they name. Increments a
 module writes into ghost cells do not survive: the ghosts are refilled from the interior after the stage
-(Chapter 11).
+(the boundary-conditions chapter).
 
 ### Code
 
@@ -108,9 +108,11 @@ module writes into ghost cells do not survive: the ghosts are refilled from the 
 
 : Tests of the forcing framework. {#tbl-ch09-framework-tests}
 
+::: {.callout-important title="Check"}
 **Evidence.** No number is quoted in this section. The three tests above have not been run at the pin:
 **pending: one pinned build and ctest run at the pin** (listed in the chapter's pending list).
 **Coverage.** CPU only; no CUDA arm and no multi-rank arm.
+:::
 
 ### Limits
 
@@ -122,4 +124,4 @@ module writes into ghost cells do not survive: the ghosts are refilled from the 
    the relaxations and `body-heat` read the same state and are not measured.
 3. **`plume-forcing`** is accepted by the parser and never installed (@sec-ch09-plume).
 4. **Untested combinations.** No ctest runs two boundary modules together. See the switch coverage matrix
-   (Chapter 12).
+   (the configuration chapter).
