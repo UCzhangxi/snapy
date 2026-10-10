@@ -1,0 +1,65 @@
+## Dry-channel positivity inside the implicit solve {#sec-ch08-vic}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.10
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- The vertical implicit solve can return a mass change that would take a cell dry-negative.
+- Switch: none of its own; active with the implicit scheme of chapter 7.
+- The clamp is recorded in a per-step buffer, which the redo detector reads.
+- The limiter of @sec-ch08-theta does not cover this: it acts on explicit transport only.
+:::
+
+Everything else in this chapter acts on explicit fluxes. The implicit correction of chapter 7 solves a
+column and hands back a mass change that no face limiter has seen, and that change can exceed what a
+cell holds. This section is the guard on that path.
+
+### Derivation
+
+There is nothing to derive; the mechanism is a clamp with a record. What matters for the reader is the
+boundary of responsibility. The tracer limiter guarantees that *transport* cannot empty a cell, and that
+guarantee is per stage, for the explicit flux divergence. The implicit solve runs afterwards, on the
+same state, and its correction is outside that guarantee entirely. A cell that survived the explicit
+stage can still be driven dry by the implicit one, and that is the gap this clamp covers.
+
+### Numerical method
+
+The buffer is registered at `_dry_clamp_step` ([`implicit_hydro.cpp:120-121`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L120-L121)) and updated at
+[`implicit_hydro.cpp:379-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L379-L380), where it takes the running maximum of the clamp applied in
+this step rather than a count. Storing a magnitude rather than a flag is what lets the redo detector
+distinguish a round-off clamp from a real one.
+
+It is read through the accessor at `dry_clamp_step` ([`implicit_hydro.hpp:92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L92)) and cleared between steps at
+`reset_dry_clamp_step` ([`implicit_hydro.hpp:93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L93)), so the value a redo decision sees belongs to the step being
+judged.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the buffer | [`implicit_hydro.cpp:120-121`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L120-L121) | `_dry_clamp_step` | implicit scheme on |
+| the running maximum | [`implicit_hydro.cpp:379-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L379-L380) | `_mass_corr` | |
+| the accessor | [`implicit_hydro.hpp:92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L92) | `dry_clamp_step` | |
+| cleared between steps | [`implicit_hydro.hpp:93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L93) | `reset_dry_clamp_step` | |
+
+: Code map of the implicit dry-channel clamp. {#tbl-ch08-vic-code}
+
+### Tests
+
+No test in the repository isolates this clamp. It is written here from reading.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The implicit path has no positivity guarantee, only this clamp and the redo detector it feeds.
+:::
+
+1. **Not ported.** This chapter's checks cover the explicit limiter and the floors. The implicit clamp
+   is inside a solve this chapter does not reproduce, so its behaviour is recorded from the code.
+2. **A magnitude, not a budget.** The buffer records the largest clamp of a step. How much mass the
+   clamps created over a run is not tracked anywhere.

@@ -1,0 +1,83 @@
+## The condensate borrow {#sec-ch08-borrow}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, lifted out of scheme 8.5 as the outline recommends
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A negative condensate is repaired by borrowing the deficit from the parent vapour in the same cell.
+- Switch: part of the conserved limiter; applies to clouds that carry parent-vapour metadata.
+- Exactly conservative in mass, energy and elements, unlike clamping the condensate to zero.
+- Per-cell, so a ghost copy receives the identical repair and ranks stay in step.
+- A cell whose vapour cannot cover the deficit goes vapour-negative and is left to the column repair.
+:::
+
+This is the one repair in the chapter that is conservative, and it is worth separating from the floors
+it sits among for exactly that reason. The outline asks for it as its own scheme and the distinction
+earns the space.
+
+### Derivation
+
+A negative condensate does not mean mass is missing. It means the tracer flux over-drained the cell and
+the mass is in a neighbour. Clamping it to zero invents that mass, one way, every time.
+
+The alternative the code takes is to move mass between rows of the same cell: take the deficit out of
+the parent vapour and set the condensate to exactly zero. Total mass in the cell is unchanged, and so
+are the elements, because vapour and its condensate are the same substance in different phases.
+
+`[C3]` measures the difference rather than asserting it. Over two thousand cells with a negative
+condensate, clamping to zero adds $3.770\times10^{-2}$ of mass, while the borrow changes the total by
+exactly $0$. The code comment at `parentless` ([`equation_of_state.cpp:242-252`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L242-L252)) records the motivation from a
+measurement: the clamp was responsible for $102\%$ of the total-mass drift in silicate cloud runs, which
+is a number from a run that this chapter cites rather than reproduces.
+
+### Numerical method
+
+The repair is `parent_slot` ([`equation_of_state.cpp:252-269`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L252-L269)). For each cloud row with parent metadata, the
+deficit is the negative part at `clamp_max` ([`equation_of_state.cpp:264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L264)), it is added to each parent vapour
+in proportion to its mass fraction at [`equation_of_state.cpp:265-267`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L265-L267), and the condensate is
+then set to exactly zero.
+
+Two conditions are worth noting. A cloud not produced by nucleation has no parent metadata and is
+skipped, flagged for the column repair of @sec-ch08-fixvapor instead. And the repair is purely local, so
+a ghost cell that holds a copy of the same state receives the identical repair without any
+communication, which is what keeps ranks consistent.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the motivation, measured | [`equation_of_state.cpp:242-251`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L242-L251) | `clamp_min_` | |
+| the repair | [`equation_of_state.cpp:252-269`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L252-L269) | `parentless` | clouds with parents |
+| the deficit | [`equation_of_state.cpp:264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L264) | `deficit` | |
+| borrowing from the parents | [`equation_of_state.cpp:265-267`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L265-L267) | `parent_slot` | |
+
+: Code map of the condensate borrow. {#tbl-ch08-borrow-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| this chapter's check | `[C3]` the borrow conserves mass where a clamp invents it | exact |
+
+: Tests of the condensate borrow. {#tbl-ch08-borrow-tests}
+
+No ctest isolates the borrow.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- A cell whose vapour cannot cover the deficit goes vapour-negative. The borrow does not fail there; it
+  hands the problem to the column repair, which may itself fail.
+:::
+
+1. **The phase shift is not free.** The repair moves mass between phases, which the code comment puts at
+   about one per cent of the local value and expects the saturation adjustment to re-equilibrate within
+   the same cycle. That expectation is a hypothesis recorded in the code; no test in the repository
+   measures the residual phase error after the adjustment.
+2. **Parentless clouds.** Clouds without nucleation metadata get no borrow at all, and the chapter
+   cannot say how common that case is in practice.

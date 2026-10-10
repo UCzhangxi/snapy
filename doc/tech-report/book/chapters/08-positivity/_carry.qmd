@@ -1,0 +1,101 @@
+## The carry of energy and momentum with withheld mass {#sec-ch08-carry}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, schemes 8.2 and 8.3, which are one scheme from two inventories
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Mass the limiter withholds must not leave its energy and momentum behind.
+- Switch: the same as the limiter, and only where the equation of state defines a species enthalpy.
+- The withheld mass of a face takes the enthalpy and velocity of that face's donor.
+- The $x_1$ flux is split into an advected and a settling part, each with its own donor.
+:::
+
+The limiter of @sec-ch08-theta scales a species mass flux down. That mass does not vanish: it stays in
+the donor cell. If the energy and momentum fluxes are left unscaled, the mass stays behind but its
+enthalpy and momentum leave, and the cell loses energy it still holds. This section is the correction
+that keeps the books straight.
+
+The outline carries this scheme twice, as 8.2 and 8.3, from two inventories. They describe the same
+mechanism and are merged here into one section.
+
+### Derivation
+
+Write the unscaled face flux of species $n$ as $F$, and let $\theta_d$ be the factor of that face's
+donor. The limiter replaces $F$ by $\theta_d F$, so the mass withheld at that face is
+
+$$
+\mathrm{d}m = (1 - \theta_d)\,F .
+$$ {#eq-ch08-carry-dm}
+
+The energy flux of the face must lose $\mathrm{d}m\,h_{\mathrm{spec}}$ and the momentum flux
+$\mathrm{d}m\,v$, both evaluated **at the donor**, because that is the cell the mass did not leave.
+
+`[C6]` checks precisely that correspondence rather than restating @eq-ch08-carry-dm: it computes the
+energy the withheld mass would have carried as the difference between the unscaled and scaled mass
+flux times the donor's enthalpy, independently of the expression the code uses, and compares. The two
+agree to $1.8\times10^{-15}$ in energy and $8.9\times10^{-16}$ in momentum over two thousand face sets.
+
+The donor is chosen per face and per part of the flux, not per cell. In $x_1$ the flux carries two
+physically distinct pieces, an advected part and a settling part from sedimentation, and they need not
+move in the same direction: a species may be advected upward while settling downward through the same
+face. Each part therefore takes its own donor, which is why the code applies the withholding twice in
+$x_1$ and once elsewhere.
+
+### Numerical method
+
+The carry is `flux_positivity_carry_` at [`flux_positivity.cpp:106-149`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L106-L149). The withheld share
+is taken from the *net* flux's donor at `theta` ([`flux_positivity.cpp:124-125`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L124-L125)), matching the choice
+`flux_positivity_scale_` made, so the mass that was actually withheld is the mass that is accounted
+for. The energy and momentum subtraction is `part` ([`flux_positivity.cpp:127-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L127-L135)), with the
+enthalpy and velocity taken from the lower or upper cell according to the sign of the part being
+withheld.
+
+The $x_1$ split is `sed` ([`flux_positivity.cpp:136-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L136-L143)): when a sedimentation flux is given, the
+advected part is the net flux minus it, and `withhold` is called once on each. The other two
+directions have no settling flux and take the single branch.
+
+The species enthalpy comes from the equation of state at `species_enthalpy` ([`hydro_forward.cpp:675-677`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L675-L677)),
+computed on the primitive state with ghosts included. The code comment there records that exchanging
+it alongside the factors changed no bit, so it is not exchanged; that is a measurement someone made,
+not a derivation, and it is recorded as such.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the carry | [`flux_positivity.cpp:106-149`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L106-L149) | `flux_positivity_carry_` | limiter on, species enthalpy defined |
+| the withheld share, from the net donor | [`flux_positivity.cpp:124-125`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L124-L125) | `share` | |
+| energy and momentum subtraction | [`flux_positivity.cpp:127-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L127-L135) | `withhold` | |
+| the $x_1$ advected and settling split | [`flux_positivity.cpp:136-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L136-L143) | `fsed` | $x_1$ only |
+| the species enthalpy | [`hydro_forward.cpp:675-677`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L675-L677) | `species_enthalpy` | |
+
+: Code map of the carry. {#tbl-ch08-carry-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_flux_positivity_carry.cpp` | the carry of energy and momentum with withheld mass | per test |
+| this chapter's check | `[C6]` the withheld energy and momentum match the withheld mass at the same face and donor | round-off |
+
+: Tests of the carry. {#tbl-ch08-carry-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The carry runs only where the equation of state defines a species enthalpy. With an equation of
+  state that does not, the limiter still withholds mass and the energy is not corrected, so the two
+  mechanisms are not switched together.
+:::
+
+1. **Kinetic energy.** The withheld energy is the species enthalpy times the mass. Whether the kinetic
+   energy of the withheld mass is accounted for consistently with the momentum correction is not
+   something this chapter measures, and no test in the repository isolates it.
+2. **Hypothesis.** That the settling and advected parts need separate donors because they can move in
+   opposite directions is an argument from the physics of sedimentation and from the shape of the code.
+   No test in the repository constructs a face where the two parts disagree in sign.

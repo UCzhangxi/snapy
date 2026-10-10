@@ -1,0 +1,80 @@
+## The well-balanced face positivity fallback {#sec-ch08-wbface}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, scheme 8.9
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- In the well-balanced $x_1$ path the face state is a reference plus a perturbation, and the sum can go negative.
+- Switch: active with the well-balanced reference; the ordinary face floors are switched off there.
+- A non-positive face pressure falls back to the reference pressure.
+- A non-positive face density falls back to the *adjacent cell's* density, not to the reference.
+- At rest the perturbation vanishes, so the fallback never fires and well-balancing is preserved.
+:::
+
+The well-balanced path reconstructs a perturbation about a hydrostatic reference and adds the reference
+back at the face. Near the top of a column the reference is tiny and a nonlinear overshoot in the
+perturbation can take the sum below zero. This fallback catches that, and the choice of what to fall
+back to is the interesting part.
+
+### Derivation
+
+The pressure case is the simple one: a face pressure that comes out non-positive is replaced by the
+reference pressure at that face, at `psf_lo` ([`hydro_forward.cpp:357-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L360)). The reference is positive by
+construction, and at rest the perturbation is zero, so the condition is never met and the well-balanced
+property survives untouched.
+
+The density case is where a reasonable-looking choice is wrong, and the code comment at
+`dsf` ([`hydro_forward.cpp:362-367`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L367)) records why from experience rather than from theory. Falling
+back to the reference density fails when the reference overestimates the density aloft: a
+bottom-anchored isentrope did so by orders of magnitude, and every floor event at a reflecting top wall
+then became a large spurious wall impedance. The fallback is therefore the adjacent cell's density,
+which is a real local value rather than an extrapolated reference.
+
+A second detail in the same block is a latent-bug note worth carrying into the report. The shift along
+$x_1$ uses edge replication rather than a circular roll, and the comment at
+`density` ([`hydro_forward.cpp:368-373`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L368-L373)) says plainly that the circular word is not consumed today, but
+would become live the moment a caller changed the face range. That is a hazard recorded in the code and
+not a current defect.
+
+### Numerical method
+
+The block is `copy_` ([`hydro_forward.cpp:350-372`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L350-L372)). The reconstruction that feeds it is called with
+floors switched off at `wtmp` ([`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348)), precisely because the ordinary
+reconstruction floors would clamp a legitimate negative perturbation; this fallback replaces them for
+this path.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| reconstruction with floors off | [`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348) | `precon1` | well-balanced $x_1$ |
+| the fallback block | [`hydro_forward.cpp:350-372`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L350-L372) | `wtmp` | |
+| the pressure fallback | [`hydro_forward.cpp:357-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L360) | `psf_lo` | face pressure non-positive |
+| why not the reference density | ([`hydro_forward.cpp:362-367`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L367)) | `dsf` | |
+| edge replication, not a roll | [`hydro_forward.cpp:368-372`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L368-L372) | `roll` | |
+
+: Code map of the well-balanced face fallback. {#tbl-ch08-wbface-code}
+
+### Tests
+
+No test isolates the fallback. Its no-op-at-rest property is covered indirectly by the well-balanced
+tests of chapter 5, which would fail if it fired on a resting column.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The density fallback substitutes a neighbouring cell's density into a face state. That is a local
+  value, but it is not the reconstruction's answer, and nothing measures the error it introduces when
+  it fires.
+:::
+
+1. **Hypothesis, from a run not reproduced here.** That the reference-density fallback caused a large
+   spurious wall impedance is recorded in the code comment from a bottom-anchored isentrope case. This
+   chapter cites that reasoning; it does not reproduce the run.
+2. **A latent hazard.** The edge-replication note describes a wraparound that is unreachable with
+   today's face range. It is recorded because the range is the only thing keeping it unreachable.

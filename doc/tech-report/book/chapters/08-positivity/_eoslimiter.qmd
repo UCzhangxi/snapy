@@ -1,0 +1,118 @@
+## The equation-of-state limiter: two passes, floors and marks {#sec-ch08-eoslimiter}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 8, schemes 8.5, 8.6 and 8.7, merged
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- Two passes: one on the conserved state, one on the primitive state. They are not the same operation.
+- Switch: `equation-of-state/limiter`, default false. Floors default to $10^{-6}$, $10^{-3}$ and $20$ K.
+- Every floor is a clamp, so every floor invents mass or energy. Nothing removes it again.
+- The order of the two conserved floors is load-bearing: the energy floor reads the floored density.
+- A repair in the interior sets a mark that the redo detector reads.
+:::
+
+The outline carries this material three times: as the conserved pass, as the primitive pass, and as a
+second inventory's account of both together with the floors and the marks. All three are merged here,
+because the single switch, the shared floors and the shared marks are one story and splitting them
+puts the reader in two places at once.
+
+### Derivation
+
+There is no derivation for a floor. What there is instead are three facts about the operator that a
+reader needs and that are easy to get wrong, and the check establishes each separately.
+
+*The passes do not commute.* The conserved pass floors the dry density first and then floors the total
+energy at the kinetic energy plus the internal energy of a temperature floor, and that internal energy
+is computed from the density the previous statement has already clamped. `[C1]` reorders the two
+statements and measures the result: on three thousand random states straddling the floors, the energy
+differs in $2862$ of them, by up to $1.33\times10^{4}$. The order is not incidental.
+
+*The floors are repairs, not conservative operations.* A clamp can only add. `[C2]` measures how much:
+on four thousand cells straddling the floors the passes add $4.736\times10^{-4}$ of dry mass and
+$1.294\times10^{2}$ of total energy, both strictly positive. Nothing anywhere in the code removes it
+again. This is the sense in which snapy guarantees no positivity of density or pressure: it repairs
+them, at a cost it does not track.
+
+*The two passes floor different things.* `[C5]` separates them. The primitive pass floors density and
+pressure and clamps species mass fractions at zero; it has no energy row and applies no temperature
+floor. The conserved pass has no pressure row and floors energy through the temperature floor instead.
+Reading either as the other applied to different variables is wrong.
+
+The marks are the link to the redo machinery. `[C4]` checks the three cases that matter: an untouched
+state marks nothing; a density below the floor sets the patch mark; a NaN sets the NaN mark; and the
+same repair outside the interior marks nothing at all, because a repair in a ghost cell must not force
+a block to redo its step.
+
+### Numerical method
+
+The conserved pass is `cons` ([`equation_of_state.cpp:192-235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L192-L235)) and runs in a fixed order: NaNs are
+zeroed and marked at [`equation_of_state.cpp:201-203`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L201-L203), the dry density is clamped at
+[`equation_of_state.cpp:209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L209), and the energy is clamped at
+[`equation_of_state.cpp:226-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L226-L234) to the kinetic energy plus the internal energy of the
+temperature floor. The kinetic energy there is built from the momentum raised with the cell's own
+metric, so the floor is correct on a curved grid and not only in Cartesian.
+
+The primitive pass is `prim` ([`equation_of_state.cpp:325-350`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L325-L350)): NaNs, the density floor at
+[`equation_of_state.cpp:333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L333), the species clamp at [`equation_of_state.cpp:346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L346) and
+the pressure floor at [`equation_of_state.cpp:349`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L349).
+
+The floor values are YAML keys with defaults at `density_floor` ([`equation_of_state.cpp:65-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L65-L72)): a density
+floor of $10^{-6}$, a pressure floor of $10^{-3}$ and a temperature floor of $20$ K. They are absolute
+numbers in the deck's own units, not fractions of anything, so whether they are conservative or
+catastrophic depends on the scaling of the problem.
+
+The marks are a two-element device-side boolean buffer, reset at
+`reset_limiter_marks` ([`equation_of_state.cpp:352-354`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L352-L354)) and read by the redo detector of @sec-ch08-redo. Entry one
+is the NaN mark and entry zero the patch mark, set at `limiter_marks_` ([`equation_of_state.cpp:235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L235)) by
+comparing the density and energy rows against a copy taken before the floors.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the conserved pass | [`equation_of_state.cpp:192-235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L192-L235) | `apply_conserved_limiter_` | `limiter: true` |
+| NaN to zero, marked | [`equation_of_state.cpp:201-203`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L201-L203) | `masked_fill_` | |
+| the dry density floor | [`equation_of_state.cpp:209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L209) | `density_floor` | |
+| the energy floor | [`equation_of_state.cpp:226-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L226-L234) | `min_ie` | an energy row exists |
+| the patch mark | [`equation_of_state.cpp:235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L235) | `limiter_marks_` | interior only |
+| the primitive pass | [`equation_of_state.cpp:325-350`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L325-L350) | `apply_primitive_limiter_` | `limiter: true` |
+| its density floor | [`equation_of_state.cpp:333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L333) | `density_floor` | |
+| its species clamp | [`equation_of_state.cpp:346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L346) | `clamp_min_` | species present |
+| its pressure floor | [`equation_of_state.cpp:349`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L349) | `pressure_floor` | |
+| the floor defaults | [`equation_of_state.cpp:65-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L65-L72) | `density_floor` | YAML |
+| the mark buffer | [`equation_of_state.cpp:352-354`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L352-L354) | `reset_limiter_marks` | |
+
+: Code map of the equation-of-state limiter. {#tbl-ch08-eoslimiter-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| this section's check | `[C1]` the two floors do not commute; `[C2]` the mass and energy a floor invents; `[C4]` the marks and the interior rule; `[C5]` the two passes floor different rows | measured, bitwise |
+
+: Tests of the equation-of-state limiter. {#tbl-ch08-eoslimiter-tests}
+
+The check is `src/snapy_report/ch08/floors_check.py`, output
+`src/snapy_report/ch08/floors_check.out`, 5 of 5 claims passing. No ctest in the repository isolates
+the floors themselves; they are exercised incidentally by every deck that switches the limiter on.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The floors are absolute values in the deck's units. A deck whose densities are legitimately below
+  $10^{-6}$ will have every cell floored, silently and on every call.
+- One switch turns on this limiter, the tracer limiter, the reconstruction floors and the species
+  clamps together. They cannot be selected independently, which is a design decision recorded in the
+  sources, not an accident.
+:::
+
+1. **The invented mass is not tracked.** `[C2]` measures it in a synthetic state; the code keeps a
+   boolean mark but no budget. A run cannot report how much mass its floors created.
+2. **Open question.** Whether the energy floor should use the floored or the unfloored density is not
+   discussed in any source. `[C1]` shows the choice is observable; the code makes it one way, and this
+   chapter records which, not which is right.
