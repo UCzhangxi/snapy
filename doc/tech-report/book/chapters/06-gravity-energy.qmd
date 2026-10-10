@@ -1,0 +1,52 @@
+# Gravity and energy {#sec-ch06}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
+sources: OUTLINE.md chapter 6; docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0;
+         sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md; sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md
+status: draft
+reviewer:
+-->
+
+Gravity does work on the flow, and a finite-volume code has to decide where to book it. This chapter is about
+that decision and what each answer costs. It covers the cell form, which applies the body force and the work
+$\rho v_1g_1$ in the same cell; the face form, which books the work as a flux difference of potential energy
+across the cell's $x_1$ faces; the global fixer that repairs the cell form's budget once per step; the
+corrected-PE face work, which makes the booked work fourth-order consistent with the scheme's own mass fluxes;
+the gravity work inside the vertical implicit operator; and a closing comparison of what each form conserves and
+which diagnostic measures it. The thread running through all of them is a single identity, @eq-ch06-dwork-booked:
+choose a discrete potential energy, and the work that conserves total energy plus that potential energy is
+determined. Every form in this chapter is that identity with a different choice of $P$, and the differences
+between the forms are differences in how accurate $P$ is, not in how the work is applied. The momentum equation
+is untouched throughout; only the energy row changes. The hydrostatic reference state these forms are often used
+with is @sec-ch05, and the implicit solver they couple into is @sec-ch07b.
+
+```{python}
+#| label: fig-ch06-deps
+#| fig-cap: "Dependency map of the gravity and energy schemes. Nodes are the schemes of this chapter; a solid arrow reads 'requires', a dashed arrow 'implies', and a vermillion arrow with a bar head 'turns off'. The corrected-PE face work requires the face form, implies the E+P invariant in place of E+PE_d, and turns off the cp3/cp5/weno5 curvature flux; the fixer requires the cell form and is refused with either face form. Read it with the switch coverage matrix, which lists which combinations a test actually exercises."
+#| fig-alt: "Directed graph of six nodes labelled cell form, face form, face-wallc, gravity-work fixer, corrected-PE face work and VIC gravity work, with solid, dashed and barred arrows between them."
+#| echo: false
+from snapy_report.ch06.fig_deps import make_fig
+make_fig()
+```
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| Cell form (@sec-ch06-cell) | `gravity-work: cell` | on | 1 | `test_forcing` |
+| Face form (@sec-ch06-face) | `gravity-work: face` | off | 2 | `test_horizontal_flux_covariance` |
+| Wall-cell face form (@sec-ch06-wallc) | `gravity-work: face-wallc` | off | 1 at walls | `test_gravity_work_fixer` |
+| Gravity-work fixer (@sec-ch06-fixer) | `gravity-work-fixer` | on with `cell` | global | `test_gravity_work_fixer` |
+| Corrected-PE face work (@sec-ch06-dwork) | `SNAP_GRAVITY_WORK_RADIAL_EXACT` | on with `face` | 4 | `test_gravity_work_radial_exact` |
+| VIC gravity work (@sec-ch06-vic) | `implicit-scheme` $\neq0$ | off | linearised | `test_implicit_face_work_operator` |
+
+: The schemes of this chapter, their switches and defaults, the order of the booked gravity work, and the test
+that carries each one. Orders are of the booked work against the exact work of the scheme's own $x_1$ mass
+fluxes; "global" means the fixer corrects the domain integral, not the local error. Full ctest names and their
+tolerances are in each scheme's Tests layer. {#tbl-ch06-schemes}
+
+{{< include 06-gravity-energy/_dwork.qmd >}}
+
+<!-- The remaining scheme files of this chapter are not written yet. In reading order they are
+     _cell.qmd (OUTLINE 6.1), _face.qmd (6.2), _fixer.qmd (6.3), _dwork.qmd (6.4, included above),
+     _vic.qmd (6.5) and _conserves.qmd (6.6). Each is added here as a separate include, in that order,
+     by its author; this file holds nothing else (STYLE.md section 10.1). -->
