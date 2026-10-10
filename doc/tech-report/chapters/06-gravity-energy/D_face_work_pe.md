@@ -27,7 +27,7 @@ wavelength.
 **What it does.** With `gravity-work: face`, snapy books the energy that gravity exchanges with the flow, the gravity
 work, in the form of a flux difference of potential energy across each cell's $x_1$ faces (the face form, §6.2).
 Scheme D adds one term to that work in every cell,
-$$W^{\rm D}_i = W^{\rm face}_i + g_1\,\sigma_i^2\,s_i[\dot\rho],$$
+$$W^{\mathrm{D}}_i = W^{\mathrm{face}}_i + g_1\,\sigma_i^2\,s_i[\dot\rho],$$
 where $\dot\rho$ is the stage's $x_1$ density tendency, $s_i$ the slope of the quadratic through cell $i$ and its two
 $x_1$ neighbours, and $\sigma_i^2$ the variance of $x_1$ over the cell. The added term is the work done by moving
 the mass of a cell whose density is not uniform inside it.
@@ -128,7 +128,7 @@ $$V_i\dot\rho_i = -\Delta_i[AF], \tag{6.4.5}$$
 with $F_{i\pm1/2}$ the total mass flux density the Riemann solver returns (dry plus every mass-carrying species,
 after the positivity limiter and sedimentation). Take $P_i = V_i\bar\rho_i\phi_i$ with $\phi_i=\phi(x_{1,i})$ at the
 volume centroid. Then $\dot P_i = V_i\dot\rho_i\phi_i = -\phi_i\Delta_i[AF]$ and (6.4.4) gives
-$$W^{\rm face}_i = \frac{1}{V_i}\Big[\phi_i\,\Delta_i[AF] - \Delta_i[A\phi F]\Big]
+$$W^{\mathrm{face}}_i = \frac{1}{V_i}\Big[\phi_i\,\Delta_i[AF] - \Delta_i[A\phi F]\Big]
 = \frac{g_1}{V_i}\Big[(x_{1,i+1/2}-x_{1,i})A_{i+1/2}F_{i+1/2} + (x_{1,i}-x_{1,i-1/2})A_{i-1/2}F_{i-1/2}\Big],
 \tag{6.4.6}$$
 the second form from $\phi_i - \phi_{i\pm1/2} = g_1(x_{1,i\pm1/2}-x_{1,i})$. Code:
@@ -137,9 +137,9 @@ by §2.2.
 
 *Its error.* $\mathrm{PE}_d$ is the exact $\int\rho\phi\,dV$ of a piecewise-constant density, so it misses the
 in-cell density gradient (§2.4). On a uniform Cartesian grid (6.4.6) is the trapezoid rule,
-$W^{\rm face}_i = g_1(F_{i+1/2}+F_{i-1/2})/2$, with error $g_1\tfrac{h^2}{12}F''$ in every cell. On a
+$W^{\mathrm{face}}_i = g_1(F_{i+1/2}+F_{i-1/2})/2$, with error $g_1\tfrac{h^2}{12}F''$ in every cell. On a
 spherical-polar grid two more terms appear (`curved-gravity-work-weight.md` §2, eq. 2):
-$$\frac{W^{\rm face}_i - g_1\langle F\rangle_{V_i}}{g_1} = \frac{h^2}{12}F'' + \frac{h^2}{6\bar r}F' - \frac{h^2}{6\bar r^2}F
+$$\frac{W^{\mathrm{face}}_i - g_1\langle F\rangle_{V_i}}{g_1} = \frac{h^2}{12}F'' + \frac{h^2}{6\bar r}F' - \frac{h^2}{6\bar r^2}F
 + O(h^4). \tag{6.4.7}$$
 [C6] measures the face form at second order in interior and wall cells on both grids.
 
@@ -180,9 +180,9 @@ where the stencil depends on the cell's place in the block:
 - $\mathcal N_0 = \{0,1,2\}$ and $\mathcal N_{n_1-1} = \{n_1-3,n_1-2,n_1-1\}$, one-sided, at the two $x_1$ ends of
   every block.
 
-With $h_- = x_{1,i}-x_{1,i-1}$ and $h_+ = x_{1,i+1}-x_{1,i}$ the interior weights are
-$$s_i[\bar\rho] = -\frac{h_+}{h_-(h_-+h_+)}\bar\rho_{i-1} + \frac{h_+-h_-}{h_-h_+}\bar\rho_i
-+ \frac{h_-}{h_+(h_-+h_+)}\bar\rho_{i+1},$$
+With $\Delta_- = x_{1,i}-x_{1,i-1}$ and $\Delta_+ = x_{1,i+1}-x_{1,i}$ the interior weights are
+$$s_i[\bar\rho] = -\frac{\Delta_+}{\Delta_-(\Delta_-+\Delta_+)}\bar\rho_{i-1} + \frac{\Delta_+-\Delta_-}{\Delta_-\Delta_+}\bar\rho_i
++ \frac{\Delta_-}{\Delta_+(\Delta_-+\Delta_+)}\bar\rho_{i+1},$$
 and at the first cell, with $a = x_{1,1}-x_{1,0}$ and $b = x_{1,2}-x_{1,1}$,
 $$s_0[\bar\rho] = -\frac{2a+b}{a(a+b)}\bar\rho_0 + \frac{a+b}{ab}\bar\rho_1 - \frac{a}{(a+b)b}\bar\rho_2,$$
 mirrored at the last cell. [C2] checks these weights against the derivative of the Lagrange quadratic.
@@ -203,7 +203,7 @@ From here on the bar is dropped: $\rho_i$ is the cell average.
 
 Insert $P_i = V_i[\rho_i\phi_i - g_1\sigma_i^2s_i[\rho]]$ into (6.4.4). Because $s_i$ is linear,
 $\dot P_i = V_i[\dot\rho_i\phi_i - g_1\sigma_i^2s_i[\dot\rho]]$, and comparing with (6.4.6),
-$$\boxed{\;W^{\rm D}_i = W^{\rm face}_i + g_1\,\sigma_i^2\,s_i[\dot\rho],\qquad V_i\dot\rho_i = -\Delta_i[AF].\;} \tag{6.4.12}$$
+$$\boxed{\;W^{\mathrm{D}}_i = W^{\mathrm{face}}_i + g_1\,\sigma_i^2\,s_i[\dot\rho],\qquad V_i\dot\rho_i = -\Delta_i[AF].\;} \tag{6.4.12}$$
 Code: `src/hydro/hydro_forward.cpp:826-831@dae902b`, which adds `corrected_pe_work(-dt * vertical_mass_div, ...)`,
 i.e. $\Delta t\,g_1\sigma^2s[\dot\rho]$, to the face work. This is the whole scheme. It changes only the energy row:
 mass and momentum are untouched. At rest ($F\equiv0$, so $\dot\rho=0$) it adds exactly zero.
@@ -211,7 +211,7 @@ mass and momentum are untouched. At rest ($F\equiv0$, so $\dot\rho=0$) it adds e
 ### 2.6 Conservation, exactly
 
 Sum (6.4.12) times $V_i$ over a closed column. By construction (6.4.4),
-$\sum_iW^{\rm D}_iV_i + \dot P = -\sum_i\Delta_i[A\phi F] = -(A\phi F)_{\rm top} + (A\phi F)_{\rm bottom} = 0$. No
+$\sum_iW^{\mathrm{D}}_iV_i + \dot P = -\sum_i\Delta_i[A\phi F] = -(A\phi F)_{\mathrm{top}} + (A\phi F)_{\mathrm{bottom}} = 0$. No
 property of the slope weights, the grid or the flux enters. The energy fluxes other than gravity telescope as well.
 So in exact arithmetic $\sum_iV_iE_i + P$ is constant over one evaluation of the right-hand side.
 
@@ -220,7 +220,7 @@ w_2\Delta t\,\mathcal L(\mathbf U)$ with $w_0+w_1=1$. For rk3 the weights $(w_0,
 $(\tfrac34,\tfrac14,\tfrac14)$ and $(\tfrac13,\tfrac23,\tfrac23)$ (`pyharp:src/integrator/integrator.cpp:49-60@4721715`).
 Write $\mathcal E(\mathbf U) = \sum_iV_iE_i + P[\rho]$. $\mathcal E$ is linear in $\mathbf U$, and
 $\mathcal E(\Delta t\,\mathcal L) = 0$ by the identity above. Then
-$\mathcal E(\mathbf U^{\rm new}) = w_0\mathcal E(\mathbf U^n) + w_1\mathcal E(\mathbf U)$, which equals
+$\mathcal E(\mathbf U^{\mathrm{new}}) = w_0\mathcal E(\mathbf U^n) + w_1\mathcal E(\mathbf U)$, which equals
 $\mathcal E(\mathbf U^n)$ whenever $\mathcal E(\mathbf U)=\mathcal E(\mathbf U^n)$. By induction over the stages,
 $E+P$ is constant over the step to round-off.
 
@@ -237,12 +237,12 @@ That is a sign slip, flagged to its author.)
 
 ### 2.7 Accuracy
 
-From §2.2, $W^{\rm D}_iV_i - g_1V_i\langle F\rangle_{V_i} = \tfrac{d}{dt}(\mathcal P_i - P_i)$. By (6.4.8) and
+From §2.2, $W^{\mathrm{D}}_iV_i - g_1V_i\langle F\rangle_{V_i} = \tfrac{d}{dt}(\mathcal P_i - P_i)$. By (6.4.8) and
 (6.4.11), $\mathcal P_i - P_i = -g_1V_i\sigma_i^2(\rho'(x_{1,i}) - s_i[\rho]) + O(h^4V_i)$, which is linear in $\rho$.
 Its time derivative is the same expression applied to the density tendency. For a smooth flux field $F(x_1)$ the
 discrete tendency (6.4.5) is the exact cell average of $-A^{-1}\partial_1(AF)$, so that expression is $O(h^4V_i)$
 too:
-$$W^{\rm D}_i = g_1\langle F\rangle_{V_i} + O(h^4)\quad\text{in every cell, wall cells included,} \tag{6.4.14}$$
+$$W^{\mathrm{D}}_i = g_1\langle F\rangle_{V_i} + O(h^4)\quad\text{in every cell, wall cells included,} \tag{6.4.14}$$
 where $F$ is the flux field the scheme is handed. To leading order,
 $\sigma^2s[\dot\rho] = -\tfrac{h^2}{12}(F''+2F'/r-2F/r^2)$, which is minus (6.4.7): D cancels all three $O(h^2)$
 terms of the face form, the trapezoid term and both curvature terms.
@@ -252,19 +252,19 @@ compares the booked work with the exact cell averages; values are given at $n_1$
 
 | $\max|W-g_1\langle F\rangle_V|/|g_1|$ | interior | order | wall cells | order |
 |---|---|---|---|---|
-| face, spherical $r_0=5H$ | 4.44e-3 → 2.50e-5 | 1.95 | 5.81e-3 → 2.54e-5 | 1.98 |
-| D, spherical $r_0=5H$ | 3.47e-5 → 5.35e-10 | 4.00 | 5.37e-5 → 1.79e-10 | 4.49 |
-| face, Cartesian | 4.99e-3 → 3.11e-5 | 1.94 | 7.02e-3 → 3.17e-5 | 1.98 |
-| D, Cartesian | 7.44e-5 → 1.16e-9 | 4.00 | 1.29e-4 → 1.91e-9 | 4.02 |
+| face, spherical $r_0=5H$ | 4.44e-3 $\to$ 2.50e-5 | 1.95 | 5.81e-3 $\to$ 2.54e-5 | 1.98 |
+| D, spherical $r_0=5H$ | 3.47e-5 $\to$ 5.35e-10 | 4.00 | 5.37e-5 $\to$ 1.79e-10 | 4.49 |
+| face, Cartesian | 4.99e-3 $\to$ 3.11e-5 | 1.94 | 7.02e-3 $\to$ 3.17e-5 | 1.98 |
+| D, Cartesian | 7.44e-5 $\to$ 1.16e-9 | 4.00 | 1.29e-4 $\to$ 1.91e-9 | 4.02 |
 
 ### 2.8 Uniform-grid closed forms
 
 On a uniform Cartesian column, (6.4.12) can be written in face fluxes. Use $\dot\rho_l = -(F_{l+1/2}-F_{l-1/2})/h$,
 $\sigma^2 = h^2/12$, the interior slope $s_i = (\dot\rho_{i+1}-\dot\rho_{i-1})/2h$, and the wall slope
 $s_0 = (-3\dot\rho_0+4\dot\rho_1-\dot\rho_2)/2h$ with $F_{-1/2}=0$:
-$$\frac{W^{\rm D}_i}{g_1} = \frac{F_{i+1/2}+F_{i-1/2}}{2} - \frac{F_{i+3/2}-F_{i+1/2}-F_{i-1/2}+F_{i-3/2}}{24},\qquad
-\frac{W^{\rm D}_0}{g_1} = \frac{19F_{1/2}-5F_{3/2}+F_{5/2}}{24}, \tag{6.4.15}$$
-and $W^{\rm D}_{n_1-1}$ is the mirror image of $W^{\rm D}_0$. Cells 1 and $n_1-2$ use the interior form with the
+$$\frac{W^{\mathrm{D}}_i}{g_1} = \frac{F_{i+1/2}+F_{i-1/2}}{2} - \frac{F_{i+3/2}-F_{i+1/2}-F_{i-1/2}+F_{i-3/2}}{24},\qquad
+\frac{W^{\mathrm{D}}_0}{g_1} = \frac{19F_{1/2}-5F_{3/2}+F_{5/2}}{24}, \tag{6.4.15}$$
+and $W^{\mathrm{D}}_{n_1-1}$ is the mirror image of $W^{\mathrm{D}}_0$. Cells 1 and $n_1-2$ use the interior form with the
 wall flux, which is zero. [C5] checks both forms symbolically and their accuracy:
 - the wall form is exact for $F = z, z^2, z^3$ with $F(0)=0$, and its error for $z^4$ is $\tfrac{19}{30}h^4$;
 - the interior form has no error terms below $h^4$.
@@ -292,7 +292,7 @@ one-sided stencil at its $x_1$ ends, so $P = \sum_bP_b$, a sum of per-block func
 blocks see the same $F$ and $\phi$, so the $A\phi F$ terms cancel between them, and global $E+P$ is exact ([C7], two
 blocks: $2.2\times10^{-16}$). The split column does not conserve the one-block $P$, though. The seam cells take a
 one-sided slope where one block would take the centred one, so the two runs differ. [C10] measures the functional
-difference $|P_{\rm split}-P_{\rm one}|/|P|$ falling from $2.6\times10^{-8}$ at $n_1$=32 to $5.3\times10^{-13}$ at
+difference $|P_{\mathrm{split}}-P_{\mathrm{one}}|/|P|$ falling from $2.6\times10^{-8}$ at $n_1$=32 to $5.3\times10^{-13}$ at
 256, order 5.2 (fit over all four resolutions). The state gap the code prints is in Tests (§5).
 
 ### 2.10 How D enters the vertical implicit solve
@@ -313,7 +313,7 @@ code is `src/implicit/vic_assemble_full_impl.h:101-120@dae902b` for full VIC and
 `src/implicit/vic_assemble_partial_impl.h:122-139@dae902b` for partial VIC.
 
 **Why the term must be in the operator.** Booking D only after the solve would treat
-$g_1\sigma^2s[\Delta\rho_{\rm solve}]$ explicitly. By §2.8 that term is a quarter to a third of the face work for a
+$g_1\sigma^2s[\Delta\rho_{\mathrm{solve}}]$ explicitly. By §2.8 that term is a quarter to a third of the face work for a
 grid-scale density change, not an $O(h^2)$ correction. The face work it accompanies is implicit, and stable at
 vertical acoustic Courant numbers of hundreds. A discretely balanced 11.3$H$ rest column (implicit-scheme 9) with the
 term booked only after the solve grew from round-off to $\max|v_1| = 1.3\times10^{-7}$ m s$^{-1}$:
@@ -396,8 +396,8 @@ the solid's density change, which is zero.
 **Figure 6.4.1.**
 - (a) Interior cell $i$: the face form reads $F_{i\pm1/2}$ (orange). D's added term reads the densities of cells
   $i-1,i,i+1$, hence the four faces $F_{i-3/2}..F_{i+3/2}$ (green).
-- (b) The bottom wall cell: the slope is one-sided on cells 0, 1, 2, so $W^{\rm D}_0$ reads
-  $F_{1/2},F_{3/2},F_{5/2}$. On a uniform grid $W^{\rm D}_0/g_1 = (19F_{1/2}-5F_{3/2}+F_{5/2})/24$. The wall face
+- (b) The bottom wall cell: the slope is one-sided on cells 0, 1, 2, so $W^{\mathrm{D}}_0$ reads
+  $F_{1/2},F_{3/2},F_{5/2}$. On a uniform grid $W^{\mathrm{D}}_0/g_1 = (19F_{1/2}-5F_{3/2}+F_{5/2})/24$. The wall face
   carries no flux and no ghost cell is read (hatched).
 - (c) An $x_1$ seam: each block takes one-sided slopes at its own ends, so $P = P_A+P_B$. The seam face's $\phi F$
   cancels between the two blocks, so global $E+P$ is exact.
@@ -410,7 +410,7 @@ the solid's density change, which is zero.
 
 ### 3.1 Where each quantity lives
 
-In the code the interior cells of a block in $x_1$ are `is` ≤ index < `ie` (`is = il()`, `ie = iu() + 1`). Math cell
+In the code the interior cells of a block in $x_1$ are `is` $\le$ index < `ie` (`is = il()`, `ie = iu() + 1`). Math cell
 $i = 0..n_1-1$ is code index `is + i`; face $i-\tfrac12$ is code face index `is + i`.
 
 | quantity | lives at | from |
@@ -421,7 +421,7 @@ $i = 0..n_1-1$ is code index `is + i`; face $i-\tfrac12$ is code face index `is 
 | $\dot\rho_i\,\Delta t$ | interior cells | `-dt * vertical_mass_div` (6.4.5) |
 | $\sigma_i^2$ | interior cells | `x1_variance` on the block's interior faces (6.4.9) |
 | $s_i[\cdot]$ | interior cells | `centroid_slope` on the block's interior centroids (6.4.10) |
-| $W^{\rm D}_i\,\Delta t$ | interior cells, energy row | added to `du[IPR]` |
+| $W^{\mathrm{D}}_i\,\Delta t$ | interior cells, energy row | added to `du[IPR]` |
 
 ### 3.2 Walls: the closure needs no ghosts
 
@@ -430,7 +430,7 @@ slope is one-sided, conservation uses only $F=0$ on the wall face (§2.6), and t
 4.49 spherical and 4.02 Cartesian]. This is what makes D a *wall closure* for the gravity work.
 
 The cp3/cp5/weno5 curvature flux $\mathcal K$ needs a value at the wall face and is set to zero there, which leaves
-its wall cells first order: Cartesian first cell $1.65\times10^{-2}$ → $2.05\times10^{-3}$, order 1.00, $n_1$ 16 →
+its wall cells first order: Cartesian first cell $1.65\times10^{-2}$ $\to$ $2.05\times10^{-3}$, order 1.00, $n_1$ 16 $\to$
 128 (`curved-gravity-work-weight.md` §8.3, §8.7) [deck: `docs/derivations/optionF_replica.py` §6; base sha 8cea3ae;
 run not recorded]. D does not use $\mathcal K$: `hydro_forward.cpp:838` turns it off when D is active.
 
@@ -456,11 +456,11 @@ difference between a split and an unsplit column (§5).
 Within `HydroImpl::forward` (`hydro_forward.cpp`), D runs in step (6), external forcing. It runs after:
 - the $x_1$, $x_2$, $x_3$ fluxes and the tracer positivity limiter;
 - the flux divergence;
-- every forcing module, including the const-gravity cell work $\rho v_1g_1\alpha_{\rm nh}$
+- every forcing module, including the const-gravity cell work $\rho v_1g_1\alpha_{\mathrm{nh}}$
   (`const_gravity.cpp:48-52`).
 
-The energy correction booked is $W^{\rm D}_i\Delta t - W^{\rm cell}_i\Delta t$ (`hydro_forward.cpp:900`): the cell
-work is removed and the face form plus D is put in its place. With $\alpha_{\rm nh}<1$ the removed cell work includes
+The energy correction booked is $W^{\mathrm{D}}_i\Delta t - W^{\mathrm{cell}}_i\Delta t$ (`hydro_forward.cpp:900`): the cell
+work is removed and the face form plus D is put in its place. With $\alpha_{\mathrm{nh}}<1$ the removed cell work includes
 the hydrostatic-split part (`:859-866`). That part is not added by a forcing module; `hydro_forward.cpp:911-915` adds
 it right after the correction is computed. Then:
 - **Explicit run, or `face` with `implicit-scheme` 0:** the correction is added to `du[IPR]` after the implicit step,
@@ -488,11 +488,11 @@ In `ImplicitHydroImpl::forward` (`implicit_hydro.cpp`):
 
 ### 3.6 Order of accuracy, summary
 
-| where | order of $W^{\rm D}-g_1\langle F\rangle$ | evidence |
+| where | order of $W^{\mathrm{D}}-g_1\langle F\rangle$ | evidence |
 |---|---|---|
 | interior, Cartesian and spherical-polar (uniform) | 4 | [C6] 4.00, 4.00 |
 | wall cells (uniform) | 4 | [C6] 4.49 spherical, 4.02 Cartesian |
-| $x_1$ block seam (state, split vs one block) | 4, not asserted | printed by `test_x1_seam_split` (`radial_exact_split_gap`): orders 3.7, 4.8 at $n_1$ 32 → 64 → 128 [re-run]; the functional gap [C10] 5.2 |
+| $x_1$ block seam (state, split vs one block) | 4, not asserted | printed by `test_x1_seam_split` (`radial_exact_split_gap`): orders 3.7, 4.8 at $n_1$ 32 $\to$ 64 $\to$ 128 [re-run]; the functional gap [C10] 5.2 |
 | non-uniform $x_1$ grid, smooth stretching | 4 for $P$; the work by the same argument | [C4] $P$: 4.08 on a stretched grid; the work on non-uniform grids is not measured |
 | non-smooth $x_1$ grid (jumps in $h$) | not established | Limits |
 
@@ -521,7 +521,7 @@ All lines at snapy@dae902b, except pyharp as noted.
 | add D, explicit (6.4.12) | `src/hydro/hydro_forward.cpp:826-831@dae902b` | `corrected_pe_work(-dt * vertical_mass_div, ...)` | `radial_exact_work()` and not `cell` |
 | curvature flux off under D | `src/hydro/hydro_forward.cpp:837-858@dae902b` | `curv_flux1` | `!radial_exact` |
 | face minus cell work | `src/hydro/hydro_forward.cpp:859-866, 899-906@dae902b` | `gravity_energy_correction` | |
-| hydrostatic-split part | `src/hydro/hydro_forward.cpp:911-915@dae902b` | | $\alpha_{\rm nh}<1$ |
+| hydrostatic-split part | `src/hydro/hydro_forward.cpp:911-915@dae902b` | | $\alpha_{\mathrm{nh}}<1$ |
 | into the operator / after | `src/hydro/hydro_forward.cpp:971-976, 988-992@dae902b` | | `face_work_in_operator()` |
 | face work in the operator | `src/hydro/hydro.cpp:286-290@dae902b` | `HydroImpl::face_work_in_operator()` | `face` and `implicit-scheme`$\ne0$ |
 | $\Delta t_c = w_2\Delta t$ | `src/hydro/hydro_forward.cpp:938-942@dae902b` | `dt_corr` | rk3 |
@@ -544,7 +544,7 @@ All lines at snapy@dae902b, except pyharp as noted.
    - an implicit scheme with a split $x_1$ is refused (`:394-397`).
 2. Each stage, `HydroImpl::forward` computes the total $x_1$ mass flux after the positivity limiter and
    sedimentation (`hydro_forward.cpp:786-789`).
-3. It forms $\Delta t\,W^{\rm face}$ (`:803-820`).
+3. It forms $\Delta t\,W^{\mathrm{face}}$ (`:803-820`).
 4. If `radial_exact_work()`, it adds `corrected_pe_work(-dt * vertical_mass_div, ...)` (`:826-831`) and skips
    $\mathcal K$ (`:838`).
 5. It replaces the cell work by the face form (`:900`).
@@ -563,8 +563,8 @@ switch is read once per process. C++ ctest names end in `.<b>`, the lower-case b
 | test (ctest) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_gravity_work_radial_exact.py` (`test_gravity_work_radial_exact_python`; CUDA: `..._cuda_python`) check 1 | switch unset and `1` give bit-identical states; `0` differs | exact | the default-on contract |
-| same, check 2 | per-step $|\Delta(E+P)|/|E+P|\le10^{-14}$, 20 steps. Cases: spherical-polar ($x_1\in[300,400]$) and Cartesian columns ($n_1$=32) and a 2-D Cartesian box (32×16), each explicit and VIC (implicit-scheme 9). Isentropic column, closed walls, weno5, lmars, rk3 | `EP_TOL = 1e-14` (`:51`) | about 50 ulp of double precision on sums of up to 512 cells of one sign: round-off, with margin for the VIC solve |
-| same, check 3 | one explicit plm stage: $E_{\rm on}-E_{\rm off} = g_1\sigma^2s[\Delta\rho]$ cell by cell (6.4.12); density unchanged by the switch | $\le10^{-13}\max|E|$, and the term $\ge10^3\times$ the error (`:423`) | round-off of the energy; the second bound rules out a vacuous pass |
+| same, check 2 | per-step $|\Delta(E+P)|/|E+P|\le10^{-14}$, 20 steps. Cases: spherical-polar ($x_1\in[300,400]$) and Cartesian columns ($n_1$=32) and a 2-D Cartesian box ($32\times16$), each explicit and VIC (implicit-scheme 9). Isentropic column, closed walls, weno5, lmars, rk3 | `EP_TOL = 1e-14` (`:51`) | about 50 ulp of double precision on sums of up to 512 cells of one sign: round-off, with margin for the VIC solve |
+| same, check 3 | one explicit plm stage: $E_{\mathrm{on}}-E_{\mathrm{off}} = g_1\sigma^2s[\Delta\rho]$ cell by cell (6.4.12); density unchanged by the switch | $\le10^{-13}\max|E|$, and the term $\ge10^3\times$ the error (`:423`) | round-off of the energy; the second bound rules out a vacuous pass |
 | same, check 4 | a discretely balanced Cartesian rest column (`snapy.balance_column`) keeps $\max|v_1|/c_s$ with D no worse than without, 50 steps, explicit and VIC | on $\le1.05\times$ off $+10^{-14}$ (`:411`) | D adds zero at rest; 5 % allows round-off growth |
 | same, check 5 | the logged `ie=`+`pe=` equals the test's $E+P$ with D on and $E+\mathrm{PE}_d$ with it off (spherical, Cartesian, 2-D) | `DIAG_TOL = 1e-11` (`:52`) | the printed digits of the log |
 | same, check 6 | a gnomonic-equiangle block with `face` sets up; it warns with the switch on, not with it off | exact | |
@@ -582,26 +582,26 @@ approval (the ISSUES.md item 2 policy).
 - **This section's check:** every [Cn] number (provenance in the Derivation layer's preamble).
 - **$E+P$ in the code:** per-step $\Delta(E+P)\le3.9\times10^{-16}$ of $E+P$ on the implicit cases of
   `test_gravity_work_radial_exact.py` and on its column under partial VIC (implicit-scheme 1)
-  [`curved-gravity-work-weight.md` §10@dae902b; deck: that test; run: CPU build, sha not recorded → **re-run**].
+  [`curved-gravity-work-weight.md` §10@dae902b; deck: that test; run: CPU build, sha not recorded $\to$ **re-run**].
 - **Seam gap**, isothermal spherical column with a seam density bump, max relative 1-vs-2-block state gap:
   - $8.0\times10^{-7}$, $6.3\times10^{-8}$, $2.3\times10^{-9}$ at $n_1$ = 32, 64, 128 (orders 3.7, 4.8);
   - switch off: 0, bit for bit, so the whole gap is the one-sided seam slope;
   - split-column $E+P$ drift $\le5\times10^{-15}$.
 
   [§7 item 3@dae902b; deck: `tests/test_x1_seam_split.cpp` `radial_exact_split_gap`; run: ctest
-  `test_x1_seam_split_radial_exact.<b>`, sha not recorded → **re-run**].
+  `test_x1_seam_split_radial_exact.<b>`, sha not recorded $\to$ **re-run**].
 - **Tall column, D in the operator:**
   - every rung passes in both geometries with D on;
   - $\max|v_1|$ 4.69 to $4.89\times10^{-9}$ m s$^{-1}$, at or below the switch-off rung;
   - settled to $\le7.4\times10^{-13}$ m s$^{-1}$ by step 40.
 
   The failure with the term booked only after the solve is quoted, with its own tag, in §2.10. [§10@dae902b; deck:
-  `tests/test_implicit_gravity_tall_column.py`; run: CPU, sha not recorded → **re-run**].
+  `tests/test_implicit_gravity_tall_column.py`; run: CPU, sha not recorded $\to$ **re-run**].
 - **$E+\mathrm{PE}_d$ is the wrong oracle under D:** on the spherical implicit energy check of
   `test_implicit_stratified_solid`, $E+\mathrm{PE}_d$ changes by $-0.166$ while $E+P$ changes by $3.5\times10^{-14}$
-  (scale 2119) [§10@dae902b; deck: that test; run: sha not recorded → **re-run**].
+  (scale 2119) [§10@dae902b; deck: that test; run: sha not recorded $\to$ **re-run**].
 - **Not yet covered by a test at the pin:** the onset-rate numbers of §11.2 of the derivation and the coarse
-  polytrope kinetic-energy numbers carry no deck or run. The onset numbers are $\varepsilon_{\rm eff}n_1^2$ at
+  polytrope kinetic-energy numbers carry no deck or run. The onset numbers are $\varepsilon_{\mathrm{eff}}n_1^2$ at
   $n_1$ 16, 32, 64: $+0.0306, +0.0158, +0.0080$ without D and $-0.00092, -0.00020, -0.00004$ with it. **Missing
   evidence**; the chapter author reruns them from a committed deck or removes them.
 

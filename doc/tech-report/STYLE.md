@@ -1,11 +1,12 @@
 # Style guide for the snapy Technical Report
 
 This file is binding for every chapter author. The worked example that applies all of it is
-`chapters/06-gravity-energy/D_face_work_pe.md`; when this file and the example disagree, this file wins and the
+`chapters/06-gravity-energy/D_face_work_pe.md` (to be converted to `book/chapters/06-gravity-energy.qmd` as the first
+drafting step); when this file and the example disagree, this file wins and the
 example is a bug to report.
 
 Contents: 1 Scope and voice, 2 the six-layer scheme template, 3 citations, 4 numbers and evidence, 5 equations and
-notation, 6 figures, 7 executable checks, 8 directory layout, 9 review checklist.
+notation, 6 figures, 7 executable checks, 8 directory layout, 9 review checklist, 10 Quarto markup.
 
 ---
 
@@ -23,54 +24,65 @@ notation, 6 figures, 7 executable checks, 8 directory layout, 9 review checklist
   Summary layer, as aliases, so a reader can match them to commit messages and the derivation notes.
 - Units: SI unless the section states the nondimensionalisation. Give units of every dimensional symbol on first
   use in a section.
-- Markdown with LaTeX math (`$...$` inline, `$$...$$` display). One sentence per line is not required; wrap at
-  about 120 characters.
+- Source format: Quarto (`.qmd`, Pandoc markdown with LaTeX math), rendered to an HTML site and a PDF from the same
+  files. Section 10 gives the markup rules; they are binding. Wrap at about 120 characters.
+- Physics is written as connected prose. Bullets are for procedures, lists of switches and checklists only.
 
 ## 2. The six-layer scheme template
 
-Every scheme is one section (one file, `chapters/NN-slug/<scheme>.md`) with exactly these six numbered layers, in this
-order, with these headings. Do not merge, reorder or rename them. A layer with nothing to say says so in one line
+Every scheme is one file `book/chapters/NN-slug/_<scheme>.qmd`, included into its chapter file (section 10.1), with
+exactly these six layers, in this order, with these headings. Do not merge, reorder or rename them. A layer with nothing to say says so in one line
 and why ("No known limits beyond those of the base scheme in §5.2.").
 
 ```markdown
-# <N.M> <Scheme name, what it does> (`<SWITCH>` or YAML key)
+## <Scheme name, what it does> (`<SWITCH>` or YAML key) {#sec-chNN-<scheme>}
 
-> Pinned sha: <repo>@<sha> (<branch>). Derivation sources: <files>. Status: draft | reviewed | approved.
+<!-- PROVENANCE
+pin: snapy@<sha> (<branch>)
+sources: <files>
+status: draft | reviewed | approved
+author: <name>
+reviewer: <name>
+-->
 
-## 1. Summary
-- What it does, in two to four sentences.
-- Why it is there: the error or failure it removes, with its order.
-- When it is on: the switch or config key, how it is set (env, YAML, CMake), the default, and every coupling
-  (what it requires, what it implies, what it turns off).
-- Aliases: the internal names (PR numbers, leg names, option letters) a reader will meet in the code and history.
+### Summary
+::: {.callout-note title="At a glance"}
+What it does (one line). Switch or key, how it is set, default. Requires / implies / turns off. Order of accuracy.
+The one equation that defines it (a reference to the labelled equation).
+:::
 
-## 2. Derivation
+Then one to three paragraphs of prose: what it does, why it is there (the error or failure it removes, with its
+order), and when it is on. Bullets only for the list of switch couplings. Aliases (PR numbers, leg names, option
+letters a reader will meet in the code and history) in the last sentence.
+
+### Derivation
 Continuous equation -> integral form over a cell -> discrete form, every step written. Each numbered equation that
 the code implements is tagged with the code site that implements it. Ends with a statement of what is exact and
 what is truncated, with orders. Points to its executable check (section 7 of this guide).
 
-## 3. Numerical method
+### Numerical method
 The discrete method as the code runs it: stencil (with a figure), where each quantity lives (cell average, cell
 centroid point value, face average, face point value), ghosts and how they are filled, walls, block seams, solids,
 which RK stage and which part of the step it runs in, explicit vs implicit, order of accuracy (interior, wall
 cells, seams) with the evidence for each order.
 
-## 4. Code
-A table: | what | `path:line@sha` | function / symbol | switch |, then a short walk-through in step order. Every
+### Code
+A table: | what | code link | symbol | switch | (code link as in section 10.6), then a short walk-through in step order. Every
 switch read, every setup check, every warning a user can hit is listed.
 
-## 5. Tests
+### Tests
 A table: | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |. Then the evidence:
 numbers with their sha, deck and run (section 4 of this guide). Say which assertions are covered on CPU only, which
 also on CUDA, which on more than one rank.
 
-## 6. Limits
+### Limits
 Known limits, failure modes, untested combinations, open issues, each with its evidence or "not measured".
 ```
 
 Rules for the layers:
 
-- **Summary** fits on one screen. It states the default explicitly, even when the default is "off".
+- **Summary** fits on one screen: the "At a glance" box and at most three paragraphs. It states the default
+  explicitly, even when the default is "off".
 - **Derivation** has no gaps. When the derivation exists in `sources/` or `docs/derivations/`, re-write it here in
   the report's notation (do not paste), check every step against the code, and cite the source. When no derivation
   exists, re-derive it from the code at the pinned sha and mark the outline entry "re-derive". Never summarise a
@@ -84,10 +96,11 @@ Rules for the layers:
 ## 3. Citations
 
 ### 3.1 Code
-Format: `` `path:line@sha` `` or `` `path:line-line@sha` ``, path relative to the repository root, sha abbreviated
-to 7 characters, followed by the symbol in prose:
+In the report source a code citation is always the link of section 10.6: link text `basename:lines`, target the file
+at the pinned full sha on GitHub. `path:line@sha` is only the notation reviewers and this guide use to name a
+location; it never appears in chapter text. In prose the symbol comes first:
 
-> The slope stencil is `centroid_slope` (`src/hydro/gravity_work_radial.hpp:28-51@dae902b`).
+> The slope stencil is `centroid_slope` ([`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<sha>/src/hydro/gravity_work_radial.hpp#L28-L51)).
 
 - The line points at the definition or the statement that carries the claim, not at a comment above it (unless the
   claim is about the comment).
@@ -120,7 +133,7 @@ Every number that is a measurement (an error, a drift, a rate, a timing, a growt
 - A number copied from a source note keeps the note's sha; if the note has none, the number is marked
   **missing evidence** and is either re-run at the pinned sha or removed (ISSUES.md items 2, 3, 5).
 - A number from an executable check in this report cites the check script and its output file:
-  [check `chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, output `.../d_face_work_pe_check.out`].
+  [check `src/snapy_report/ch06/dwork_check.py`, output `src/snapy_report/ch06/dwork_check.out`].
 - Tolerances are numbers with a reason: "1e-14 relative: 20 steps of round-off on a sum of 32 terms of size 1e2 with
   double precision", not "small".
 - Orders of accuracy are fitted slopes from at least three resolutions, with the resolutions.
@@ -135,13 +148,20 @@ Every number that is a measurement (an error, a drift, a rate, a timing, a growt
   $\rho(x_{1,i})$. In a section that uses only cell averages, say so and drop the bar.
 - Face quantities: subscript $f$ or $i\pm\tfrac12$. Operators are written as in NOTATION.md §4 ($\Delta_i$,
   $\delta_{x}$, $\langle\cdot\rangle_V$, ...).
-- Equations that the code implements are numbered `(N.M.k)` within the section ("(6.3.7)") and tagged in the text with
-  the code site.
+- Equations that are referenced or that the code implements carry a Quarto label and are numbered by Quarto
+  (section 10.3); never type an equation number by hand. Each such equation is tagged in the text with its code site.
 - Orders: write $O(h^2)$ with $h$ the local x1 cell width, or $\Delta x_1$ when the section is about x1 specifically.
   "Second order" means the error of the quantity being discussed, which is named.
 - Signs: gravity $g_1$ = `grav1` is negative when it points to decreasing $x_1$. Potentials are $\phi = -g_1x_1$
   (increasing upward). Never write $g$ for $|g_1|$ without defining it.
 - Code identifiers in prose are in backticks. Math symbols are never in backticks.
+- Upright sub- and superscripts use `\mathrm{}`: `W^{\mathrm{D}}`, `p_{\mathrm{sat}}`. Never `\rm`, `\bf`, `\it`, `\cal`:
+  the KOMA class of the PDF removes them and the PDF build fails.
+- Bold Greek with `\boldsymbol{}`, never `\mathbf{}` (which drops Greek). Bold Latin vectors with `\mathbf{}`.
+- No math macros: write every symbol out (`\overline{\rho}_i`, `\mathrm{d}`, `\partial`). The HTML uses MathML
+  (as the house books do), which has no macro layer.
+- Approximate values: the number goes inside the math, `$\sim\!0.1$`, never `$\sim$0.1`.
+- Relations and arrows in prose are math too: `$\le$`, `$\to$`, `$\times$`; never the Unicode characters ≤, →, ×.
 
 ## 6. Figures
 
@@ -151,20 +171,20 @@ screenshot images.
 
 ### 6.1 Layout
 ```
-chapters/NN-slug/figures/
-    fig_<scheme>_<what>.py        # one script per figure, runnable from any directory
-    fig_<scheme>_<what>.png       # rendered output, committed (200 dpi)
-    fig_<scheme>_<what>.svg       # optional vector copy
-chapters/common/figstyle.py       # shared style: palette, fonts, sizes, helpers
+src/snapy_report/chNN/fig_<scheme>_<what>.py   # one function per figure: make_fig() -> matplotlib Figure
+src/snapy_report/figstyle.py                    # shared style: palette, fonts, sizes, helpers
 ```
-- A figure script takes no arguments, writes its PNG next to itself, and prints the path. It imports only numpy,
-  matplotlib and `chapters/common/figstyle.py` (found via a path relative to `__file__`). A data figure reads its
-  data from a committed output file of an executable check or a run, never from a live run.
-- The script header states what the figure shows, its sha, and the data file it reads.
-- `build/render_figures.sh` (planned) re-renders every figure; a figure whose PNG differs after re-rendering is a bug.
+- A figure is drawn by a function in the `snapy_report` package and placed in the chapter by a Quarto code cell
+  (section 10.4), so the figure, its caption and its label live in the chapter and its provenance in the package.
+  The function imports only numpy, matplotlib and `figstyle`. A data figure reads its data from a committed output
+  file of an executable check or a run (`src/snapy_report/chNN/data/`), never from a live run.
+- The function's docstring states what the figure shows, its sha, and the data file it reads.
+- `quarto render` re-draws every figure (with `freeze: auto`, only changed chapters re-run); a figure that differs
+  after a clean re-render is a bug.
 
 ### 6.2 Look
-- Size: single column 3.4 in wide, double column 7.0 in wide; height as needed. 200 dpi PNG.
+- Size: single column 3.4 in wide, double column 7.0 in wide; height as needed. Vector output (SVG for HTML, PDF for
+  the PDF; section 10.4); no raster line drawings.
 - Fonts: matplotlib's DejaVu Sans at 9 pt for labels, 8 pt for ticks and annotations; math in the default mathtext.
   Do not depend on a TeX installation.
 - Palette: Okabe-Ito, colour-blind safe, used in this order and with these meanings across the report where
@@ -180,6 +200,8 @@ chapters/common/figstyle.py       # shared style: palette, fonts, sizes, helpers
   | blue | `#0072B2` | reference / exact solution |
   | vermillion | `#D55E00` | errors, defects, the term removed |
   | reddish purple | `#CC79A7` | ghosts, other blocks |
+  | light blue (fill) | `#EAF5FC` | cell fill in cartoons |
+  | light reddish purple (fill) | `#F7E6EF` | ghost-cell fill in cartoons |
 
   Never encode meaning by colour alone: pair colour with marker shape, line style or a label.
 - Ghost cells are hatched (`//`), solids are cross-hatched (`xx`), walls are thick black lines, block seams are
@@ -187,6 +209,14 @@ chapters/common/figstyle.py       # shared style: palette, fonts, sizes, helpers
 - Axes are labelled with quantity and unit ("$x_1$ [m]", "relative error [-]"). Log axes for convergence; a
   reference slope triangle or line labelled with its order.
 - Cartoons have no axes frame; they label every cell index and face index that the text refers to.
+- Shared conventions, drawn only through helpers in `figstyle` (never re-drawn by hand): cell box; cell value =
+  sky-blue circle; face value = orange triangle; wall = thick black line; ghost cell = hatched box with the light
+  reddish-purple fill `#F7E6EF`; cell fill, where needed, the light blue `#EAF5FC`. Stencil cells are indexed $l$.
+- At most 4 panels per figure; a cartoon and a data plot are separate figures. Panels that compare share the y range
+  and the y label.
+- Text in a figure is never smaller than 8 pt at print size; labels never overlap data or other labels.
+- The caption, not the body text, defines every marker, line style and colour.
+- Check every figure once in greyscale: it must still read.
 
 ## 7. Executable checks
 
@@ -195,9 +225,9 @@ layer are verified symbolically (sympy) or numerically (numpy) from the discrete
 
 ### 7.1 Layout
 ```
-chapters/NN-slug/checks/
-    <scheme>_check.py      # the check
-    <scheme>_check.out     # its committed output (stdout), regenerated by running the script
+src/snapy_report/chNN/<scheme>_check.py   # the check
+src/snapy_report/chNN/<scheme>_check.out  # its committed output (stdout), regenerated by running the script
+src/tests/test_checks.py                   # pytest runs every check; a failing check fails the build
 ```
 - Runs with `python3 <scheme>_check.py` from any directory, needs only numpy and sympy, finishes in under a minute
   on a laptop, and exits non-zero if any assertion fails. It prints every number the chapter quotes from it, each on
@@ -217,23 +247,177 @@ doc/tech-report/
     README.md  BRIEF_*.md  ISSUES.md  STATUS.md
     STYLE.md  NOTATION.md  OUTLINE.md
     sources/                      # inputs, read-only
-    chapters/
-        common/figstyle.py
-        NN-slug/
-            README.md             # chapter intro, section list, order of reading
-            <scheme>.md           # one file per scheme (six layers)
-            figures/  checks/
+    book/                         # the Quarto project
+        _quarto.yml               # book config, chapter list, math macros (HTML and PDF), crossref settings
+        _freeze/                  # committed: frozen cell outputs (freeze: auto)
+        index.qmd  references.qmd  references.bib  apj.csl
+        chapters/NN-slug.qmd      # one file per chapter; schemes are its level-2 sections
+        figs/                     # static images only (none expected)
+    src/                          # python: package snapy_report (figures, checks), tests/ (pytest)
     reviews/                      # review notes, one file per review round
-    build/                        # scripts: citation checker, figure renderer, PDF/HTML build
+    build/                        # scripts: citation checker, pin mover
 ```
 
 ## 9. Review checklist (authors run it before asking for review)
 
-1. Six layers present, in order, with the headings of section 2.
+1. Six layers present, in order, with the headings of section 2; `quarto render book --to html` and `--to pdf` both
+   succeed with no unresolved cross-reference and no warning from the chapter (section 10.9).
 2. Every symbol in NOTATION.md or defined locally and flagged to the editor.
-3. Every `path:line@sha` resolves (`git show <sha>:<path> | sed -n '<line>p'` shows the claimed statement).
+3. Every code link resolves at its sha and its lines show the claimed statement (`build/check_citations.py`).
 4. Every number carries sha, deck, run, or is marked missing evidence.
 5. Every figure re-renders from its script with no diff; colour-blind palette; labelled axes and units.
 6. Every derivation's check runs, passes, and its `.out` is committed and current.
 7. No machine names, cluster paths, personal paths; no other model's code.
 8. Switch, default and couplings in the Summary agree with chapter 12's matrix.
+
+## 10. Quarto markup (binding)
+
+The report is a Quarto book (Quarto 1.10), the same toolchain as the project owner's other books. Content is Pandoc
+markdown in `.qmd` files. The HTML site (MathJax) and the PDF (LuaLaTeX, KOMA `scrbook`) are both built from the same
+files, so every construct below must work in both. When in doubt, render both and look.
+
+### 10.1 Files and structure
+- One file per chapter, `book/chapters/NN-slug.qmd`, listed in `book/_quarto.yml` under `book: chapters:` (grouped in
+  `part:` entries as in OUTLINE.md). Only the editor edits `_quarto.yml` and the chapter files.
+- The chapter file holds only: the chapter heading with its label (`# Gravity and energy {#sec-ch06}`), the chapter
+  opening (below), and one include per scheme, in reading order: `{{< include 06-gravity-energy/_dwork.qmd >}}`.
+  Each scheme lives in its own file `book/chapters/NN-slug/_<scheme>.qmd` (the leading underscore stops Quarto from
+  rendering it alone), owned by one author. Includes are inlined before cross-references resolve, so labels work
+  across files. Two authors never edit the same file.
+- The chapter opening, written by the chapter's lead author: one paragraph on what the chapter covers; a dependency
+  map (a figure: schemes as nodes, "requires / implies / turns off" as edges, from chapter 12's matrix); and a table
+  with one row per scheme: scheme, switch, default, order, main test.
+- Chapter identifiers are fixed now from OUTLINE.md and never change: `ch01` ... `ch17`; split chapters use a letter,
+  `ch04a`, `ch04b`, `ch07a`, `ch07b`, `ch14a` ... `ch14c`; appendices `appa`, `appb`, ... (Quarto numbers appendices
+  A, B, ...).
+- Each scheme is a level-2 section with a label, `## ... {#sec-ch06-dwork}`. Its six layers are level-3 sections with
+  exactly the headings of section 2. Deeper structure inside a layer uses level 4 (`####`) at most. Quarto numbers all
+  sections (`number-sections: true`); never type a section number.
+- Label syntax for every cross-reference target: `<kind>-ch<NN>-<scheme>[-<what>]`, lower case, hyphens only, unique
+  in the book. Kinds: `sec`, `eq`, `fig`, `tbl`, and `prp`/`lem` for stated identities (section 10.7). Examples: `sec-ch06-dwork`, `eq-ch06-dwork-pe`,
+  `fig-ch06-dwork-stencil`, `tbl-ch06-dwork-code`.
+- References in prose use Quarto's syntax only: `@sec-ch05-wbref`, `@eq-ch06-dwork-pe`, `@fig-...`, `@tbl-...`. Write
+  "as shown in @fig-ch06-dwork-stencil", not "Figure 3" or "the figure above". A bare equation number is always
+  written in parentheses, `([-@eq-ch06-dwork-pe])`; a range is `([-@eq-a])–([-@eq-b])`.
+- The table of contents lists chapters and schemes only (`toc-depth: 2`). Layers and their subsections are numbered
+  and may be referenced (`@sec-...` on a `###` or `####` heading that the text cites). An `{.unnumbered}` heading is
+  linked as `[text](#sec-id)`, never with `@sec`.
+
+### 10.2 Inline text
+- Inline code (identifiers, switches, YAML keys, file names): backticks. Math symbols: `$...$`, never backticks.
+- OUTLINE.md, NOTATION.md and the sources are planning files, not rendered, and may use Unicode symbols. Text
+  copied from them into a `.qmd` file is converted to math mode on the way.
+- Units, chemical formulas, relations and arrows always in math mode: `$\mathrm{m\,s^{-2}}$`, `$\mathrm{H_2O}$`,
+  `$\le$`, `$\to$`. Never Unicode superscripts, subscripts or symbols (`s⁻¹`, `H₂O`, ≤, →, ×): the PDF can drop them
+  silently.
+- No raw HTML and no raw LaTeX in prose. The only exception is a `{=latex}` block approved by the editor.
+- Emphasis: `*italic*` for a defined term at first use, `**bold**` only in Summary bullets and table headers.
+- Code locations appear only as links with the short text of section 10.6: long paths do not wrap in the PDF (tested:
+  a full path overflowed the line by 180 pt and, in a table, printed over the next column).
+
+### 10.3 Equations
+- Display math: `$$ ... $$` on its own lines, followed by a label when the equation is referenced or implemented by
+  the code:
+  ```markdown
+  $$
+  P = \mathrm{PE}_d - g_1 \sum_i V_i \sigma_i^2 s_i[\rho]
+  $$ {#eq-ch06-dwork-pe}
+  ```
+  Quarto numbers it per chapter, as "(6.4)" in the PDF and "Equation 6.4" in references. Unlabelled display math is
+  allowed for intermediate steps that are never referenced.
+- Multi-line derivations use `\begin{aligned} ... \end{aligned}` inside one `$$` block, with one label for the
+  block (tested: one number, in HTML and PDF). Never use `align`, `equation` or `eqnarray` environments: they break
+  the cross-references. Use `&` to align at `=`, and `\\` to break lines.
+- Two formulas never share a line joined by `\qquad`: each is its own `aligned` row. A display wider than the text
+  block is split in `aligned` at a relation or a `+`, with a `\qquad` indent on the continuation line. Several
+  definitions or updates (`-=`, `+=`) are one row each.
+- Number only the equations that are cited in the text or implemented by the code. Textbook background (the
+  conservation laws in their usual form) is unlabelled.
+- A derivation step that needs a sentence of justification gets the sentence in prose between two display blocks,
+  not `\text{}` inside the math.
+- No macros (section 5): the HTML is rendered with `html-math-method: mathml`, as in the house books, so pages work
+  offline, and MathML has no macro layer. Write every symbol out exactly as NOTATION.md gives it.
+- Matrices and stencils: `\begin{pmatrix}` or `\begin{bmatrix}`. Stencils with more than 5 points go in a figure.
+- Every equation that the code implements is followed, in the same paragraph, by its code link (section 10.6):
+  "@eq-ch06-dwork-pe is computed in [`hydro_forward.cpp:761-790`](...)".
+
+### 10.4 Figures
+- Every figure is a Python code cell, in the scheme's `_<scheme>.qmd`, that calls a function of the `snapy_report`
+  package (section 6.1):
+  ````markdown
+  ```{python}
+  #| label: fig-ch06-dwork-stencil
+  #| fig-cap: "The corrected-PE face work on a three-cell stencil next to the lower wall. ..."
+  #| fig-alt: "Cartoon of cells i-1, i, i+1 with faces, ghost cells hatched, the wall as a thick line."
+  #| echo: false
+  from snapy_report.ch06.fig_dwork_stencil import make_fig
+  make_fig()
+  ```
+  ````
+  `echo: false` for every figure cell. The book sets `freeze: auto`, and `_freeze/` is committed, so a render does not
+  re-run a chapter whose cells did not change.
+- Captions: one sentence saying what is shown, then one or two sentences saying what to read from it, written so the
+  figure can be understood without the text. Define every symbol, colour and line style in the caption or the legend.
+  The source data and sha go in the function's docstring, not in the caption.
+- `fig-alt` is required (accessibility, and it is what a reviewer reads first).
+- Size: set by `figstyle` (3.4 in single, 7.0 in double width; section 6.2). Do not use `fig-width` or `out-width` in
+  cells. Formats: SVG for HTML and PDF for the PDF (set in `_quarto.yml`), so lines and text stay sharp. Never use a
+  raster image for a line drawing.
+- Panels: one function makes the whole multi-panel figure with panel letters (a), (b) in the top left of each panel;
+  the caption refers to them. No Quarto sub-figure layouts.
+- A static image (none expected) goes in `book/figs/` with its provenance in the caption, and is included as
+  `![caption](figs/x.pdf){#fig-... fig-alt="..."}`.
+
+### 10.5 Tables
+- Pipe tables with a caption and label on the line after the table: `: Code map of the corrected-PE face work.
+  {#tbl-ch06-dwork-code}`.
+- At most 5 columns and short cells: the PDF column is about 6.3 in wide. Put long text in prose after the table.
+  Code links in tables use the short link text of section 10.6.
+- Numbers in tables use the same significant digits within a column; the evidence tag (section 4) goes in a footnote
+  or the caption.
+- The Code and Tests layers each use one table, as in section 2; the column headers there are fixed.
+
+### 10.6 Code citations and links
+- A code citation is a link whose text is `basename:lines` and whose target is the file at the pinned sha on GitHub:
+  `[`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<full-sha>/src/hydro/gravity_work_radial.hpp#L28-L51)`.
+  The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
+  directory (`hydro/hydro.cpp:120-140`). The Code table of a scheme holds the same short links. The pinned shas and their meaning are listed once in `index.qmd`. The
+  editor's pin-mover script rewrites every URL when the pin moves, and `build/check_citations.py` checks every link
+  (file and lines exist at the sha).
+- Code excerpts: only when the text discusses the lines, at most 15 lines, in a fenced block with its language
+  (`cpp`, `python`, `yaml`) and the citation link in the sentence before it. No line numbers inside the block;
+  the link carries them.
+- Pull requests and issues: `[chengcli/snapy#296](https://github.com/chengcli/snapy/issues/296)`.
+
+### 10.7 Callouts and boxes
+- The Summary layer opens with one `::: {.callout-note title="At a glance"}` box: what the scheme does, the switch,
+  the default and the couplings, in at most 6 short lines. The rest of the Summary is prose.
+- The Limits layer may use one `::: {.callout-warning title="Limits"}` box for the limits a user can hit by
+  configuration.
+- No other callouts. Never use `collapse`: the PDF prints everything, so text that only works folded is wrong in the
+  PDF.
+- An exact identity that the tests check (e.g. "E+P is conserved per step") is stated as a proposition,
+  `::: {#prp-ch06-dwork-ep}` ... `:::`, so the Tests layer can cite it; a supporting result as `{#lem-...}`.
+- Footnotes (`[^n]`) carry evidence tags and asides that would break the flow.
+- Step order (an algorithm, the Code walk-through) is a numbered list, one step per item, each with its code link.
+  No LaTeX algorithm packages.
+
+### 10.8 Bibliography
+- Papers: BibTeX in `book/references.bib`, cited as `[@key]` or `@key`. Keys follow `<firstauthor><year><word>`. Only
+  the editor merges new entries. Every entry has a DOI or a URL.
+- snapy's own history (PRs, issues, commits) is linked as in section 10.6, not put in the bibliography.
+
+### 10.9 Rendering and the render gate
+- `quarto render doc/tech-report/book --to html` and `--to pdf`. Python for the cells: an environment with numpy,
+  matplotlib and the `snapy_report` package installed (`pip install -e doc/tech-report/src`).
+- The render gate is the house books' `render_gate.py` (BOOKCRAFT section 6, G1), run on a PDF render made with
+  `-M latex-clean:false` so the LaTeX log is kept. It catches unresolved cross-references (`?@...`), duplicate labels,
+  references into fenced divs, dropped glyphs (missing characters), unrendered math in table cells, a table caption
+  orphaned after a code fence, old font commands and unbalanced quotes. Overfull boxes over 10 pt in the chapter's
+  text also fail. Python errors fail.
+- `freeze: auto` re-runs a chapter only when its `.qmd` changes. After changing any `snapy_report` function, render
+  that chapter file alone (`quarto render book/chapters/NN-slug.qmd`), which ignores the freeze. The release render
+  is made with `_freeze/` removed.
+- The author looks at every page of their chapter in the PDF before asking for review: equation lines inside the
+  margin, tables inside the text width, figures legible at print size.
+- `_book/` is build output and is not committed; `_freeze/` is committed.

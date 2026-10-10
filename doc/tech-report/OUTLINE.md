@@ -18,8 +18,9 @@
   - **Code** (`path:line@sha`, with function names) and **Tests** (file, ctest name, what it asserts, tolerance).
 
   Most entries also carry **Limits / known issues** and **Discrepancies** (source vs code; the code wins).
-- Each scheme becomes one section file `chapters/NN-slug/<scheme>.md` written in the six layers of STYLE.md, modelled
-  on the worked example `chapters/06-gravity-energy/D_face_work_pe.md`.
+- Each scheme becomes one section file `book/chapters/NN-slug/_<scheme>.qmd`, written in the six layers of STYLE.md
+  and included into its chapter file (STYLE.md sections 2 and 10.1), modelled on the worked example
+  `chapters/06-gravity-energy/D_face_work_pe.md` (to be ported to `book/chapters/06-gravity-energy/_dwork.qmd`).
 - The small line `inventory X: ...` under each heading names the research inventory entry it came from (the inventories
   are in this branch's history at commit `e15dd04`, `doc/tech-report/outline/`, with the one-off merge script), so a reviewer can trace it.
 - "Research note" boxes keep the inventory's own scope paragraph and recommendations for that chapter.
@@ -1930,18 +1931,18 @@ How gravity's work enters the energy equation and what each form conserves: the 
 #### 6.1 Constant gravity forcing and the cell form of the gravity work (`gravity-work: cell`, the default)
 <sub>inventory F: Scheme: Constant gravity forcing and the cell form of the gravity work (`gravity-work: cell`, the default)</sub>
 
-- Summary: `const-gravity` adds the body force $\rho g_a\alpha_{\rm nh}$ to the momenta and the cell work
-  $W^{\rm cell}=\rho v_1g_1\alpha_{\rm nh}$ (and $\rho v_2g_2$, $\rho v_3g_3$) to $E$. With `gravity-work: cell` this is
-  the booked work, and only the part of the mass flux beyond the reference flux, $F-F^{\rm ref}$, which sedimentation and
+- Summary: `const-gravity` adds the body force $\rho g_a\alpha_{\mathrm{nh}}$ to the momenta and the cell work
+  $W^{\mathrm{cell}}=\rho v_1g_1\alpha_{\mathrm{nh}}$ (and $\rho v_2g_2$, $\rho v_3g_3$) to $E$. With `gravity-work: cell` this is
+  the booked work, and only the part of the mass flux beyond the reference flux, $F-F^{\mathrm{ref}}$, which sedimentation and
   the positivity limiter add, is booked in face form. Switch: YAML `forcing/const-gravity/{grav1,grav2,grav3,
   non-hydrostatic (1), gravity-work (cell)}`.
 - Derivations:
   - Continuous budget, $E+\rho\phi$ conservation, and the cell form's non-telescoping defect: exists:
     sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md §§2.1-2.4, 3.4-3.5 (re-check every equation against the code at
     dae902b; the draft's line citations predate it).
-  - The $F-F^{\rm ref}$ face booking under cell mode: re-derive from `src/hydro/hydro_forward.cpp:790-796@dae902b` and
+  - The $F-F^{\mathrm{ref}}$ face booking under cell mode: re-derive from `src/hydro/hydro_forward.cpp:790-796@dae902b` and
     `:413-417@dae902b` (`bflux1`).
-  - The hydrostatic-split part ($\alpha_{\rm nh}<1$, `rho_grav`) of the removed cell work: re-derive from
+  - The hydrostatic-split part ($\alpha_{\mathrm{nh}}<1$, `rho_grav`) of the removed cell work: re-derive from
     `src/hydro/hydro_forward.cpp:859-866@dae902b` (chapter 5 owns the split itself).
 - Figures:
   - One cell with the body force at its centroid and the cell work $\rho v_1g_1$; the defect drawn as the mismatch
@@ -1950,7 +1951,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Code: `src/forcing/const_gravity.cpp:12-44@dae902b` (`from_yaml`, keys, defaults, fixer default = cell);
   `src/forcing/const_gravity.cpp:46-62@dae902b` (`forward`); `src/hydro/hydro_forward.cpp:239-240@dae902b` (`gw_cell`);
   `src/hydro/hydro_forward.cpp:413-417@dae902b` (`bflux1`); `src/hydro/hydro_forward.cpp:790-796@dae902b`
-  ($F-F^{\rm ref}$); `src/hydro/hydro_forward.cpp:867-868@dae902b` (cell: correction = face work of $F-F^{\rm ref}$).
+  ($F-F^{\mathrm{ref}}$); `src/hydro/hydro_forward.cpp:867-868@dae902b` (cell: correction = face work of $F-F^{\mathrm{ref}}$).
 - Tests: `tests/test_gravity_work_fixer.py` (`test_gravity_work_fixer_python`, switch 0) arm "cell, fixer false":
   $E+\mathrm{PE}_d$ drift $>100\,$TOL (planted control: the defect is real); `tests/test_forcing.cpp`
   (`test_forcing.release`) with `tests/test_gravity_energy.yaml`, `tests/test_gravity_sedimentation.yaml`.
@@ -1974,7 +1975,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 #### 6.2 Face form of the gravity work (`gravity-work: face`, `face-wallc`) and the cp3/cp5/weno5 curvature flux
 <sub>inventory F: Scheme: Face form of the gravity work (`gravity-work: face`, `face-wallc`) and the cp3/cp5/weno5 curvature flux</sub>
 
-- Summary: books the $x_1$ work as $W^{\rm face}_i=\frac1{V_i}[\phi_i\Delta_i[AF]-\Delta_i[A\phi F]]$ on the total mass
+- Summary: books the $x_1$ work as $W^{\mathrm{face}}_i=\frac1{V_i}[\phi_i\Delta_i[AF]-\Delta_i[A\phi F]]$ on the total mass
   flux after positivity and sedimentation, and removes the cell work the forcing added; it conserves $E+\mathrm{PE}_d$
   exactly with an $O(h^2)$ local error (trapezoid term, plus $O(h^2/r)$ curvature terms on spherical-polar). For
   cp3/cp5/weno5 the curvature flux $\mathcal K$ removes the $h^2m''/12$ part, zero at physical $x_1$ faces (wall cells
@@ -2011,7 +2012,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 <sub>inventory F: Scheme: Gravity-work fixer (global $E+\mathrm{PE}_d$ correction for `gravity-work: cell`)</sub>
 
 - Summary: with `gravity-work: cell` and `gravity-work-fixer: true` (the default with cell), each stage accumulates the
-  dynamics' $E+\mathrm{PE}_d$ defect $\mathcal D$ (cell work + face work of $F-F^{\rm ref}$ + PE change of the mass the
+  dynamics' $E+\mathrm{PE}_d$ defect $\mathcal D$ (cell work + face work of $F-F^{\mathrm{ref}}$ + PE change of the mass the
   $x_1$ fluxes move, weighted by the stage's weight in the step), and after the last stage subtracts $\mathcal D$
   uniformly per unit mass, $\Delta E = -\rho\,\mathcal D/M$, over the whole domain (one allreduce). It refuses
   periodic $x_1$, $g_2,g_3\ne0$, and any step that moved more than $10^3\epsilon$ of the wall cells' mass through an
@@ -2022,7 +2023,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
     `src/hydro/hydro_forward.cpp:953-978@dae902b`.
   - Stage weight $w_{2,s}\prod_{t>s}w_{1,t}$ of a stage's defect in the step: re-derive from
     `src/hydro/hydro_forward.cpp:994-1004@dae902b`.
-  - The wall-mass bound $10^3\epsilon M_{\rm wall}$: re-derive from `src/mesh/meshblock.cpp:889-904@dae902b` (no
+  - The wall-mass bound $10^3\epsilon M_{\mathrm{wall}}$: re-derive from `src/mesh/meshblock.cpp:889-904@dae902b` (no
     derivation; tolerance rationale only in the comment and #285).
 - Figures:
   - Flow of $\mathcal D$: per stage → weighted sum → allreduce → uniform $-\mathcal D/M$ per kg.
@@ -2046,7 +2047,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 <sub>inventory F: Scheme: The corrected-PE face work, scheme D (`SNAP_GRAVITY_WORK_RADIAL_EXACT`)</sub>
 
 - Summary: written in full as the worked example, `chapters/06-gravity-energy/D_face_work_pe.md` (all six layers).
-  $W^{\rm D}=W^{\rm face}+g_1\sigma^2s[\dot\rho]$ conserves $E+P$ ($P$ exact to $O(h^4)$) to round-off and is $O(h^4)$
+  $W^{\mathrm{D}}=W^{\mathrm{face}}+g_1\sigma^2s[\dot\rho]$ conserves $E+P$ ($P$ exact to $O(h^4)$) to round-off and is $O(h^4)$
   in every cell; on by default with `gravity-work: face` on Cartesian and spherical-polar grids.
 - Derivations: exists: docs/derivations/curved-gravity-work-weight.md@dae902b §§7, 8, 10; re-written in the report
   with checks C1-C11 (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass); note that §7 and §8.6 of the note give the $E+\mathrm{PE}_d$ change under D with the wrong sign (corrected in the section, eq. 6.4.13).
@@ -2065,7 +2066,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 
 - Summary: the VIC linearises the full gravity ($\mathsf\Phi$: $g_1$ in the momentum row's mass column and the energy
   row's momentum column). With `gravity-work: face` the energy row books the face form of the mass the solve moves
-  (weights $\omega^{\rm lo},\omega^{\rm hi}$; Cartesian has its own exact rows); with `cell` it books a diffusive cell
+  (weights $\omega^{\mathrm{lo}},\omega^{\mathrm{hi}}$; Cartesian has its own exact rows); with `cell` it books a diffusive cell
   form; after the solve the projection work (raw minus projected mass) and the clamp work (moved minus requested face
   mass) are added so the booked energy matches the mass actually moved. `face-wallc` keeps a post-solve swap.
 - Derivations:
@@ -2097,7 +2098,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
   $E+\mathrm{PE}_d$); per stage, per step, explicit and implicit; which logged quantity (`pe=`, `fixgrav=`) and which
   test oracle matches each. Switch: as 6.1-6.4.
 - Derivations: the per-stage-to-per-step argument (linear invariant, $w_0+w_1=1$): exists as written in
-  `D_face_work_pe.md` §2.6; the cell-form defect S decomposition ($S_{\rm div}$, $S_{\rm rec}$, $S_{\rm dif}$): exists:
+  `D_face_work_pe.md` §2.6; the cell-form defect S decomposition ($S_{\mathrm{div}}$, $S_{\mathrm{rec}}$, $S_{\mathrm{dif}}$): exists:
   sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md §4 (re-check; its numbers lack deck/sha, ISSUES.md item 2).
 - Figures: the table as a matrix figure (form × invariant × explicit/implicit), and one drift plot of all three forms
   on one deck from a committed run.

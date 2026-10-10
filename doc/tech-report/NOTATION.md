@@ -25,6 +25,9 @@ the $r^2\sin\theta$ metric).
 | $x_{1,i}$ | cell volume centroid ($r_{c,i}$ on spherical-polar) | `x1v` | $r_c$ |
 | $\bar x_{1,i}$ | cell midpoint $\tfrac12(x_{1,i-1/2}+x_{1,i+1/2})$ ($\bar r_i$ on spherical-polar) | | $\bar r$ |
 | $h_i$ | $x_1$ width of cell $i$, $x_{1,i+1/2}-x_{1,i-1/2}$; written $\Delta x_1$ where the direction must be explicit | `dx1f` | $\Delta z$, $h$ |
+| $\Delta_\pm$ | centroid spacings $x_{1,i+1}-x_{1,i}$ ($+$) and $x_{1,i}-x_{1,i-1}$ ($-$), used in non-uniform stencils; never $h_\pm$, which would read as cell widths | | $h_\pm$ |
+| $l$ | stencil offset index ($\bar\rho_{i+l}$); never $k$, which is the $x_3$ index | | $k$ in figure scripts |
+| $\vartheta$ | local phase $\pi h/\lambda_w$ of a wave of wavelength $\lambda_w$ in a Fourier error estimate | | |
 | $\delta_i$ | centroid offset $x_{1,i}-\bar x_{1,i}$ (zero on Cartesian) | | $\delta$ |
 | $A_{i\pm1/2}$ | $x_1$ face area | `face_area1()` | $A_f$ |
 | $V_i$ | cell volume | `cell_volume()` | |
@@ -55,7 +58,7 @@ the $r^2\sin\theta$ metric).
 | $R_d$, $R_n$ | specific gas constants of dry air and species $n$ | | $R$ |
 | $\mathcal R$ | universal gas constant | | |
 | $c_s$ | sound speed | `"W->L"` | $a$ |
-| $p_{\rm sat}$ | saturation vapour pressure | | $e_s$ (not used: $e$ is internal energy) |
+| $p_{\mathrm{sat}}$ | saturation vapour pressure | | $e_s$ (not used: $e$ is internal energy) |
 | $\chi$ | the ratio $\rho/p$ used by the default reference and its wall continuation [s$^2$ m$^{-2}$] | `rop` | $r$ (not used: $r$ is radius) |
 | $\theta_p$ | potential temperature | | $\theta$ (not used: $\theta$ is colatitude) |
 | $H$ | a density or pressure scale height [m] | | $H$ |
@@ -68,7 +71,7 @@ the $r^2\sin\theta$ metric).
 | $F_{i+1/2}$ | total $x_1$ mass flux density at face $i+\tfrac12$, the sum of the dry and every mass-carrying species row [kg m$^{-2}$ s$^{-1}$] | `_flux1[IDN] + sum _flux1[ICY..]` |
 | $G_{i+1/2}$ | $x_1$ mass flow through the face, $A_{i+1/2}F_{i+1/2}$ (per steradian on spherical-polar) | |
 | $\mathcal F^E_{i+1/2}$ | $x_1$ energy flux density (enthalpy and kinetic energy advection, pressure work) | `_flux1[IPR]` |
-| $q^{\rm L}_f, q^{\rm R}_f$ | reconstructed left and right states of a quantity $q$ at face $f$ | `wl`, `wr` |
+| $q^{\mathrm{L}}_f, q^{\mathrm{R}}_f$ | reconstructed left and right states of a quantity $q$ at face $f$ | `wl`, `wr` |
 | $q^{\pm}$ | upper/lower in $x_1$; used only for faces of one cell, $q_\pm = q_{i\pm1/2}$ | |
 | $\mathcal W[\cdot]$ | the reconstruction operator (PLM, WENO5, cp3/cp5, ...) acting on cell values | `precon1`.. |
 | $\mathcal K_f$ | the cp3/cp5/weno5 curvature flux, $\mathcal K_{i-1/2} = \tfrac{1}{12}(x_{1,i}-x_{1,i-1})(m_{1,i}-m_{1,i-1})$, zero at physical $x_1$ boundaries | `curv_flux1` |
@@ -90,7 +93,7 @@ the $r^2\sin\theta$ metric).
 | $\mathsf S$ | the matrix of $s$: $(\mathsf S q)_i = s_i[q] = \sum_l\mathsf S_{il}q_l$ (row $i$: the weights of the cells $l$ in the slope of $i$; the code stores the transpose); $\tilde{\mathsf S}$ likewise for $\tilde s$ |
 | $\operatorname{cov}_i(a,b)$ | the in-cell covariance $\langle ab\rangle_{V_i} - \langle a\rangle_{V_i}\langle b\rangle_{V_i}$; to leading order $\sigma_i^2\,\partial_1a\,\partial_1b$ |
 | $\dot q$ | time derivative of a cell average produced by one operator (stated each time) |
-| $[q]_{\rm walls}$ | $q$ at the top wall minus $q$ at the bottom wall |
+| $[q]_{\mathrm{walls}}$ | $q$ at the top wall minus $q$ at the bottom wall |
 
 ## 5. Gravity, potential energy and gravity work
 
@@ -99,24 +102,24 @@ the $r^2\sin\theta$ metric).
 | $g_1, g_2, g_3$ | constant gravity components [m s$^{-2}$]; $g_1<0$ points to decreasing $x_1$ | `grav1`.. |
 | $\phi$ | gravitational potential, $\phi(x_1) = -g_1x_1$ (increases upward); never an angle | `phi_cell`, `phi_face` |
 | $\phi_i$, $\phi_{i\pm1/2}$ | $\phi$ at the centroid and at the faces | `phi_cell`, `phi_face` |
-| $\alpha_{\rm nh}$ | non-hydrostatic factor in $[0,1]$: the fraction of gravity applied as a body force | `non-hydrostatic` |
+| $\alpha_{\mathrm{nh}}$ | non-hydrostatic factor in $[0,1]$: the fraction of gravity applied as a body force | `non-hydrostatic` |
 | $\mathrm{PE}_d$ | discrete potential energy $\sum_iV_i\rho_i\phi_i$ | (logged `pe=` with the switch off) |
 | $P$ | corrected discrete potential energy $\sum_iV_i[\rho_i\phi_i - g_1\sigma_i^2s_i[\rho]]$, exact to $O(h^4)$ | (logged `pe=` with the switch on) |
 | $\mathcal P$ | the exact potential energy $\int\rho\phi\,dV$ of a smooth density field | |
 | $W_i$ | $x_1$ gravity work per unit volume and time booked into $E$ in cell $i$ [W m$^{-3}$] | |
-| $W^{\rm cell}_i$ | cell form $\rho_iv_{1,i}g_1$ | `original_gravity_work` |
-| $W^{\rm face}_i$ | face form $\tfrac{1}{V_i}[\phi_i\Delta_i[AF]-\Delta_i[A\phi F]]$ | `face_gravity_work` |
-| $W^{\rm D}_i$ | corrected-PE face work $W^{\rm face}_i + g_1\sigma_i^2s_i[\dot\rho]$ | `face_gravity_work += corrected_pe_work(...)` |
+| $W^{\mathrm{cell}}_i$ | cell form $\rho_iv_{1,i}g_1$ | `original_gravity_work` |
+| $W^{\mathrm{face}}_i$ | face form $\tfrac{1}{V_i}[\phi_i\Delta_i[AF]-\Delta_i[A\phi F]]$ | `face_gravity_work` |
+| $W^{\mathrm{D}}_i$ | corrected-PE face work $W^{\mathrm{face}}_i + g_1\sigma_i^2s_i[\dot\rho]$ | `face_gravity_work += corrected_pe_work(...)` |
 | $\mathcal D$ | the $E+\mathrm{PE}_d$ defect of a step, the quantity the gravity-work fixer removes [J] | `gravity_work_defect()` |
-| $F^{\rm ref}$ | the reference-state part of the $x_1$ mass flux | `bflux1` |
+| $F^{\mathrm{ref}}$ | the reference-state part of the $x_1$ mass flux | `bflux1` |
 
 ## 6. Hydrostatic reference state
 
 | symbol | meaning | code |
 |---|---|---|
-| $\rho_{\rm ref}, p_{\rm ref}$ | cell reference density and pressure of the well-balanced $x_1$ reconstruction | `rho_ref`, `p_ref` |
-| $\rho_{\rm sf}, p_{\rm sf}$ | face ("scan face") reference density and pressure | |
-| $\rho' = \rho - \rho_{\rm ref}$ | the perturbation the reconstruction acts on | |
+| $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ | cell reference density and pressure of the well-balanced $x_1$ reconstruction | `rho_ref`, `p_ref` |
+| $\rho_{\mathrm{sf}}, p_{\mathrm{sf}}$ | face ("scan face") reference density and pressure | |
+| $\rho' = \rho - \rho_{\mathrm{ref}}$ | the perturbation the reconstruction acts on | |
 | $\chi^s_i$ | the binomially smoothed $\chi$ of the default reference | |
 | $B$ | the binomial weights $(1,4,6,4,1)/16$ | |
 
@@ -138,9 +141,9 @@ the $r^2\sin\theta$ metric).
 | $\mathsf A^{\pm}$ | the Roe dissipation matrices $\mathsf R|\Lambda|\mathsf R^{-1}$ at faces $i\pm\tfrac12$ | `Ap`, `Am` |
 | $\partial\mathbf F/\partial\mathbf U$ | flux Jacobian | `dfdq_*` |
 | $\mathsf\Phi$ | the gravity source Jacobian | `Phi` |
-| $\omega^{\rm lo}_i, \omega^{\rm hi}_i$ | the implicit face-work weights $\tfrac12A_{i\mp1/2}|x_{1,i}-x_{1,i\mp1/2}|/V_i$ | `work_lo`, `work_hi` |
+| $\omega^{\mathrm{lo}}_i, \omega^{\mathrm{hi}}_i$ | the implicit face-work weights $\tfrac12A_{i\mp1/2}|x_{1,i}-x_{1,i\mp1/2}|/V_i$ | `work_lo`, `work_hi` |
 | $C$ | Courant number (named: acoustic, advective, vertical acoustic) | `cfl` |
-| $\epsilon_{\rm piv}$ | LU pivot tolerance | |
+| $\epsilon_{\mathrm{piv}}$ | LU pivot tolerance | |
 
 ## 8. Diffusion, sedimentation, forcing
 
@@ -149,7 +152,7 @@ the $r^2\sin\theta$ metric).
 | $\mu$, $\nu$ | dynamic and kinematic viscosity |
 | $\kappa$ | thermal diffusivity (or conductivity, stated) |
 | $K_f$ | a diffusion coefficient evaluated on face $f$ |
-| $w_{{\rm s},n}$ | sedimentation (terminal) velocity of species $n$ |
+| $w_{{\mathrm{s}},n}$ | sedimentation (terminal) velocity of species $n$ |
 | $\Omega$ | planetary rotation rate |
 | $\tau$ | a relaxation time scale (named) |
 
@@ -158,7 +161,7 @@ the $r^2\sin\theta$ metric).
 | symbol | meaning |
 |---|---|
 | $\mathrm{KE}, \mathrm{IE}$ | kinetic and internal energy totals (logged `ke=`, `ie=`) |
-| $\varepsilon$ | relative error of the linear convective onset growth rate against its oracle; $\varepsilon_{\rm eff}$ the one-step effective value |
+| $\varepsilon$ | relative error of the linear convective onset growth rate against its oracle; $\varepsilon_{\mathrm{eff}}$ the one-step effective value |
 | $e_\infty$, $e_1$ | max-norm and 1-norm errors (named quantity) |
 | $\mathcal O$ | an oracle (exact or reference value) |
 | $\lambda_w$ | a wavelength (named) |
