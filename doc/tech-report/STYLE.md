@@ -105,29 +105,72 @@ Rules for the layers:
 ## 3. Citations
 
 ### 3.1 Code
-In the report source a code citation is always the link of section 10.6: link text `basename:lines`, target the file
-at the pinned full sha on GitHub. `path:line@sha` is only the notation reviewers and this guide use to name a
-location; it never appears in chapter text. In prose the symbol comes first:
+In a rendered chapter a code citation is always the link of section 10.6: link text `basename:lines`, target
+the file at the pinned **full** sha on GitHub. The notation `path:lines@<short-sha>` names a location in this
+guide, in OUTLINE.md, in a review and in a pre-conversion draft; it never appears in a `.qmd`. Converting one
+to the other is mechanical: `src/hydro/hydro_forward.cpp:826-831@dae902b` becomes
+`` [`hydro_forward.cpp:826-831`](https://github.com/UCzhangxi/snapy/blob/dae902b04d217a824634762dd4e07790a12add5e/src/hydro/hydro_forward.cpp#L826-L831) ``.
+In prose the symbol comes first, then the link:
 
 > The slope stencil is `centroid_slope` ([`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<sha>/src/hydro/gravity_work_radial.hpp#L28-L51)).
 
 - The line points at the definition or the statement that carries the claim, not at a comment above it (unless the
   claim is about the comment).
-- Other repositories: prefix the repo, `kintera:src/eos/...:42@<sha>`, `pyharp:...@<sha>`.
-- Pinned shas for round 1:
-  - snapy main: `aea71ed` (chengcli/snapy main; the base of this branch).
-  - the gravity-work round: `dae902b` (`next/final-batch` on UCzhangxi/snapy). Code that differs between the two is
-    cited at `dae902b`. When the round merges, the editor moves every pin to the merge sha with a script; authors do
-    not edit shas by hand.
-- A citation is checked by `tools/check_citations.py` (planned; see section 9): the file must exist at the sha and
-  the line must exist. Authors run `git show <sha>:<path> | sed -n '<line>p'` themselves before committing.
+- Other repositories are cited exactly like snapy, with the owner spelled out in the URL and the repository name
+  prefixed to the link text:
+  `` [`pyharp integrator.cpp:49-61`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L49-L61) ``.
+  The repositories the report may cite, and the only owner each may be cited from, are listed with their pins in
+  `index.qmd`: snapy (`UCzhangxi/snapy` for the round pin, `chengcli/snapy` for the main pin), kintera
+  (`chengcli/kintera`), pyharp (`chengcli/pyharp`), pydisort (`zoeyzyhu/pydisort`), commux (`zoeyzyhu/commux`).
+  A citation to any other repository, or to a fork not on that list, is a review failure. Note that a sha from a
+  fork resolves through the parent's URL on GitHub; cite the repository the commit actually lives on.
+- Pins for round 1. They are defined **here and nowhere else**; `index.qmd` and OUTLINE.md reproduce this
+  table and are regenerated from it, never edited by hand. Each pin is a full sha and a description of what
+  the commit *is*, not of which branch happens to point at it:
+
+  | pin | full sha | what it is |
+  |---|---|---|
+  | snapy base | `aea71ed852effb09e6aa155dd26349f1210ef556` | the commit of `chengcli/snapy` on which the gravity-work round is based |
+  | snapy round | `dae902b04d217a824634762dd4e07790a12add5e` | the gravity-work round, 52 commits ahead of the base, on `UCzhangxi/snapy` |
+  | kintera | `4dc613d04f24621b3119d343c5c7c9b93628895b` | the kintera commit the round builds against |
+  | pyharp | `4721715855e937c1e8b218e964c0655f46e56e29` | the pyharp commit the round builds against |
+
+  Code that differs between the base and the round is cited at the round pin. A branch name may be given as a
+  note ("`next/final-batch` pointed here on 2026-10-09") but is never the pin: branches move. When the round
+  merges, the editor moves every pin with the script of section 3.1; authors do not edit shas by hand.
+- Every code citation names its anchor: the function, method, type or variable whose definition or use the cited
+  lines contain. The anchor is the "symbol" column of the Code table, and in prose it is the identifier the
+  sentence uses before the link. `tools/check_citations.py` checks three things, not two: the file exists at the
+  sha; the lines exist; and the anchor's identifier appears at least once inside the cited range. A citation
+  whose range does not contain its anchor fails, even though the lines exist.
+- When the pin moves, the editor's script rewrites the sha and **re-resolves each range by locating the anchor
+  in the new file**; it never carries a line range across a sha unchanged. Where the anchor has moved to another
+  file, been renamed, or been deleted, the script does not guess: it lists the citation in
+  `reviews/pin-move-<newsha>.md` and the owning author re-reads the code and rewrites the citation and, if the
+  code changed, the claim. A pin move is not merged until that list is empty. Authors check their own citations
+  before committing with `git show <full-sha>:<path> | sed -n '<lo>,<hi>p'` and confirm the anchor is in the
+  output — not just that the lines exist.
 - Tests are cited by file and ctest name: `tests/test_gravity_work_radial_exact.py` (ctest
   `test_gravity_work_radial_exact_python`).
 
 ### 3.2 Sources and history
-- Derivation notes: `sources/<file>` §n, or `docs/derivations/<file>@<sha>` §n.
+- Derivation notes: `sources/<file> §n` for a copy in this directory, or `docs/derivations/<file>@<full-sha>
+  §n` for one in the code tree. The path, the sha and the section are repeated in full at every citation; no
+  abbreviation to `§n` alone, and no second form for the same file within a chapter. A script is cited by path
+  and sha with a function or a printed label, never a "§": `docs/derivations/optionF_replica.py@<full-sha>`,
+  output label `[C6]`. A note or script at a sha that is not one of the pins of section 3.1 is cited only in
+  the Limits or Tests layer, with the reason it is off-pin and what it would take to re-run at the pin.
+- A derivation note that is still being edited is cited at the pin like any other file, but a statement *about*
+  the note — that it has an error, a gap or a placeholder — is a statement about a moving target. Such a
+  statement is written in this form: "at `<file>@<full-sha>` §n, ... ; check the note's current head before
+  publication". The editor re-reads every such statement against the note's branch tip as the last step before
+  each release render, and the author either removes the statement or re-pins it. The same applies to any
+  sentence that says a defect was "flagged to its author".
 - Pull requests and issues: `chengcli/snapy#NNN` or `UCzhangxi/snapy#NNN`, always with the owner/repo.
-- Commit: `snapy@<sha>`, with its subject line in quotes when the subject carries the meaning.
+- Commit: `snapy@<full-sha>`, the full 40 characters, with its subject line in quotes when the subject carries
+  the meaning. A short sha appears nowhere in the report, in any file, including this guide, OUTLINE.md and
+  NOTATION.md: it is not stable as the repository grows and `git fetch` does not accept it. Where a short form
+  is wanted for reading, write the full sha and let the link text carry the short form.
 
 ## 4. Numbers and evidence
 
@@ -433,12 +476,22 @@ files, so every construct below must work in both. When in doubt, render both an
 - The Code and Tests layers each use one table, as in section 2; the column headers there are fixed.
 
 ### 10.6 Code citations and links
-- A code citation is a link whose text is `basename:lines` and whose target is the file at the pinned sha on GitHub:
-  `[`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<full-sha>/src/hydro/gravity_work_radial.hpp#L28-L51)`.
+- A code citation is a link whose text is `basename:lines` and whose target is the file at the pinned full sha
+  on GitHub. Written out, the source is:
+
+  ```markdown
+  [`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/dae902b04d217a824634762dd4e07790a12add5e/src/hydro/gravity_work_radial.hpp#L28-L51)
+  ```
+
   The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
-  directory (`hydro/hydro.cpp:120-140`). The Code table of a scheme holds the same short links. The pinned shas and their meaning are listed once in `index.qmd`. The
-  editor's pin-mover script rewrites every URL when the pin moves, and `tools/check_citations.py` checks every link
-  (file and lines exist at the sha).
+  directory (`hydro/hydro.cpp:120-140`). The Code table of a scheme holds the same short links, and its "symbol"
+  column holds the anchor of section 3.1. The pins are defined in section 3.1 and reproduced in `index.qmd`. The
+  editor's pin-mover script rewrites every URL when the pin moves and re-resolves each range by its anchor
+  (section 3.1), and `tools/check_citations.py` checks every link (file, lines and anchor at the sha).
+- A citation is never abbreviated to a bare `:lines`. Every citation, including the second and tenth to the same
+  file, is a full link with the link text `basename:lines`. Repetition is the point: a reader opens the book at
+  one page. Where a walk-through cites the same file many times, the numbered list of section 10.7 carries one
+  link per step.
 - Code excerpts: only when the text discusses the lines, at most 15 lines, in a fenced block with its language
   (`cpp`, `python`, `yaml`) and the citation link in the sentence before it. No line numbers inside the block;
   the link carries them.

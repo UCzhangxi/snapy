@@ -2,9 +2,11 @@
 
 > Editor: C0. Status: **for review by the lead, then approval by the project owner before drafting starts.**
 > Pinned code: snapy `dae902b` (`next/final-batch` on UCzhangxi/snapy = snapy main `aea71ed` plus the gravity-work
-> round); kintera `4dc613d` and pyharp `4721715` for code outside snapy. Every `path:line@sha` below was checked with
-> `tools/check_citations.py` (file and lines exist at the sha); the inventories behind it were checked by hand against
-> the statement each line carries. Binding style: `STYLE.md`. Symbols: `NOTATION.md`.
+> round); kintera `4dc613d04f24621b3119d343c5c7c9b93628895b` and pyharp `4721715855e937c1e8b218e964c0655f46e56e29`
+> for code outside snapy. Every `path:lines@sha` below was checked by hand against the statement the lines carry,
+> at the pins above, on 2026-10-09. `tools/check_citations.py` is not written yet; when it lands, this line is
+> replaced by its output file and the date of the run. Until then no entry in this outline may claim a
+> tool-verified citation. Binding style: `STYLE.md`. Symbols: `NOTATION.md`.
 
 ## How to read this outline
 
