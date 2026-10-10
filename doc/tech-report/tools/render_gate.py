@@ -27,15 +27,42 @@ alike. That is invisible to every gate above: the source is well formed, so
 `check_math_spans.py` passes; the stdout gate sees nothing; and the log only
 notices when a macro happens to be a character-mapping one, which caught 4 of
 390. The instrument is a scan of the RENDERED `<th>`/`<td>` contents, which
-lives in `reference/check_table_cells.py` and is run from here so that G1 covers
+lives in `tools/check_table_cells.py` and is run from here so that G1 covers
 it. **It is folded in rather than left standalone because ISSUES #9's whole
 lesson is that a gate nobody runs is a gate that does not exist.**
 
+ADAPTED FOR THE snapy TECHNICAL REPORT (STYLE.md 10.9)
+------------------------------------------------------
+Imported from the house books unchanged (commit "move the house render-gate
+scripts") and changed only where this report differs:
+
+  * Sources: a chapter is `book/chapters/NN-slug.qmd` plus its scheme files
+    `book/chapters/NN-slug/_<scheme>.qmd` (STYLE 10.1), so every source gate
+    reads `chapters/**/*.qmd` and names files by their path under `book/`.
+  * The LaTeX log is `book/index.log`, or the newest `book/*.log` if the book
+    sets another output name; `--log` overrides.
+  * Overfull boxes wider than 10 pt FAIL (STYLE 10.9); smaller ones and the
+    underfull ones are still only counted. `--overfull-pt` sets the limit.
+  * After the render the HTML and the PDF must both be in `book/_book/`
+    (STYLE 10.9 renders both from one command; quarto deletes the HTML of a
+    book when `--to pdf` is rendered on its own).
+  * The freeze gate asks for a tracked `_freeze/` cache only for chapters
+    that have a python cell; a chapter without one has nothing to freeze.
+  * The table-cell fix message names this report's route (a markdown table).
+  * Three outcomes, PASS, PENDING and FAIL (lead's ruling): a `snapy_report`
+    function that a chapter imports but that is not written yet is PENDING,
+    not a failure, and so is a book with no `_quarto.yml` yet. The render runs
+    with a placeholder figure for each pending function, so every other gate
+    still sees the whole book. Nothing is released while anything is pending.
+
 USAGE
 -----
-    python reference/render_gate.py book/            # render, then gate
-    python reference/render_gate.py book/ --no-render   # gate an existing log
-    python reference/render_gate.py book/ --labels-only # cross-chapter labels, no build
+    python tools/render_gate.py book/            # render, then gate
+    python tools/render_gate.py book/ --no-render   # gate an existing log
+    python tools/render_gate.py book/ --labels-only # source gates only, no build
+    python tools/render_gate.py book/ --release     # PENDING counts as a failure
+
+Exit status: 0 PASS, 1 FAIL, 2 PENDING (nothing failed, something is pending).
 
 ⚠️ **Do not run this while another session is rendering the same book.**
 `_book/` and `_freeze/` are shared state, which is why chapter writers are
@@ -52,6 +79,8 @@ import re
 import subprocess
 import sys
 import pathlib
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for book_chapters
 
 # things that are defects, not taste
 FATAL = {
@@ -77,10 +106,19 @@ NOISE = {
 }
 
 
-def render(book):
+def _chapter_sources(book):
+    """Every chapter file and every included scheme file (STYLE 10.1), sorted."""
+    return sorted((book / "chapters").rglob("*.qmd"))
+
+
+def _rel(book, q):
+    return str(q.relative_to(book))
+
+
+def render(book, env=None):
     cmd = ["quarto", "render", str(book), "-M", "latex-clean:false"]
     print("$ " + " ".join(cmd))
-    p = subprocess.run(cmd, capture_output=True, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True, env=env)
     return p.returncode, p.stdout + p.stderr
 
 
@@ -98,12 +136,21 @@ def render(book):
 _CELL_PROGRESS = re.compile(r"^\s*Cell \d+/\d+: '[^']*'\.*Done\s*$")
 
 
-def gate_stdout(out):
-    """The historical check. Necessary, and by itself not sufficient."""
+_UNRESOLVED = re.compile(r"Unable to resolve crossref @([\w-]*\w)")
+
+
+def gate_stdout(out, expected=()):
+    """The historical check. Necessary, and by itself not sufficient.
+
+    Quarto's "Unable to resolve crossref @x" for an x in `expected` (a reference into a chapter not
+    written yet, or a scheme not written yet) is left to the unwritten-chapter and unwritten-scheme gates,
+    which already count it.
+    """
     pat = re.compile(r"warn|error|unable|missing character|undefined", re.I)
     hits = [l for l in out.splitlines()
             if pat.search(l) and "IPKernelApp" not in l
-            and not _CELL_PROGRESS.match(l)]
+            and not _CELL_PROGRESS.match(l)
+            and not (_UNRESOLVED.search(l) and _UNRESOLVED.search(l).group(1) in expected)]
     return hits
 
 
@@ -114,12 +161,12 @@ def _source_label_counts(book):
     `gate_log`.
     """
     counts = {}
-    for q in (book / "chapters").glob("*.qmd"):
+    for q in _chapter_sources(book):
         text = q.read_text()
         for lab in re.findall(r"\{#([a-zA-Z][\w-]*)\}", text):
-            counts.setdefault(lab, []).append(q.name)
+            counts.setdefault(lab, []).append(_rel(book, q))
         for lab in re.findall(r"^#\|\s*label:\s*(\S+)", text, re.M):
-            counts.setdefault(lab, []).append(q.name)
+            counts.setdefault(lab, []).append(_rel(book, q))
     return counts
 
 
@@ -163,7 +210,7 @@ def gate_float_label_prefixes(book):
     Divs (`::: {#exm-...}`, `{#eq-...}`) are not cells and are not in scope here.
     """
     bad = []
-    for q in sorted((book / "chapters").glob("*.qmd")):
+    for q in _chapter_sources(book):
         label = None
         for n, line in enumerate(q.read_text().splitlines(), 1):
             m = re.match(r"^#\|\s*label:\s*(\S+)", line)
@@ -172,7 +219,7 @@ def gate_float_label_prefixes(book):
                 continue
             if re.match(r"^#\|\s*(fig-cap|tbl-cap|lst-cap)\s*:", line) and label:
                 if label[0].split("-")[0] not in FLOAT_PREFIXES:
-                    bad.append((q.name, label[1], label[0]))
+                    bad.append((_rel(book, q), label[1], label[0]))
                 label = None
             elif line.strip() == "```":
                 label = None
@@ -237,7 +284,7 @@ def gate_old_font_commands(book):
     in maths that LaTeX sees.**
     """
     fatal, allowed = [], []
-    for q in sorted((book / "chapters").glob("*.qmd")):
+    for q in _chapter_sources(book):
         lines = q.read_text().splitlines()
         # Split into cells first: the fatal/safe distinction is a property of the CELL, not
         # of the line.  A label string is often built on one line (`lab = "... $M_{\\rm J}$"`)
@@ -266,9 +313,9 @@ def gate_old_font_commands(book):
                 if not hits:
                     continue
                 if kind == "cell" and not emits_markdown:
-                    allowed.append((q.name, n, hits))
+                    allowed.append((_rel(book, q), n, hits))
                 else:
-                    fatal.append((q.name, n, hits, line.strip()[:80]))
+                    fatal.append((_rel(book, q), n, hits, line.strip()[:80]))
     if allowed:
         n = sum(len(h) for _, _, h in allowed)
         print(f"\n[font gate] {n} old font commands on {len(allowed)} lines, all inside "
@@ -305,7 +352,7 @@ def gate_cross_chapter_labels(book):
     return len(clashes)
 
 
-def gate_dangling_refs(book):
+def _xrefs(book):
     """A `@sec-`/`@eq-`/`@fig-`/`@tbl-` reference with no definition, or one quarto cannot reach.
 
     The label gate above catches a label defined TWICE. This catches the opposite and equally
@@ -314,15 +361,18 @@ def gate_dangling_refs(book):
     the label exists in the source and resolves to nothing in the output. ch40 labelled a
     `####` heading and was the only chapter in the book to do so; every other chapter stops at
     `###`. A dead cross-reference is invisible to every test and reads as a missing number.
+
+    Returns (used, defined, deep): {label: files referencing it}, the defined labels, and the
+    labels quarto cannot reach with the reason.
     """
     defined = set()
     deep = {}
-    for q in (book / "chapters").glob("*.qmd"):
+    for q in _chapter_sources(book):
         text = q.read_text()
         defined |= set(re.findall(r"\{#([a-zA-Z][\w-]*)\}", text))
         defined |= set(re.findall(r"^#\|\s*label:\s*(\S+)", text, re.M))
         for lvl, lab in re.findall(r"^(#{4,})\s+.*\{#(sec-[\w-]+)\}", text, re.M):
-            deep[lab] = (q.name, len(lvl), "on a level-%d heading, too deep to reference"
+            deep[lab] = (_rel(book, q), len(lvl), "on a level-%d heading, too deep to reference"
                          % len(lvl))
         # 🔴 A `sec-` label on a heading INSIDE a fenced div (`::: {#exm-...}` and friends)
         # is unreachable BY CONSTRUCTION: a heading inside a div is not a document section,
@@ -339,20 +389,93 @@ def gate_dangling_refs(book):
             if depth:
                 m = re.match(r"#{1,6}\s+.*\{#(sec-[\w-]+)\}", s)
                 if m:
-                    deep[m.group(1)] = (q.name, 0, "on a heading INSIDE a fenced div, which "
+                    deep[m.group(1)] = (_rel(book, q), 0, "on a heading INSIDE a fenced div, which "
                                         "is not a section -- reference the div itself")
     used = {}
-    for q in (book / "chapters").glob("*.qmd"):
+    for q in _chapter_sources(book):
         # ⚠️ a trailing hyphen belongs to the PROSE, not the label: `@eq-foo--` is
         # `@eq-foo` followed by a markdown en-dash, and a greedy `[\w-]+` invents two
         # dangling references in ch09 that do not exist. The label cannot end in a hyphen.
-        for lab in re.findall(r"@((?:sec|eq|fig|tbl|exr|exm|thm)-(?:[\w-]*\w)?)", q.read_text()):
-            used.setdefault(lab, set()).add(q.name)
-    dangling = {l: f for l, f in used.items() if l not in defined}
+        for lab in re.findall(r"@((?:sec|eq|fig|tbl|exr|exm|thm|prp|lem)-(?:[\w-]*\w)?)", q.read_text()):
+            used.setdefault(lab, set()).add(_rel(book, q))
+    return used, defined, deep
+
+
+#: Chapter identifiers of STYLE 10.1: ch01 ... ch17, split chapters with a letter (ch07b), appendices.
+_CHAPTER_ID = re.compile(r"^(?:sec|eq|fig|tbl|exr|exm|thm|prp|lem)-((?:ch(?:0[1-9]|1[0-7])[a-z]?)|app[a-z])"
+                         r"(?:-|$)")
+
+
+def unwritten_chapter_refs(book):
+    """{label: (chapter id, files)} for references into a chapter that is not in the book yet.
+
+    The target is a valid chapter identifier (STYLE 10.1) whose chapter heading `{#sec-<id>}` is
+    defined nowhere. The editor's ruling: these are EXPECTED failures until that chapter exists. They stay
+    failures, but they are listed apart from real dangling references so a reviewer can tell them
+    apart. A reference into a chapter that exists is either into a scheme not written yet
+    (unwritten_scheme_refs) or a real dangling one.
+    """
+    used, defined, _ = _xrefs(book)
+    out = {}
+    for lab, files in used.items():
+        m = _CHAPTER_ID.match(lab)
+        if lab not in defined and m and f"sec-{m.group(1)}" not in defined:
+            out[lab] = (m.group(1), files)
+    return out
+
+
+#: A label inside a scheme: <kind>-<chapter id>-<scheme>[-<what>] (STYLE 10.1).
+_SCHEME_LABEL = re.compile(r"^(?:sec|eq|fig|tbl|exr|exm|thm|prp|lem)-((?:ch(?:0[1-9]|1[0-7])[a-z]?)|app[a-z])"
+                           r"-([a-z0-9]+)(?:-|$)")
+
+
+def _chapter_stems(book):
+    """{chapter id: file stem} of the chapter files: chapters/06-gravity-energy.qmd gives ch06."""
+    stems = {}
+    for q in (book / "chapters").glob("*.qmd"):
+        m = re.match(r"(?:(\d\d[a-z]?)|app([a-z]))-", q.name)
+        if m:
+            stems[f"ch{m.group(1)}" if m.group(1) else f"app{m.group(2)}"] = q.stem
+    return stems
+
+
+def unwritten_scheme_refs(book):
+    """{label: (target, files, scheme file)} for references into a scheme not written yet, in a written chapter.
+
+    The editor's ruling (1791649734): like a reference into an unwritten chapter, a reference whose target is a
+    scheme of a chapter that exists, but whose scheme file `chapters/<chapter>/_<scheme>.qmd` does not
+    exist yet, is an EXPECTED failure, listed by target id. If the scheme file exists, an undefined
+    label in it is a real dangling reference.
+    """
+    used, defined, _ = _xrefs(book)
+    chapters = unwritten_chapter_refs(book)
+    stems = _chapter_stems(book)
+    out = {}
+    for lab, files in used.items():
+        m = _SCHEME_LABEL.match(lab)
+        if lab in defined or lab in chapters or not m:
+            continue
+        ch, scheme = m.groups()
+        if f"sec-{ch}" not in defined or ch not in stems:
+            continue
+        rel = f"chapters/{stems[ch]}/_{scheme}.qmd"
+        if not (book / rel).exists():
+            out[lab] = (f"{ch} scheme {scheme}", files, rel)
+    return out
+
+
+def gate_dangling_refs(book):
+    """References that resolve to nothing, other than those into a chapter or scheme not written yet."""
+    used, defined, deep = _xrefs(book)
+    expected = {**unwritten_chapter_refs(book), **unwritten_scheme_refs(book)}
+    dangling = {l: f for l, f in used.items() if l not in defined and l not in expected}
     unreachable = {l: v for l, v in deep.items() if l in used}
     if not dangling and not unreachable:
-        print(f"\n[xref gate] {len(used)} distinct references, all defined and reachable")
+        print(f"\n[xref gate] {len(used)} distinct references; none dangling or unreachable"
+              + (f" ({len(expected)} into chapters or schemes not written yet: see their gates)"
+                 if expected else ""))
         return 0
+    print(f"\n[xref gate] {len(dangling)} dangling, {len(unreachable)} unreachable reference(s)")
     for lab, files in sorted(dangling.items()):
         print(f"  ✗ @{lab}: referenced in {', '.join(sorted(files))} but defined nowhere")
     for lab, (fn, _lvl, why) in sorted(unreachable.items()):
@@ -360,11 +483,57 @@ def gate_dangling_refs(book):
     return len(dangling) + len(unreachable)
 
 
-def gate_log(log_path, book):
+def gate_unwritten_chapter_refs(book):
+    """EXPECTED failure (editor's ruling): references into chapters that are not written yet."""
+    expected = unwritten_chapter_refs(book)
+    chapters = sorted({c for c, _ in expected.values()})
+    print(f"\n[unwritten-chapter gate] {len(expected)} reference(s) into {len(chapters)} chapter(s) "
+          "not written yet" + (f": {', '.join(chapters)}" if chapters else ""))
+    if expected:
+        print("    EXPECTED failure until those chapters exist; not a dangling reference")
+    for lab, (ch, files) in sorted(expected.items()):
+        print(f"  ✗ expected: unresolved cross-reference @{lab} -> {ch} (not written yet), "
+              f"referenced in {', '.join(sorted(files))}")
+    return len(expected)
+
+
+def gate_unwritten_scheme_refs(book):
+    """EXPECTED failure (editor's ruling): references into schemes of written chapters, not written yet."""
+    expected = unwritten_scheme_refs(book)
+    schemes = sorted({t for t, _, _ in expected.values()})
+    print(f"\n[unwritten-scheme gate] {len(expected)} reference(s) into {len(schemes)} scheme(s) "
+          "not written yet" + (f": {', '.join(schemes)}" if schemes else ""))
+    if expected:
+        print("    EXPECTED failure until those schemes exist; not a dangling reference")
+    for lab, (target, files, rel) in sorted(expected.items()):
+        print(f"  ✗ expected: unresolved cross-reference @{lab} -> {target} (no {rel} yet), "
+              f"referenced in {', '.join(sorted(files))}")
+    return len(expected)
+
+
+def find_log(book):
+    """`index.log`, or the newest log in the book directory if the book names its output."""
+    log = book / "index.log"
+    if log.exists():
+        return log
+    logs = sorted(book.glob("*.log"), key=lambda p: p.stat().st_mtime)
+    return logs[-1] if logs else log
+
+
+#: STYLE 10.9: an overfull box wider than this many points fails the gate.
+OVERFULL_PT = 10.0
+_OVERFULL = re.compile(r"Overfull \\[hv]box \(([\d.]+)pt too (?:wide|high)\)[^\n]*")
+
+
+def gate_log(log_path, book, overfull_pt=OVERFULL_PT):
     if not log_path.exists():
         return None, {}, {}
     text = log_path.read_text(errors="replace")
     fatal = {}
+    wide = [m.group(0) for m in _OVERFULL.finditer(text) if float(m.group(1)) > overfull_pt]
+    if wide:
+        fatal[f"overfull box > {overfull_pt:g} pt"] = (
+            wide, "text runs into the margin or over the next column (STYLE 10.9)")
     for name, (pat, why) in FATAL.items():
         found = re.findall(pat, text)
 
@@ -424,7 +593,8 @@ def _gate_table_cells(book):
         print(f"  ✗ {f.name}: {len(hits)}")
         for kind, cell in hits[:3]:
             print(f"       [{kind}] {' '.join(cell.split())[:90]}")
-    print("    fix: show(df) from classic_papers.tables, not a bare DataFrame")
+    print("    fix: emit the table as markdown, Markdown(df.to_markdown(index=False)),"
+          " not a bare DataFrame")
     return total
 
 
@@ -458,7 +628,7 @@ def gate_orphan_caption_blocks(book):
     a caption block whose nearest preceding non-blank line is a CLOSING code fence.
     """
     bad = []
-    for q in sorted((book / "chapters").glob("*.qmd")):
+    for q in _chapter_sources(book):
         lines = q.read_text().splitlines()
         for n, line in enumerate(lines):
             if not re.match(r"^:\s+\S", line):
@@ -467,7 +637,7 @@ def gate_orphan_caption_blocks(book):
             while j >= 0 and not lines[j].strip():
                 j -= 1
             if j >= 0 and lines[j].strip() == "```":
-                bad.append((q.name, n + 1, line.strip()[:60]))
+                bad.append((_rel(book, q), n + 1, line.strip()[:60]))
     print(f"\n[caption gate] {len(bad)} caption block(s) attached to a code fence")
     for name, n, txt in bad:
         print(f"  \u2717 {name}:{n}  {txt}...")
@@ -503,7 +673,7 @@ def gate_unbalanced_quotes(book):
     and an apostrophe would make ``'`` unusable as a parity mark.
     """
     bad = []
-    for q in sorted(list((book / "chapters").glob("*.qmd")) + list(book.glob("index.qmd"))):
+    for q in sorted(_chapter_sources(book) + list(book.glob("index.qmd"))):
         t = q.read_text()
         t = re.sub(r"^```.*?^```", "", t, flags=re.S | re.M)   # fenced code
         t = re.sub(r"`[^`\n]*`", "", t)                        # inline code spans
@@ -512,7 +682,7 @@ def gate_unbalanced_quotes(book):
             n = para.count('"')
             if n % 2:
                 first = next((l for l in para.strip().splitlines() if l.strip()), "")
-                bad.append((q.name, n, first.strip()[:70]))
+                bad.append((_rel(book, q), n, first.strip()[:70]))
     print(f"\n[quote gate] {len(bad)} paragraph(s) with an odd number of \" marks")
     for name, n, txt in bad:
         print(f"  \u2717 {name}  ({n} quotes)  {txt}...")
@@ -553,7 +723,7 @@ def gate_maths_span_broken_by_a_bullet(book):
     bad = []
     bullet = re.compile(r"^\s{0,7}[-*+]\s")
     item = re.compile(r"^\s{0,7}(?:[-*+]\s|\(?[0-9a-z]{1,3}[.)]\s)")
-    for q in sorted(list((book / "chapters").glob("*.qmd")) + list(book.glob("index.qmd"))):
+    for q in sorted(_chapter_sources(book) + list(book.glob("index.qmd"))):
         t = q.read_text()
         t = re.sub(r"^```.*?^```", lambda m: "\n" * m.group(0).count("\n"), t,
                    flags=re.S | re.M)
@@ -565,7 +735,7 @@ def gate_maths_span_broken_by_a_bullet(book):
             elif item.match(line) and not depth:
                 in_item = True
             if depth and in_item and bullet.match(line):
-                bad.append((q.name, i, line.strip()[:70]))
+                bad.append((_rel(book, q), i, line.strip()[:70]))
             n = len(re.findall(r"(?<!\\)\$", re.sub(r"\$\$", "", line)))
             depth = (depth + n) % 2
     print(f"\n[maths-span gate] {len(bad)} inline maths span(s) broken by a list bullet")
@@ -576,6 +746,13 @@ def gate_maths_span_broken_by_a_bullet(book):
     if not bad:
         print("    no inline maths span is interrupted by a bullet inside a list item")
     return len(bad)
+
+
+def _has_python_cell(book, chapter):
+    """Whether the chapter file or one of its scheme files has an executable python cell."""
+    files = [book / "chapters" / f"{chapter}.qmd"]
+    files += sorted((book / "chapters" / chapter).rglob("*.qmd"))
+    return any(re.search(r"^```+\s*\{python", f.read_text(), re.M) for f in files if f.exists())
 
 
 def gate_freeze_is_tracked(book):
@@ -607,7 +784,8 @@ def gate_freeze_is_tracked(book):
     defect.
     """
     import subprocess
-    qmd = re.findall(r"chapters/(\S+)\.qmd", (book / "_quarto.yml").read_text())
+    qmd = [c for c in re.findall(r"chapters/(\S+)\.qmd", (book / "_quarto.yml").read_text())
+           if _has_python_cell(book, c)]
     try:
         tracked = subprocess.run(
             ["git", "ls-files", str(book / "_freeze" / "chapters")],
@@ -631,49 +809,442 @@ def gate_freeze_is_tracked(book):
     return len(missing)
 
 
+# --- pending: snapy_report functions a chapter calls that are not written yet -------------
+#
+# Lead's ruling (round 2): a missing `snapy_report` function is PENDING, not a failure, and
+# nothing is released while anything is pending. So the gate has three outcomes: PASS (exit 0),
+# PENDING (exit 2: nothing failed, but at least one called function or the book itself does not
+# exist yet) and FAIL (exit 1). `--release` turns PENDING into a failure.
+#
+# The render must still run while a function is pending, or every other gate is blind. The cells
+# that import a pending function get a placeholder: before the render, an IPython startup file
+# (in a temporary IPYTHONDIR, so nothing outside the render is touched) puts a stand-in module or
+# attribute into the kernel. Each stand-in returns a small figure that says PENDING, so the
+# figure's label and caption still exist and its cross-references still resolve. Anything else
+# a snapy_report module raises on import (a syntax error, a bad import inside it) is a FAIL.
+#
+# A placeholder that reaches `_freeze/` stays there after the function is written, because
+# `freeze: auto` re-runs a chapter only when its .qmd changes. The placeholder figure's text
+# repr carries PENDING_MARK, and the freeze gate fails on a frozen placeholder for a function
+# that now exists.
+
+PENDING_EXIT = 2
+PENDING_MARK = "snapy_report PENDING:"
+#: The placeholder's text carries this link (plus the function's name), which matplotlib writes into
+#: the SVG and the PDF of the figure, so a placeholder can be found in `_freeze/`.
+PENDING_URL = "snapy-report-pending:"
+
+_PY_CELL = re.compile(r"^```+\s*\{python[^}]*\}\s*\n(.*?)^```+\s*$", re.S | re.M)
+_FROM_IMPORT = re.compile(r"^[ \t]*from[ \t]+(snapy_report(?:\.\w+)*)[ \t]+import[ \t]+"
+                          r"(\([^)]*\)|[^\n#]+)", re.M)
+_PLAIN_IMPORT = re.compile(r"^[ \t]*import[ \t]+(snapy_report(?:\.\w+)*)", re.M)
+
+
+def snapy_report_imports(book):
+    """(file, line, module, name) for every snapy_report import in a python cell; name is None
+    for `import snapy_report.x`."""
+    found = []
+    for q in _chapter_sources(book):
+        text = q.read_text()
+        for cell in _PY_CELL.finditer(text):
+            body, start = cell.group(1), cell.start(1)
+            for m in _FROM_IMPORT.finditer(body):
+                line = text.count("\n", 0, start + m.start()) + 1
+                names = m.group(2).strip().strip("()")
+                for part in names.split(","):
+                    name = part.split(" as ")[0].strip()
+                    if name:
+                        found.append((_rel(book, q), line, m.group(1), name))
+            for m in _PLAIN_IMPORT.finditer(body):
+                line = text.count("\n", 0, start + m.start()) + 1
+                found.append((_rel(book, q), line, m.group(1), None))
+    return found
+
+
+# The editor's ruling (round 2): a chapter-opening dependency map, `make_fig("<chapter or scheme>")` from
+# snapy_report.depmap, whose target has no entry in the scheme registry yet is PENDING too. That is
+# known only by asking depmap: `depmap.status(target)` returns ("ok" | "pending", key, detail), and
+# for a pending target depmap's own make_fig returns a placeholder whose repr is
+# "<snapy_report PENDING: <key>>", key = snapy_report.depmap.<target> ("-" as "_"). The key goes
+# into the same pending table, so the verdict and the frozen-placeholder gate treat it like a
+# missing function.
+_DEPMAP_IMPORT = re.compile(r"^[ \t]*from[ \t]+snapy_report\.depmap[ \t]+import[ \t]+[^\n#]*\bmake_fig\b", re.M)
+_DEPMAP_CALL = re.compile(r"\bmake_fig\(\s*['\"]([\w-]+)['\"]")
+
+
+def depmap_targets(book):
+    """(file, line, target) for every `make_fig("<target>")` in a python cell that imports
+    snapy_report.depmap's make_fig."""
+    found = []
+    for q in _chapter_sources(book):
+        text = q.read_text()
+        for cell in _PY_CELL.finditer(text):
+            body, start = cell.group(1), cell.start(1)
+            if not _DEPMAP_IMPORT.search(body):
+                continue
+            for m in _DEPMAP_CALL.finditer(body):
+                found.append((_rel(book, q), text.count("\n", 0, start + m.start()) + 1, m.group(1)))
+    return found
+
+
+# One JSON line per target: [target, state, key, detail]. No output when depmap or its status()
+# cannot be imported: the import probe above already reports that.
+_DEPMAP_PROBE = r"""
+import json, sys
+try:
+    from snapy_report.depmap import status
+except Exception:
+    sys.exit(0)
+for target in json.loads(sys.argv[1]):
+    try:
+        st = status(target)
+        print(json.dumps([target, st.state, st.key, st.detail]))
+    except Exception as e:
+        print(json.dumps([target, "error", "", f"{type(e).__name__}: {e}"]))
+"""
+
+
+def gate_depmap_targets(book, pending, errors):
+    """Add the dependency-map targets with no registry entries to pending, and a status() that
+    raises to errors."""
+    import json
+    targets = depmap_targets(book)
+    if not targets:
+        return
+    names = sorted({t for _, _, t in targets})
+    p = subprocess.run([_cell_python(), "-c", _DEPMAP_PROBE, json.dumps(names)],
+                       capture_output=True, text=True)
+    state = {t: (st, key, detail) for t, st, key, detail in map(json.loads, p.stdout.splitlines())}
+    if p.returncode != 0:
+        errors.append(f"depmap probe: {p.stderr.strip().splitlines()[-1] if p.stderr.strip() else p.returncode}")
+    n_pending = 0
+    for f, n, target in targets:
+        if target not in state:
+            continue
+        st, key, detail = state[target]
+        if st == "pending":
+            n_pending += key not in pending
+            pending.setdefault(key, ("snapy_report.depmap", "make_fig", []))[2].append(f"{f}:{n}")
+        elif st == "error":
+            errors.append(f"{f}:{n}: depmap {target}: {detail}")
+    print(f"[snapy_report gate] {len(names)} dependency-map target(s): {n_pending} pending"
+          " (no scheme in the registry yet)")
+
+
+# Run in the python the cells run in. One JSON line per import: [module, name, state, detail],
+# state "ok", "pending" (the module or the name does not exist) or "error" (it raises).
+_PROBE = r"""
+import importlib, json, sys, traceback
+for module, name in json.loads(sys.argv[1]):
+    try:
+        mod = importlib.import_module(module)
+    except ModuleNotFoundError as e:
+        ours = e.name is not None and (e.name == module or module.startswith(e.name + "."))
+        state = "pending" if ours and e.name.split(".")[0] == "snapy_report" else "error"
+        print(json.dumps([module, name, state, f"{type(e).__name__}: {e}"])); continue
+    except Exception as e:
+        print(json.dumps([module, name, "error", traceback.format_exc(limit=-1).strip()])); continue
+    if name is None or hasattr(mod, name):
+        print(json.dumps([module, name, "ok", ""])); continue
+    try:
+        importlib.import_module(module + "." + name)
+        print(json.dumps([module, name, "ok", ""]))
+    except ModuleNotFoundError:
+        print(json.dumps([module, name, "pending", f"{module} has no {name}"]))
+    except Exception as e:
+        print(json.dumps([module, name, "error", traceback.format_exc(limit=-1).strip()]))
+"""
+
+
+def _cell_python():
+    """The interpreter the cells run in: QUARTO_PYTHON if set, as quarto uses it, else this one."""
+    import os
+    return os.environ.get("QUARTO_PYTHON") or sys.executable
+
+
+def gate_snapy_report(book):
+    """Sort every snapy_report import of the chapters into ok, pending and error.
+
+    Returns (pending, errors): pending is {"module.name": (module, name, [file:line, ...])}, with
+    name None for `import module`; errors is a list of lines to print. A pending import is not a
+    problem; an error is.
+    """
+    import json
+    imports = snapy_report_imports(book)
+    if not imports:
+        print("\n[snapy_report gate] no chapter imports snapy_report")
+        return {}, []
+    pairs = sorted({(m, n) for _, _, m, n in imports}, key=lambda t: (t[0], t[1] or ""))
+    p = subprocess.run([_cell_python(), "-c", _PROBE, json.dumps(pairs)],
+                       capture_output=True, text=True)
+    state = {}
+    for line in p.stdout.splitlines():
+        module, name, st, detail = json.loads(line)
+        state[(module, name)] = (st, detail)
+    pending, errors = {}, []
+    for f, n, module, name in imports:
+        st, detail = state.get((module, name), ("error", p.stderr.strip()[-300:] or "probe failed"))
+        what = module + ("." + name if name else "")
+        if st == "pending":
+            pending.setdefault(what, (module, name, []))[2].append(f"{f}:{n}")
+        elif st == "error":
+            errors.append(f"{f}:{n}: {what}: {detail.splitlines()[-1] if detail else ''}")
+    ok = len(pairs) - len(pending) - len({e.split(": ")[1] for e in errors})
+    print(f"\n[snapy_report gate] {len(pairs)} imported function(s): {ok} exist, "
+          f"{len(pending)} pending, {len(errors)} raising")
+    gate_depmap_targets(book, pending, errors)
+    for what, (_, _, where) in sorted(pending.items()):
+        print(f"  … PENDING {what}  ({', '.join(where)})")
+    for e in errors:
+        print(f"  ✗ {e}")
+    return pending, errors
+
+
+# The module the render's IPython startup file imports: stand-ins for the pending functions.
+_STARTUP = r'''
+import sys, types, importlib
+
+PENDING = %(pending)r      # (module, name), name None for `import module`
+MARK = %(mark)r
+URL = %(url)r
+
+
+def _placeholder(what):
+    def make(*args, **kwargs):
+        # matplotlib is imported in the cell, after quarto's kernel setup has chosen its formats.
+        from matplotlib.figure import Figure
+
+        class _PendingFigure(Figure):
+            def __repr__(self):
+                return f"<{MARK} {self._pending_what}>"
+
+        fig = _PendingFigure(figsize=(3.4, 0.9))
+        fig._pending_what = what
+        # on an axes: IPython's figure printer skips a figure that has none, leaving only the repr
+        ax = fig.add_axes((0, 0, 1, 1))
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "PENDING: " + what, ha="center", va="center", fontsize=8,
+                url=URL + what)
+        return fig
+    make.__name__ = what.rsplit(".", 1)[-1]
+    return make
+
+
+def _stand_in(module):
+    def getattr_(attr):
+        if attr.startswith("_"):     # inspect, pickle, ... look for dunders
+            raise AttributeError(attr)
+        return _placeholder(module + "." + attr)
+    return getattr_
+
+
+def _module(name):
+    try:
+        return importlib.import_module(name)
+    except ModuleNotFoundError:
+        parent, _, leaf = name.rpartition(".")
+        mod = types.ModuleType(name)
+        mod.__path__ = []
+        mod.__getattr__ = _stand_in(name)
+        sys.modules[name] = mod
+        if parent:
+            setattr(_module(parent), leaf, mod)
+        return mod
+
+
+for _mod, _name in PENDING:
+    _m = _module(_mod)
+    if _name is not None and not hasattr(_m, _name):
+        setattr(_m, _name, _placeholder(_mod + "." + _name))
+'''
+
+
+def pending_render_env(pending):
+    """Environment for a render whose cells call pending functions, or None if there are none."""
+    import os
+    import tempfile
+    if not pending:
+        return None
+    ipdir = pathlib.Path(tempfile.mkdtemp(prefix="render-gate-ipython-"))
+    startup = ipdir / "profile_default" / "startup"
+    startup.mkdir(parents=True)
+    # The stand-ins live in a module of their own: names an IPython startup file defines in the
+    # user namespace do not survive into the cells.
+    (ipdir / "_snapy_report_pending.py").write_text(
+        _STARTUP % {"pending": sorted(v[:2] for v in pending.values()), "mark": PENDING_MARK,
+                    "url": PENDING_URL})
+    (startup / "00-snapy-report-pending.py").write_text(
+        f"import sys\nsys.path.insert(0, {str(ipdir)!r})\nimport _snapy_report_pending\n"
+        "sys.path.pop(0)\n")
+    env = dict(os.environ, IPYTHONDIR=str(ipdir))
+    print(f"\n[snapy_report gate] rendering with {len(pending)} placeholder(s)")
+    return env
+
+
+def gate_frozen_placeholders(book, pending):
+    """A placeholder in `_freeze/` for a function that now exists: the chapter must be re-run.
+
+    The placeholder is found by its link (PENDING_URL) in the frozen figures (SVG, PDF) or by its
+    text repr (PENDING_MARK) in the frozen markdown.
+    """
+    stale = set()
+    pat = re.compile(rb"(?:" + re.escape(PENDING_URL.encode()) + rb"|"
+                     + re.escape(PENDING_MARK.encode()) + rb" )([\w.]+)")
+    files = sorted(f for f in (book / "_freeze").rglob("*") if f.is_file()) \
+        if (book / "_freeze").is_dir() else []
+    for f in files:
+        for what in set(m.decode() for m in pat.findall(f.read_bytes())):
+            if what not in pending:
+                stale.add((str(f.parent.relative_to(book)), what))
+    print(f"\n[frozen-placeholder gate] {len(stale)} frozen placeholder(s) for functions that exist")
+    for f, what in sorted(stale):
+        print(f"  ✗ {f}: {what} -- render that chapter alone to replace it (STYLE 10.9)")
+    return len(stale)
+
+
+def gate_chapter_list(book):
+    """The chapter list of `_quarto.yml` is the files that exist, in OUTLINE order (tools/book_chapters.py).
+
+    Checked in the report's layout (OUTLINE.md next to book/) or wherever the list markers are; a test book
+    elsewhere with a hand-written list is left alone.
+    """
+    import book_chapters
+    has_markers = book_chapters.current_block((book / "_quarto.yml").read_text()) is not None
+    if not has_markers and not (book.parent / "OUTLINE.md").exists():
+        print("\n[chapter-list gate] not the report layout and no list markers: skipped")
+        return 0
+    status, msgs = book_chapters.check(book)
+    print(f"\n[chapter-list gate] " + ("the list in _quarto.yml is the chapter files that exist"
+                                       if status == 0 else f"{len(msgs)} problem(s)"))
+    for m in msgs:
+        print(f"  ✗ {m}" if not m.startswith("fix:") else f"    {m}")
+    return 0 if status == 0 else max(1, len([m for m in msgs if not m.startswith("fix:")]))
+
+
+def _option(argv, name, default):
+    if name in argv:
+        i = argv.index(name)
+        value = argv[i + 1]
+        del argv[i:i + 2]
+        return value
+    return default
+
+
+def gate_outputs(book):
+    """Both formats of STYLE 10.9 were rendered into `_book/`."""
+    out = book / "_book"
+    missing = [kind for kind, pat in (("HTML", "*.html"), ("PDF", "*.pdf"))
+               if not list(out.rglob(pat))]
+    if not missing:
+        print(f"\n[output gate] {out} holds the HTML and the PDF")
+        return 0
+    print(f"\n[output gate] {out} has no {' and no '.join(missing)}: list html and pdf"
+          " under format: in _quarto.yml and render them in one command")
+    return len(missing)
+
+
+#: Gates whose failure is expected for now (editor's ruling); still failures, listed apart.
+EXPECTED_FAIL = {"unwritten-chapter refs": "expected until those chapters are written",
+                 "unwritten-scheme refs": "expected until those schemes are written"}
+
+
+def _verdict(results, release, expected_targets=None):
+    """Print the pass/pending/fail tally of the gates and return the exit status."""
+    tally = {k: sorted(n for n, v in results.items() if v == k) for k in ("pass", "pending", "fail")}
+    print(f"\n{len(tally['pass'])} gate(s) passed, {len(tally['pending'])} pending, "
+          f"{len(tally['fail'])} failed")
+    real = [n for n in tally["fail"] if n not in EXPECTED_FAIL]
+    if tally["pending"]:
+        print(f"  pending: {', '.join(tally['pending'])}")
+    if real:
+        print(f"  fail: {', '.join(real)}")
+    for n in tally["fail"]:
+        if n in EXPECTED_FAIL:
+            targets = (expected_targets or {}).get(n, ())
+            print(f"  fail, {EXPECTED_FAIL[n]}: {n}"
+                  + (f": {' '.join('@' + t for t in sorted(targets))}" if targets else ""))
+    if tally["fail"]:
+        print("GATE FAILED" + ("" if real else ": only the expected failures above"))
+        return 1
+    if tally["pending"]:
+        print("GATE PENDING: nothing failed, but nothing can be released while anything is pending"
+              + (" (--release: this counts as a failure)" if release else ""))
+        return 1 if release else PENDING_EXIT
+    print("GATE PASSED")
+    return 0
+
+
 def main(argv):
-    book = pathlib.Path(argv[0] if argv else "book")
+    argv = list(argv)
+    log_opt = _option(argv, "--log", None)
+    overfull_pt = float(_option(argv, "--overfull-pt", OVERFULL_PT))
+    book = pathlib.Path(argv[0] if argv and not argv[0].startswith("--") else "book")
     do_render = "--no-render" not in argv
+    release = "--release" in argv
+    results = {}
+
+    def record(name, problems):
+        results[name] = "fail" if problems else "pass"
+        return problems
+
+    if not (book / "_quarto.yml").exists():
+        print(f"[book gate] {book / '_quarto.yml'} does not exist: there is no book to render yet"
+              " (STYLE 8; the editor adds it)")
+        results["book"] = "pending"
+        return _verdict(results, release)
+
+    source_gates = (("labels", gate_cross_chapter_labels), ("dangling refs", gate_dangling_refs),
+                    ("float labels", gate_float_label_prefixes),
+                    ("font commands", gate_old_font_commands),
+                    ("caption blocks", gate_orphan_caption_blocks),
+                    ("quotes", gate_unbalanced_quotes),
+                    ("maths spans", gate_maths_span_broken_by_a_bullet),
+                    ("freeze tracked", gate_freeze_is_tracked),
+                    ("chapter list", gate_chapter_list))
+    for name, gate in source_gates:
+        record(name, gate(book))
+    expected = {"unwritten-chapter refs": sorted(unwritten_chapter_refs(book)),
+                "unwritten-scheme refs": sorted(unwritten_scheme_refs(book))}
+    record("unwritten-chapter refs", gate_unwritten_chapter_refs(book))
+    record("unwritten-scheme refs", gate_unwritten_scheme_refs(book))
+    pending, errors = gate_snapy_report(book)
+    results["snapy_report"] = "fail" if errors else ("pending" if pending else "pass")
+    record("frozen placeholders", gate_frozen_placeholders(book, pending))
 
     if "--labels-only" in argv:
-        return 1 if (gate_cross_chapter_labels(book) + gate_dangling_refs(book)
-                     + gate_float_label_prefixes(book)
-                     + gate_old_font_commands(book)
-                     + gate_orphan_caption_blocks(book)
-                     + gate_unbalanced_quotes(book)
-                     + gate_maths_span_broken_by_a_bullet(book)
-                     + gate_freeze_is_tracked(book)) else 0
+        return _verdict(results, release, expected)
 
-    label_clashes = (gate_cross_chapter_labels(book) + gate_dangling_refs(book)
-                     + gate_float_label_prefixes(book)
-                     + gate_old_font_commands(book)
-                     + gate_orphan_caption_blocks(book)
-                     + gate_unbalanced_quotes(book)
-                     + gate_maths_span_broken_by_a_bullet(book)
-                     + gate_freeze_is_tracked(book))
-
-    rc, out = (0, "") if not do_render else render(book)
+    env = pending_render_env(pending) if do_render else None
+    rc, out = (0, "") if not do_render else render(book, env)
+    if env:
+        import shutil
+        shutil.rmtree(env["IPYTHONDIR"], ignore_errors=True)
     if rc != 0:
         print(f"\nRENDER FAILED (exit {rc}). Last lines:\n")
         print("\n".join(out.splitlines()[-15:]))
-        return 1
+        results["render"] = "fail"
+        return _verdict(results, release, expected)
 
-    problems = label_clashes
+    record("outputs", gate_outputs(book))
 
-    hits = gate_stdout(out)
+    hits = gate_stdout(out, {t for ts in expected.values() for t in ts})
     print(f"\n[stdout gate] {len(hits)} matching lines"
           + ("" if hits else "  (this is the check that has always run)"))
     for h in hits[:10]:
+        # without colour codes and quarto's filter path, so the message itself fits on the line
+        h = re.sub(r"\x1b\[[0-9;]*m", "", h)
+        h = re.sub(r"^(\s*WARNING) \([^)]*\)", r"\1", h)
         print("   ", h.strip()[:110])
-    problems += len(hits)
+    record("stdout", len(hits))
 
-    log = book / "index.log"
-    text, fatal, noise = gate_log(log, book)
+    log = pathlib.Path(log_opt) if log_opt else find_log(book)
+    text, fatal, noise = gate_log(log, book, overfull_pt)
     if text is None:
         print(f"\n[log gate] {log} NOT FOUND -- the gate is BLIND.")
         print("   quarto deleted it. Re-run without --no-render so that")
         print("   -M latex-clean:false keeps the log alive.")
-        return 1
+        results["log"] = "fail"
+        return _verdict(results, release, expected)
 
     print(f"\n[log gate] {log} ({len(text):,} bytes)")
     if not fatal:
@@ -683,17 +1254,14 @@ def main(argv):
         print(f"  ✗ {name}: {len(found)} ({why})")
         for u in uniq[:8]:
             print(f"       {u}")
-        problems += len(found)
+    record("log", sum(len(found) for found, _ in fatal.values()))
 
-    cells = _gate_table_cells(book)
-    problems += cells
+    record("table cells", _gate_table_cells(book))
 
     print("    typography (not fatal): "
           + ", ".join(f"{n} {c}" for n, c in noise.items() if c))
 
-    print("\n" + ("GATE PASSED" if problems == 0
-                  else f"GATE FAILED: {problems} problems"))
-    return 0 if problems == 0 else 1
+    return _verdict(results, release, expected)
 
 
 if __name__ == "__main__":

@@ -49,8 +49,8 @@ a violation, and it is why this is a parser and not a regex.
 
 USAGE
 -----
-    python reference/check_math_spans.py book/chapters/*.qmd
-    python reference/check_math_spans.py --self-test
+    python tools/check_math_spans.py book/chapters/*.qmd
+    python tools/check_math_spans.py --self-test
 
 Exit status 0 if clean, 1 if any offending span is found.
 """
