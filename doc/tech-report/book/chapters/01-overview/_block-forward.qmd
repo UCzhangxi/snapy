@@ -1,0 +1,74 @@
+## Exchange before a single-block stage (`MeshBlock.forward`) {#sec-ch01-block-forward}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.5; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+`MeshBlock::forward` exchanges conserved ghosts before `advance_local` reconstructs them.
+Always exchanges first; no ordering switch.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+`MeshBlock::forward` exchanges conserved ghosts before `advance_local` reconstructs them. A caller that edits
+conserved interiors between stages therefore presents those changes to the next exchange.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+The exchange fills hydro conserved ghosts and scalar density ghosts. It then refreshes eligible physical x1 boundaries
+inside exchanged tangential slabs and recomputes scalar ratios. Outflow is excluded from that corner refresh. This
+wrapper changes data freshness, not the stencil order. Physical boundary conditions and cubed-sphere interpolation
+retain their own errors.
+
+@fig-ch01-block-forward-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-block-forward-flow
+#| fig-cap: "Exchange before a single-block stage. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: caller modifies interior; conserved exchange; advance_local; physical boundary fill."
+#| echo: false
+from snapy_report.ch01.fig_block_forward_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| forward | [`meshblock.cpp:545-552`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L552) | `forward` | API / see Summary |
+| exchange | [`meshblock.cpp:913-929`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L929) | `exchange_ghost_zones` | API / see Summary |
+| corners | [`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978) | `refresh` | API / see Summary |
+| meshforward | [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365) | `forward` | API / see Summary |
+
+: Implementation anchors for exchange before a single-block stage. {#tbl-ch01-block-forward-code}
+
+1. Read `forward` for the forward part of this path ([`meshblock.cpp:545-552`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L552)).
+2. Read `exchange_ghost_zones` for the exchange part of this path ([`meshblock.cpp:913-929`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L929)).
+3. Read `refresh` for the corners part of this path ([`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978)).
+4. Read `forward` for the meshforward part of this path ([`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| No dedicated test | Missing evidence | Not applicable | Not applicable |
+
+: Source assertions for block-forward. {#tbl-ch01-block-forward-tests}
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+The source comment attributes a removed cubed-sphere seam bias to this placement; this chapter does not promote that
+comment to measured evidence. A regression isolating split sources between consecutive calls is still missing.

@@ -1,0 +1,79 @@
+## Construct a MeshBlock and its modules (`MeshBlockOptions`) {#sec-ch01-construction}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.2; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Construction resolves the global grid and validates the physical boundary list before `reset` builds layout, outputs,
+integrator, coordinates, hydro, scalar, solids and stage buffers.
+Options tree supplied by caller; no construction switch.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+Construction resolves the global grid and validates the physical boundary list before `reset` builds layout, outputs,
+integrator, coordinates, hydro, scalar, solids and stage buffers. The scalar reconstruction inherits the horizontal
+hydro reconstruction when omitted in YAML.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+The layout exists before boundary classification. Internal slab or cubed faces lose their physical boundary function;
+cubed-sphere handling follows its own layout. Output slices must lie in the global half-open bounds and cannot also
+request sums on the same axis. Stage registers use float64 with the spatial axes in reverse coordinate order.
+Construction does not approximate a differential operator and has no convergence order.
+
+@fig-ch01-construction-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-construction-flow
+#| fig-cap: "Construct a MeshBlock and its modules. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: layout / boundaries; outputs; integrator / coordinates; hydro / scalar / solids; stage registers."
+#| echo: false
+from snapy_report.ch01.fig_construction_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| construct | [`meshblock.cpp:66-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L66-L88) | `MeshBlockImpl` | API / see Summary |
+| reset | [`meshblock.cpp:111-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L111-L166) | `reset` | API / see Summary |
+| modules | [`meshblock.cpp:181-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L181-L275) | `pintg` | API / see Summary |
+| yaml | [`meshblock_options.cpp:13-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L13-L88) | `from_yaml` | API / see Summary |
+
+: Implementation anchors for construct a meshblock and its modules. {#tbl-ch01-construction-code}
+
+1. Read `MeshBlockImpl` for the construct part of this path ([`meshblock.cpp:66-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L66-L88)).
+2. Read `reset` for the reset part of this path ([`meshblock.cpp:111-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L111-L166)).
+3. Read `pintg` for the modules part of this path ([`meshblock.cpp:181-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L181-L275)).
+4. Read `from_yaml` for the yaml part of this path ([`meshblock_options.cpp:13-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L13-L88)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_yaml_keys.release` | Unknown key path appears in error | exact substring | Configuration contract |
+
+: Source assertions for construction. {#tbl-ch01-construction-tests}
+
+The assertion anchor `expect_refused` is in [`test_yaml_keys.cpp:22-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L22-L64).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+Layout block count must match partitioning, with the additional panel factor on the cubed sphere. Unsupported output
+types, unavailable PnetCDF support and an empty hydro state are rejected at setup. These checks are in the cited
+`reset` ranges; no new setup execution is claimed.

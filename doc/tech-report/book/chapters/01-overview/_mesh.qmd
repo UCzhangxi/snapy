@@ -1,0 +1,87 @@
+## Advance several blocks in one process (`distribute.blocks_per_process`) {#sec-ch01-mesh}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.6; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Mesh clones and repartitions block options, then runs local blocks through a worker pool.
+YAML default 1; worker pool for more than one local block.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+Mesh clones and repartitions block options, then runs local blocks through a worker pool. On CUDA the pool assigns a
+stream to each worker and fences caller and worker work with events. Mesh advances before exchanging, including its
+one-block fast path.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+For several local blocks the per-block gravity fixer is deferred. On the final stage Mesh sums local budgets, performs
+one process-group SUM, applies the common correction, refills physical boundaries and exchanges ghosts. Time-step
+selection takes a local minimum followed by one group minimum. Redo combines local flags before one reduction. Stream
+assignment is an execution policy, not evidence of numerical equivalence between decompositions.
+
+@fig-ch01-mesh-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-mesh-flow
+#| fig-cap: "Advance several blocks in one process. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: caller event; per-block workers; advance / local budgets; global fixer; exchange / joined events."
+#| echo: false
+from snapy_report.ch01.fig_mesh_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| pool | [`mesh.cpp:47-115`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L47-L115) | `BlockWorkerPool` | API / see Summary |
+| meshoptions | [`mesh.cpp:210-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L258) | `blocks_per_process` | API / see Summary |
+| meshdt | [`mesh.cpp:306-328`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L306-L328) | `max_time_step` | API / see Summary |
+| meshforward | [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365) | `forward` | API / see Summary |
+| meshredo | [`mesh.cpp:422-437`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L437) | `check_redo` | API / see Summary |
+| tags | [`layout.cpp:849-876`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L876) | `send_to_block` | API / see Summary |
+| wait | [`layout.cpp:879-897`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L897) | `take_x1_anchor` | API / see Summary |
+
+: Implementation anchors for advance several blocks in one process. {#tbl-ch01-mesh-code}
+
+1. Read `BlockWorkerPool` for the pool part of this path ([`mesh.cpp:47-115`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L47-L115)).
+2. Read `blocks_per_process` for the meshoptions part of this path ([`mesh.cpp:210-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L258)).
+3. Read `max_time_step` for the meshdt part of this path ([`mesh.cpp:306-328`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L306-L328)).
+4. Read `forward` for the meshforward part of this path ([`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365)).
+5. Read `check_redo` for the meshredo part of this path ([`mesh.cpp:422-437`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L437)).
+6. Read `send_to_block` for the tags part of this path ([`layout.cpp:849-876`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L876)).
+7. Read `take_x1_anchor` for the wait part of this path ([`layout.cpp:879-897`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L897)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_mesh_multi_block.release` | Local and remote neighbor ghosts | allclose defaults | Library defaults, not exact equality |
+| `test_mesh_exchange_python` | Selected neighbor slab | exact equality | Integer rank field copied |
+
+: Source assertions for mesh. {#tbl-ch01-mesh-tests}
+
+The assertion anchor `side_is_uniform` is in [`test_mesh_multi_block.cpp:19-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_multi_block.cpp#L19-L95).
+
+The assertion anchor `ghost` is in [`test_mesh_exchange.py:37-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L37-L50).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+A driver-split source after a Mesh call can make previously exchanged ghosts stale before the next advance. This is an
+inference from call order, not a measured drift. Remote block message tags reject more than 16 blocks per process. The
+local x1 anchor wait requires concurrent or top-down producers and fails after its five-minute timeout.

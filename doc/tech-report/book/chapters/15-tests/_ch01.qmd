@@ -1,0 +1,126 @@
+## Overview and code-map verification {#sec-ch15-ch01}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: Chapter 1 source assertions and tests/CMakeLists.txt
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+This catalogue distinguishes test assertions from executed results.
+No snapy binary or installed snapy package was used for this draft.
+Report-only algebra checks run on CPU and import no snapy.
+:::
+
+The tests below support @sec-ch01-driver through @sec-ch01-dependencies. A tolerance copied from a test is a
+specification, not a measured error. Missing tolerance rationale is retained as missing evidence rather than invented.
+
+### Derivation
+
+The derivations of @eq-ch01-stage-weight, @eq-ch01-stage-transfer and @eq-ch01-stage-dry are checked by the
+report-only stage check. There is no independent verification-catalogue derivation.
+
+### Numerical method
+
+Read the test source, confirm its registration and device selection, then run a package built from the stated pin.
+The flow in @fig-ch01-driver-flow separates stage execution from step acceptance. Test outcomes depend on build
+options;
+this source inventory is not a generated `ctest -N` list.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| Python origin | [`CMakeLists.txt:350-362`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L350-L362) | `SNAPY_TEST_PYTHONPATH` | CMake path |
+| Device parameters | [`device_testing.hpp:33-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/device_testing.hpp#L33-L50) | `DeviceTest` | CUDA availability |
+
+: Test environment contracts. {#tbl-ch15-ch01-code}
+
+1. Set `SNAPY_TEST_PYTHONPATH` to the pin's installed build ([`CMakeLists.txt:350-362`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L350-L362)).
+2. Verify the imported origin with `where` before trusting Python numerical results ([`test_python_import_path.py:1-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L1-L23)).
+3. Record actual device and skipped cases from the `DeviceTest` selection ([`device_testing.hpp:33-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/device_testing.hpp#L33-L50)).
+
+The registration anchor `setup_test` is in [`macro_setup_test.cmake:8-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/macros/macro_setup_test.cmake#L8-L34).
+
+The registration anchor `test_yaml_keys` is in [`CMakeLists.txt:7-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L7-L29).
+
+The registration anchor `snapy_add_python_test` is in [`CMakeLists.txt:204-226`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L204-L226).
+
+The registration anchor `restart_tests` is in [`CMakeLists.txt:418-441`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L418-L441).
+
+The `.release` names in this catalogue use the release build suffix; other configurations substitute their own suffix.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_restart_cycle_limit` | Resume cycle and logged values | absolute 1e-12; time 1e-9 | Runner constants; rationale not documented |
+| `test_check_redo_parallel.release` | Collective redo and rollback | exact equality | Saved tensors are copied back |
+| `test_yaml_keys.release` | Unknown key path appears in error | exact substring | Configuration contract |
+| `test_user_output.release` | Ordered hydro/scalar increments | rtol = atol = 1e-12 | Test constants; rationale not documented |
+| `test_user_output.release` | Shared callback; bad keys throw | pointer equality; allclose defaults | API contract; numeric rationale absent |
+| `test_jit_user_forcing_python` | Nested scripted module adds increment | assert_close defaults | Library defaults, not specified by test |
+| `test_mesh_multi_block.release` | Local and remote neighbor ghosts | allclose defaults | Library defaults, not exact equality |
+| `test_mesh_exchange_python` | Selected neighbor slab | exact equality | Integer rank field copied |
+| `test_weno5_cuda_line.release` | CUDA and CPU reconstruction agree | absolute < 1e-12 | Test constant; rationale not documented |
+| `test_coordinate.release` | Device/dtype parameter coverage | per assertion | Parameter list is not a tolerance |
+| `test_scalar.release` | Initialization, shape, finite increment | allclose defaults; exact shape | API contract; numeric rationale absent |
+| `test_scalar.release` | Positive density, bounded ratio | 1e-5 float32; 1e-12 float64 | Test constants; rationale not documented |
+| `test_python_import_path_python` | Import origin and PYTHONPATH ordering | exact path comparisons | Package-under-test contract |
+
+: Source assertions for ch01. {#tbl-ch15-ch01-tests}
+
+The assertion anchor `first_restart` is in [`run_restart_cycle_limit.py:168-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_cycle_limit.py#L168-L198).
+
+The assertion anchor `check_redo` is in [`test_check_redo_parallel.cpp:43-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_check_redo_parallel.cpp#L43-L68).
+
+The assertion anchor `expect_refused` is in [`test_yaml_keys.cpp:22-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L22-L64).
+
+The assertion anchor `scripted_stage_forcings_add_tendencies_in_list_order` is in [`test_user_output.cpp:576-606`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L576-L606).
+
+The assertion anchor `scripted_module_is_shared_across_parallel_blocks` is in [`test_user_output.cpp:611-667`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L611-L667).
+
+The assertion anchor `expected` is in [`test_jit_user_forcing.py:44-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_jit_user_forcing.py#L44-L71).
+
+The assertion anchor `side_is_uniform` is in [`test_mesh_multi_block.cpp:19-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_multi_block.cpp#L19-L95).
+
+The assertion anchor `ghost` is in [`test_mesh_exchange.py:37-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L37-L50).
+
+The assertion anchor `expect_matches_cpu` is in [`test_weno5_cuda_line.cpp:83-121`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_weno5_cuda_line.cpp#L83-L121).
+
+The assertion anchor `DeviceTest` is in [`device_testing.hpp:33-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/device_testing.hpp#L33-L50).
+
+The assertion anchor `scalar_s` is in [`test_scalar.cpp:91-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_scalar.cpp#L91-L104).
+
+The assertion anchor `tol` is in [`test_scalar.cpp:159-163`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_scalar.cpp#L159-L163).
+
+The assertion anchor `where` is in [`test_python_import_path.py:1-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L1-L23).
+
+
+The restart runner uses two processes and checks the first resumed cycle against the uninterrupted run, then
+checks termination at its configured cycle limit. The parallel redo test likewise requires a process group and
+restores saved tensors exactly. The C++ multi-block exchange test uses two local blocks and sees both local and
+remote neighbors, but checks floating values using library-default `allclose`. The Python exchange test uses four
+local blocks in one process and exact equality for its selected neighbor slab; it does not inspect every face.
+
+The scripted forcing tests are CPU source tests. The scalar and coordinate device fixture enumerates CPU and CUDA
+in float32 and float64 and skips unavailable CUDA; it does not instantiate MPS. The long-line reconstruction test
+compares float64 CPU/CUDA at lengths 32, 1024, 1025, 1030 and 1280 and also tests multiple lines. These are test
+inputs at the pin, not successful-run counts. The import-path test exits with skip status 125 when the target
+package path is absent. No CPU, CUDA or multi-rank snapy runtime pass is claimed in this catalogue.
+
+Report-only checks `[C1]`, `[C2]` and `[C3]` have committed output. Symbolic residuals must be exactly zero.
+The numerical transfer checks permit absolute error of 64 float64 machine epsilons times the larger of one
+and the sum of absolute face transfers, allowing the short sequence of upwind products, differences and sums.
+The dry-source branch checks use the same 64-epsilon scale for unit-sized examples. These are algebra checks,
+not a substitute for an execution of the C++ branches or a convergence ladder.
+
+### Limits
+
+Dedicated evidence is missing for split-source ghost freshness, initialization-versus-restart ghost equivalence,
+all `part` extension combinations, MPS dispatch, and the imported dependency stack at this pin. No runtime
+switch-combination coverage is added to @sec-ch12-matrix. Before publication, run the selected CPU tests with
+verified package origin, record their outcomes and explain the inherited tolerances that lack a rationale.
+CUDA and multi-rank results need their own provenance and cannot be inferred from a CPU algebra check.
