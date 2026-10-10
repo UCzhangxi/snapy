@@ -294,8 +294,8 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
 - Summary: the driver (C++ example or Python) calls `max_time_step`, then `forward(vars, dt, stage)` once per integrator
   stage, then `check_redo`, then `make_outputs`. snapy has no built-in main loop. Switch: integrator `type`, `cfl`, `tlim`, `nlim`
   come from the YAML `integration:` block, read by pyharp's `harp::IntegratorOptionsImpl::from_yaml`. snapy calls it at
-  `src/mesh/meshblock_options.cpp:43@dae902b`, and its own key check lists pyharp's keys
-  (`src/implicit/implicit_hydro.cpp:27-30@dae902b`).
+  `src/mesh/meshblock_options.cpp:43@e894700`, and its own key check lists pyharp's keys
+  (`src/implicit/implicit_hydro.cpp:27-30@e894700`).
 - Derivations: none (control flow).
 - Figures:
   - Flow chart: cycle → max_time_step (MIN-allreduce) → stages s=0..S-1 [exchange → hydro → scalar → user forcing →
@@ -303,19 +303,19 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
     → outputs.
   - Timeline of one cycle with the redo branch (dt halves by 2^-redo).
 - Code:
-  - `examples/run_hydro.cpp:161@dae902b` — single-MeshBlock loop (`pintg->stop`, `max_time_step`, stage loop, kinetics,
+  - `examples/run_hydro.cpp:161@e894700` — single-MeshBlock loop (`pintg->stop`, `max_time_step`, stage loop, kinetics,
     `check_redo`, `make_outputs`). Output before the loop only on a fresh start (`:157`).
-  - `examples/straka.cpp:110@dae902b` — Mesh-API loop (`mesh->initialize`, `set_cycle`, stage loop, `check_redo`,
+  - `examples/straka.cpp:110@e894700` — Mesh-API loop (`mesh->initialize`, `set_cycle`, stage loop, `check_redo`,
     `make_outputs`, `finalize`). It calls `make_outputs` right after initialize, on restart too (`:139`).
-  - `src/mesh/meshblock.cpp:510@dae902b` `MeshBlockImpl::max_time_step` — local hydro dt, MIN-allreduce. Returns
+  - `src/mesh/meshblock.cpp:510@e894700` `MeshBlockImpl::max_time_step` — local hydro dt, MIN-allreduce. Returns
     `2^-current_redo * cfl * dt` (`:528`).
-  - `src/mesh/mesh.cpp:306@dae902b` `MeshImpl::max_time_step` — MIN over the local blocks, then one allreduce.
-  - `src/mesh/meshblock.cpp:1302@dae902b` `check_redo` = `apply_redo(reduce_redo_flags(local_redo_flags()))`
-    (`:1229`, `:1278`, `:1288`). `src/mesh/mesh.cpp:422@dae902b` `MeshImpl::check_redo` checks signals first, ORs the
+  - `src/mesh/mesh.cpp:306@e894700` `MeshImpl::max_time_step` — MIN over the local blocks, then one allreduce.
+  - `src/mesh/meshblock.cpp:1302@e894700` `check_redo` = `apply_redo(reduce_redo_flags(local_redo_flags()))`
+    (`:1229`, `:1278`, `:1288`). `src/mesh/mesh.cpp:422@e894700` `MeshImpl::check_redo` checks signals first, ORs the
     flags over the local blocks, then makes one reduction.
-  - `src/mesh/meshblock.cpp:985@dae902b` `make_outputs` — writes when `current_time >= next_time` (`:991`), then
+  - `src/mesh/meshblock.cpp:985@e894700` `make_outputs` — writes when `current_time >= next_time` (`:991`), then
     advances `next_time` and `file_number`.
-  - `src/mesh/meshblock.cpp:1121@dae902b` `finalize` — writes the final outputs and reports the termination reason (signal / nlim /
+  - `src/mesh/meshblock.cpp:1121@e894700` `finalize` — writes the final outputs and reports the termination reason (signal / nlim /
     tlim / abnormal → status 1).
 - Tests: `tests/run_restart_cycle_limit.py` (`test_restart_cycle_limit`) — a resumed straka run restarts at the same
   cycle and stops at cycle 120. First resumed cycle-line time/dt/mass0/energy match within abs 1e-12, termination time
@@ -340,12 +340,12 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
 - Figures: a module tree (MeshBlock → Layout, Integrator(harp), Coordinate, Hydro{EOS(kintera thermo), Recon, Riemann,
   Forcings, Implicit, Sedimentation}, Scalar, InternalBoundary, OutputTypes).
 - Code:
-  - `src/mesh/meshblock.hpp:41@dae902b` `MeshBlockOptionsImpl`. `:116` `MeshBlockImpl`.
-  - `src/mesh/meshblock.cpp:66@dae902b` constructor — `resolve_global_grid()`, and checks that bfuncs has at least 2/4/6 entries.
-  - `src/mesh/meshblock.cpp:111@dae902b` `reset`. `:116` `LayoutImpl::create`. `:143` internal-face bfunc set to
+  - `src/mesh/meshblock.hpp:41@e894700` `MeshBlockOptionsImpl`. `:116` `MeshBlockImpl`.
+  - `src/mesh/meshblock.cpp:66@e894700` constructor — `resolve_global_grid()`, and checks that bfuncs has at least 2/4/6 entries.
+  - `src/mesh/meshblock.cpp:111@e894700` `reset`. `:116` `LayoutImpl::create`. `:143` internal-face bfunc set to
     nullptr (slab/cubed only). `:207` output types. `:231` `harp::IntegratorImpl::create`. Then coord, hydro, scalar and
     ib follow in order. u0/s0 are float64 buffers `[nvar, nc3, nc2, nc1]`.
-  - `src/mesh/meshblock_options.cpp:13@dae902b` `MeshBlockOptionsImpl::from_yaml` — the order is layout, hydro, scalar
+  - `src/mesh/meshblock_options.cpp:13@e894700` `MeshBlockOptionsImpl::from_yaml` — the order is layout, hydro, scalar
     (scalar recon defaults to hydro recon23), integrator, outputs, coordinate, ib, external BCs.
 - Tests: `tests/test_yaml_keys.cpp` (`test_yaml_keys.release`) — 30 cases, each of which refuses an unknown key in its
   YAML block.
@@ -362,8 +362,8 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   Switch: `restart_file` argument.
 - Derivations: none.
 - Figures: sequence of one block's init, showing where the ghosts become valid.
-- Code: `src/mesh/meshblock.cpp:360@dae902b` `initialize`; `:401` `initialize_local`; `:434` `initialize_under_mesh`
-  (the Mesh path); `:454` `finalize_initialization`; `src/mesh/mesh.cpp:280@dae902b` `MeshImpl::initialize`. A restart
+- Code: `src/mesh/meshblock.cpp:360@e894700` `initialize`; `:401` `initialize_local`; `:434` `initialize_under_mesh`
+  (the Mesh path); `:454` `finalize_initialization`; `src/mesh/mesh.cpp:280@e894700` `MeshImpl::initialize`. A restart
   calls `blocks[i]->initialize(vars[i], file)` one block after another on the caller thread, with no exchange.
 - Tests: covered by every example test. Nothing targets this scheme alone.
 - Limits / known issues: the restart path does no ghost exchange. It relies on the ghost zones saved in the file
@@ -381,13 +381,13 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   `user_stage_forcings` (Python `set_user_stage_forcings`).
 - Derivations:
   - RK stage form u ← w0 u0 + w1 u + w2 du and the stage weights: external (pyharp). Re-derive the weight product
-    `w2_s ∏_{t>s} w1_t` from `src/hydro/hydro_forward.cpp:994-1004@dae902b`.
-  - Implicit tracer transfer `(P - P_above)/V` with upwinded r: re-derive from `src/mesh/meshblock.cpp:663-675@dae902b`.
-  - Dry-source carry rule: re-derive from `src/mesh/meshblock.cpp:633-645@dae902b`.
+    `w2_s ∏_{t>s} w1_t` from `src/hydro/hydro_forward.cpp:985-995@e894700`.
+  - Implicit tracer transfer `(P - P_above)/V` with upwinded r: re-derive from `src/mesh/meshblock.cpp:663-675@e894700`.
+  - Dry-source carry rule: re-derive from `src/mesh/meshblock.cpp:633-645@e894700`.
 - Figures:
   - Box diagram of du accumulation (flux divergence, forcings, implicit, user) feeding the RK combine.
   - Stage-by-stage timeline marking where `rk_stage` is published (used by the implicit dt weight).
-- Code: `src/mesh/meshblock.cpp:597@dae902b` `advance_local`; `:612` u0 save; `:650` `phydro->forward`; `:662`
+- Code: `src/mesh/meshblock.cpp:597@e894700` `advance_local`; `:612` u0 save; `:650` `phydro->forward`; `:662`
   `pscalar->forward`; `:734` user forcing call; `:755` RK combine (hydro); `:768` RK combine (scalar); `:813`
   `pthermo->forward` (kintera ThermoY saturation adjustment, interior only); `:838` gravity-work fixer; `:841`
   `apply_boundaries`. The user forcing contract (keys `hydro_du`, `scalar_ds` only) is at `:690-720`.
@@ -405,7 +405,7 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   the driver applied since the last stage (e.g. kinetics on `hydro_u`) are synchronised before use. Switch: none.
 - Derivations: none.
 - Figures: two orderings side by side, exchange-before-advance (MeshBlock) and advance-then-exchange (Mesh).
-- Code: `src/mesh/meshblock.cpp:545@dae902b` `forward` (`:550` `exchange_ghost_zones`, `:551` `advance_local`);
+- Code: `src/mesh/meshblock.cpp:545@e894700` `forward` (`:550` `exchange_ghost_zones`, `:551` `advance_local`);
   `:913` `exchange_ghost_zones` (conserved, then scalar, then the x1-wall corner refresh `:972`, then the scalar primitive).
 - Tests: indirect (all single-block examples).
 - Limits / known issues: the in-code comment says that exchanging before reconstruction removed a one-signed seam bias
@@ -419,10 +419,10 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
 - Summary: `Mesh` owns `blocks_per_process` MeshBlocks and runs them concurrently on a worker-thread pool, with one CUDA
   stream per block on GPU. `Mesh::forward` runs `advance_local` on every block, then the global gravity-work fixer (one
   sum over the local blocks, one allreduce), then `exchange_ghost_zones`. Switch: YAML
-  `distribute: blocks_per_process` (default 1), read at `src/mesh/mesh.cpp:216-217@dae902b`.
+  `distribute: blocks_per_process` (default 1), read at `src/mesh/mesh.cpp:216-217@e894700`.
 - Derivations: none.
 - Figures: thread/stream diagram (caller stream → event → per-block streams → events joined back to the caller).
-- Code: `src/mesh/mesh.cpp:47@dae902b` `BlockWorkerPool` (`:57` stream from the pool per block, `:82` `submit` with
+- Code: `src/mesh/mesh.cpp:47@e894700` `BlockWorkerPool` (`:57` stream from the pool per block, `:82` `submit` with
   event fences); `:225` `MeshImpl::reset` (clones the options and repartitions each block, `:246-248`); `:265`
   `run_block_jobs`; `:331` `MeshImpl::forward`; `:377` `exchange`; `:460` `finalize`.
 - Tests: `tests/test_mesh_multi_block.cpp` (`test_mesh_multi_block.release`, 2 ranks) — ghost sides uniform and equal to
@@ -431,7 +431,7 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   block (`EXPECT_EQ(num_worker_streams, blocks)`).
 - Limits / known issues:
   - Blocks of one process must advance concurrently. In-process x1 messages wait at most 5 min
-    (`src/layout/layout.cpp:879-899@dae902b`).
+    (`src/layout/layout.cpp:879-899@e894700`).
   - Remote block-to-block messages allow at most 16 blocks per process (`layout.cpp:849-857`).
 - Discrepancies: with `blocks.size()==1`, `Mesh::forward` (`mesh.cpp:335-338`) calls `advance_local` and THEN
   `exchange_ghost_zones`, the reverse of `MeshBlock::forward` (S1.5). A Mesh-API driver that applies operator-split
@@ -450,11 +450,11 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
 - Derivations: owned by the hydro, WB, gravity-work and positivity chapters. None here.
 - Figures: a pipeline diagram of the seven sections, marking the three places that communicate (x1 seam average, LR
   seam swap, θ exchange).
-- Code: `src/hydro/hydro_forward.cpp:207@dae902b` `HydroImpl::forward`; `:218` `peos->forward`; `:242` section 2;
+- Code: `src/hydro/hydro_forward.cpp:198@e894700` `HydroImpl::forward`; `:218` `peos->forward`; `:242` section 2;
   `:297` `_hydro_ref_x1`; `:357` x1 reconstruction (WB path, floor=false); `:413` x1 Riemann; `:430` sedimentation;
   `:448` x1 seam average; `:551`/`:569` x2/x3 LR; `:598`/`:623` x2/x3 flux; `:646` positivity; `:724`/`:735`
   divergence; `:763`/`:773` forcings; `:924` implicit; `:941` stage weight on the implicit dt (rk3 only); `:977`
-  `_apply_implicit_correction`. Buffers F1/F2/F3/P1/D: `src/hydro/hydro.cpp:152@dae902b` ff.
+  `_apply_implicit_correction`. Buffers F1/F2/F3/P1/D: `src/hydro/hydro.cpp:161@e894700` ff.
 - Tests: owned by the physics chapters.
 - Limits / known issues: the implicit stage weight is applied only when `stages.size()==3` (`hydro_forward.cpp:939`).
   Other integrators keep the full-dt operator.
@@ -466,10 +466,10 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
 
 - Summary: tracer reconstruction and upwind flux driven by the hydro mass flux. The cubed-sphere LR states use the same
   `:+`/`:-` raw swap as hydro, and θ is exchanged as a raw copy. Switch: YAML `scalar:` (read at
-  `src/scalar/scalar_options.cpp:11@dae902b`).
+  `src/scalar/scalar_options.cpp:11@e894700`).
 - Derivations: owned by the scalar/positivity chapter.
 - Figures: none here (see Ch3 S3.11).
-- Code: `src/scalar/scalar.cpp:64@dae902b` `ScalarImpl::forward`; `:84` sync options; `:96` `scalar_wl:+`; `:144` θ
+- Code: `src/scalar/scalar.cpp:64@e894700` `ScalarImpl::forward`; `:84` sync options; `:96` `scalar_wl:+`; `:144` θ
   raw copy.
 - Tests: `tests/test_scalar.cpp` (`test_scalar.release`); the seam tests are listed in Ch3.
 - Limits / known issues: none.
@@ -494,11 +494,11 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
     `src/riemann/riemann_dispatch.hpp`, `src/implicit/implicit_dispatch.hpp`, `src/eos/eos_dispatch.hpp`,
     `src/coord/coord_dispatch.hpp`, `src/bc/bc_dispatch.hpp`, `src/sedimentation/sed_hydro_dispatch.hpp`,
     `src/utils/utils_dispatch.hpp` (25 stubs).
-  - example CPU path: `src/hydro/hydro_dispatch.cpp:14@dae902b` `hydro_ref_x1_cpu` (`AT_DISPATCH_FLOATING_TYPES` +
+  - example CPU path: `src/hydro/hydro_dispatch.cpp:14@e894700` `hydro_ref_x1_cpu` (`AT_DISPATCH_FLOATING_TYPES` +
     `at::parallel_for` over columns); the MPS path is a tensor-op reimplementation in the same file.
-  - `src/utils/loops.cuh:53@dae902b` `gpu_kernel`; `:71` `stencil_kernel` (block = line length).
-  - `src/recon/recon_dispatch.cu:18@dae902b` `recon_tile_width`, `:47` `stencil_kernel_tiled` (the fix for issue #251).
-  - `src/CMakeLists.txt:122-155@dae902b` — the `*.cu` glob and the `snapy::snap_cu` library.
+  - `src/utils/loops.cuh:53@e894700` `gpu_kernel`; `:71` `stencil_kernel` (block = line length).
+  - `src/recon/recon_dispatch.cu:18@e894700` `recon_tile_width`, `:47` `stencil_kernel_tiled` (the fix for issue #251).
+  - `src/CMakeLists.txt:122-155@e894700` — the `*.cu` glob and the `snapy::snap_cu` library.
 - Tests: `tests/test_weno5_cuda_line.cpp` (`test_weno5_cuda_line.release`, CUDA builds only) — lines of 32, 1024, 1025,
   1030 and 1280 cells match CPU, `EXPECT_LT(diff, 1e-12)`. `tests/test_coordinate.cpp` DeviceTest runs on CPU and CUDA,
   float32 and float64. The MPS parameter is commented out (`tests/device_testing.hpp:48`).
@@ -524,10 +524,10 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
     which flux.
   - The `part()` slabs for offsets (-1,0,+1) with exterior=true/false, extend_x2/x3, depth.
 - Code:
-  - `src/snap.h:34-46@dae902b` index enum; `:52` static_assert ICY==IPR+1; `:60` kPrimitive/kConserved/kScalar.
-  - `src/coord/coordinate.hpp:59@dae902b` `nc1()`; `:169` `il()`; `:171` `iu()`.
-  - `src/mesh/meshblock.hpp:105@dae902b` `PartOptions`; `src/mesh/meshblock.cpp:284@dae902b` `part`.
-  - `src/recon/reconstruct.cpp:50@dae902b` `_apply_inplace` — cell j writes `IRT[j]` (its lower face) and `ILT[j+1]`.
+  - `src/snap.h:34-46@e894700` index enum; `:52` static_assert ICY==IPR+1; `:60` kPrimitive/kConserved/kScalar.
+  - `src/coord/coordinate.hpp:59@e894700` `nc1()`; `:169` `il()`; `:171` `iu()`.
+  - `src/mesh/meshblock.hpp:105@e894700` `PartOptions`; `src/mesh/meshblock.cpp:284@e894700` `part`.
+  - `src/recon/reconstruct.cpp:50@e894700` `_apply_inplace` — cell j writes `IRT[j]` (its lower face) and `ILT[j+1]`.
   - Variables keys: `hydro_w`, `hydro_u`, `scalar_r`, `scalar_s`, `solid`, `fill_solid_hydro_{w,u}`,
     `boundary_reference_{w,r}` (`meshblock.cpp:401-508`).
 - Tests: indirect.
@@ -545,12 +545,12 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   `verbose`. kintera reads `species` and `reference-state`.
 - Derivations: none.
 - Figures: a YAML-section → reader-function map.
-- Code: `src/add_arg.h:9@dae902b` `ADD_ARG`; `src/input/check_keys.cpp:12@dae902b` `check_keys`;
-  `src/layout/layout.cpp:221@dae902b` (distribute); `src/coord/coordinate.cpp:62@dae902b` (geometry);
-  `src/hydro/hydro_options.cpp:15@dae902b` (dynamics, `:44`); `src/hydro/register_forcing_modules.cpp:6@dae902b`
-  (forcing); `src/scalar/scalar_options.cpp:11@dae902b`; `src/sedimentation/sed_options.cpp:19@dae902b`;
-  `src/output/output_type.cpp:64@dae902b` (outputs); `src/mesh/meshblock_options.cpp:88-208@dae902b`
-  (boundary-condition); `src/eos/equation_of_state.cpp:86@dae902b` (`kintera::ThermoOptionsImpl::from_yaml`).
+- Code: `src/add_arg.h:9@e894700` `ADD_ARG`; `src/input/check_keys.cpp:12@e894700` `check_keys`;
+  `src/layout/layout.cpp:221@e894700` (distribute); `src/coord/coordinate.cpp:62@e894700` (geometry);
+  `src/hydro/hydro_options.cpp:15@e894700` (dynamics, `:44`); `src/hydro/register_forcing_modules.cpp:6@e894700`
+  (forcing); `src/scalar/scalar_options.cpp:11@e894700`; `src/sedimentation/sed_options.cpp:19@e894700`;
+  `src/output/output_type.cpp:64@e894700` (outputs); `src/mesh/meshblock_options.cpp:88-208@e894700`
+  (boundary-condition); `src/eos/equation_of_state.cpp:86@e894700` (`kintera::ThermoOptionsImpl::from_yaml`).
 - Tests: `tests/test_yaml_keys.cpp` (`test_yaml_keys.release`).
 - Limits / known issues: `distribute: backend` is still accepted but dead; the backend comes from env `BACKEND`
   (`layout.cpp:229-231`, PR #242). The top level is not key-checked.
@@ -565,8 +565,8 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   torch thread. Switch: none.
 - Derivations: none.
 - Figures: none.
-- Code: `python/csrc/snapy.cpp:32@dae902b` module, `:47` `load_restart`; `python/csrc/pymesh.cpp:126@dae902b`
-  `set_local_horizontal_cells`, `:184` `forward`; `python/csrc/pylayout.cpp:136-141@dae902b` `distributed` submodule
+- Code: `python/csrc/snapy.cpp:32@e894700` module, `:47` `load_restart`; `python/csrc/pymesh.cpp:126@e894700`
+  `set_local_horizontal_cells`, `:184` `forward`; `python/csrc/pylayout.cpp:136-141@e894700` `distributed` submodule
   (`set_process_group`); `python/__init__.py` (dtype and thread setup); `pyproject.toml` (`torch==2.10.0`,
   `kintera>=2.5.13`, commux and pinc on Linux, scripts `pd-combine`, `pd-inspect`, `api/pd-run`); stubs under
   `python/snapy/*.pyi`.
@@ -589,9 +589,9 @@ One cross-chapter fact belongs here: `MeshBlock::forward` and `Mesh::forward` or
   (`cmake/ucx.cmake`), PnetCDF via pinc (`cmake/parameters.cmake:28-43`).
 - Derivations: none.
 - Figures: dependency graph.
-- Code: `src/mesh/meshblock.hpp:17@dae902b` (`harp/integrator/integrator.hpp`); `src/mesh/meshblock.cpp:231@dae902b`;
-  `src/mesh/meshblock.cpp:808-813@dae902b` (`kintera::ThermoYImpl`); `src/output/restart.cpp:90@dae902b`
-  (`kintera::save_tensors`); `src/input/read_restart_file.cpp:223@dae902b` (`kintera::load_tensors`).
+- Code: `src/mesh/meshblock.hpp:17@e894700` (`harp/integrator/integrator.hpp`); `src/mesh/meshblock.cpp:231@e894700`;
+  `src/mesh/meshblock.cpp:808-813@e894700` (`kintera::ThermoYImpl`); `src/output/restart.cpp:90@e894700`
+  (`kintera::save_tensors`); `src/input/read_restart_file.cpp:223@e894700` (`kintera::load_tensors`).
 - Tests: none specific.
 - Limits / known issues: the integrator stage weights and `stop()` live in pyharp and cannot be cited at a snapy line.
   `CMakeLists.txt:97-100` records why the kintera floor is 2.5.13 (saturation-failure counter, kintera #131).
@@ -898,15 +898,15 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   `resolve_global_grid` adopts the block as the global grid when none was declared, and otherwise checks that the block
   is exactly nx cells of it. Switch: YAML `geometry: {type, bounds, cells:{nx1,nx2,nx3,nghost,interp_order}}`. Defaults:
   type cartesian (`coordinate.hpp:97`), nghost 1 (`:116`), interp_order 2 (`:117`); global_nxN=0 means "no global grid".
-- Derivations: none needed (a design invariant). The rationale is the comment at `src/coord/coordinate.cpp:291-298@dae902b`
+- Derivations: none needed (a design invariant). The rationale is the comment at `src/coord/coordinate.cpp:291-298@e894700`
   and PR #222 (`gh__PR_BODIES_220-226.md:190`): 1 ULP made 15/71 faces inconsistent and 26 differ between decompositions.
 - Figures:
   - One global face array with nb2=2 and nb2=3 slices marked, plus the ghost extension past gmin/gmax.
   - A "before" panel where per-block linspace gives two values of one shared face (1 ULP).
-- Code: `src/coord/coordinate.cpp:62@dae902b` `CoordinateOptionsImpl::from_yaml` (`:118` bounds-only card = one cell
+- Code: `src/coord/coordinate.cpp:62@e894700` `CoordinateOptionsImpl::from_yaml` (`:118` bounds-only card = one cell
   per axis; `:143` nx%nb divisibility; `:182` repartition); `:186` `_resolve_axis` (16·eps tolerance, exact cell
   count); `:226` `resolve_global_grid`; `:235` `repartition` (block bounds from loc_of; cubed-sphere forces lx1=0);
-  `:283` constructor (faces sliced); `:307` `block_faces_`; `src/coord/coordinate.hpp:76@dae902b` `dx1()` (global
+  `:283` constructor (faces sliced); `:307` `block_faces_`; `src/coord/coordinate.hpp:76@e894700` `dx1()` (global
   width); `:93` `ix1()` (rounded offset).
 - Tests: `tests/test_coordinate.cpp` (`test_coordinate.release`) —
   `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise` (`torch::equal`, nb2=2,3), several
@@ -926,9 +926,9 @@ there. A short subsection should say that `cylindrical` is a registered but empt
 
 - Summary: uniform widths from the global dx. Areas are products of widths, volume the triple product, centroid =
   midpoint, cos θ=0. Switch: `geometry.type: cartesian`.
-- Derivations: trivial. Note "re-derive from `src/coord/coordinate.cpp:425-439@dae902b`" for completeness.
+- Derivations: trivial. Note "re-derive from `src/coord/coordinate.cpp:425-439@e894700`" for completeness.
 - Figures: a cell with face areas A1=dx2·dx3 etc.
-- Code: `src/coord/cartesian.cpp:8@dae902b` `CartesianImpl::reset`; `src/coord/coordinate.cpp:425@dae902b`
+- Code: `src/coord/cartesian.cpp:8@e894700` `CartesianImpl::reset`; `src/coord/coordinate.cpp:425@e894700`
   `face_area1`, `:429`, `:433`, `:437` `cell_volume`, `:509` `divergence`, `:585` `forward` (pure divergence).
 - Tests: `test_coordinate.release` `CoordinateProgrammatic.cell_volume_is_the_product_of_the_callers_widths`.
 - Limits / known issues: none.
@@ -943,15 +943,15 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   pressure source uses the face pressures, or under SNAP_X1_CENTROID_EXACT the quintic r-moment. Switch:
   `geometry.type: spherical-polar` (x2 must lie in [0,π], `spherical_polar.cpp:46`).
 - Derivations:
-  - Centroids, areas, volume, source coefficients: re-derive from `src/coord/spherical_polar.cpp:17@dae902b`,
+  - Centroids, areas, volume, source coefficients: re-derive from `src/coord/spherical_polar.cpp:17@e894700`,
     `:42`, `:178-211`. The test compares them to Athena++ reference formulas but gives no derivation.
-  - Face-pressure form of the radial source: re-derive from `src/coord/spherical_polar.cpp:265-277@dae902b`.
-  - r² cell-to-face maps and the quintic pressure source: exists: docs/derivations/x1-centroid-spherical.md@dae902b
+  - Face-pressure form of the radial source: re-derive from `src/coord/spherical_polar.cpp:265-277@e894700`.
+  - r² cell-to-face maps and the quintic pressure source: exists: docs/derivations/x1-centroid-spherical.md@e894700
     (also sources/deriv__x1-centroid-spherical.md).
 - Figures:
   - A spherical shell cell showing r_v (volume centroid) vs the midpoint vs the area centroid r_c.
   - Where coord_src1_i/2_i act (radial momentum source vs angular-momentum flux terms).
-- Code: `src/coord/spherical_polar.cpp:17@dae902b` `radial_centers`; `:23` `polar_centers`; `:42` `reset`; `:89`
+- Code: `src/coord/spherical_polar.cpp:17@e894700` `radial_centers`; `:23` `polar_centers`; `:42` `reset`; `:89`
   `coord_src1_i`; `:178` `face_area1`; `:185` `face_area2`; `:193` `face_area3`; `:200` `cell_volume`; `:213`
   `face_moment2_x1`; `:219` `face_centroid_shift_x1`; `:224` `forward` (sources).
 - Tests: `test_coordinate.release` `SphericalPolar.geometry_matches_athena_reference_formulas` (allclose 1e-12/1e-12
@@ -975,34 +975,34 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   (`:25`).
 - Derivations:
   - Metric, Christoffel/source terms, FV lengths/areas/volumes, orthonormal projection: partial.
-    `src/coord/cubed_sphere6.nb@dae902b` is a Mathematica notebook with sections "Christoffel symbols", "Metric terms
+    `src/coord/cubed_sphere6.nb@e894700` is a Mathematica notebook with sections "Christoffel symbols", "Metric terms
     (flux form)", "Finite volume (length, area, volume)", "Orthonormal projection" and "Ghost zone Interpolation". It is
     symbolic, not a prose derivation, and not in sources/ or docs/derivations. Re-derive in prose from
-    `src/coord/gnomonic_equiangle.cpp:18@dae902b` (reset) and `:415@dae902b` (forward), and check against the notebook.
+    `src/coord/gnomonic_equiangle.cpp:18@e894700` (reset) and `:415@e894700` (forward), and check against the notebook.
   - Exact solid angle of a gnomonic cell (corner-sum formula, six panels sum to 4π): re-derive from
-    `src/coord/gnomonic_equiangle.cpp:124-137@dae902b`.
-  - Cubed-sphere face measure w(r)=r, and A2 = ∫r dr × angle: exists: docs/derivations/289-covariance-x3-curved.md@dae902b
+    `src/coord/gnomonic_equiangle.cpp:124-137@e894700`.
+  - Cubed-sphere face measure w(r)=r, and A2 = ∫r dr × angle: exists: docs/derivations/289-covariance-x3-curved.md@e894700
     §1.3(c).
-  - Contravariant↔spherical↔Cartesian velocity transforms: re-derive from `src/coord/gnomonic_equiangle.h:79@dae902b`
+  - Contravariant↔spherical↔Cartesian velocity transforms: re-derive from `src/coord/gnomonic_equiangle.h:79@e894700`
     (`gnomonic_contra_to_sph`) and `:105` (`gnomonic_sph_to_contra`). Doxygen formulas exist in
     `src/coord/cubed_sphere_utils.hpp` (basis vectors, partial).
   - Covariant/contravariant lowering (`coord_vec_lower_`, g23 = cos θ): re-derive from
-    `src/coord/coord_utils.cpp:12@dae902b`.
+    `src/coord/coord_utils.cpp:12@e894700`.
 - Figures:
   - The cube net with face ids 0..5 (+X,+Y,-X,+Z,-Y,-Z) and local (α,β) axes per panel (from the ASCII art at
     `cubed_sphere_layout.cpp:156-237`).
   - One gnomonic cell: non-orthogonal axes at angle θ, arc widths, the solid-angle corner sum.
   - cos θ over a panel (zero at the centre and the centre lines, -1/2 at corners). This is why covariance errors hide at
     panel centres (forcing_io report).
-- Code: `src/coord/gnomonic_equiangle.cpp:18@dae902b` `reset` (`:65` lon/lat, `:80` cos θ, `:104` `dx2f_ang_kj`,
+- Code: `src/coord/gnomonic_equiangle.cpp:18@e894700` `reset` (`:65` lon/lat, `:80` cos θ, `:104` `dx2f_ang_kj`,
   `:130-137` solid angle, `:142` `x_ov_rD_kji`); `:199`/`:203` `center_width2/3`; `:207` `face_area1`; `:211`
   `face_area2`; `:215` `face_area3`; `:219` `cell_volume`; `:229` `face_moment2_x1`; `:237`
   `face_centroid_shift_x1`; `:266`/`:281` `_set_face{2,3}_metric` (marked "TODO(cli):: CHECK"); `:295`-`:323`
   `prim2local1/2/3_`; `:344`-`:387` `flux2global1/2/3_`; `:415` `forward` (geometric sources);
-  `src/coord/gnomonic_equiangle.h:33@dae902b` `gnomonic_sin_cos`, `:45` `gnomonic_prim2local`, `:60`
-  `gnomonic_flux2global`; `src/coord/coord_utils.cpp:12@dae902b` `coord_vec_lower_`, `:29` `coord_vec_raise_`;
-  `src/coord/coordinate.cpp:611@dae902b` `boundary_velocity_` (g23-aware frame for wall BCs, used by
-  `src/bc/bc_func.cpp:152`); Riemann solver use: `src/riemann/hllc.cpp:58-99@dae902b`, `src/riemann/lmars.cpp:56@dae902b`.
+  `src/coord/gnomonic_equiangle.h:33@e894700` `gnomonic_sin_cos`, `:45` `gnomonic_prim2local`, `:60`
+  `gnomonic_flux2global`; `src/coord/coord_utils.cpp:12@e894700` `coord_vec_lower_`, `:29` `coord_vec_raise_`;
+  `src/coord/coordinate.cpp:611@e894700` `boundary_velocity_` (g23-aware frame for wall BCs, used by
+  `src/bc/bc_func.cpp:152`); Riemann solver use: `src/riemann/hllc.cpp:58-99@e894700`, `src/riemann/lmars.cpp:56@e894700`.
 - Tests: `tests/test_cubed_sphere_cell_volume.py` (`test_cubed_sphere_cell_volume_python`) — the panels' volumes sum to
   4π(ro³-ri³)/3 and div(r r̂)=3 in every cell, to ROUNDOFF=1e-12 (set in the script); `test_coordinate.release`
   `DeviceTest.vec_lower_raise`, `contra_cart`, `contra_sph`, `cached_cubed_sphere_velocity_matrices_match_direct`,
@@ -1028,10 +1028,10 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   provides the exact second central moment σ1² = (h²/12)(1-h²/(12 r̄²)) and the shift r_v - r_c =
   h²(12r̄²-h²)/(12r̄(12r̄²+h²)), both cancellation-free, both zeroed on degenerate ghost faces with r̄ ≤ h/2. In
   Cartesian they are h²/12 and 0. Switch: used only when `SNAP_FLUX_COVARIANCE` is on (S1.14).
-- Derivations: exists: docs/derivations/289-covariance-x3-curved.md@dae902b §2.6-2.7 (moments, r_c, and the
+- Derivations: exists: docs/derivations/289-covariance-x3-curved.md@e894700 §2.6-2.7 (moments, r_c, and the
   comparison with x1v); also sources/deriv__289-covariance-x3-curved.md.
 - Figures: a radial cell with r_m, r̄, r_c, r_v, r_p marked; σ1²/(h²/12) as a function of h/r̄.
-- Code: `src/coord/coordinate.hpp:254@dae902b` (`face_moment2_x1` doc), `:270`, `:285`; `src/coord/coordinate.cpp:442@dae902b`
+- Code: `src/coord/coordinate.hpp:254@e894700` (`face_moment2_x1` doc), `:270`, `:285`; `src/coord/coordinate.cpp:442@e894700`
   `face_moment2_x1`, `:446` `radial_face_moment2_`, `:461` `face_centroid_shift_x1`, `:467` `radial_face_centroid_shift_`.
 - Tests: `tests/test_radial_face_moments.cpp` (`test_radial_face_moments.release`) — rational cases to 1e-13 relative,
   closed forms to 1e-14 relative, per-cell indexing (47/1176) to 1e-14.
@@ -1054,18 +1054,18 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   blocks_per_process}`. Periodicity comes from boundary names ("periodic" on x2/x3 for all layouts, x1 periodic only
   for `cubed`).
 - Derivations: Morton encoding is standard. Re-derive the cubed-sphere edge-stepping (`_step_one`, corners in two
-  hops) from `src/layout/cubed_sphere_layout.cpp:445@dae902b` and `:498@dae902b`.
+  hops) from `src/layout/cubed_sphere_layout.cpp:445@e894700` and `:498@e894700`.
 - Figures:
   - Morton order on a 4×4 block grid.
   - The cube net with the CS_FACE_EDGES table drawn as arrows (neighbour face, side, reversal flag).
   - (rank → process, local block) mapping for bpp>1.
-- Code: `src/layout/layout.hpp:52@dae902b` `LayoutOptionsImpl` (`:98` type default slab, `:83-93` block↔process maps);
-  `src/layout/layout.cpp:221@dae902b` `from_yaml`; `:246` `LayoutImpl::create`; `src/layout/slab_layout.cpp:10@dae902b`
-  (pz==1 `:12`), `:41` `neighbor_rank`; `src/layout/cubed_layout.cpp:10@dae902b`, `:40`;
-  `src/layout/connectivity.cpp:28@dae902b` `build_zorder_coords2`, `:45` `build_zorder_coords3`;
-  `src/layout/cubed_sphere_layout.hpp:80@dae902b` face-major rank; `src/layout/cubed_sphere_layout.cpp:246@dae902b`
+- Code: `src/layout/layout.hpp:52@e894700` `LayoutOptionsImpl` (`:98` type default slab, `:83-93` block↔process maps);
+  `src/layout/layout.cpp:221@e894700` `from_yaml`; `:246` `LayoutImpl::create`; `src/layout/slab_layout.cpp:10@e894700`
+  (pz==1 `:12`), `:41` `neighbor_rank`; `src/layout/cubed_layout.cpp:10@e894700`, `:40`;
+  `src/layout/connectivity.cpp:28@e894700` `build_zorder_coords2`, `:45` `build_zorder_coords3`;
+  `src/layout/cubed_sphere_layout.hpp:80@e894700` face-major rank; `src/layout/cubed_sphere_layout.cpp:246@e894700`
   `CS_FACE_NAMES`, `:309` `CS_FACE_EDGES`, `:413` `_initialize` (pz==1, px==py), `:445` `_step_one`, `:481`
-  `rank_of`, `:488` `loc_of`, `:498` `neighbor_rank`; `src/mesh/meshblock_options.cpp:102@dae902b`,`:142`,`:179`
+  `rank_of`, `:488` `loc_of`, `:498` `neighbor_rank`; `src/mesh/meshblock_options.cpp:102@e894700`,`:142`,`:179`
   (periodic flags from BC names).
 - Tests: `tests/test_exchange.cpp` + `run_exchange_decomp.py` (`test_exchange_decomp`: mesh6 / proc6 / proc2_mesh3 on
   gloo) — ghost values equal the expected neighbour, with both local and remote neighbours seen.
@@ -1086,9 +1086,9 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   (default "reflecting").
 - Derivations: none.
 - Figures: a 2×2 slab decomposition with the faces coloured physical/internal/periodic.
-- Code: `src/mesh/meshblock.cpp:137-178@dae902b` (nulling, slab/cubed only); `src/mesh/meshblock_options.cpp:218@dae902b`
-  `face_of`, `:229` `is_physical_boundary`, `:243` `is_wall_boundary` (whitelist); `src/bc/bc_func.cpp:7-8@dae902b`
-  `custom_inner/outer` (empty); `src/hydro/hydro.cpp:195@dae902b` `is_x1_wall`.
+- Code: `src/mesh/meshblock.cpp:137-178@e894700` (nulling, slab/cubed only); `src/mesh/meshblock_options.cpp:218@e894700`
+  `face_of`, `:229` `is_physical_boundary`, `:243` `is_wall_boundary` (whitelist); `src/bc/bc_func.cpp:7-8@e894700`
+  `custom_inner/outer` (empty); `src/hydro/hydro.cpp:204@e894700` `is_x1_wall`.
 - Tests: `tests/test_forcing_cubed_sphere.yaml` header documents a vacuous-test trap (nx1=1 ⇒ no x1 bfunc ⇒ every
   top/bottom forcing returns early).
 - Limits / known issues: on the cubed sphere `is_physical_boundary(dy,dx,0)` is TRUE at panel edges (custom bfunc).
@@ -1104,14 +1104,14 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   the ghost slab. A sync can be conserved, primitive or scalar, with `interpolate` (cubed-sphere cross-panel only),
   `skip_corner`, `dim` (face-state syncs) and phase flags. After a sync, `fill_corners` averages the two adjacent edge
   strips into each x2-x3 corner. Transport details are in Ch14 S14.3. Switch: `SyncOptions`
-  (`src/layout/layout.hpp:135@dae902b`); defaults skip_corner=true, interpolate=false, type kConserved.
+  (`src/layout/layout.hpp:135@e894700`); defaults skip_corner=true, interpolate=false, type kConserved.
 - Derivations: corner value = ½(left strip + bottom strip) is a convention. Re-derive (state it) from
-  `src/layout/layout.cpp:710@dae902b`.
+  `src/layout/layout.cpp:710@e894700`.
 - Figures: the 3×3 neighbour stencil with buffer ids (`get_buffer_id`), interior slabs sent vs ghost slabs received,
   and corners synthesised.
-- Code: `src/layout/layout.hpp:32@dae902b` `get_buffer_id`; `src/layout/layout.cpp:477@dae902b` `serialize`; `:668`
+- Code: `src/layout/layout.hpp:32@e894700` `get_buffer_id`; `src/layout/layout.cpp:477@e894700` `serialize`; `:668`
   `deserialize`; `:710` `fill_corners`; `:753` `finalize` (corner synthesis unless a split phase);
-  `src/mesh/meshblock.cpp:554@dae902b` `exchange`.
+  `src/mesh/meshblock.cpp:554@e894700` `exchange`.
 - Tests: `test_exchange.release` (2 ranks, bpp 3); `test_mesh_multi_block.release`; `test_mesh_exchange_python`;
   `tests/test_cubed_sphere_vertical_velocity_exchange.py` (`..._python`) — a radial velocity passes panel seams
   unchanged to 1e-12 abs + 1e-12 rel.
@@ -1138,21 +1138,21 @@ there. A short subsection should say that `cylindrical` is a registered but empt
     §1 (first-order expansion; the exact form is checked numerically there).
   - Ordering constraint (the halo must be current, a dependency cycle within one round): exists:
     sources/canoe__cubedsphere_decomposition_TECH_REPORT.md §5-6.
-  - Ghost-centre mapping (`cs_build_ghost_usrc`): re-derive from `src/coord/cubed_sphere_utils.cpp:78@dae902b`.
-  - rev/flip/transpose rules from side parity: re-derive from `src/layout/cubed_sphere_layout.cpp:701-705@dae902b`.
+  - Ghost-centre mapping (`cs_build_ghost_usrc`): re-derive from `src/coord/cubed_sphere_utils.cpp:78@e894700`.
+  - rev/flip/transpose rules from side parity: re-derive from `src/layout/cubed_sphere_layout.cpp:701-705@e894700`.
 - Figures:
   - Two panels meeting at an edge: ghost centres in layers g=1..3 and their source points sliding toward the edge
     midpoint (Figure 1 of the source report, to be redrawn).
   - A subdivided panel: the widened strip reaching into the sender's intra-panel halo; the two-phase timeline.
   - Frame rotation pipeline: contravariant(sender) → spherical → (send) → interpolate in the sender frame → spherical →
     contravariant(receiver).
-- Code: `src/coord/cubed_sphere_utils.hpp:108@dae902b` `cs_interp_margin`; `src/coord/cubed_sphere_utils.cpp:78@dae902b`
+- Code: `src/coord/cubed_sphere_utils.hpp:108@e894700` `cs_interp_margin`; `src/coord/cubed_sphere_utils.cpp:78@e894700`
   `cs_build_ghost_usrc`, `:259` `cs_velocity_transform_matrix`, `:300` `cs_apply_velocity_transform_`;
-  `src/coord/gnomonic_equiangle.cpp:162-196@dae902b` (global usrc + integer shift), `:245` `interp_ghost`, `:475`
-  `_interp_ghost_LR`, `:516` `_interp_ghost_BT`; `src/layout/cubed_sphere_layout.cpp:122@dae902b`
+  `src/coord/gnomonic_equiangle.cpp:162-196@e894700` (global usrc + integer shift), `:245` `interp_ghost`, `:475`
+  `_interp_ghost_LR`, `:516` `_interp_ghost_BT`; `src/layout/cubed_sphere_layout.cpp:122@e894700`
   `_velocity_transform` (cached, one radial plane), `:549` `serialize` (`:630` phase-1 return, `:681` margin, `:703-705`
   flags), `:795` `deserialize` (`:848`, `:936` `interp_ghost`), `:961` `exchange_remote` (`:1014` same-panel phase
-  filter); `src/mesh/meshblock.cpp:554-572@dae902b` the two-phase branch.
+  filter); `src/mesh/meshblock.cpp:554-572@e894700` the two-phase branch.
 - Tests: `tests/test_cubed_sphere_exchange.cpp` (`test_cubed_sphere_exchange.release`) —
   `CubedSphere.subdivided_panel_exchange_matches_one_block` (`torch::equal` on interior x2f, dx2f and hydro_u[IDN]
   after one stage, nb2=1,2,4 in one process) and its `_cuda` twin; `CommTag.rejects_tags_that_collide...`;
@@ -1181,8 +1181,8 @@ there. A short subsection should say that `cylindrical` is a registered but empt
 - Derivations: the anti-upwind mechanism and the role of the suffix: exists:
   sources/canoe__tracer_seam_TECH_REPORT.md §4-6 (argument, not algebra).
 - Figures: a same-sign edge (e.g. 1T-3R) with L/R arrows before and after the suffix protocol.
-- Code: `src/hydro/hydro_forward.cpp:553-596@dae902b` (`:563` keys, begin/launch/finalize); `src/scalar/scalar.cpp:84@dae902b`,
-  `:96`; `src/layout/cubed_sphere_layout.cpp:602@dae902b`, `:715`, `:837`, `:928` (suffix rules); `:704-705`
+- Code: `src/hydro/hydro_forward.cpp:544-587@e894700` (`:563` keys, begin/launch/finalize); `src/scalar/scalar.cpp:84@e894700`,
+  `:96`; `src/layout/cubed_sphere_layout.cpp:602@e894700`, `:715`, `:837`, `:928` (suffix rules); `:704-705`
   (trans/flip flags, no-ops on depth-1 strips).
 - Tests: `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`) — mass, vapour and E+PE conserved
   across seams to round-off with the #289 term on; the tracer seam fix has no dedicated ctest beyond the positivity
@@ -1201,8 +1201,8 @@ there. A short subsection should say that `cylindrical` is a registered but empt
 - Derivations: conservation needs one shared factor per face: exists: sources/canoe__theta_seam_TECH_REPORT.md §1, §6
   (argument).
 - Figures: a seam face with the donor on panel A, θ_A vs the interpolated blend on panel B, and the leaked mass.
-- Code: `src/hydro/hydro_forward.cpp:680-697@dae902b` (`:687-688` `topts.interpolate(false)`, `:694` bfunc ghost fill);
-  `src/scalar/scalar.cpp:144@dae902b`.
+- Code: `src/hydro/hydro_forward.cpp:671-688@e894700` (`:687-688` `topts.interpolate(false)`, `:694` bfunc ghost fill);
+  `src/scalar/scalar.cpp:144@e894700`.
 - Tests: `tests/test_flux_positivity_cubedsphere.py` (`test_flux_positivity_cubedsphere_python`, + `_cuda`) — 6 panels in
   one process, hat edge on the +X/+Y seam, tracers conserved to DRIFT_TOL=1e-13 (in the script), hits>0, the hat stays
   in [0,1]; `tests/test_flux_positivity_cubedsphere_moist.py` (+ `_cuda`); `test_sedimentation_cubed_seam.release`
@@ -1225,22 +1225,22 @@ there. A short subsection should say that `cylindrical` is a registered but empt
     two sides. With (b) the two sides already agree, so a same-process seam is not averaged.
   Column-wide EOS repairs gather the whole x1 column (`gather_x1`). The wall reconstruction and the WB wall mirroring
   are gated on `is_physical_boundary`, so they never act at a seam. Switch: `distribute: {layout: cubed, nb1>1}`. The
-  WB4 switch needs nghost≥3 (`src/hydro/hydro.cpp:96-103@dae902b`).
+  WB4 switch needs nghost≥3 (`src/hydro/hydro.cpp:96-103@e894700`).
 - Derivations:
-  - Telescoping conservation of the averaged seam flux: re-derive from `src/hydro/hydro_forward.cpp:434-447@dae902b`
+  - Telescoping conservation of the averaged seam flux: re-derive from `src/hydro/hydro_forward.cpp:425-438@e894700`
     (comment only).
-  - Reference relay (running face value + interior drop): re-derive from `src/hydro/hydro.cpp:490-513@dae902b`
+  - Reference relay (running face value + interior drop): re-derive from `src/hydro/hydro.cpp:509-532@e894700`
     (comment only); the WB scheme itself is owned by the WB chapter (exists: docs/derivations/wb-ref4.md §7 for the
     seam flag).
 - Figures:
   - A column split into 2-4 blocks: the anchor relay arrows top→bottom; ghost rows of pref/dref copied from the
     neighbour interior.
   - The seam face with the two one-sided fluxes and their average (process seam) vs the identical states (in-process).
-- Code: `src/hydro/hydro.cpp:242@dae902b` `x1_neighbors`; `:251` `_x1_ghost_rows`; `:484` `_hydro_ref_x1` (`:506`
-  `x1_split`, `:512` take anchor, `:559` pass anchor, `:574` ghost-row exchange); `src/hydro/hydro_forward.cpp:242-271@dae902b`
+- Code: `src/hydro/hydro.cpp:261@e894700` `x1_neighbors`; `:251` `_x1_ghost_rows`; `:484` `_hydro_ref_x1` (`:506`
+  `x1_split`, `:512` take anchor, `:559` pass anchor, `:574` ghost-row exchange); `src/hydro/hydro_forward.cpp:233-262@e894700`
   (physical-face gating), `:293` and `:515` (`_x1_ghost_rows` tags 0x7724/0x7722), `:448-505` (seam average, tags
-  0x7720/0x7721); `src/layout/layout.cpp:879@dae902b` `take_x1_anchor`, `:907` `pass_x1_anchor`, `:777`
-  `gather_x1`; `src/eos/equation_of_state.cpp:279-282@dae902b` (column gather).
+  0x7720/0x7721); `src/layout/layout.cpp:879@e894700` `take_x1_anchor`, `:907` `pass_x1_anchor`, `:777`
+  `gather_x1`; `src/eos/equation_of_state.cpp:279-282@e894700` (column gather).
 - Tests:
   - `tests/test_pref_local_seam.cpp` (`test_pref_local_seam.release`):
     `HydroRefX1.local_blocks_restart_the_reference_at_the_seam` (EXPECT_NEAR 1e-6) and
@@ -1268,9 +1268,9 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   afterwards. The init sync exchanges primitives. On the cubed sphere, conserved momenta are covariant (raised before the
   rotation to spherical, lowered after), primitives are contravariant, and scalars are not rotated. Switch:
   `SyncOptions.type`.
-- Derivations: covariant/contravariant handling: re-derive from `src/coord/cubed_sphere_utils.cpp:288-296@dae902b`.
+- Derivations: covariant/contravariant handling: re-derive from `src/coord/cubed_sphere_utils.cpp:288-296@e894700`.
 - Figures: a table of type → rotation applied.
-- Code: `src/mesh/meshblock.cpp:913-983@dae902b`; `src/layout/cubed_sphere_layout.cpp:735-753@dae902b` (serialize
+- Code: `src/mesh/meshblock.cpp:913-983@e894700`; `src/layout/cubed_sphere_layout.cpp:735-753@e894700` (serialize
   switch on type).
 - Tests: `test_coordinate.release` `DeviceTest.cached_cubed_sphere_velocity_matrices_match_direct`.
 - Limits / known issues: none.
@@ -1286,7 +1286,7 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   Switch: always on in `MeshBlock::exchange_ghost_zones`.
 - Derivations: none (consistency rule). PR #265 records the mechanism (viscous cross-derivatives at the wall row).
 - Figures: an x1 wall with the x2 seam: corner cells before (stale reflection) and after the refresh.
-- Code: `src/mesh/meshblock.cpp:932-973@dae902b` (`refresh` lambda `:951`, call `:972`); `src/bc/bc_func.hpp` (contract comment).
+- Code: `src/mesh/meshblock.cpp:932-973@e894700` (`refresh` lambda `:951`, call `:972`); `src/bc/bc_func.hpp` (contract comment).
 - Tests: `tests/test_wb_wall_corner.cpp` (`test_wb_wall_corner.release`) — a resting polytrope with viscosity keeps
   max|u2|/c_s ≤ 1e-12 for stock and user walls, a one-block vs two-block x2 split, and scalar corner primitives (CPU and
   CUDA).
@@ -1302,7 +1302,7 @@ there. A short subsection should say that `cylindrical` is a registered but empt
   file is disabled (`cylindrical.cpp_`). No widths, centres or areas are built. Switch: `geometry.type: cylindrical`.
 - Derivations: n/a.
 - Figures: none.
-- Code: `src/coord/coordinate.hpp:363@dae902b` (`reset() {}` at `:374`); `src/coord/coordinate.cpp:601-602@dae902b`.
+- Code: `src/coord/coordinate.hpp:363@e894700` (`reset() {}` at `:374`); `src/coord/coordinate.cpp:601-602@e894700`.
 - Tests: none.
 - Limits / known issues: selecting it would run on empty buffers (inferred from code).
 - Discrepancies: none.
@@ -1349,7 +1349,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   - FV balance and face-average definition of the flux: exists docs/289-covariance-x3-curved.md §1.1 (eqs 1.1-1.2;
     its line refs are at 117e449, stale).
   - The stage pipeline and which tensor carries what (flux1/2/3 shapes, face indexing il..iu+1, interior-only
-    tendency): re-derive from src/hydro/hydro_forward.cpp:207-1008@dae902b and src/coord/coordinate.cpp:509-553@dae902b.
+    tendency): re-derive from src/hydro/hydro_forward.cpp:198-999@e894700 and src/coord/coordinate.cpp:509-553@e894700.
 - Figures:
   - One cell with its six faces, A_{i+-1/2}F_{i+-1/2}, V_i; arrows for flux1/flux2/flux3 and where the geometric source enters.
   - Pipeline strip of one RK stage (EOS, x1 sweep, seam average, x2/x3 sweeps, limiter, divergence, forcings, implicit).
@@ -1386,9 +1386,9 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   face floors (src/eos/equation_of_state.hpp:49-52, defaults 1e-10, 1e-10, false).
 - Derivations:
   - Face/cell index map of `_apply_inplace` (outl -> wlr[IRT] at faces il-1..iu, outr -> wlr[ILT] at il..iu+1;
-    dummy-region replication): re-derive from src/recon/reconstruct.cpp:50-65@dae902b.
+    dummy-region replication): re-derive from src/recon/reconstruct.cpp:50-65@e894700.
   - Why weno3/weno5 select linear cp3/cp5 for velocity/pressure (interp2): no rationale in any source;
-    describe from src/recon/interpolation.cpp:21-36@dae902b (design choice, not derived).
+    describe from src/recon/interpolation.cpp:21-36@e894700 (design choice, not derived).
 - Figures:
   - Stencil of a 5-point reconstruction: cell i, its left face (wlr[IRT] at face i) and right face (wlr[ILT] at face i+1).
   - Which rows go through interp1 (WENO) vs interp2 (linear cp) under shock false/true.
@@ -1413,7 +1413,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 <sub>inventory C: Scheme: Donor cell ("dc")</sub>
 
 - Summary: first-order, face value = adjacent cell value. Switch: `type: dc` (default type).
-- Derivations: trivial; re-derive from src/recon/interpolation.hpp:100-105@dae902b.
+- Derivations: trivial; re-derive from src/recon/interpolation.hpp:100-105@e894700.
 - Figures: piecewise-constant cells with the two face states at one face.
 - Code: src/recon/interpolation.hpp:88 — `DonorCellInterpImpl` — `left`/`right` copies (:100-105).
 - Tests: tests/test_plm.cpp `reconstruct_preserves_a_constant_field` (dc arm); tests/test_x1_seam_split.cpp `wb_ref4_gravity_0_nghost_1_steps` runs donor cell on nghost 1 (comment :114).
@@ -1425,7 +1425,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 
 - Summary: wl/wr = w_i -+ dwm/2 with dwm = 2 dwl dwr/(dwl+dwr) where dwl dwr > 0, else 0. Switch: `type: plm`.
 - Derivations:
-  - Harmonic-mean (van Leer) slope and TVD property: re-derive from src/recon/plm.cpp:19-29@dae902b (PR #212 body states only the 0/0 guard, sources/gh__PR_BODIES_202-219.md:243-260; not a derivation).
+  - Harmonic-mean (van Leer) slope and TVD property: re-derive from src/recon/plm.cpp:19-29@e894700 (PR #212 body states only the 0/0 guard, sources/gh__PR_BODIES_202-219.md:243-260; not a derivation).
 - Figures: slope cartoon with left/right differences and the harmonic mean; the dw2 <= 0 extremum case.
 - Code:
   - src/recon/plm.cpp:10 — `PLMInterpImpl::forward` — vectorised; guard `torch::where(dw2 > 0, ...)` (:26).
@@ -1442,7 +1442,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 - Summary: cp3 (1/3, 5/6, -1/6) and cp5 (-1/20, 9/20, 47/60, -13/60, 1/30) face values from cell averages; used
   directly (`type: cp3|cp5`) or as interp2 of weno3/weno5. Switch: `type`.
 - Derivations: weights as face values of the interpolating polynomial of cell averages: re-derive from
-  src/recon/cp3.cpp:12-16@dae902b and src/recon/cp5.cpp:12-17@dae902b (no source derivation).
+  src/recon/cp3.cpp:12-16@e894700 and src/recon/cp5.cpp:12-17@e894700 (no source derivation).
 - Figures: 3- and 5-cell stencils with weights; mirrored weights for the other face (`cm.flip`).
 - Code:
   - src/recon/cp3.cpp:12 — `Center3InterpImpl::reset` — cm/cp weights; :18 `left` via `call_poly3`.
@@ -1460,7 +1460,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   the stencil is normalised by its mean |value| first. Applies to density and tracers (and to all rows when
   shock: true). Switch: `type: weno3|weno5`, `scale` (default false).
 - Derivations: candidate polynomials, smoothness indicators and linear weights: re-derive from
-  src/recon/weno5.cpp:10-24@dae902b and src/recon/interp_impl.h:74-122@dae902b (no source derivation). Note the
+  src/recon/weno5.cpp:10-24@e894700 and src/recon/interp_impl.h:74-122@e894700 (no source derivation). Note the
   absolute (not relative) epsilon 1e-6 and its interaction with `scale`.
 - Figures: three 3-cell sub-stencils inside the 5-cell stencil and the blended face value; effect of
   `scale` on a small-amplitude perturbation field.
@@ -1494,7 +1494,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   HLLC and Roe also write a face pressure used by the x1 pressure source on curved grids. Switch: YAML
   `type` (default "roe" from YAML), `dir` (default "omni", shallow water).
 - Derivations:
-  - Face-local frame transforms on the non-orthogonal gnomonic grid: re-derive from src/coord/gnomonic_equiangle.cpp:295-413@dae902b (cross-ref cubed-sphere chapter).
+  - Face-local frame transforms on the non-orthogonal gnomonic grid: re-derive from src/coord/gnomonic_equiangle.cpp:295-413@e894700 (cross-ref cubed-sphere chapter).
   - Role of the x1 face pressure in the curved-grid pressure force: see scheme "Geometric sources, spherical-polar".
 - Figures: face-local frame (n, t1, t2) on a gnomonic face with g23 != 0; data flow wl,wr -> local -> flux -> global.
 - Code:
@@ -1520,7 +1520,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 - Summary: rhobar, cbar from averaged gamma and p; pbar = p_avg + (rho c)/2 (uL-uR); ubar = u_avg + (pL-pR)/(2 rho c);
   upwind by sign of ubar; enthalpy flux rho h ubar with h = W->I/rho + KE + p/rho; dry-mass flux carries
   rd = 1 - sum q. Face pressure output = pbar. Switch: `riemann-solver: {type: lmars}`.
-- Derivations: linearised acoustic Riemann problem giving pbar/ubar: re-derive from src/riemann/lmars_impl.h:17-78@dae902b (no derivation in sources; the #289 draft only records that scaling the acoustic terms by 0 or 2 changes onset rates by < 2e-5, sources/study__289-covariance_derivations_draft.md §4.4).
+- Derivations: linearised acoustic Riemann problem giving pbar/ubar: re-derive from src/riemann/lmars_impl.h:17-78@e894700 (no derivation in sources; the #289 draft only records that scaling the acoustic terms by 0 or 2 changes onset rates by < 2e-5, sources/study__289-covariance_derivations_draft.md §4.4).
 - Figures: wave diagram with the single interface state (pbar, ubar); upwind selection of the advected state.
 - Code:
   - src/riemann/lmars.cpp:30 — `LmarsSolverImpl::forward` — e = W->I/rho, gamma (aneos via W->L, WL->A), local frame, iterator, global frame.
@@ -1535,7 +1535,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 
 - Summary: Toro PVRS middle state, shock-corrected wave speeds, contact speed am and pressure cp (clamped >= 0);
   face pressure output = cp. Switch: `type: hllc`.
-- Derivations: re-derive from src/riemann/hllc_impl.h:17-130@dae902b (comment cites Toro 10.5.2; no source derivation).
+- Derivations: re-derive from src/riemann/hllc_impl.h:17-130@e894700 (comment cites Toro 10.5.2; no source derivation).
 - Figures: three-wave fan (bm, am, bp) with star states.
 - Code: src/riemann/hllc.cpp:30 — `HLLCSolverImpl::forward`; src/riemann/hllc_impl.h:17 — `hllc_impl` (pmid :36, cp :70-72); src/riemann/hllc_dispatch.cpp:118 tensor path.
 - Tests: tests/test_riemann.cpp `hllc_writes_face_pressure_output` (1e-10).
@@ -1547,7 +1547,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 
 - Summary: Roe averages, eigen-decomposed upwinding without an entropy fix; ideal-moist Roe gamma from mass-fraction
   weighted feps/fsig and energy offsets u0; face pressure = 1/2(pL+pR+rhobar cs (uL-uR)). Switch: `type: roe`.
-- Derivations: re-derive from src/riemann/roe_impl.h:24-213@dae902b (moist gamma :87-89, face pressure :119-121).
+- Derivations: re-derive from src/riemann/roe_impl.h:24-213@e894700 (moist gamma :87-89, face pressure :119-121).
 - Figures: Roe average state and the three characteristic families plus species contact.
 - Code: src/riemann/roe.cpp:14 — `RoeSolverImpl::forward`; src/riemann/roe_impl.h:24 `roe_impl`; src/riemann/roe_dispatch.cpp:153 tensor path face pressure.
 - Tests: tests/test_riemann.cpp `roe_writes_face_pressure_output` and `_ideal_moist` (1e-10).
@@ -1559,7 +1559,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
 
 - Summary: shallow-roe for `shallow-water` EOS (direction mapping by `dir`); plume-roe is a Lax–Friedrichs flux of the
   plume equations. Switch: `type: shallow-roe | plume-roe`, `dir: omni|...`.
-- Derivations: re-derive from src/riemann/shallow_roe_impl.h:15-78@dae902b; plume-roe from src/riemann/plume_roe.cpp:14-43@dae902b.
+- Derivations: re-derive from src/riemann/shallow_roe_impl.h:15-78@e894700; plume-roe from src/riemann/plume_roe.cpp:14-43@e894700.
 - Figures: none essential (one-line table of supported pairs EOS x solver).
 - Code: src/riemann/shallow_roe.cpp:26 — `ShallowRoeSolverImpl::forward` (refuses face pressure); src/riemann/plume_roe.cpp:45.
 - Tests: tests/run_shallow_xy.cmake, run_shallow_splash.cmake (reference examples, FULL_TESTS only); test_shallow_xy.py / test_shallow_splash.py.
@@ -1573,7 +1573,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   + background mass flux F^R for cell gravity work) and set both to the average, so sums telescope. Same-process
   seams are not averaged (after the reference ghost exchange the two face states already agree). Switch: none;
   active when `layout.pz > 1` with a process group.
-- Derivations: re-derive from src/hydro/hydro_forward.cpp:434-508@dae902b (code comment and PR #259 text only,
+- Derivations: re-derive from src/hydro/hydro_forward.cpp:425-499@e894700 (code comment and PR #259 text only,
   sources/gh__PR_BODIES_227-259.md:645-653).
 - Figures: two ranks sharing one face, each with its own flux, exchange and average; packing of flux+face pressure+F^R into one tensor.
 - Code: src/hydro/hydro_forward.cpp:448-508 — seam exchange (tags 0x7720/0x7721), pack/unpack (:469-482).
@@ -1590,9 +1590,9 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   coord_src2_i, plus cot(theta) terms with the cell pressure (p* under SNAP_FLUX_COVARIANCE). Fallback without a
   face pressure: 2 p coord_src1_i. Switch: none (geometry type `spherical-polar`).
 - Derivations:
-  - Metric coefficients coord_src1_i = (r+^2-r-^2)/2 / ((r+^3-r-^3)/3), coord_src2_i = dx1/((r-+r+) V_r), coord_src1_j/2_j/3_j: re-derive from src/coord/spherical_polar.cpp:78-104@dae902b.
-  - Plain-difference radial pressure force with face pressures in the flux: stated (not derived) in docs/x1-centroid-spherical.md §1 item (iii); re-derive from src/coord/spherical_polar.cpp:265-274@dae902b.
-  - Angular-momentum-conserving x1-flux form of the IVY/IVZ sources: re-derive from src/coord/spherical_polar.cpp:286-307@dae902b (no source).
+  - Metric coefficients coord_src1_i = (r+^2-r-^2)/2 / ((r+^3-r-^3)/3), coord_src2_i = dx1/((r-+r+) V_r), coord_src1_j/2_j/3_j: re-derive from src/coord/spherical_polar.cpp:78-104@e894700.
+  - Plain-difference radial pressure force with face pressures in the flux: stated (not derived) in docs/x1-centroid-spherical.md §1 item (iii); re-derive from src/coord/spherical_polar.cpp:265-274@e894700.
+  - Angular-momentum-conserving x1-flux form of the IVY/IVZ sources: re-derive from src/coord/spherical_polar.cpp:286-307@e894700 (no source).
   - Rest balance of the lateral rows with the same cell pressure in flux and source: exists docs/289-covariance-x3-curved.md §4A.3 (proof) and study copy sources/study__289-allrows_derivation.md §4.2; executable docs/rest_balance.py.
 - Figures: radial cell with A+ p+, A- p-, the 2p/r source and the net -(p+ - p-)/h; polar cell showing the sin(theta) face areas and the cot(theta) source.
 - Code:
@@ -1613,7 +1613,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   Switch: none (`gnomonic-equiangle`).
 - Derivations:
   - Exact solid angle and radial integral: exists docs/289-covariance-x3-curved.md §8.1-8.4.
-  - Source terms with g23 != 0: re-derive from src/coord/gnomonic_equiangle.cpp:415-473@dae902b (no source derivation; cross-ref cubed-sphere chapter).
+  - Source terms with g23 != 0: re-derive from src/coord/gnomonic_equiangle.cpp:415-473@e894700 (no source derivation; cross-ref cubed-sphere chapter).
 - Figures: gnomonic cell corner-sum solid angle; covariant vs contravariant components at a face.
 - Code: src/coord/gnomonic_equiangle.cpp:128-137 (solid angle), :207 `face_area1`, :219 `cell_volume`, :142-145 `x_ov_rD_kji`/`y_ov_rC_kji`, :415 `forward` (src1 :443-460, src2 :463-465, src3 :468-470); :36 x1v = arithmetic mid-radius.
 - Tests: tests/test_hydrostatic.cpp (test_hydrostatic.<build>) — six-panel isentropic shell, non-hydrostatic 0, 100 steps, max |v1| < 1e-8 (fixed constant); tests/test_cubed_sphere_cell_volume.py; tests/test_coordinate.cpp `radial_source_uses_face_pressure_in_x1_momentum` (1e-8), `radial_source_preserves_face_pressure_gradient` (1e-6).
@@ -1678,7 +1678,7 @@ well-balanced reference, so it stays in Chapter 5 with a forward pointer from 4B
   Switch: env `SNAP_X1_MASS_COVARIANCE`, default off (src/hydro/hydro_forward.cpp:39-47).
 - Derivations:
   - The Favre offset w_c = <w> + dz^2/12 rho_z w_z/rho and the extra face mass flux: exists docs/curved-gravity-work-weight.md §11.4 (short) and sources/study__289-covariance_derivations_draft.md §4.1 (with the entropy effect, small in the cell form, harmless in the face form).
-  - Wall closure (one-sided rho_1, odd ghost refill) and the use of the Cartesian dx1f^2/12 on curved grids: re-derive from src/hydro/hydro_forward.cpp:324-353@dae902b (commit e04b783 message only).
+  - Wall closure (one-sided rho_1, odd ghost refill) and the use of the Cartesian dx1f^2/12 on curved grids: re-derive from src/hydro/hydro_forward.cpp:315-344@e894700 (commit e04b783 message only).
 - Figures: column with rho decreasing, w varying: cell Favre velocity vs cell-average w; corrected velocity profile with mirrored ghosts.
 - Code: src/hydro/hydro_forward.cpp:39 — `x1_mass_covariance`; :51 `d1_centred`; :324-353 correction; :361 restore.
 - Tests: none in tests/ (grep: the switch appears only in hydro_forward.cpp and docs/curved-gravity-work-weight.md).
@@ -1723,9 +1723,9 @@ there and keep a one-paragraph pointer here. The isentropic-ghost / zero-gradien
   - Face-density offset of the base reference O(dz^2): exists docs/wb-ref4.md §2 (docs/wb_ref4_weights.py check 4).
   - Why the density reference must be smoothed (a reference equal to the local state absorbs the entropy mode):
     measured/argued in sources/canoe__tall_column_instability_TECH_REPORT.md §3d, §4-5 (not a derivation; re-derive
-    the degeneracy rho'/rho = p'/p from src/hydro/hydro_ref_x1_impl.h:74-108@dae902b).
+    the degeneracy rho'/rho = p'/p from src/hydro/hydro_ref_x1_impl.h:74-108@e894700).
   - Positivity fallback choice (adjacent density, not dsf): evidence only (test_face_floor; PR #221 body); describe
-    from src/hydro/hydro_forward.cpp:362-386@dae902b.
+    from src/hydro/hydro_forward.cpp:353-377@e894700.
 - Figures:
   - Column: cell averages, reference staircase, perturbation, WENO of the perturbation, restored face values.
   - Even-parity perturbation ghosts at a reflecting wall (p', rho' mirrored) vs odd velocity.
@@ -1753,9 +1753,9 @@ there and keep a one-paragraph pointer here. The isentropic-ghost / zero-gradien
 - Summary: top-down scan psf_{i-1/2} = psf_{i+1/2} + g rho_i dx1f_i from a top anchor (block top: p_top exp(-g dz/2 / (p/rho)_top); x1-split: anchor relayed from the block above); cell pressure pref = six-face quintic cell average (11,-93,802,802,-93,11)/1440 on uniform grids with one-sided wall rows and a [lo,hi] guard, log-mean dp/ln(lo/hi) on non-uniform grids; dref = pref * B(rho/p), dsf = psf_lo * mean of two smoothed values, B = (1,4,6,4,1)/16. Uniformity: relative spread of dx1f < 1e-10. Switch: none (always with WB).
 - Derivations:
   - Scan = discrete hydrostatic balance; six-face quadrature O(dz^6); binomial bias dz^2/2 R'': exists docs/wb-ref4.md §1, §2, §6; wall-row weights in sources/gw__NEXTPR_spec_wbref_exact.md §1(b).
-  - Six-face interior weights and the one-sided wall rows w6e: stated (not derived) in docs/wb-ref4.md §1 and sources/gw__NEXTPR_spec_wbref_exact.md §1(b); docs/wb_ref4_weights.py does not check them; re-derive from src/hydro/hydro_ref_x1_impl.h:141-180@dae902b.
-  - Log-mean exactness for an isothermal cell: stated docs/wb-ref4.md §5; re-derive from src/hydro/hydro_ref_x1_impl.h:181-186@dae902b.
-  - Top anchor half-cell isothermal extrapolation: re-derive from src/hydro/hydro_ref_x1_impl.h:31-38@dae902b.
+  - Six-face interior weights and the one-sided wall rows w6e: stated (not derived) in docs/wb-ref4.md §1 and sources/gw__NEXTPR_spec_wbref_exact.md §1(b); docs/wb_ref4_weights.py does not check them; re-derive from src/hydro/hydro_ref_x1_impl.h:141-180@e894700.
+  - Log-mean exactness for an isothermal cell: stated docs/wb-ref4.md §5; re-derive from src/hydro/hydro_ref_x1_impl.h:181-186@e894700.
+  - Top anchor half-cell isothermal extrapolation: re-derive from src/hydro/hydro_ref_x1_impl.h:31-38@e894700.
 - Figures: column of faces with the scan arrow from the top anchor down; six-face stencil and its one-sided wall variants; the binomial window with its clamped/continued edge.
 - Code:
   - src/hydro/hydro.cpp:484 — `HydroImpl::_hydro_ref_x1` — anchor relay (:506-514), uniform test (:516-522), kernel call (:535-537), anchor pass (:559).
@@ -1805,7 +1805,7 @@ there and keep a one-paragraph pointer here. The isentropic-ghost / zero-gradien
   pressure and passes on its bottom-face pressure (serial top-down relay, in-process through a board, remote
   through the process group); then (pref, dref) ghost rows are overwritten with the neighbour's interior rows
   (SNAP_WB_REF4 cell part before, face part after the exchange). Switch: none (x1 split, non-periodic, pz > 1).
-- Derivations: re-derive from src/hydro/hydro.cpp:490-626@dae902b (PR #259 body and code comments only; issue #254 thread).
+- Derivations: re-derive from src/hydro/hydro.cpp:509-645@e894700 (PR #259 body and code comments only; issue #254 thread).
 - Figures: stack of x1 blocks with the anchor arrow passing down and ghost rows copied across each seam.
 - Code: src/hydro/hydro.cpp:506-514 (`take_x1_anchor`), :559 (`pass_x1_anchor`), :574-621 (ghost-row exchange, tags 0x7717/0x7718); src/layout/layout.cpp:879, :907.
 - Tests:
@@ -1822,7 +1822,7 @@ there and keep a one-paragraph pointer here. The isentropic-ghost / zero-gradien
   from the cell's own reconstructed face pressures (and the same energy work); under SNAP_X1_CENTROID_EXACT the
   r^2 operator (A pL - A pR)/V - S_i. Switch: YAML `forcing/const-gravity/non-hydrostatic` in [0,1], default 1
   (src/forcing/const_gravity.cpp:25-26).
-- Derivations: cancellation at rest against the plain-difference pressure force: stated docs/x1-centroid-spherical.md §4 (last part); otherwise re-derive from src/hydro/hydro_forward.cpp:398-406, :524-548, :910-915@dae902b and src/forcing/const_gravity.cpp:45-51@dae902b.
+- Derivations: cancellation at rest against the plain-difference pressure force: stated docs/x1-centroid-spherical.md §4 (last part); otherwise re-derive from src/hydro/hydro_forward.cpp:389-397, :515-539, :901-906@e894700 and src/forcing/const_gravity.cpp:45-51@e894700.
 - Figures: cell with face pressures pL(top), pR(bottom) and the replaced gravity arrow.
 - Code: src/hydro/hydro_forward.cpp:399-406 (rho_grav), :524-548 (centroid-exact form), :911-915 (applied to IVX and IPR); src/forcing/const_gravity.cpp:45 `ConstGravityImpl::forward`.
 - Tests: tests/test_hydrostatic.cpp (nh 0); tests/test_x1_centroid_rest.py (nh 1 and 0); tests/test_x1_seam_split.cpp (both).
@@ -1837,7 +1837,7 @@ there and keep a one-paragraph pointer here. The isentropic-ghost / zero-gradien
   pressure under SNAP_WB_REF4 on non-uniform grids; requires wall_clamp, nx1 >= 5, positive p and rho; under
   SNAP_X1_CENTROID_EXACT only geometry "cartesian". Switch: API (C++ and Python `balance_column`), used by IC
   builders (examples/bryan.cpp:211).
-- Derivations: fixed-point property and the transfer of pref from a ghost-free column to a clamped block: described in the header src/hydro/balance_column.hpp:12-106 (not a derivation; no convergence proof); re-derive from src/hydro/balance_column.cpp:15-109@dae902b.
+- Derivations: fixed-point property and the transfer of pref from a ghost-free column to a clamped block: described in the header src/hydro/balance_column.hpp:12-106 (not a derivation; no convergence proof); re-derive from src/hydro/balance_column.cpp:15-109@e894700.
 - Figures: residual vs sweep; column moved by the free gauge C (top fixed).
 - Code: src/hydro/balance_column.cpp:15 — `balance_column` (clamp check :30, centroid check :35, nc1 >= 5 :47, uniform test :66-68, ref4 :73-79, loop :85-104, gauge :92); python/csrc/pyhydro.cpp:49 binding.
 - Tests:
@@ -1915,7 +1915,7 @@ there and keep a one-paragraph pointer here. The isentropic-ghost / zero-gradien
 <sub>inventory C: Scheme (legacy box): isentropic wall ghosts and zero-gradient wall faces</sub>
 
 - Summary: `_revise_x1inner/outer_ghost` (isentropic extrapolation into ghosts) is defined but its call is commented out; `_revise_x1inner/outer_lr` (copy right-state p, rho to left at the wall face) runs only on the non-WB x1 path with gravity on. Switch: none.
-- Derivations: none needed beyond describing as legacy; re-derive from src/hydro/hydro.cpp:429-481@dae902b if kept.
+- Derivations: none needed beyond describing as legacy; re-derive from src/hydro/hydro.cpp:448-500@e894700 if kept.
 - Figures: none.
 - Code: src/hydro/hydro.cpp:429, :436, :443, :463; src/hydro/hydro_forward.cpp:256-259 (commented call), :389-392.
 - Tests: none.
@@ -1942,18 +1942,18 @@ How gravity's work enters the energy equation and what each form conserves: the 
   - Continuous budget, $E+\rho\phi$ conservation, and the cell form's non-telescoping defect: exists:
     sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md §§2.1-2.4, 3.4-3.5 (re-check every equation against the code at
     dae902b; the draft's line citations predate it).
-  - The $F-F^{\mathrm{ref}}$ face booking under cell mode: re-derive from `src/hydro/hydro_forward.cpp:790-796@dae902b` and
-    `:413-417@dae902b` (`bflux1`).
+  - The $F-F^{\mathrm{ref}}$ face booking under cell mode: re-derive from `src/hydro/hydro_forward.cpp:781-787@e894700` and
+    `:404-408@e894700` (`bflux1`).
   - The hydrostatic-split part ($\alpha_{\mathrm{nh}}<1$, `rho_grav`) of the removed cell work: re-derive from
-    `src/hydro/hydro_forward.cpp:859-866@dae902b` (chapter 5 owns the split itself).
+    `src/hydro/hydro_forward.cpp:850-857@e894700` (chapter 5 owns the split itself).
 - Figures:
   - One cell with the body force at its centroid and the cell work $\rho v_1g_1$; the defect drawn as the mismatch
     between the PE change of the mass crossing a face and the work booked in the two cells.
   - Per-face bar chart of the cell-form defect on a closed column (from a committed check).
-- Code: `src/forcing/const_gravity.cpp:12-44@dae902b` (`from_yaml`, keys, defaults, fixer default = cell);
-  `src/forcing/const_gravity.cpp:46-62@dae902b` (`forward`); `src/hydro/hydro_forward.cpp:239-240@dae902b` (`gw_cell`);
-  `src/hydro/hydro_forward.cpp:413-417@dae902b` (`bflux1`); `src/hydro/hydro_forward.cpp:790-796@dae902b`
-  ($F-F^{\mathrm{ref}}$); `src/hydro/hydro_forward.cpp:867-868@dae902b` (cell: correction = face work of $F-F^{\mathrm{ref}}$).
+- Code: `src/forcing/const_gravity.cpp:12-44@e894700` (`from_yaml`, keys, defaults, fixer default = cell);
+  `src/forcing/const_gravity.cpp:46-62@e894700` (`forward`); `src/hydro/hydro_forward.cpp:230-231@e894700` (`gw_cell`);
+  `src/hydro/hydro_forward.cpp:404-408@e894700` (`bflux1`); `src/hydro/hydro_forward.cpp:781-787@e894700`
+  ($F-F^{\mathrm{ref}}$); `src/hydro/hydro_forward.cpp:858-859@e894700` (cell: correction = face work of $F-F^{\mathrm{ref}}$).
 - Tests: `tests/test_gravity_work_fixer.py` (`test_gravity_work_fixer_python`, switch 0) arm "cell, fixer false":
   $E+\mathrm{PE}_d$ drift $>100\,$TOL (planted control: the defect is real); `tests/test_forcing.cpp`
   (`test_forcing.release`) with `tests/test_gravity_energy.yaml`, `tests/test_gravity_sedimentation.yaml`.
@@ -1967,7 +1967,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Summary: `du[m_d] += dt rho g_d (non-hydrostatic factor on x1)`, `du[E] += dt rho v_d g_d`. The x1 energy term is the
   "cell" gravity work. Switch: `forcing/const-gravity/{grav1,grav2,grav3,non-hydrostatic,gravity-work,gravity-work-fixer}`;
   defaults 0, 0, 0, 1, "cell", true-if-cell (`src/forcing/const_gravity.cpp:22-36`).
-- Derivations: cross-ref the gravity-work chapter (`docs/derivations/curved-gravity-work-weight.md@dae902b` etc.).
+- Derivations: cross-ref the gravity-work chapter (`docs/derivations/curved-gravity-work-weight.md@e894700` etc.).
 - Figures: none here.
 - Code: `src/forcing/const_gravity.cpp:12` `from_yaml`; `:46` `ConstGravityImpl::forward`.
 - Tests: `tests/test_forcing.cpp:870`, `:920`, `:978`, `:1108` (gravity-work family; other chapter).
@@ -1986,26 +1986,26 @@ How gravity's work enters the energy equation and what each form conserves: the 
   without D.
 - Derivations:
   - Face form, telescoping, $E+\mathrm{PE}_d$ conservation: exists: sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md
-    §§2.4, 3.4-3.5; docs/derivations/curved-gravity-work-weight.md@dae902b §§1-2, §4 (lemma).
+    §§2.4, 3.4-3.5; docs/derivations/curved-gravity-work-weight.md@e894700 §§1-2, §4 (lemma).
   - Error expansion (6.4.7) and the exact-weight conflict (options A-E): exists:
-    docs/derivations/curved-gravity-work-weight.md@dae902b §§2-6 with `curved_gravity_work_weight.py`.
+    docs/derivations/curved-gravity-work-weight.md@e894700 §§2-6 with `curved_gravity_work_weight.py`.
   - The curvature flux $\mathcal K$ (face average exceeds $m$ by $\tfrac{h^2}{12}(m''+\rho'v')$): re-derive from
-    `src/hydro/hydro_forward.cpp:833-858@dae902b`; its wall-cell order: exists: curved-gravity-work-weight.md §8.3.
+    `src/hydro/hydro_forward.cpp:824-849@e894700`; its wall-cell order: exists: curved-gravity-work-weight.md §8.3.
   - Independent Cartesian four-point booking: moved to 6.4. It is an independent derivation of D's own result,
     not an unimplemented alternative to the face form; see the 6.4 entry.
-  - `face-wallc` wall cells: re-derive from `src/hydro/hydro_forward.cpp:901-906@dae902b`.
+  - `face-wallc` wall cells: re-derive from `src/hydro/hydro_forward.cpp:892-897@e894700`.
 - Figures:
   - Stencil: face potential $\phi_{i\pm1/2}$ vs centroid $\phi_i$, the two face weights $(x_{1,i\pm1/2}-x_{1,i})$.
   - The curvature flux $\mathcal K$ on faces, zeroed at the walls (why wall cells drop to first order).
   - Error ladder face vs face+$\mathcal K$ (interior/wall), from `optionF_replica.py` output re-run at the pin.
-- Code: `src/hydro/hydro_forward.cpp:776-821@dae902b` (mass flux, face work); `:833-858@dae902b` ($\mathcal K$);
-  `:899-906@dae902b` (face minus cell, face-wallc); `src/hydro/hydro.cpp:56-64@dae902b` (key check, fixer off);
-  `src/hydro/hydro.cpp:195-200@dae902b` (`is_x1_wall`).
+- Code: `src/hydro/hydro_forward.cpp:767-812@e894700` (mass flux, face work); `:824-849@e894700` ($\mathcal K$);
+  `:890-897@e894700` (face minus cell, face-wallc); `src/hydro/hydro.cpp:56-64@e894700` (key check, fixer off);
+  `src/hydro/hydro.cpp:204-209@e894700` (`is_x1_wall`).
 - Tests: `tests/test_gravity_work_fixer.py` arm face-wallc (reported only); `tests/test_horizontal_flux_covariance.py`,
   `tests/test_flux_covariance_rows.py`, `tests/test_forcing.cpp` (plain face form, switch 0, $E+\mathrm{PE}_d$ oracles);
   `tests/test_implicit_face_work_operator.py` (`..._python`, switch 0).
 - Limits / known issues: $O(h^2)$ work error in every cell; first-order wall cells with $\mathcal K$; with an implicit
-  scheme the face work must be in the operator (warning at `src/hydro/hydro.cpp:109-117@dae902b`, chengcli/snapy#283).
+  scheme the face work must be in the operator (warning at `src/hydro/hydro.cpp:118-126@e894700`, chengcli/snapy#283).
 - Discrepancies: the gravity-work draft predates D being on by default with `face` (snapy@84b037f); its "face form"
   results describe the switch-0 arm.
 
@@ -2022,19 +2022,19 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Derivations:
   - The defect $\mathcal D$ and the exact global fix: exists: sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md §3.6, §5.3
     (#284); the implicit part (the `epe` lambda): exists: same §3.7, §5.5 (#285), re-check against
-    `src/hydro/hydro_forward.cpp:953-978@dae902b`.
+    `src/hydro/hydro_forward.cpp:944-969@e894700`.
   - Stage weight $w_{2,s}\prod_{t>s}w_{1,t}$ of a stage's defect in the step: re-derive from
-    `src/hydro/hydro_forward.cpp:994-1004@dae902b`.
-  - The wall-mass bound $10^3\epsilon M_{\mathrm{wall}}$: re-derive from `src/mesh/meshblock.cpp:889-904@dae902b` (no
+    `src/hydro/hydro_forward.cpp:985-995@e894700`.
+  - The wall-mass bound $10^3\epsilon M_{\mathrm{wall}}$: re-derive from `src/mesh/meshblock.cpp:889-904@e894700` (no
     derivation; tolerance rationale only in the comment and #285).
 - Figures:
   - Flow of $\mathcal D$: per stage → weighted sum → allreduce → uniform $-\mathcal D/M$ per kg.
   - Time series of `fixgrav=` and $E+\mathrm{PE}_d$ with and without the fixer (committed run).
-- Code: `src/hydro/hydro_forward.cpp:869-898@dae902b` (stage defect, wall mass); `:953-978@dae902b` (implicit `epe`);
-  `:994-1004@dae902b` (stage weight); `src/mesh/meshblock.cpp:832-838@dae902b` (apply after last stage);
-  `src/mesh/meshblock.cpp:844-868@dae902b` (`gravity_work_fixer_sums`); `src/mesh/meshblock.cpp:870-911@dae902b`
-  (`apply_gravity_work_fixer`); `src/mesh/mesh.cpp:341-358@dae902b` (multi-block: one sum, one allreduce);
-  `src/hydro/hydro.cpp:62-81@dae902b` (setup checks); `src/hydro/hydro.hpp:150-200@dae902b` (meters).
+- Code: `src/hydro/hydro_forward.cpp:860-889@e894700` (stage defect, wall mass); `:944-969@e894700` (implicit `epe`);
+  `:985-995@e894700` (stage weight); `src/mesh/meshblock.cpp:832-838@e894700` (apply after last stage);
+  `src/mesh/meshblock.cpp:844-868@e894700` (`gravity_work_fixer_sums`); `src/mesh/meshblock.cpp:870-911@e894700`
+  (`apply_gravity_work_fixer`); `src/mesh/mesh.cpp:341-358@e894700` (multi-block: one sum, one allreduce);
+  `src/hydro/hydro.cpp:62-81@e894700` (setup checks); `src/hydro/hydro.hpp:150-204@e894700` (meters).
 - Tests: `tests/test_gravity_work_fixer.py` (`test_gravity_work_fixer_python`, switch 0): cell+fixer
   $|\Delta(E+\mathrm{PE}_d)|/|E+\mathrm{PE}_d|\le$TOL explicit and VIC-partial; fixer-off control drifts $>100$ TOL;
   refusals (outflow in float64/float32, periodic $x_1$, Python-cleared names, $g_2\ne0$); a NaN wall cell goes to redo;
@@ -2051,7 +2051,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Summary: written in full as the worked example, `chapters/06-gravity-energy/D_face_work_pe.md` (all six layers).
   $W^{\mathrm{D}}=W^{\mathrm{face}}+g_1\sigma^2s[\dot\rho]$ conserves $E+P$ ($P$ exact to $O(h^4)$) to round-off and is $O(h^4)$
   in every cell; on by default with `gravity-work: face` on Cartesian and spherical-polar grids.
-- Derivations: exists: `docs/derivations/curved-gravity-work-weight.md@dae902b04d217a824634762dd4e07790a12add5e`
+- Derivations: exists: `docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0`
   §§1-4 (face form and error expansion), §§7-8 (the corrected potential and the weights), §10 (the implicit
   operator) and §11 (onset); re-written in the report with checks C1-C11
   (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass). Two carry-overs from §11 are open
@@ -2095,17 +2095,17 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Derivations:
   - Face work in the operator (#283) and its consistency with mass transport (#285): exists:
     sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md §3.7, §§5.2, 5.5; sources/gh__PR_BODIES_265-284.md,
-    gh__PR_BODIES_285-293.md (results only) → re-derive the rows from `src/implicit/vic_assemble_full_impl.h:101-120@dae902b`
-    and `src/implicit/vic_assemble_partial_impl.h@dae902b`.
-  - Projection and clamp work: re-derive from `src/implicit/implicit_hydro.cpp:382-414@dae902b`.
-  - The face-wallc post-solve swap: re-derive from `src/implicit/implicit_hydro.cpp:419-444@dae902b`.
+    gh__PR_BODIES_285-293.md (results only) → re-derive the rows from `src/implicit/vic_assemble_full_impl.h:101-120@e894700`
+    and `src/implicit/vic_assemble_partial_impl.h@e894700`.
+  - Projection and clamp work: re-derive from `src/implicit/implicit_hydro.cpp:382-414@e894700`.
+  - The face-wallc post-solve swap: re-derive from `src/implicit/implicit_hydro.cpp:419-444@e894700`.
 - Figures:
   - The block row of cell $i$ with the energy-row entries the face work adds (mass column via $\mathsf A^\pm$ rows,
     momentum column), Cartesian vs curved variant.
   - Raw, projected, clamped face masses and the work each books.
-- Code: `src/implicit/implicit_hydro.cpp:239-242@dae902b` (weights); `:265-277@dae902b` (flags `kVicFaceWork`,
-  `kVicCartesianFaceWork`, `kVicDiffusiveCell`); `src/implicit/vic_assemble_full_impl.h:38-40, 101-120@dae902b`;
-  `src/implicit/implicit_hydro.cpp:382-414@dae902b`; `:419-444@dae902b`; `src/hydro/hydro.cpp:286-290@dae902b`.
+- Code: `src/implicit/implicit_hydro.cpp:239-242@e894700` (weights); `:265-277@e894700` (flags `kVicFaceWork`,
+  `kVicCartesianFaceWork`, `kVicDiffusiveCell`); `src/implicit/vic_assemble_full_impl.h:38-40, 101-120@e894700`;
+  `src/implicit/implicit_hydro.cpp:382-414@e894700`; `:419-444@e894700`; `src/hydro/hydro.cpp:305-309@e894700`.
 - Tests: `tests/test_implicit_face_work_operator.py` (rest columns at Courant 197/657, full and partial VIC; energy
   oracles), `tests/test_implicit_stratified_solid.py` (clamp energy, solids), `tests/test_implicit_gravity_tall_column.py`.
 - Limits / known issues: chapter 7's VIC limits (reflecting closure whatever the $x_1$ boundary); the face-work rows
@@ -2125,7 +2125,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
   sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md §4 (re-check; its numbers lack deck/sha, ISSUES.md item 2).
 - Figures: the table as a matrix figure (form × invariant × explicit/implicit), and one drift plot of all three forms
   on one deck from a committed run.
-- Code: `src/mesh/meshblock.cpp:1045-1057@dae902b` (`pe=`), `:1109-1110@dae902b` (`fixgrav=`).
+- Code: `src/mesh/meshblock.cpp:1045-1057@e894700` (`pe=`), `:1109-1110@e894700` (`fixgrav=`).
 - Tests: the union of 6.1-6.5's tests; the oracle per test (which invariant it measures) listed.
 - Limits / known issues: the physically "right" form for low-Mach convection is the open question of the draft §§6-7
   (T1L onset); with the wall closure and D the remaining onset error is shared by face and cell (placeholder table in
@@ -2569,7 +2569,7 @@ Recommendations on structure:
   sweep writes NaN into δ for the whole column (`vic_fail_column`). The host treats any non-finite δ as a rejected
   column. Switch: none (the tolerance is a compile-time formula).
 - Derivations:
-  - exists: `docs/derivations/290-lu-pivot-tolerance.md@dae902b` (same as `sources/deriv__290-lu-pivot-tolerance.md`
+  - exists: `docs/derivations/290-lu-pivot-tolerance.md@e894700` (same as `sources/deriv__290-lu-pivot-tolerance.md`
     up to wording). It derives the γ_{2N} ≈ N·ε accumulation scale and the factor 8 guard band, shows scale invariance,
     and tabulates the thresholds (float 2.86e-6/4.77e-6; double 5.33e-15/8.88e-15). The note says it is a guard, not a
     condition-number bound.
@@ -3032,9 +3032,9 @@ Recommendations on structure:
 
 - Summary: covered in Ch 7 (`floor_hit`). Here, document only that it is the only detector of density or pressure
   collapse when the limiter floors the state. Its 1.001 factor means "at or within 0.1% of the floor".
-- Derivations: none needed (a threshold test); state the 1.001 band from `src/mesh/meshblock.cpp:1190-1204@dae902b`.
+- Derivations: none needed (a threshold test); state the 1.001 band from `src/mesh/meshblock.cpp:1190-1204@e894700`.
 - Figures: a density profile entering the band [floor, 1.001 floor] and the redo it triggers.
-- Code: `src/mesh/meshblock.cpp:1190-1204@dae902b`.
+- Code: `src/mesh/meshblock.cpp:1190-1204@e894700`.
 - Tests: `tests/test_check_redo_floor.py` (`test_check_redo_floor_python`).
 - Limits / known issues: the floor can mask a defect if the floors exceed the physical regime. Above about 120 levels
   the floors must match the density regime (tall-column report §7).
@@ -3218,7 +3218,7 @@ Merge/split recommendation:
   `nu_scale_x1: {x1: [...], scale: [...]}`, `kappa_scale_x1`; Python `nu_scale_x1[_table]`, `kappa_scale_x1[_table]`;
   refused with `dynamic: true`.
 - Derivations:
-  - Product of means vs mean of products; second-order spurious tendency of the former on a constant dynamic coefficient. exists: `docs/derivations/diffusion-face-coefficient.md@dae902b` (with `docs/derivations/diffusion_face_coefficient.py`). The copy `sources/deriv__diffusion-face-coefficient.md` is the older `4d3b4d7` version, which lacks the x2/x3 bitwise clause.
+  - Product of means vs mean of products; second-order spurious tendency of the former on a constant dynamic coefficient. exists: `docs/derivations/diffusion-face-coefficient.md@e894700` (with `docs/derivations/diffusion_face_coefficient.py`). The copy `sources/deriv__diffusion-face-coefficient.md` is the older `4d3b4d7` version, which lacks the x2/x3 bitwise clause.
 - Figures:
   - Covariance term `-(1/4) Δs Δq` on a stratified column; tendency profile with PM vs MP.
   - Table → cell-centre interpolation with ghosts, for two different x1 splits.
@@ -3902,7 +3902,7 @@ Recommendations on structure:
   `SNAP_WB_REF4` (default 0, `src/hydro/wb_ref4.cpp:87`); env `SNAP_X1_MASS_COVARIANCE` (default 0,
   `hydro_forward.cpp:41`); env `SNAP_X1_CENTROID_EXACT` (default 0, `src/coord/x1_centroid.cpp:96`).
 - Derivations:
-  - The wall-ghost order of the default reference: exists: `docs/derivations/wb-ref-wall.md@dae902b` (also
+  - The wall-ghost order of the default reference: exists: `docs/derivations/wb-ref-wall.md@e894700` (also
     `sources/deriv__wb-ref4.md` for the REF4 variant). The WB chapter owns them; cite them here.
   - Even-parity perturbation ghosts give zero flux residual at rest: re-derive from `hydro_forward.cpp:305-321`.
 - Figures: the bottom wall with p_ref and ρ_ref continued past the wall (clamp) versus a repeated wall cell, with the
@@ -3964,28 +3964,28 @@ not be scattered across Chapters 4-6.
 
 | Name | Default | Set at | Effect / reader | Couplings |
 |---|---|---|---|---|
-| `BUILD_TESTS` | ON | `CMakeLists.txt:7@dae902b` | `add_subdirectory(tests)` at `CMakeLists.txt:149-153@dae902b` | none |
-| `FULL_TESTS` | OFF | `CMakeLists.txt:8@dae902b` | adds `test_shallow_xy`, `test_shallow_splash` reference tests (`tests/CMakeLists.txt:365-368@dae902b`), the decomp matrix `test_shallow_splash_decomp`, `test_shallow_xy_decomp`, `test_shallow_splash_ucx_cuda_decomp` (`tests/CMakeLists.txt:458-510@dae902b`) and, on Apple, `test_exchange_decomp` (`tests/CMakeLists.txt:440@dae902b`) | CI sets ON for non-PR Linux runs (`.github/workflows/ci.yml:87@dae902b`) |
-| `BUILD_EXAMPLES` | OFF | `CMakeLists.txt:9@dae902b` | **dead**: the guard is commented out and `add_subdirectory(examples)` is unconditional (`CMakeLists.txt:155-158@dae902b`) | example tests need `bin/straka.<b>` etc., so examples are always built |
-| `CUDA` | OFF | `CMakeLists.txt:10@dae902b` | `enable_language(CUDA)` (`:26-28`), CUDA arch list (`:109-143`), `CUDA_OPTION` -> `USE_CUDA` (`cmake/parameters.cmake:6-10@dae902b`); requires commux CUDA sidecar (`src/CMakeLists.txt:93-104@dae902b`) | not CUDA => every ctest whose name contains `cuda` or whose labels are `cuda`/`gpu` is DISABLED and every test gets `SNAPY_BUILD_CUDA=0` (`tests/CMakeLists.txt:514-533@dae902b`) |
-| `NETCDF` | ON | `CMakeLists.txt:11@dae902b` | `NETCDF_OPTION` -> `NETCDFOUTPUT` and `find_package(NetCDF REQUIRED)` (`cmake/parameters.cmake:20-25@dae902b`) | none |
-| `UCX` | ON (Linux), OFF (Apple) | `CMakeLists.txt:13,16@dae902b` | `UCX_OPTION` -> `USE_UCX` (`cmake/parameters.cmake:13-17@dae902b`); `cmake/ucx.cmake:1-73@dae902b` needs Python `commux` and sets `UCX_FOUND` | `UCX_FOUND` gates `test_exchange_ucx`, `test_sedimentation_cubed_seam_gloo`, `test_parentless_cloud_nb1_mp_gloo` (`tests/CMakeLists.txt:129,142,151@dae902b`) |
-| `PNETCDF` | ON (Linux), OFF (Apple) | `CMakeLists.txt:14,17@dae902b` | `PNETCDFOUTPUT`; needs Python `pinc` (`cmake/parameters.cmake:28-46@dae902b`) | `run_straka.cmake`/`run_shallow_splash.cmake` rewrite `type: pnetcdf` to `netcdf` when `NO_PNETCDFOUTPUT` (`tests/run_straka.cmake:26-29@dae902b`) |
-| `NMASS` | 0 | `cmake/parameters.cmake:3@dae902b` (`set_if_empty`) | `configure.h.in:19@dae902b`; Athena++ legacy index layout in `src/snap.h:8-27@dae902b` | **effectively dead**: `static_assert(ICY == IPR + 1)` at `src/snap.h:52@dae902b` refuses NMASS>0, so the check at `src/eos/equation_of_state.cpp:89@dae902b` is unreachable |
-| `CMAKE_BUILD_TYPE` | Release | `CMakeLists.txt:61-63@dae902b` | flags in `cmake/compilers.cmake:15-35@dae902b` (Release `-O3 ...`; Debug `-g3 -fsanitize=address,undefined` for GNU/Clang) | ctest names carry `buildl`; the example runners hard-code `-Dbuildl=release` (`tests/CMakeLists.txt:371@dae902b`) |
-| `SNAPY_TEST_PYTHONPATH` | "" (cache PATH) | `tests/CMakeLists.txt:347-348@dae902b` | prepended to PYTHONPATH of every `*_python` ctest (`:350-355`); unset => warning that python ctests test the installed snapy (`:357-359`) | `test_python_import_path_python` checks the wiring (`tests/CMakeLists.txt:315-323@dae902b`) |
-| `KINTERA_DATA_DIR` | undefined | `tests/CMakeLists.txt:333-337@dae902b` | symlinks `nasa9.dat` into the test dir | none |
-| `EIGEN`, `FMT`, `GTEST`, `YAML-CPP` | ON | `cmake/macros/macro_add_package.cmake:10@dae902b` via `cmake/{eigen,fmt,gtest,yamlpp}.cmake` | FetchContent with a tarball cache under `.cache/` | none |
-| CUDA arch list | 60 61 70 75 80 86 89 (+90 for >=12.0, +120 for >=12.8, minus 60/61/70 for >=13.0) | `CMakeLists.txt:119-142@dae902b` | `CMAKE_CUDA_ARCHITECTURES` | none |
+| `BUILD_TESTS` | ON | `CMakeLists.txt:7@e894700` | `add_subdirectory(tests)` at `CMakeLists.txt:149-153@e894700` | none |
+| `FULL_TESTS` | OFF | `CMakeLists.txt:8@e894700` | adds `test_shallow_xy`, `test_shallow_splash` reference tests (`tests/CMakeLists.txt:368-371@e894700`), the decomp matrix `test_shallow_splash_decomp`, `test_shallow_xy_decomp`, `test_shallow_splash_ucx_cuda_decomp` (`tests/CMakeLists.txt:461-513@e894700`) and, on Apple, `test_exchange_decomp` (`tests/CMakeLists.txt:443@e894700`) | CI sets ON for non-PR Linux runs (`.github/workflows/ci.yml:87@e894700`) |
+| `BUILD_EXAMPLES` | OFF | `CMakeLists.txt:9@e894700` | **dead**: the guard is commented out and `add_subdirectory(examples)` is unconditional (`CMakeLists.txt:155-158@e894700`) | example tests need `bin/straka.<b>` etc., so examples are always built |
+| `CUDA` | OFF | `CMakeLists.txt:10@e894700` | `enable_language(CUDA)` (`:26-28`), CUDA arch list (`:109-143`), `CUDA_OPTION` -> `USE_CUDA` (`cmake/parameters.cmake:6-10@e894700`); requires commux CUDA sidecar (`src/CMakeLists.txt:93-104@e894700`) | not CUDA => every ctest whose name contains `cuda` or whose labels are `cuda`/`gpu` is DISABLED and every test gets `SNAPY_BUILD_CUDA=0` (`tests/CMakeLists.txt:517-536@e894700`) |
+| `NETCDF` | ON | `CMakeLists.txt:11@e894700` | `NETCDF_OPTION` -> `NETCDFOUTPUT` and `find_package(NetCDF REQUIRED)` (`cmake/parameters.cmake:20-25@e894700`) | none |
+| `UCX` | ON (Linux), OFF (Apple) | `CMakeLists.txt:13,16@e894700` | `UCX_OPTION` -> `USE_UCX` (`cmake/parameters.cmake:13-17@e894700`); `cmake/ucx.cmake:1-73@e894700` needs Python `commux` and sets `UCX_FOUND` | `UCX_FOUND` gates `test_exchange_ucx`, `test_sedimentation_cubed_seam_gloo`, `test_parentless_cloud_nb1_mp_gloo` (`tests/CMakeLists.txt:132,145,154@e894700`) |
+| `PNETCDF` | ON (Linux), OFF (Apple) | `CMakeLists.txt:14,17@e894700` | `PNETCDFOUTPUT`; needs Python `pinc` (`cmake/parameters.cmake:28-46@e894700`) | `run_straka.cmake`/`run_shallow_splash.cmake` rewrite `type: pnetcdf` to `netcdf` when `NO_PNETCDFOUTPUT` (`tests/run_straka.cmake:26-29@e894700`) |
+| `NMASS` | 0 | `cmake/parameters.cmake:3@e894700` (`set_if_empty`) | `configure.h.in:19@e894700`; Athena++ legacy index layout in `src/snap.h:8-27@e894700` | **effectively dead**: `static_assert(ICY == IPR + 1)` at `src/snap.h:52@e894700` refuses NMASS>0, so the check at `src/eos/equation_of_state.cpp:89@e894700` is unreachable |
+| `CMAKE_BUILD_TYPE` | Release | `CMakeLists.txt:61-63@e894700` | flags in `cmake/compilers.cmake:15-35@e894700` (Release `-O3 ...`; Debug `-g3 -fsanitize=address,undefined` for GNU/Clang) | ctest names carry `buildl`; the example runners hard-code `-Dbuildl=release` (`tests/CMakeLists.txt:374@e894700`) |
+| `SNAPY_TEST_PYTHONPATH` | "" (cache PATH) | `tests/CMakeLists.txt:350-351@e894700` | prepended to PYTHONPATH of every `*_python` ctest (`:350-355`); unset => warning that python ctests test the installed snapy (`:357-359`) | `test_python_import_path_python` checks the wiring (`tests/CMakeLists.txt:318-326@e894700`) |
+| `KINTERA_DATA_DIR` | undefined | `tests/CMakeLists.txt:336-340@e894700` | symlinks `nasa9.dat` into the test dir | none |
+| `EIGEN`, `FMT`, `GTEST`, `YAML-CPP` | ON | `cmake/macros/macro_add_package.cmake:10@e894700` via `cmake/{eigen,fmt,gtest,yamlpp}.cmake` | FetchContent with a tarball cache under `.cache/` | none |
+| CUDA arch list | 60 61 70 75 80 86 89 (+90 for >=12.0, +120 for >=12.8, minus 60/61/70 for >=13.0) | `CMakeLists.txt:119-142@e894700` | `CMAKE_CUDA_ARCHITECTURES` | none |
 
 - Derivations: none (configuration).
 - Figures: (1) a decision tree from `cmake -D...` to which ctest entries exist and which are disabled; (2) a table
   graphic of build flags -> `configure.h` macros -> the `#ifdef` sites.
 - Code: listed in the table.
 - Tests: `test_python_import_path_python` — `SNAPY_TEST_PYTHONPATH` is first in PYTHONPATH and the caller's entry
-  survives (`tests/test_python_import_path.py:16-21@dae902b`). No test covers `NMASS`, `BUILD_EXAMPLES` or `NETCDF=OFF`.
+  survives (`tests/test_python_import_path.py:16-21@e894700`). No test covers `NMASS`, `BUILD_EXAMPLES` or `NETCDF=OFF`.
 - Limits / known issues: `BUILD_EXAMPLES` has no effect. `NMASS>0` cannot compile. CI runs CPU only (`-DCUDA=OFF`,
-  `.github/workflows/ci.yml:84@dae902b`), so the CUDA entries run only on developer builds.
+  `.github/workflows/ci.yml:84@e894700`), so the CUDA entries run only on developer builds.
 - Discrepancies: none found in sources.
 
 
@@ -3994,21 +3994,21 @@ not be scattered across Chapters 4-6.
 
 | Macro | Values | Set from | Read at |
 |---|---|---|---|
-| `USE_C10D_GLOO` | always defined | `configure.h.in:4@dae902b` | no reader in `src/` (dead) |
-| `USE_UCX` / `NOT_USE_UCX` | UCX option | `configure.h.in:7@dae902b` | `default_backend()` returns `ucx` (non-Darwin) or `gloo` at `src/layout/layout.cpp:41-50@dae902b`; UCX process group `src/layout/process_group_ucx.cpp:3,22@dae902b`; stub that throws "built without UCX" at `src/layout/process_group.cpp:286-291@dae902b` |
-| `USE_CUDA` / `NOT_USE_CUDA` | CUDA option | `configure.h.in:10@dae902b` | `src/mesh/mesh.cpp:16@dae902b` (and 51, 75, 83, 104, 137, 161, 176, 203), `src/layout/layout.cpp:17,82,283@dae902b`; test gate `snapy_cuda_test_enabled()` at `tests/cuda_test_gate.hpp:9-15@dae902b` |
-| `NETCDFOUTPUT` / `NO_NETCDFOUTPUT` | NETCDF | `configure.h.in:13@dae902b` | `src/output/netcdf.cpp:26,43@dae902b`, `src/output/mppnccombine.cpp:55@dae902b`, `src/output/combine_netcdf.cpp:41@dae902b` |
-| `PNETCDFOUTPUT` / `NO_PNETCDFOUTPUT` | PNETCDF | `configure.h.in:16@dae902b` | `src/output/pnetcdf.cpp:3@dae902b`, `src/mesh/meshblock.cpp:211@dae902b` |
-| `NMASS` | 0 | `configure.h.in:19@dae902b` | `src/snap.h:8,52@dae902b` (see above) |
-| `DISPATCH_MACRO` | `__host__ __device__` under nvcc | `configure.h.in:21-25@dae902b` | kernels |
-| `KINTERA_ROOT_DIR`, `HARP_ROOT_DIR` | paths | `configure.h.in:27-28@dae902b` | no reader in `src/` |
-| `_GLIBCXX_USE_CXX11_ABI` | torch's ABI | `CMakeLists.txt:35-47@dae902b` | global compile definition |
-| `HAVE_AVX512_CPU_DEFINITION`, `HAVE_AVX2_CPU_DEFINITION` | 1 (non-Apple) | `cmake/compilers.cmake:12@dae902b` | torch headers |
-| `COMMUX_WITH_CUDA_RUNTIME` | 1 when CUDA | `src/CMakeLists.txt:104@dae902b` | commux headers |
+| `USE_C10D_GLOO` | always defined | `configure.h.in:4@e894700` | no reader in `src/` (dead) |
+| `USE_UCX` / `NOT_USE_UCX` | UCX option | `configure.h.in:7@e894700` | `default_backend()` returns `ucx` (non-Darwin) or `gloo` at `src/layout/layout.cpp:41-50@e894700`; UCX process group `src/layout/process_group_ucx.cpp:3,22@e894700`; stub that throws "built without UCX" at `src/layout/process_group.cpp:286-291@e894700` |
+| `USE_CUDA` / `NOT_USE_CUDA` | CUDA option | `configure.h.in:10@e894700` | `src/mesh/mesh.cpp:16@e894700` (and 51, 75, 83, 104, 137, 161, 176, 203), `src/layout/layout.cpp:17,82,283@e894700`; test gate `snapy_cuda_test_enabled()` at `tests/cuda_test_gate.hpp:9-15@e894700` |
+| `NETCDFOUTPUT` / `NO_NETCDFOUTPUT` | NETCDF | `configure.h.in:13@e894700` | `src/output/netcdf.cpp:26,43@e894700`, `src/output/mppnccombine.cpp:55@e894700`, `src/output/combine_netcdf.cpp:41@e894700` |
+| `PNETCDFOUTPUT` / `NO_PNETCDFOUTPUT` | PNETCDF | `configure.h.in:16@e894700` | `src/output/pnetcdf.cpp:3@e894700`, `src/mesh/meshblock.cpp:211@e894700` |
+| `NMASS` | 0 | `configure.h.in:19@e894700` | `src/snap.h:8,52@e894700` (see above) |
+| `DISPATCH_MACRO` | `__host__ __device__` under nvcc | `configure.h.in:21-25@e894700` | kernels |
+| `KINTERA_ROOT_DIR`, `HARP_ROOT_DIR` | paths | `configure.h.in:27-28@e894700` | no reader in `src/` |
+| `_GLIBCXX_USE_CXX11_ABI` | torch's ABI | `CMakeLists.txt:35-47@e894700` | global compile definition |
+| `HAVE_AVX512_CPU_DEFINITION`, `HAVE_AVX2_CPU_DEFINITION` | 1 (non-Apple) | `cmake/compilers.cmake:12@e894700` | torch headers |
+| `COMMUX_WITH_CUDA_RUNTIME` | 1 when CUDA | `src/CMakeLists.txt:104@e894700` | commux headers |
 - Derivations: none.
 - Figures: one box diagram from the CMake option to the macro to the reader file.
 - Tests: indirectly, `test_process_group` (`LayoutOptions.DefaultsToPlatformCommunicationBackend`,
-  `tests/test_process_group.cpp:74@dae902b`).
+  `tests/test_process_group.cpp:74@e894700`).
 - Limits: `USE_C10D_GLOO`, `KINTERA_ROOT_DIR`, `HARP_ROOT_DIR` are defined but unused.
 
 
@@ -4018,21 +4018,21 @@ not be scattered across Chapters 4-6.
 #### 12.3 environment helper `get_env` and the read-once rule
 <sub>inventory E: Scheme: environment helper `get_env` and the read-once rule</sub>
 
-- Summary: `get_env(name, def)` returns `getenv(name)` or `def` (`src/layout/layout.hpp:38@dae902b`). All five scheme
+- Summary: `get_env(name, def)` returns `getenv(name)` or `def` (`src/layout/layout.hpp:38@e894700`). All five scheme
   switches parse their value once per process into a function-local `static const bool`. Every block in a process
   must make the same choice, or the x1/x2/x3 seam faces stop being single-valued. Consequence: an A/B comparison
   needs one process per arm, so every python oracle spawns a child per arm.
 - Parsing rule (verified): `SNAP_FLUX_COVARIANCE`, `SNAP_WB_REF4`, `SNAP_X1_CENTROID_EXACT`, `SNAP_X1_MASS_COVARIANCE`
   are **off unless set**. Off means empty, `0`, `false`, `off` or `no` (case-insensitive); any other value is on.
   `SNAP_GRAVITY_WORK_RADIAL_EXACT` is **on unless** `0/false/off/no`. Note that an *empty* value turns it on, while it
-  turns the other four off (`src/hydro/hydro.cpp:226-229@dae902b` vs `:212-215`).
-- Code: `src/layout/layout.hpp:38@dae902b` (`get_env`); readers `src/hydro/hydro.cpp:208-232@dae902b`,
-  `src/hydro/wb_ref4.cpp:87@dae902b`, `src/coord/x1_centroid.cpp:96@dae902b`, `src/hydro/hydro_forward.cpp:41@dae902b`.
+  turns the other four off (`src/hydro/hydro.cpp:245-248@e894700` vs `:212-215`).
+- Code: `src/layout/layout.hpp:38@e894700` (`get_env`); readers `src/hydro/hydro.cpp:217-251@e894700`,
+  `src/hydro/wb_ref4.cpp:87@e894700`, `src/coord/x1_centroid.cpp:96@e894700`, `src/hydro/hydro_forward.cpp:41@dae902b`.
 - Derivations: none.
 - Figures: a timeline showing the switch read once at first call and frozen for the process, so each test arm runs in
   a child process.
-- Tests: every switch oracle (below) runs arms in child processes. Examples: `tests/test_wb_ref4_order.py:135-139@dae902b`,
-  `tests/test_gravity_work_radial_exact.py:346-349@dae902b`.
+- Tests: every switch oracle (below) runs arms in child processes. Examples: `tests/test_wb_ref4_order.py:135-139@e894700`,
+  `tests/test_gravity_work_radial_exact.py:346-349@e894700`.
 
 
 #### 12.4 `SNAP_WB_REF4` (fourth-order, cell/face-consistent x1 well-balanced reference)
@@ -4042,42 +4042,42 @@ not be scattered across Chapters 4-6.
   non-uniform x1 grid it also replaces the reference cell pressure. Switch: env `SNAP_WB_REF4`, default **off**.
 - Derivations:
   - fourth-order reference, filter rows, wall extrapolation, resolution flag: exists:
-    `docs/derivations/wb-ref4.md@dae902b` (also `sources/deriv__wb-ref4.md`; weights checked by
-    `docs/derivations/wb_ref4_weights.py@dae902b`).
-  - seam behaviour of the flag (needs nghost>=3): exists: `docs/derivations/wb-ref4.md@dae902b` sec 7 (cited in the
-    test header `tests/test_x1_seam_split.cpp:18-22@dae902b`).
+    `docs/derivations/wb-ref4.md@e894700` (also `sources/deriv__wb-ref4.md`; weights checked by
+    `docs/derivations/wb_ref4_weights.py@e894700`).
+  - seam behaviour of the flag (needs nghost>=3): exists: `docs/derivations/wb-ref4.md@e894700` sec 7 (cited in the
+    test header `tests/test_x1_seam_split.cpp:18-22@e894700`).
 - Figures: (1) the 5-point filter stencil F = (-1,4,10,4,-1)/16 with the cubic wall extrapolation E past a clamped wall;
   (2) the resolution flag reading scan pressures three cells away across an x1 seam, with the ghost depth marked.
 - Code:
-  - `src/hydro/wb_ref4.cpp:83-95@dae902b` — `wb_ref4_enabled()` — reads the env var once; returns
+  - `src/hydro/wb_ref4.cpp:83-95@e894700` — `wb_ref4_enabled()` — reads the env var once; returns
     `on || x1_centroid_exact_enabled()` (the implication).
-  - `src/hydro/hydro.cpp:220@dae902b` — `HydroImpl::wb_ref4()` — forwards to it.
-  - `src/hydro/hydro.cpp:96-103@dae902b` — `HydroImpl::reset()` — `TORCH_CHECK(ng >= 3)` when on and grav1 != 0:
+  - `src/hydro/hydro.cpp:229@e894700` — `HydroImpl::wb_ref4()` — forwards to it.
+  - `src/hydro/hydro.cpp:96-103@e894700` — `HydroImpl::reset()` — `TORCH_CHECK(ng >= 3)` when on and grav1 != 0:
     "SNAP_WB_REF4 (or SNAP_X1_CENTROID_EXACT, which implies it) needs nghost >= 3".
-  - `src/hydro/hydro.cpp:547-556@dae902b` — `HydroImpl::_hydro_ref_x1` — builds `wb_ref4_stencils` and applies
-    `wb_ref4_cells` before the seam exchange; `src/hydro/hydro.cpp:626@dae902b` — `wb_ref4_faces` after it.
-  - `src/hydro/wb_ref4.cpp:97@dae902b` — `wb_ref4_stencils` (usable iff >=4 owned cells next to a clamped wall and nc1>=5,
+  - `src/hydro/hydro.cpp:566-575@e894700` — `HydroImpl::_hydro_ref_x1` — builds `wb_ref4_stencils` and applies
+    `wb_ref4_cells` before the seam exchange; `src/hydro/hydro.cpp:645@e894700` — `wb_ref4_faces` after it.
+  - `src/hydro/wb_ref4.cpp:97@e894700` — `wb_ref4_stencils` (usable iff >=4 owned cells next to a clamped wall and nc1>=5,
     `:114`); `:233` `wb_ref4_cells`; `:276` `wb_ref4_faces`.
-  - `src/hydro/balance_column.cpp:73-79,90@dae902b` — `balance_column` — on a non-uniform grid finds the fixed point of
+  - `src/hydro/balance_column.cpp:73-79,90@e894700` — `balance_column` — on a non-uniform grid finds the fixed point of
     the switched reference.
 - Couplings: implied by `SNAP_X1_CENTROID_EXACT`. Needs `geometry/cells/nghost >= 3` whenever grav1 != 0, which is a
   setup error otherwise. With grav1 = 0 no reference is built and nghost 1 is accepted. The wall closure uses
-  `dynamics/wb-wall-clamp` (the `clamp && phys_in` arguments, `src/hydro/hydro.cpp:550-553@dae902b`).
+  `dynamics/wb-wall-clamp` (the `clamp && phys_in` arguments, `src/hydro/hydro.cpp:569-572@e894700`).
 - Tests:
   - `tests/test_wb_ref4_order.py` (`test_wb_ref4_order_python`, `_cuda_python`) — arms unset / `1`, both with
     `SNAP_FLUX_COVARIANCE=1` and `gravity-work: face`, so radial-exact is on by default; the observed order of
     |N2_eff| is >= `ORDER_ON = 2.75` with the switch on and below `ORDER_OFF = 2.5` with it off
-    (`tests/test_wb_ref4_order.py:38-39@dae902b`), at 1 and 3 e-folds, nz 32/64/128.
+    (`tests/test_wb_ref4_order.py:38-39@e894700`), at 1 and 3 e-folds, nz 32/64/128.
   - `test_balance_column_wb_ref4.<b>`, `test_face_floor_wb_ref4.<b>` — the same binaries with `SNAP_WB_REF4=1`
-    (`tests/CMakeLists.txt:93-96@dae902b`). The balance-column fixed point stays at round-off (1e-14). The face-floor
-    dipped-face flux stays at 2.83191e-8 +- 1e-5 relative in every arm (`tests/test_face_floor.cpp:107@dae902b`).
+    (`tests/CMakeLists.txt:96-99@e894700`). The balance-column fixed point stays at round-off (1e-14). The face-floor
+    dipped-face flux stays at 2.83191e-8 +- 1e-5 relative in every arm (`tests/test_face_floor.cpp:107@e894700`).
   - `test_x1_seam_split_wb_ref4.<b>` — a cold column whose flag switches on above the seam: the 2-block state equals
     the 1-block state to 1e-13 after 20 steps, and nghost 1 and 2 are refused with "needs nghost >= 3"
-    (`tests/test_x1_seam_split.cpp:263-287@dae902b`).
+    (`tests/test_x1_seam_split.cpp:263-287@e894700`).
   - `test_x1_seam_split_wb_ref4_gravity_0.<b>` — grav1 = 0 on nghost 1 sets up and steps 5 times finite
-    (`tests/test_x1_seam_split.cpp:329-345@dae902b`).
+    (`tests/test_x1_seam_split.cpp:345-361@e894700`).
   - `test_x1_seam_split_mp_wb_ref4` — the split across 2 ranks equals 2 blocks in one process and equals 1 block, to 1e-13
-    (`tests/test_x1_seam_split_mp.cpp:286-297@dae902b`); CUDA arm `test_x1_seam_split_wb_ref4_cuda.<b>`.
+    (`tests/test_x1_seam_split_mp.cpp:286-297@e894700`); CUDA arm `test_x1_seam_split_wb_ref4_cuda.<b>`.
 - Limits / known issues: no test runs it on a gnomonic-equiangle (cubed-sphere) grid. ISSUES.md item 3: the spec
   numbers rest on commit c5b810d and must be re-measured with `test_wb_ref4_order.py` at dae902b.
 - Discrepancies: `sources/gw__NEXTPR_spec_wbref_exact.md:286` says CUDA and multi-process x1 seams were not run with
@@ -4090,36 +4090,36 @@ not be scattered across Chapters 4-6.
 - Summary: on spherical-polar grids the x1 reconstruction, the hydrostatic scan and the reference read plain means
   converted from the r^2 cell averages. The radial pressure force becomes the r^2 average of the gradient (a quintic
   through six faces). Switch: env `SNAP_X1_CENTROID_EXACT`, default **off**.
-- Derivations: exists: `docs/derivations/x1-centroid-spherical.md@dae902b` (and `sources/deriv__x1-centroid-spherical.md`;
-  checked by `docs/derivations/verify_x1_centroid.py@dae902b`).
+- Derivations: exists: `docs/derivations/x1-centroid-spherical.md@e894700` (and `sources/deriv__x1-centroid-spherical.md`;
+  checked by `docs/derivations/verify_x1_centroid.py@e894700`).
 - Figures: (1) a five-cell window converting r^2 means to plain means, mirrored past a clamped wall; (2) the six-face
   quintic p~ for the radial pressure source, with two faces past the seam taken from the neighbour.
 - Code:
-  - `src/coord/x1_centroid.cpp:92-101@dae902b` — `x1_centroid_exact_enabled()` — read once.
-  - `src/coord/x1_centroid.cpp:104,117@dae902b` — `x1_plain_mean_stencils` (usable iff >=5 cells and enough owned cells
+  - `src/coord/x1_centroid.cpp:92-101@e894700` — `x1_centroid_exact_enabled()` — read once.
+  - `src/coord/x1_centroid.cpp:104,117@e894700` — `x1_plain_mean_stencils` (usable iff >=5 cells and enough owned cells
     for the mirrored ghosts); `:157` `x1_plain_means`; `:184,191` `x1_pressure_source_stencils` (usable iff >=6 faces);
     `:224` `x1_pressure_source`.
-  - `src/hydro/hydro_forward.cpp:280-296@dae902b` — `HydroImpl::forward` — when spherical-polar, `wx1` holds plain means
+  - `src/hydro/hydro_forward.cpp:271-287@e894700` — `HydroImpl::forward` — when spherical-polar, `wx1` holds plain means
     and the seam ghosts come from `_x1_ghost_rows` (tag 0x7724).
-  - `src/hydro/hydro_forward.cpp:524-547@dae902b` — the hydrostatic-split correction (non-hydrostatic < 1) uses the same
+  - `src/hydro/hydro_forward.cpp:515-538@e894700` — the hydrostatic-split correction (non-hydrostatic < 1) uses the same
     r^2 pressure operator.
-  - `src/coord/spherical_polar.cpp:252-264@dae902b` — `SphericalPolarImpl::forward` — the radial source with face pressures.
-  - `src/hydro/hydro.cpp:251@dae902b` — `HydroImpl::_x1_ghost_rows` — the seam exchange of the switched rows.
-  - `src/hydro/wb_ref4.cpp:94@dae902b` — implies `SNAP_WB_REF4`.
-  - `src/hydro/balance_column.cpp:35-40@dae902b` — under the switch, `balance_column` refuses any geometry but
+  - `src/coord/spherical_polar.cpp:252-264@e894700` — `SphericalPolarImpl::forward` — the radial source with face pressures.
+  - `src/hydro/hydro.cpp:270@e894700` — `HydroImpl::_x1_ghost_rows` — the seam exchange of the switched rows.
+  - `src/hydro/wb_ref4.cpp:94@e894700` — implies `SNAP_WB_REF4`.
+  - `src/hydro/balance_column.cpp:35-40@e894700` — under the switch, `balance_column` refuses any geometry but
     `cartesian`.
-- Couplings: implies `SNAP_WB_REF4`, so it inherits the nghost >= 3 setup check (`src/hydro/hydro.cpp:96-103@dae902b`).
+- Couplings: implies `SNAP_WB_REF4`, so it inherits the nghost >= 3 setup check (`src/hydro/hydro.cpp:96-103@e894700`).
   On Cartesian grids it changes nothing beyond that implication. `balance_column` must be called with
   `geometry='cartesian'`.
 - Tests:
   - `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`, `_cuda_python`) — r0 = 5 and 1000, nz 32, implicit 0
     and 1, non-hydrostatic 1 and 0. The force imbalance must be < `TOL_ON = 1e-10` with the switch on, and > `TOL_OFF = 1e-8`
-    at r0 = 5 with it off (`tests/test_x1_centroid_rest.py:40-41@dae902b`).
+    at r0 = 5 with it off (`tests/test_x1_centroid_rest.py:40-41@e894700`).
   - `test_balance_column_x1_centroid.<b>` — the predicate implication `wb_ref4_enabled() == (g || w)`
-    (`tests/test_balance_column.cpp:353-358@dae902b`); a non-cartesian column is refused (`:363-375,516-524`).
+    (`tests/test_balance_column.cpp:353-358@e894700`); a non-cartesian column is refused (`:363-375,516-524`).
   - `test_face_floor_x1_centroid.<b>` — the same pinned flux as the plain arm.
   - `test_x1_seam_split_x1_centroid.<b>` (+`_cuda`) — 2-block vs 1-block gap <= 1e-13 after 20 steps, nh 1 and 0
-    (`tests/test_x1_seam_split.cpp:232-245@dae902b`).
+    (`tests/test_x1_seam_split.cpp:232-245@e894700`).
   - `test_x1_seam_split_mp_x1_centroid` — across 2 ranks <= 1e-13 against 2 blocks and against 1 block.
 - Limits: not defined for gnomonic-equiangle. `balance_column` cannot balance a spherical column under the switch.
   Coverage of its combination with `gravity-work: face` and radial-exact is missing (see matrix).
@@ -4131,28 +4131,28 @@ not be scattered across Chapters 4-6.
 - Summary: adds sigma1^2 covariance terms and the centroid offset -(r_v - r_c) d1F to the x2/x3 face fluxes, for all rows
   (tracer, dry mass, energy). It mirrors p* = p - delta d1 p in the lateral geometric source, gated per direction.
   Switch: env `SNAP_FLUX_COVARIANCE`, default **off**.
-- Derivations: exists: `docs/derivations/289-covariance-x3-curved.md@dae902b` (and `sources/deriv__289-covariance-x3-curved.md`,
+- Derivations: exists: `docs/derivations/289-covariance-x3-curved.md@e894700` (and `sources/deriv__289-covariance-x3-curved.md`,
   `sources/study__289-allrows_derivation.md`, `sources/deriv__issue289_moist_covariance_verifier.md`;
-  `docs/derivations/allrows_quadrature.py`, `verify_centroid_term.py`, `verify_exact_curved.py@dae902b`).
+  `docs/derivations/allrows_quadrature.py`, `verify_centroid_term.py`, `verify_exact_curved.py@e894700`).
 - Figures: (1) an x2 face with the x1 extent of its area measure, marking r_c (face centroid) and r_v (cell centroid);
   (2) the per-direction gating: x2 source with p*, x3 source plain when the x3 flux is off.
 - Code:
-  - `src/hydro/hydro.cpp:208-218@dae902b` — `HydroImpl::flux_covariance()` — read once.
-  - `src/hydro/hydro_forward.cpp:63@dae902b` — `HydroImpl::_flux_covariance` — the term.
-  - `src/hydro/hydro_forward.cpp:608-613,631-636@dae902b` — added to `_flux2`/`_flux3`.
-  - `src/hydro/hydro_forward.cpp:733-754@dae902b` — the p* geometric source with per-direction gating.
+  - `src/hydro/hydro.cpp:217-227@e894700` — `HydroImpl::flux_covariance()` — read once.
+  - `src/hydro/hydro_forward.cpp:54@e894700` — `HydroImpl::_flux_covariance` — the term.
+  - `src/hydro/hydro_forward.cpp:599-604,622-627@e894700` — added to `_flux2`/`_flux3`.
+  - `src/hydro/hydro_forward.cpp:724-745@e894700` — the p* geometric source with per-direction gating.
 - Couplings: none at setup. It acts on x2/x3 faces whatever the grid (Cartesian, spherical-polar, gnomonic).
   `test_wb_ref4_order.py` uses it as part of the WB_REF4 oracle.
 - Tests:
   - `tests/test_horizontal_flux_covariance.py` (`test_horizontal_flux_covariance_python`, ctest env
     `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`) — arms unset/0/1. Off: eps_eff nz^2 in [-0.32,-0.20]. On: |eps_eff nz^2| < 0.04.
-    Unset == 0 bitwise. E+PE closes to `EPE_TOL = 1e-12` over `NSTEP = 50` (`tests/test_horizontal_flux_covariance.py:38-40@dae902b`).
+    Unset == 0 bitwise. E+PE closes to `EPE_TOL = 1e-12` over `NSTEP = 50` (`tests/test_horizontal_flux_covariance.py:38-40@e894700`).
   - `tests/test_flux_covariance_rows.py` (`test_flux_covariance_rows_python`, env radial=0) — rest `REST_TOL 1e-9`,
     uniform tracer `1e-13`, offset invariance `1e-10`, dry Cartesian limit within `CART_TOL 2e-3`
-    (`tests/test_flux_covariance_rows.py:33-39@dae902b`).
+    (`tests/test_flux_covariance_rows.py:33-39@e894700`).
   - `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`) — six panels with closed walls; drift of
     each total <= `DRIFT_TOL 1e-12` over 10 steps; the gated rest case <= 1e-9; the on/off difference must exceed
-    `DIFF_TOL 1e-13` (`tests/test_flux_covariance_seams.py:33-36@dae902b`).
+    `DIFF_TOL 1e-13` (`tests/test_flux_covariance_seams.py:33-36@e894700`).
   - `test_wb_ref4_order_python` (on in both arms).
 - Limits: study switch, off by default. The covariance seam test is single-process; no MPI run with the term on.
 
@@ -4162,12 +4162,12 @@ not be scattered across Chapters 4-6.
 
 - Summary: subtracts dz^2/12 rho_1 w_1 / rho from the velocity handed to the x1 reconstruction, with a one-sided rho_1
   at reflecting walls and an odd-mirror ghost refill. Switch: env `SNAP_X1_MASS_COVARIANCE`, default **off**.
-- Derivations: summary-level only in `docs/derivations/curved-gravity-work-weight.md@dae902b` sec 11.4 (the expansion
-  is stated; its "ONSET PLACEHOLDER" is unfilled). Re-derive from `src/hydro/hydro_forward.cpp:324-352@dae902b` with an
+- Derivations: summary-level only in `docs/derivations/curved-gravity-work-weight.md@e894700` sec 11.4 (the expansion
+  is stated; its "ONSET PLACEHOLDER" is unfilled). Re-derive from `src/hydro/hydro_forward.cpp:315-343@e894700` with an
   executable check.
 - Figures: a stratified cell showing m1/rho vs the cell average of w, and the dz^2/12 rho_z w_z face mass excess.
 - Code: `src/hydro/hydro_forward.cpp:39-48@dae902b` — static `x1_mass_covariance()` — read once;
-  `src/hydro/hydro_forward.cpp:324-352@dae902b` — applied inside the well-balanced x1 branch (`wb_x1`, `:271`:
+  `src/hydro/hydro_forward.cpp:315-343@e894700` — applied inside the well-balanced x1 branch (`wb_x1`, `:271`:
   grav1 != 0, IPR present, EOS not shallow-water); velocity restored after reconstruction (`:361`).
 - Couplings: acts only when the well-balanced x1 path is active.
 - Tests: **none** (not referenced in `tests/` or `tests/CMakeLists.txt`).
@@ -4180,47 +4180,47 @@ not be scattered across Chapters 4-6.
 - Summary: with `gravity-work: face`, adds g1 sigma^2 s[drho] to each cell's x1 gravity work so that E + P is conserved,
   where P = sum V[rho phi(x1v) - g1 sigma^2 s[rho]]. It is also booked inside the VIC operator and logged as `pe=`.
   Switch: env `SNAP_GRAVITY_WORK_RADIAL_EXACT`, default **on** (acts only with `gravity-work: face`).
-- Derivations: exists: `docs/derivations/curved-gravity-work-weight.md@dae902b` secs 7-8 (option F), 10 (every PE site),
-  11.2 (why default on); checked by `docs/derivations/curved_gravity_work_weight.py`, `optionF_replica.py@dae902b`.
+- Derivations: exists: `docs/derivations/curved-gravity-work-weight.md@e894700` secs 7-8 (option F), 10 (every PE site),
+  11.2 (why default on); checked by `docs/derivations/curved_gravity_work_weight.py`, `optionF_replica.py@e894700`.
   Older copy in `sources/deriv__curved-gravity-work-weight.md` (from 6499404, lacks the seam-limit paragraph).
 - Figures: (1) a cell with sigma^2 = <(x1-x1v)^2> and the 3-point slope stencil, one-sided at block ends; (2) the
   booking split between the implicit matrix row and the post-solve term.
 - Code:
-  - `src/hydro/hydro.cpp:222-232@dae902b` — `HydroImpl::gravity_work_radial_exact()` — read once.
-  - `src/hydro/hydro.cpp:234-240@dae902b` — `radial_exact_work()` — on, grav1 != 0, `gravity-work: face`, grid
+  - `src/hydro/hydro.cpp:241-251@e894700` — `HydroImpl::gravity_work_radial_exact()` — read once.
+  - `src/hydro/hydro.cpp:253-259@e894700` — `radial_exact_work()` — on, grav1 != 0, `gravity-work: face`, grid
     `cartesian` or `spherical-polar`.
-  - `src/hydro/hydro.cpp:83-92@dae902b` — `reset()` — `TORCH_WARN_ONCE` for other grids ("has no form on a '...' grid: the
+  - `src/hydro/hydro.cpp:83-92@e894700` — `reset()` — `TORCH_WARN_ONCE` for other grids ("has no form on a '...' grid: the
     x1 wall cells keep the first-order plain face work").
-  - `src/hydro/hydro_forward.cpp:826-831@dae902b` — explicit work; the cp3/cp5/weno5 curvature flux is skipped when on
+  - `src/hydro/hydro_forward.cpp:817-822@e894700` — explicit work; the cp3/cp5/weno5 curvature flux is skipped when on
     (`:838`).
-  - `src/implicit/implicit_hydro.cpp:288,301-344,451-460@dae902b` — `ImplicitHydroImpl::forward_masked` — the matrix
+  - `src/implicit/implicit_hydro.cpp:288,301-344,451-460@e894700` — `ImplicitHydroImpl::forward_masked` — the matrix
     coupling and post-solve remainder.
-  - `src/hydro/gravity_work_radial.hpp:13,28,57@dae902b` — `x1_variance`, `centroid_slope`, `corrected_pe_work`.
-  - `src/mesh/meshblock.cpp:1050-1055@dae902b` — `print_cycle_diagnostics` — logs P instead of PE_d.
+  - `src/hydro/gravity_work_radial.hpp:13,28,57@e894700` — `x1_variance`, `centroid_slope`, `corrected_pe_work`.
+  - `src/mesh/meshblock.cpp:1050-1055@e894700` — `print_cycle_diagnostics` — logs P instead of PE_d.
 - Couplings: inert with `gravity-work: cell` (the default) or `face-wallc`. It never meets the fixer, which requires
   `cell`. On gnomonic-equiangle it warns and keeps the plain face work. At an x1 block seam the slope is one-sided, so
-  a split column conserves its own P and differs from one block (by design; `tests/test_x1_seam_split.cpp:12-16@dae902b`).
-  With it on, `gravity_work_defect()` and every E+PE_d oracle measure the wrong invariant (`src/hydro/hydro.hpp:170-173@dae902b`).
+  a split column conserves its own P and differs from one block (by design; `tests/test_x1_seam_split.cpp:12-16@e894700`).
+  With it on, `gravity_work_defect()` and every E+PE_d oracle measure the wrong invariant (`src/hydro/hydro.hpp:174-177@e894700`).
 - Tests:
   - `tests/test_gravity_work_radial_exact.py` (`test_gravity_work_radial_exact_python`, `_cuda_python`) — arms unset/0/1:
     unset == 1 bitwise; per-step |d(E+P)|/|E+P| <= `EP_TOL 1e-14`; logged `ie=`+`pe=` agrees to `DIAG_TOL 1e-11`
-    (`tests/test_gravity_work_radial_exact.py:51-53@dae902b`); a gnomonic block warns when on and is silent when off; plus
+    (`tests/test_gravity_work_radial_exact.py:51-53@e894700`); a gnomonic block warns when on and is silent when off; plus
     VIC clamp and immersed-solid arms.
   - `test_implicit_face_work_operator_python` (env `=0`) and `..._radial_exact_python` (env `=1`)
-    (`tests/CMakeLists.txt:232-237,272-274@dae902b`) — `W_TOL 1e-7` m/s at rest, `EPE_TOL 1e-11`
-    (`tests/test_implicit_face_work_operator.py:40-41@dae902b`), measured on E+P when on.
+    (`tests/CMakeLists.txt:235-240,275-277@e894700`) — `W_TOL 1e-7` m/s at rest, `EPE_TOL 1e-11`
+    (`tests/test_implicit_face_work_operator.py:40-41@e894700`), measured on E+P when on.
   - `test_implicit_stratified_solid_python` (`=0`) / `..._radial_exact_python` (`=1`).
   - `test_implicit_gravity_tall_column_python` — runs both arms itself: rung `W_TOL 1e-7`, settled `1e-10`, on <= 1.1x off
-    (`tests/test_implicit_gravity_tall_column.py:31-33@dae902b`).
+    (`tests/test_implicit_gravity_tall_column.py:31-33@e894700`).
   - `test_x1_seam_split_radial_exact.<b>` / `_radial_exact_off.<b>` (+`_cuda`) and `test_x1_seam_split_mp_radial_exact[_off]`
-    — print the split gap; when on, split E+P drift <= 1e-13 (`tests/test_x1_seam_split.cpp:247-260@dae902b`).
+    — print the split gap; when on, split E+P drift <= 1e-13 (`tests/test_x1_seam_split.cpp:247-260@e894700`).
   - Forced off for the plain-face-work oracles: `test_forcing.<b>`, `test_gravity_work_fixer_python`,
-    `test_horizontal_flux_covariance_python`, `test_flux_covariance_rows_python` (`tests/CMakeLists.txt:267-270@dae902b`).
+    `test_horizontal_flux_covariance_python`, `test_flux_covariance_rows_python` (`tests/CMakeLists.txt:270-273@e894700`).
 - Limits: the seam split differs from one block at O(h^4). Gnomonic grids keep the first-order wall-cell work.
   The convergence-table placeholder in sec 11.3 is unfilled.
 - Discrepancies: **the task brief says radial-exact "fails at setup on unsupported grids". At dae902b it does not
-  fail: it warns once (`TORCH_WARN_ONCE`, `src/hydro/hydro.cpp:87@dae902b`) and falls back to the plain face work.**
-  The test asserts the warning, not an error (`tests/test_gravity_work_radial_exact.py:382@dae902b`). The code wins.
+  fail: it warns once (`TORCH_WARN_ONCE`, `src/hydro/hydro.cpp:87@e894700`) and falls back to the plain face work.**
+  The test asserts the warning, not an error (`tests/test_gravity_work_radial_exact.py:382@e894700`). The code wins.
 
 
 #### 12.9 runtime environment for layout/communication
@@ -4228,14 +4228,14 @@ not be scattered across Chapters 4-6.
 
 | Var | Default | Read at | Role |
 |---|---|---|---|
-| `BACKEND` | `default_backend()` (ucx if built with UCX and not Darwin, else gloo) | `src/layout/layout.cpp:190,237@dae902b` | process-group backend; the YAML `distribute/backend` key is accepted but dead (`src/layout/layout.cpp:229-231@dae902b`) |
-| `PROCESS_RANK`, `PROCESS_WORLD_SIZE`, `RANK`, `WORLD_SIZE`, `LOCAL_RANK` | `RANK` / `WORLD_SIZE` / 0 | `src/layout/layout.cpp:194-214@dae902b`; `src/layout/layout.hpp:44-50@dae902b` | torchrun ranks |
-| `MASTER_ADDR`, `MASTER_PORT` | 127.0.0.1; random port only if single-process | `src/layout/layout.cpp:200-211@dae902b` | a multi-process run without `MASTER_PORT` is a `TORCH_CHECK` error |
-| `DEVICE`, `DEVICE_ID` | `cpu`, -1 | `src/layout/layout.cpp:217-218,238@dae902b` | device selection |
-| `COMMUX_COALESCE`, `COMMUX_GROUP`, `UCX_TLS` | set to 1, 1, `^cuda_copy,cuda_ipc,gdr_copy` (CPU) only if unset | `src/layout/process_group_ucx.cpp:26-29@dae902b` | UCX tuning defaults |
-| `WORKSPACE`, `NC_HOME` | cwd, none | `setup.py:42,62@dae902b` | Python package build only |
+| `BACKEND` | `default_backend()` (ucx if built with UCX and not Darwin, else gloo) | `src/layout/layout.cpp:190,237@e894700` | process-group backend; the YAML `distribute/backend` key is accepted but dead (`src/layout/layout.cpp:229-231@e894700`) |
+| `PROCESS_RANK`, `PROCESS_WORLD_SIZE`, `RANK`, `WORLD_SIZE`, `LOCAL_RANK` | `RANK` / `WORLD_SIZE` / 0 | `src/layout/layout.cpp:194-214@e894700`; `src/layout/layout.hpp:44-50@e894700` | torchrun ranks |
+| `MASTER_ADDR`, `MASTER_PORT` | 127.0.0.1; random port only if single-process | `src/layout/layout.cpp:200-211@e894700` | a multi-process run without `MASTER_PORT` is a `TORCH_CHECK` error |
+| `DEVICE`, `DEVICE_ID` | `cpu`, -1 | `src/layout/layout.cpp:217-218,238@e894700` | device selection |
+| `COMMUX_COALESCE`, `COMMUX_GROUP`, `UCX_TLS` | set to 1, 1, `^cuda_copy,cuda_ipc,gdr_copy` (CPU) only if unset | `src/layout/process_group_ucx.cpp:26-29@e894700` | UCX tuning defaults |
+| `WORKSPACE`, `NC_HOME` | cwd, none | `setup.py:42,62@e894700` | Python package build only |
 - Tests: `test_process_group.<b>` (backend default, BACKEND env overrides YAML, MASTER_PORT rules;
-  `tests/test_process_group.cpp:74-186@dae902b`); `test_exchange_ucx` (`BACKEND=ucx`), `test_parentless_cloud_nb1_mp_gloo`
+  `tests/test_process_group.cpp:74-186@e894700`); `test_exchange_ucx` (`BACKEND=ucx`), `test_parentless_cloud_nb1_mp_gloo`
   (`BACKEND=gloo`), `test_sedimentation_cubed_seam_gloo` (`run_seam_backends.py`, `BACKEND` per run).
 
 
@@ -4244,11 +4244,11 @@ not be scattered across Chapters 4-6.
 
 | Var | Reader | Purpose |
 |---|---|---|
-| `SNAPY_BUILD_CUDA` | set to 0 on non-CUDA builds (`tests/CMakeLists.txt:517-518@dae902b`); read by python tests, e.g. `tests/test_gravity_work_fixer.py:179@dae902b` | skip (exit 125) CUDA arms |
-| `GTEST_FILTER` | `seam_arm` (`tests/CMakeLists.txt:38-46@dae902b`) | one gtest per ctest arm; `PASS_REGULAR_EXPRESSION "[  PASSED  ] 1 test."` makes an empty filter or a skip fail |
-| `BLOCKS_PER_PROCESS`, `EXPECT_LOCAL_NEIGHBOR`, `EXPECT_REMOTE_NEIGHBOR` | `tests/test_exchange.cpp:222,303-304@dae902b` | exchange topology (`tests/CMakeLists.txt:161-162,183-186@dae902b`) |
-| `SNAPY_RUN_HYDRO` | `tests/test_uranus_cycle1_abort.cpp:47@dae902b` | path to `run_hydro.<b>` |
-| `WB_REF_WALL_DUMP`, `WB_REF_WALL_BETAS` | `tests/test_wb_ref_wall.cpp:159,193@dae902b` | review/scan aids |
+| `SNAPY_BUILD_CUDA` | set to 0 on non-CUDA builds (`tests/CMakeLists.txt:520-521@e894700`); read by python tests, e.g. `tests/test_gravity_work_fixer.py:179@e894700` | skip (exit 125) CUDA arms |
+| `GTEST_FILTER` | `seam_arm` (`tests/CMakeLists.txt:38-46@e894700`) | one gtest per ctest arm; `PASS_REGULAR_EXPRESSION "[  PASSED  ] 1 test."` makes an empty filter or a skip fail |
+| `BLOCKS_PER_PROCESS`, `EXPECT_LOCAL_NEIGHBOR`, `EXPECT_REMOTE_NEIGHBOR` | `tests/test_exchange.cpp:222,303-304@e894700` | exchange topology (`tests/CMakeLists.txt:164-165,186-189@e894700`) |
+| `SNAPY_RUN_HYDRO` | `tests/test_uranus_cycle1_abort.cpp:47@e894700` | path to `run_hydro.<b>` |
+| `WB_REF_WALL_DUMP`, `WB_REF_WALL_BETAS` | `tests/test_wb_ref_wall.cpp:159,193@e894700` | review/scan aids |
 
 
 ### 12.3 YAML scheme keys
@@ -4257,33 +4257,33 @@ not be scattered across Chapters 4-6.
 #### 12.11 YAML scheme keys (run-time)
 <sub>inventory E: Scheme: YAML scheme keys (run-time)</sub>
 
-- Summary: keys that select a numerical scheme. Unknown keys are refused by `check_keys` (`src/input/check_keys.cpp:12@dae902b`).
+- Summary: keys that select a numerical scheme. Unknown keys are refused by `check_keys` (`src/input/check_keys.cpp:12@e894700`).
   Python construction (`ConstGravityOptions.gravity_work()`, `.gravity_work_fixer()`, `HydroOptions.wb_wall_clamp`;
-  `python/csrc/pyforcing.cpp:28-29@dae902b`, `python/csrc/pyhydro.cpp:34@dae902b`) bypasses YAML. For that reason the
+  `python/csrc/pyforcing.cpp:28-29@e894700`, `python/csrc/pyhydro.cpp:34@e894700`) bypasses YAML. For that reason the
   gravity-work checks are repeated in `HydroImpl::reset()`.
 
 | Key | Default | Parse | Consumer / couplings |
 |---|---|---|---|
-| `forcing/const-gravity/gravity-work` | `cell` (C++ default `src/forcing/forcing.hpp:58@dae902b`) | `src/forcing/const_gravity.cpp:28-34@dae902b` (cell, face-wallc, face) | re-validated at `src/hydro/hydro.cpp:58@dae902b`; `gw_cell` at `src/hydro/hydro_forward.cpp:239@dae902b`; face-wallc zeroes wall-cell correction `:902-906`; face with implicit and no in-operator work triggers `TORCH_WARN` (#283) at `src/hydro/hydro.cpp:109-118@dae902b`; face work inside the implicit operator iff scheme != 0 (`src/hydro/hydro.cpp:286-290@dae902b`) |
-| `forcing/const-gravity/gravity-work-fixer` | = (gravity-work == cell) | `src/forcing/const_gravity.cpp:36-41@dae902b` (set true with non-cell and grav1 != 0 is an error) | forced false for non-cell (`src/hydro/hydro.cpp:64@dae902b`); needs grav2 = grav3 = 0 (`:65-68`) and non-periodic x1 (`:72-81`); active iff grav1 != 0 and cell (`src/hydro/hydro.cpp:202-206@dae902b`) |
-| `forcing/const-gravity/grav1,2,3`, `non-hydrostatic` | 0, 0, 0, 1 (in [0,1]) | `src/forcing/const_gravity.cpp:22-26@dae902b` | zeroed by `disable-flux-xN` (`src/hydro/hydro_options.cpp:80-82@dae902b`) |
-| `dynamics/wb-wall-clamp` | true | `src/hydro/hydro_options.cpp:57@dae902b` | x1 reference kernel `src/hydro/hydro.cpp:535-537@dae902b`; `balance_column` refuses false (`src/hydro/balance_column.cpp:30-33@dae902b`); bryan `balance-ic` needs it (`examples/bryan.cpp:227@dae902b`) |
-| `dynamics/disable-flux-x1/x2/x3`, `verbose` | false | `src/hydro/hydro_options.cpp:53-56@dae902b` | gates the p* source per direction |
-| `dynamics/equation-of-state/type` | `moist-mixture` | `src/eos/equation_of_state.cpp:57@dae902b` | shallow-water disables the WB x1 path (`src/hydro/hydro_forward.cpp:271-272@dae902b`) |
-| `.../limiter` | false | `src/eos/equation_of_state.cpp:74@dae902b` | flux-positivity limiter and meters (`src/hydro/hydro_forward.cpp:657@dae902b`) |
-| `.../density-floor`, `pressure-floor`, `temperature-floor` | 1e-6, 1e-3, 20 | `src/eos/equation_of_state.cpp:65-72@dae902b` | floors / redo |
-| `dynamics/reconstruct/{vertical,horizontal}/type,scale,shock` | dc, false, false | `src/recon/reconstruct.cpp:33-36@dae902b` | cp3/cp5/weno5 enable the curvature flux in face work (`src/hydro/hydro_forward.cpp:838-839@dae902b`) |
-| `dynamics/riemann-solver/type,dir` | roe, omni | `src/riemann/riemann_solver.cpp:26-27@dae902b` | none |
-| `integration/implicit-scheme` | absent = explicit; 0 == absent | `src/implicit/implicit_hydro.cpp:35,71-82@dae902b` | only 0/1/9 accepted (`ImplicitOptionsImpl::type()`, `:84-98`) |
-| `integration/implicit-advection-cfl`, `shear-cfl` | 1.0, 0.0 | `src/implicit/implicit_hydro.cpp:59-67@dae902b` | error if set without implicit-scheme (`:37-40`) |
-| `geometry/cells/nghost` | 1 | `src/coord/coordinate.cpp:164@dae902b` | >=3 required by WB_REF4 / X1_CENTROID when grav1 != 0 |
-| `geometry/type` | cartesian | `src/coord/coordinate.cpp:71@dae902b` | radial-exact acts on cartesian/spherical-polar only; X1_CENTROID acts on spherical-polar only |
-| `distribute/layout, nb1, nb2, nb3` | slab, 1, 1, 1 | `src/layout/layout.cpp:233-236@dae902b` | x1 split makes the seam exchanges live |
-| `boundary-condition/external/x?-inner/outer` | reflecting | `src/mesh/meshblock_options.cpp:100-193@dae902b` | periodic x1 refused with the fixer |
-| `forcing/fric-heat` | removed | refused at `src/hydro/hydro_options.cpp:68-72@dae902b` | none |
-- Tests: `test_yaml_keys.<b>` (every block refuses an unknown key; `tests/test_yaml_keys.cpp:63-186@dae902b`);
+| `forcing/const-gravity/gravity-work` | `cell` (C++ default `src/forcing/forcing.hpp:58@e894700`) | `src/forcing/const_gravity.cpp:28-34@e894700` (cell, face-wallc, face) | re-validated at `src/hydro/hydro.cpp:58@e894700`; `gw_cell` at `src/hydro/hydro_forward.cpp:230@e894700`; face-wallc zeroes wall-cell correction `:902-906`; face with implicit and no in-operator work triggers `TORCH_WARN` (#283) at `src/hydro/hydro.cpp:118-127@e894700`; face work inside the implicit operator iff scheme != 0 (`src/hydro/hydro.cpp:305-309@e894700`) |
+| `forcing/const-gravity/gravity-work-fixer` | = (gravity-work == cell) | `src/forcing/const_gravity.cpp:36-41@e894700` (set true with non-cell and grav1 != 0 is an error) | forced false for non-cell (`src/hydro/hydro.cpp:64@e894700`); needs grav2 = grav3 = 0 (`:65-68`) and non-periodic x1 (`:72-81`); active iff grav1 != 0 and cell (`src/hydro/hydro.cpp:211-215@e894700`) |
+| `forcing/const-gravity/grav1,2,3`, `non-hydrostatic` | 0, 0, 0, 1 (in [0,1]) | `src/forcing/const_gravity.cpp:22-26@e894700` | zeroed by `disable-flux-xN` (`src/hydro/hydro_options.cpp:80-82@e894700`) |
+| `dynamics/wb-wall-clamp` | true | `src/hydro/hydro_options.cpp:57@e894700` | x1 reference kernel `src/hydro/hydro.cpp:554-556@e894700`; `balance_column` refuses false (`src/hydro/balance_column.cpp:30-33@e894700`); bryan `balance-ic` needs it (`examples/bryan.cpp:227@e894700`) |
+| `dynamics/disable-flux-x1/x2/x3`, `verbose` | false | `src/hydro/hydro_options.cpp:53-56@e894700` | gates the p* source per direction |
+| `dynamics/equation-of-state/type` | `moist-mixture` | `src/eos/equation_of_state.cpp:57@e894700` | shallow-water disables the WB x1 path (`src/hydro/hydro_forward.cpp:262-263@e894700`) |
+| `.../limiter` | false | `src/eos/equation_of_state.cpp:74@e894700` | flux-positivity limiter and meters (`src/hydro/hydro_forward.cpp:648@e894700`) |
+| `.../density-floor`, `pressure-floor`, `temperature-floor` | 1e-6, 1e-3, 20 | `src/eos/equation_of_state.cpp:65-72@e894700` | floors / redo |
+| `dynamics/reconstruct/{vertical,horizontal}/type,scale,shock` | dc, false, false | `src/recon/reconstruct.cpp:33-36@e894700` | cp3/cp5/weno5 enable the curvature flux in face work (`src/hydro/hydro_forward.cpp:829-830@e894700`) |
+| `dynamics/riemann-solver/type,dir` | roe, omni | `src/riemann/riemann_solver.cpp:26-27@e894700` | none |
+| `integration/implicit-scheme` | absent = explicit; 0 == absent | `src/implicit/implicit_hydro.cpp:35,71-82@e894700` | only 0/1/9 accepted (`ImplicitOptionsImpl::type()`, `:84-98`) |
+| `integration/implicit-advection-cfl`, `shear-cfl` | 1.0, 0.0 | `src/implicit/implicit_hydro.cpp:59-67@e894700` | error if set without implicit-scheme (`:37-40`) |
+| `geometry/cells/nghost` | 1 | `src/coord/coordinate.cpp:164@e894700` | >=3 required by WB_REF4 / X1_CENTROID when grav1 != 0 |
+| `geometry/type` | cartesian | `src/coord/coordinate.cpp:71@e894700` | radial-exact acts on cartesian/spherical-polar only; X1_CENTROID acts on spherical-polar only |
+| `distribute/layout, nb1, nb2, nb3` | slab, 1, 1, 1 | `src/layout/layout.cpp:233-236@e894700` | x1 split makes the seam exchanges live |
+| `boundary-condition/external/x?-inner/outer` | reflecting | `src/mesh/meshblock_options.cpp:100-193@e894700` | periodic x1 refused with the fixer |
+| `forcing/fric-heat` | removed | refused at `src/hydro/hydro_options.cpp:68-72@e894700` | none |
+- Tests: `test_yaml_keys.<b>` (every block refuses an unknown key; `tests/test_yaml_keys.cpp:63-186@e894700`);
   `test_hydro_options.<b>` (dynamics/eos/forcing keys, `wb_wall_clamp_ships_enabled`, scheme outside {0,1,9} refused;
-  `tests/test_hydro_options.cpp:22-364@dae902b`); `test_implicit_cfl.<b>`; `test_implicit_options_type_python`;
+  `tests/test_hydro_options.cpp:22-364@e894700`); `test_implicit_cfl.<b>`; `test_implicit_options_type_python`;
   `test_gravity_work_fixer_python` (fixer guards, face-wallc, Python keys).
 
 
@@ -4332,7 +4332,7 @@ covers the cycle line (`mass0=`, `masst=`, `ke=`, `ie=`/`energy=`, `pe=`), the r
 `thetamin=`, `thetasevere=`, `vicclamp=`, `fixgrav=`), the gravity-work-fixer E+PE budget (D, wall mass, deposit), the
 redo cause flags and the termination status, and the output-field diagnostics (`div`, `div_h`, `curl`, `ic_*`).
 **Note:** `src/diagnostics/` is legacy Athena++/canoe code (it includes `athena/parameter_input.hpp`). It is not in
-the library glob (`src/CMakeLists.txt:35-52@dae902b` lists no `diagnostics/*.cpp`), so it is not compiled. The chapter
+the library glob (`src/CMakeLists.txt:35-52@e894700` lists no `diagnostics/*.cpp`), so it is not compiled. The chapter
 must say this, and must not describe it as live. The live diagnostics are in `src/mesh/meshblock.cpp` and
 `src/output/load_diag_output_data.cpp`. **Recommendation:** keep the chapter. Move the redo/acceptance mechanics to
 Ch.7 and keep only "what the cause flags report" here. Cross-reference the fixer physics to Ch.6, which owns the
@@ -4346,37 +4346,37 @@ derivation; this chapter owns the budget bookkeeping and its printout.
 
 - Summary: every `ncycle_out` cycles, one line sums the interior conserved state times cell volume over all local
   blocks, reduces it to the root rank, and prints it. Switch: `integration/ncycle_out` (parsed by pyharp; 0 disables,
-  `src/mesh/meshblock.cpp:1010-1012@dae902b`).
+  `src/mesh/meshblock.cpp:1010-1012@e894700`).
 - Terms (each a volume integral over interior cells):
   - `mass0=` sum u[IDN] V (dry density); `masst=` sum (u[IDN] + sum_n u[ICY+n]) V, printed if species exist
-    (`src/mesh/meshblock.cpp:1091-1096@dae902b`).
+    (`src/mesh/meshblock.cpp:1091-1096@e894700`).
   - `ke=` sum 0.5 m_i m^i / rho_total V. The momentum is raised with the metric (`coord_vec_raise_` with
     `cosine_cell_kj`) and the density is the total over all constituents. It is read from `hydro_u`, never from the
-    stage-stale `hydro_w` (`src/mesh/meshblock.cpp:1038-1044@dae902b`).
+    stage-stale `hydro_w` (`src/mesh/meshblock.cpp:1038-1044@e894700`).
   - `ie=` (MeshBlock line) / `energy=` (Mesh line) = sum u[IPR] V, the total energy E (`:1098-1099`; labels set at
-    `src/mesh/meshblock.cpp:1114-1118@dae902b` and `src/mesh/mesh.cpp:409-419@dae902b`, precision max_digits10-4 vs -3).
+    `src/mesh/meshblock.cpp:1114-1118@e894700` and `src/mesh/mesh.cpp:409-419@e894700`, precision max_digits10-4 vs -3).
   - `pe=` sum rho_total(-g1 x1v) V, printed only with const-gravity grav1 != 0. When `radial_exact_work()` it logs the
-    corrected P = PE_d - sum V g1 sigma^2 s[rho], so `ie=`+`pe=` is the conserved E+P (`src/mesh/meshblock.cpp:1045-1056,1100@dae902b`).
-- Derivations: ke with a non-orthogonal metric: re-derive from `src/mesh/meshblock.cpp:1038-1044@dae902b` (the test
-  states the closed form 13/0.75 vs 25, `tests/test_cycle_diagnostics.cpp:209-212@dae902b`). The P form: exists:
-  `docs/derivations/curved-gravity-work-weight.md@dae902b` sec 7 and sec 10 (PE-site table).
+    corrected P = PE_d - sum V g1 sigma^2 s[rho], so `ie=`+`pe=` is the conserved E+P (`src/mesh/meshblock.cpp:1045-1056,1100@e894700`).
+- Derivations: ke with a non-orthogonal metric: re-derive from `src/mesh/meshblock.cpp:1038-1044@e894700` (the test
+  states the closed form 13/0.75 vs 25, `tests/test_cycle_diagnostics.cpp:209-212@e894700`). The P form: exists:
+  `docs/derivations/curved-gravity-work-weight.md@e894700` sec 7 and sec 10 (PE-site table).
 - Figures: (1) annotate one cycle line, mapping each token to its integral and reduction op (SUM/MIN/MAX); (2) a
   Mesh with two local blocks on two ranks: local sums, then one reduce to root, then one line.
-- Code: `src/mesh/meshblock.cpp:1004-1112@dae902b` — `print_cycle_diagnostics`; reductions at `:1074-1086`;
-  `src/mesh/cycle_diagnostics.hpp:11-14@dae902b`; `src/mesh/mesh.cpp:409-419@dae902b` — `MeshImpl::print_cycle_info`.
+- Code: `src/mesh/meshblock.cpp:1004-1112@e894700` — `print_cycle_diagnostics`; reductions at `:1074-1086`;
+  `src/mesh/cycle_diagnostics.hpp:11-14@e894700`; `src/mesh/mesh.cpp:409-419@e894700` — `MeshImpl::print_cycle_info`.
 - Tests: `test_cycle_diagnostics.<b>` — `logged_ke_scales_with_density` (2x within 1e-9 rel), `logged_ke_reads_the_conserved_state`
   (4x), `logged_ke_sums_the_constituents` (1.25x for a dry-only denominator), `logged_ke_raises_the_momentum_with_the_metric`
   (13/18.75), `logged_pe_is_the_column_geopotential` (2.5*10*zvol within 1e-9), `mesh_aggregates_all_local_blocks_once`
-  (1e-11, one `cycle=` line) (`tests/test_cycle_diagnostics.cpp:72-407@dae902b`); `test_cycle_diagnostics_parallel.<b>`
-  (2 ranks x 2 blocks, 1e-11; `tests/test_cycle_diagnostics_parallel.cpp:25@dae902b`); `test_gravity_work_radial_exact_python`
+  (1e-11, one `cycle=` line) (`tests/test_cycle_diagnostics.cpp:72-407@e894700`); `test_cycle_diagnostics_parallel.<b>`
+  (2 ranks x 2 blocks, 1e-11; `tests/test_cycle_diagnostics_parallel.cpp:25@e894700`); `test_gravity_work_radial_exact_python`
   check 5 (`ie=`+`pe=` = E+P on, E+PE_d off, to `DIAG_TOL 1e-11`); `test_restart_cycle_limit` (the restart leg's
-  `time`, `dt`, `mass0`, `energy` match the base run to atol 1e-12; `tests/run_restart_cycle_limit.py:186-189@dae902b`).
+  `time`, `dt`, `mass0`, `energy` match the base run to atol 1e-12; `tests/run_restart_cycle_limit.py:186-189@e894700`).
 - Limits: the `ke`/`pe` sums ignore immersed-solid masking. "Run-to-date" meters reset on restart (buffers are not in
   the restart file; `sources/gh__PR_BODIES_202-219.md` #217 Limits). `pe=` uses the per-block one-sided slope at x1
   seams (sec 7 seam limit).
 - Discrepancies: `sources/gh__PR_BODIES_202-219.md` (#217, Limits) says ke/pe/meters are on the MeshBlock line only and
   that the Mesh line "never printed ke". At dae902b both lines come from the same `print_cycle_diagnostics`
-  (`src/mesh/mesh.cpp:417@dae902b`) and differ only in the energy label and precision. The PR text is superseded.
+  (`src/mesh/mesh.cpp:417@e894700`) and differ only in the energy label and precision. The PR text is superseded.
 
 
 #### 13.2 positivity-limiter meters (`limcut`, `thetamin`, `thetasevere`, hits)
@@ -4387,15 +4387,15 @@ derivation; this chapter owns the budget bookkeeping and its printout.
 - Terms: hits = count of interior (cell, species) with theta < 1. severe = theta < 0.9 AND withheld mass > round-off
   (4096 ulp float64, 64 ulp float32, times the cell's gas mass). thetamin = run minimum of theta. limcut = sum of the cut
   x1 flux divided by the sum of the offered x1 flux, printed only if the offered flux > 0.
-- Derivations: round-off bound rationale: re-derive from `src/hydro/flux_positivity.hpp:10-23@dae902b` (constants
-  `kPositivityRoundoffUlp = 4096`, `kPositivityRoundoffUlpFloat = 64`) and `src/hydro/hydro_forward.cpp:668-678@dae902b`.
+- Derivations: round-off bound rationale: re-derive from `src/hydro/flux_positivity.hpp:10-23@e894700` (constants
+  `kPositivityRoundoffUlp = 4096`, `kPositivityRoundoffUlpFloat = 64`) and `src/hydro/hydro_forward.cpp:659-669@e894700`.
 - Figures: a settling column showing theta = dx/(dt|vsed|) = 0.5 on five interior faces, with offered vs cut flux bars.
-- Code: `src/hydro/hydro_forward.cpp:657-714@dae902b` — accumulation in `HydroImpl::forward`; buffers registered at
-  `src/hydro/hydro.cpp:178-185@dae902b`; printed at `src/mesh/meshblock.cpp:1102-1107@dae902b`; scalar module has its own
-  hits counter (`src/scalar/scalar.cpp:160,189@dae902b`, not printed).
+- Code: `src/hydro/hydro_forward.cpp:648-705@e894700` — accumulation in `HydroImpl::forward`; buffers registered at
+  `src/hydro/hydro.cpp:187-194@e894700`; printed at `src/mesh/meshblock.cpp:1102-1107@e894700`; scalar module has its own
+  hits counter (`src/scalar/scalar.cpp:160,189@e894700`, not printed).
 - Tests: `test_cycle_diagnostics.<b>` — `positivity_meters_read_their_hand_computed_values` (thetamin 0.5, severe 5,
   limcut 0.5, to 1e-9 on buffers and 1e-5 on the printed line), `positivity_severe_needs_more_than_roundoff_withheld`,
-  `positivity_severe_float32_needs_more_than_roundoff_withheld` (`tests/test_cycle_diagnostics.cpp:269-366@dae902b`);
+  `positivity_severe_float32_needs_more_than_roundoff_withheld` (`tests/test_cycle_diagnostics.cpp:269-366@e894700`);
   `meter_group_is_marked_run_to_date` (token order).
 - Limits: thetamin/thetasevere print their initial values (1, 0) when the limiter never ran (#217 Limits).
 
@@ -4406,14 +4406,14 @@ derivation; this chapter owns the budget bookkeeping and its printout.
 - Summary: the largest per-cell relative residual between the constituent change and the face transfer M(i)-M(i+1)
   after the implicit availability clamp. It is 0 unclamped and sum(y) when every constituent is starved. Switch:
   printed whenever an implicit scheme is active (`picorr`).
-- Code: `src/implicit/implicit_hydro.cpp:360-378@dae902b` (dtype-safe floor: float min in float32, 1e-300 in float64);
-  accessor `src/implicit/implicit_hydro.hpp:89@dae902b`; reduced MAX and printed at `src/mesh/meshblock.cpp:1067-1070,1086,1108@dae902b`.
-- Derivations: re-derive from `src/implicit/implicit_hydro.cpp:360-378@dae902b` (the residual definition and why it
+- Code: `src/implicit/implicit_hydro.cpp:360-378@e894700` (dtype-safe floor: float min in float32, 1e-300 in float64);
+  accessor `src/implicit/implicit_hydro.hpp:89@e894700`; reduced MAX and printed at `src/mesh/meshblock.cpp:1067-1070,1086,1108@e894700`.
+- Derivations: re-derive from `src/implicit/implicit_hydro.cpp:360-378@e894700` (the residual definition and why it
   equals sum(y) for a fully starved face).
 - Figures: a 2-cell column with one face; the dry-only transfer under starvation, so each cell misses M sum(y).
 - Tests: `test_cycle_diagnostics.<b>` `vicclamp_reads_the_clamped_fraction` (0.03 within 1e-12; < 1e-12 unclamped;
-  `tests/test_cycle_diagnostics.cpp:367-405@dae902b`); `test_lu_failure.<b>` `float_rest_column_finite_vicclamp`,
-  `double_rest_column_finite_vicclamp` (`tests/test_lu_failure.cpp:351-354@dae902b`, #294).
+  `tests/test_cycle_diagnostics.cpp:367-405@e894700`); `test_lu_failure.<b>` `float_rest_column_finite_vicclamp`,
+  `double_rest_column_finite_vicclamp` (`tests/test_lu_failure.cpp:351-354@e894700`, #294).
 - Limits: a run maximum, not per step.
 
 
@@ -4424,25 +4424,25 @@ derivation; this chapter owns the budget bookkeeping and its printout.
   (cell work + face work of the extra limiter/sedimentation mass + Phi times the x1 mass divergence + the VIC change).
   The stages are summed with their RK weights into D. After the last stage, one global reduction deposits -D as heat
   uniform per unit mass. `fixgrav=` prints the accepted-step total. Switch: `gravity-work-fixer` (default true with cell).
-- Code (budget terms): `gwfix_stage` per stage (`src/hydro/hydro_forward.cpp:869-898@dae902b`); implicit part via the `epe`
+- Code (budget terms): `gwfix_stage` per stage (`src/hydro/hydro_forward.cpp:860-889@e894700`); implicit part via the `epe`
   lambda before/after the solve (`:957-978`); stage weight cw = w2_s prod_{t>s} w1_t (rk3: 1/6, 1/6, 2/3), accumulated
   into `_gwfix_d` (`:995-1004`); wall-face mass `_gwfix_wall` (`:889-897`); 5-vector of sums {D, sum mV, wall mass, wall-cell
-  mass, redo flag} (`src/mesh/meshblock.cpp:844-868@dae902b`); deposit dE_i = -D m_i / sum m_j V_j, guarded by
-  wall <= 1e3 eps * mwall (`src/mesh/meshblock.cpp:870-911@dae902b`, check at `:899`; `fixgrav=` printed at `:1109-1110`). Pending/total accounting: committed
-  at the next step's stage 0 or on acceptance, dropped on redo (`src/hydro/hydro.hpp:182-198@dae902b`;
-  `src/mesh/meshblock.cpp:614,1250,1274@dae902b`). Multi-block sum then one allreduce at `src/mesh/mesh.cpp:341-363@dae902b`;
-  single block at `src/mesh/meshblock.cpp:832-840@dae902b`.
+  mass, redo flag} (`src/mesh/meshblock.cpp:844-868@e894700`); deposit dE_i = -D m_i / sum m_j V_j, guarded by
+  wall <= 1e3 eps * mwall (`src/mesh/meshblock.cpp:870-911@e894700`, check at `:899`; `fixgrav=` printed at `:1109-1110`). Pending/total accounting: committed
+  at the next step's stage 0 or on acceptance, dropped on redo (`src/hydro/hydro.hpp:186-202@e894700`;
+  `src/mesh/meshblock.cpp:614,1250,1274@e894700`). Multi-block sum then one allreduce at `src/mesh/mesh.cpp:341-363@e894700`;
+  single block at `src/mesh/meshblock.cpp:832-840@e894700`.
 - Derivations: exists: `sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md` sec 3.6 (eqs. 3.13-3.15). Its line cites are
-  pre-dae902b; re-anchor them. Re-derive the stage weight cw from `src/hydro/hydro_forward.cpp:995-1004@dae902b`.
+  pre-dae902b; re-anchor them. Re-derive the stage weight cw from `src/hydro/hydro_forward.cpp:986-995@e894700`.
 - Figures: (1) a per-stage flow: D^s contributions, weighted sum, global allreduce, uniform-per-mass deposit;
   (2) a closed column with sealed walls, the wall-face mass meter and the 1e3 eps bound.
 - Tests: `test_gravity_work_fixer_python` — default cell+fixer |d(E+PE)|/|E+PE| <= `TOL 1e-12`
-  (`tests/test_gravity_work_fixer.py:38@dae902b`), explicit and VIC; fixer off drifts > 100 TOL; refuses outflow,
+  (`tests/test_gravity_work_fixer.py:38@e894700`), explicit and VIC; fixer off drifts > 100 TOL; refuses outflow,
   periodic, grav2 != 0; float32 run; `fixgrav=` reported. `test_straka_redo` — cfl 1.6 redoes steps with the fixer on and
-  reaches tlim (`tests/run_straka_redo.cmake:31@dae902b`). `test_forcing.<b>` `implicit_correction_reports_total_energy_delta`
-  (`tests/test_forcing.cpp:538@dae902b`).
-- Limits: refused for open/periodic x1 and grav2/grav3 != 0 (`src/hydro/hydro.cpp:65-81@dae902b`). The large-Courant
-  wall round-off can exceed the bound (comment at `src/mesh/meshblock.cpp:889-896@dae902b`, #285). Not carried across a
+  reaches tlim (`tests/run_straka_redo.cmake:31@e894700`). `test_forcing.<b>` `implicit_correction_reports_total_energy_delta`
+  (`tests/test_forcing.cpp:538@e894700`).
+- Limits: refused for open/periodic x1 and grav2/grav3 != 0 (`src/hydro/hydro.cpp:65-81@e894700`). The large-Courant
+  wall round-off can exceed the bound (comment at `src/mesh/meshblock.cpp:889-896@e894700`, #285). Not carried across a
   restart.
 - Discrepancies: the draft cites `src/mesh/meshblock.cpp:828-835` and `src/hydro/hydro.cpp:177-181` for the reduction
   and the guard. At dae902b these are `src/mesh/meshblock.cpp:832-840` and `src/hydro/hydro.cpp:202-206`.
@@ -4454,14 +4454,14 @@ derivation; this chapter owns the budget bookkeeping and its printout.
 - Summary: the per-step acceptance decision is a 6-bit cause mask (floor, clamp, limiter, nan, saturation, vic-solve),
   allreduced MAX across ranks and printed in "Redoing the step ... (causes: ...)". `finalize` prints the termination
   reason and returns 1 on "Terminating abnormally".
-- Code: `src/mesh/meshblock.cpp:1212-1218@dae902b` `limiter_hits`; `:1229-1276` `apply_redo` (message `:1236`);
-  `:1278-1286` `local_redo_flags`; `:1288-1300` `reduce_redo_flags`; `src/mesh/mesh.cpp:422@dae902b`
-  `MeshImpl::check_redo`; termination `src/mesh/meshblock.cpp:1127-1140@dae902b`.
+- Code: `src/mesh/meshblock.cpp:1212-1218@e894700` `limiter_hits`; `:1229-1276` `apply_redo` (message `:1236`);
+  `:1278-1286` `local_redo_flags`; `:1288-1300` `reduce_redo_flags`; `src/mesh/mesh.cpp:422@e894700`
+  `MeshImpl::check_redo`; termination `src/mesh/meshblock.cpp:1127-1140@e894700`.
 - Derivations: none (logic).
 - Figures: a cause-bit table and the redo loop.
 - Tests: `test_check_redo_floor_python`, `test_check_redo_saturation_python` (+cuda), `test_check_redo_parallel.<b>`,
   `test_uranus_cycle1_abort.<b>` (`abnormal_termination_exits_nonzero`), `test_forcing.<b>` limiter-redo cases
-  (`tests/test_forcing.cpp:660-848@dae902b`), `test_lu_failure.<b>`.
+  (`tests/test_forcing.cpp:660-848@e894700`), `test_lu_failure.<b>`.
 - Limits: Ch.7 owns the mechanics; this chapter only references them.
 
 
@@ -4471,13 +4471,13 @@ derivation; this chapter owns the budget bookkeeping and its printout.
 - Summary: optional NetCDF fields requested by name in an output block: `div`, `div_h` (horizontal), `curl` (vector in
   3-D, `curl[VEL3]` in 2-D), all under `diagnostics`; `ic_dry`, `ic_mom`, `ic_etot`, `ic_<species>` (implicit
   correction); also `theta`, `rh_*` with `thermo`. Switch: the `outputs/N/variables` list.
-- Code: `src/output/load_diag_output_data.cpp:47@dae902b` `OutputType::loadDiagOutputData`; div/curl `:166-217`;
-  implicit `:220-260`; called from `src/output/output_type.cpp:191@dae902b`.
+- Code: `src/output/load_diag_output_data.cpp:47@e894700` `OutputType::loadDiagOutputData`; div/curl `:166-217`;
+  implicit `:220-260`; called from `src/output/output_type.cpp:191@e894700`.
 - Derivations: none new (they use `pcoord->divergence`/`curl`, Ch.3).
 - Figures: none needed.
 - Tests: `test_user_output.<b>` `OutputDiagnostics.*` (virtual potential temperature, divergence of uniform velocity is
-  0, Cartesian curl of solid-body rotation, gnomonic finite; `tests/test_user_output.cpp:792-910@dae902b`).
-- Limits: no PE or budget field is written to NetCDF (`docs/derivations/curved-gravity-work-weight.md@dae902b` sec 10
+  0, Cartesian curl of solid-body rotation, gnomonic finite; `tests/test_user_output.cpp:792-910@e894700`).
+- Limits: no PE or budget field is written to NetCDF (`docs/derivations/curved-gravity-work-weight.md@e894700` sec 10
   table).
 
 
@@ -4487,7 +4487,7 @@ derivation; this chapter owns the budget bookkeeping and its printout.
 - Summary: tests that assert conservation of mass, species or energy to round-off on specific operators.
 - Derivations: none here; each identity is derived in the chapter that owns the operator.
 - Figures: a matrix of conserved quantity × operator × test.
-- Code: the operators are cited in their chapters; the orphan runner is `tests/run_example_mass_check.py:29@dae902b`.
+- Code: the operators are cited in their chapters; the orphan runner is `tests/run_example_mass_check.py:29@e894700`.
 - Tests (all verified to exist):
   - `test_condensate_conservation.<b>` (stoichiometric multi-vapor debit), `test_fix_vapor_volume.<b>` (column vapor mass
     sum rho q V kept on varying V), `test_parentless_cloud.<b>`, `test_parentless_cloud_nb1.<b>`, `test_parentless_cloud_nb1_mp.<b>`
@@ -4498,7 +4498,7 @@ derivation; this chapter owns the budget bookkeeping and its printout.
   - `test_flux_covariance_seams_python` (mass, vapor, E+PE to 1e-12 across seams), `test_tracer_dry_convention_python`
     (`TOL 1e-12`).
   - `tests/run_example_mass_check.py` — reads `mass0=` from an example run and checks relative drift <= 1e-8
-    (`tests/run_example_mass_check.py:29,133-144@dae902b`). **Not registered** in `tests/CMakeLists.txt` at dae902b
+    (`tests/run_example_mass_check.py:29,133-144@e894700`). **Not registered** in `tests/CMakeLists.txt` at dae902b
     (orphan).
 - Limits: no registered test checks `mass0=` drift over a full example run (only the orphan script).
 
@@ -4534,9 +4534,9 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   cpu), `DEVICE_ID` (default -1 → LOCAL_RANK), `BACKEND`. `pd-run` defaults BACKEND=ucx, DEVICE=cpu.
 - Derivations: none.
 - Figures: a launch diagram (torchrun → N processes → TCPStore → process group; each process → bpp blocks → device).
-- Code: `src/layout/layout.cpp:34@dae902b` `random_master_port`; `:189` `LayoutOptionsImpl` constructor (`:205`
-  MASTER_PORT check); `src/mesh/mesh.cpp:236-247@dae902b` (world_size = process_world_size·bpp, block rank);
-  `src/mesh/meshblock_options.cpp:274@dae902b` `device_str` ("cuda:" + device_id or local_rank); `api/pd-run`.
+- Code: `src/layout/layout.cpp:34@e894700` `random_master_port`; `:189` `LayoutOptionsImpl` constructor (`:205`
+  MASTER_PORT check); `src/mesh/mesh.cpp:236-247@e894700` (world_size = process_world_size·bpp, block rank);
+  `src/mesh/meshblock_options.cpp:274@e894700` `device_str` ("cuda:" + device_id or local_rank); `api/pd-run`.
 - Tests: `tests/test_process_group.cpp` (`test_process_group.release`) — `LayoutOptions.DefaultsToPlatformCommunicationBackend`,
   `UsesBackendEnvironmentVariable`, `IgnoresYamlBackend`, `BackendEnvironmentOverridesYamlBackend`,
   `RandomizesDefaultMasterPortWhenEnvUnset`, `RequiresMasterPortForMultiProcessWhenEnvUnset`,
@@ -4563,11 +4563,11 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   `UCX` default ON on Linux, OFF on Apple (`CMakeLists.txt:12-18`).
 - Derivations: none.
 - Figures: a backend capability matrix (device tensors, multi-tensor messages, coalescing, platforms).
-- Code: `src/layout/layout.cpp:41@dae902b` `default_backend`; `src/layout/process_group.hpp:29@dae902b`;
-  `src/layout/process_group.cpp:71@dae902b` `create` (cache), `:98` `_init` (`:117` TCPStore, `:129` unsupported
+- Code: `src/layout/layout.cpp:41@e894700` `default_backend`; `src/layout/process_group.hpp:29@e894700`;
+  `src/layout/process_group.cpp:71@e894700` `create` (cache), `:98` `_init` (`:117` TCPStore, `:129` unsupported
   backend), `:148` `send` (`:155` CPU-only, `:158` one tensor), `:166` `recv`, `:184` `allreduce`, `:212`
   `_init_external`, `:236` `_init_gloo`, `:271` `supports_coalescing`, `:287` no-UCX stub;
-  `src/layout/process_group_ucx.cpp:22@dae902b` `_init_ucx`; `src/layout/distributed.cpp:14@dae902b`
+  `src/layout/process_group_ucx.cpp:22@e894700` `_init_ucx`; `src/layout/distributed.cpp:14@e894700`
   `set_process_group`; `cmake/ucx.cmake` (commux probe).
 - Tests:
   - `tests/test_gloo_one_tensor.cpp` (`test_gloo_one_tensor.release`, 2 ranks, APPLE only) — a 2-tensor message is
@@ -4600,14 +4600,14 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   - `gather_x1` uses tags ≥ 1<<24.
   - In-process boards wait at most 5 min.
   Switch: `SyncOptions.phyid` (0..63).
-- Derivations: tag non-aliasing: re-derive from `src/layout/layout.hpp:161-170@dae902b` and `layout.hpp:272-278`
+- Derivations: tag non-aliasing: re-derive from `src/layout/layout.hpp:161-170@e894700` and `layout.hpp:272-278`
   (comment).
 - Figures: tag bit layout; the rendezvous state machine for the local exchange.
-- Code: `src/layout/layout.hpp:163@dae902b` `make_comm_tag`; `src/layout/layout.cpp:279@dae902b`
+- Code: `src/layout/layout.hpp:163@e894700` `make_comm_tag`; `src/layout/layout.cpp:279@e894700`
   `_prepare_local_exchange`; `:419` `_copy_local_exchange_buffers` (phase filter); `:540` `launch_exchange`; `:548`
   `exchange_remote` (`:576` periodic px==2 order swap, `:622` self-send, `:634` mutex, `:635` coalescing); `:652`
   `exchange_each_var`; `:849` `send_to_block`; `:864` `recv_from_block`; `:924` `post_to_local_block`; `:948`
-  `take_from_local_block`; `src/layout/cubed_sphere_layout.cpp:1042@dae902b` (cubed-sphere comm mutex).
+  `take_from_local_block`; `src/layout/cubed_sphere_layout.cpp:1042@e894700` (cubed-sphere comm mutex).
 - Tests: `test_cubed_sphere_exchange.release` `CommTag.rejects_tags_that_collide_with_the_variable_offset`;
   `test_exchange.release` (buffer reuse: data_ptr unchanged on the second sync; ghost correctness; local and remote seen).
 - Limits / known issues: a block-local stepping order (not concurrent) deadlocks until the 5-min timeout
@@ -4623,11 +4623,11 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   `distribute: blocks_per_process`.
 - Derivations: none.
 - Figures: same as S1.6.
-- Code: `src/mesh/mesh.cpp:47@dae902b`, `:82`, `:134`; `src/layout/layout.cpp:279-387@dae902b` (CUDA arrival and
+- Code: `src/mesh/mesh.cpp:47@e894700`, `:82`, `:134`; `src/layout/layout.cpp:279-387@e894700` (CUDA arrival and
   completion events).
 - Tests: `test_cubed_sphere_exchange.release` `_cuda` (one stream per block); `tests/test_output_barrier.cpp`
   (`test_output_barrier.release`, 2 ranks × 2 blocks).
-- Limits / known issues: PnetCDF requires bpp=1 (`src/output/pnetcdf.cpp:74-79@dae902b`).
+- Limits / known issues: PnetCDF requires bpp=1 (`src/output/pnetcdf.cpp:74-79@e894700`).
 - Discrepancies: none.
 
 
@@ -4639,8 +4639,8 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   output combines and at finalize. Switch: none.
 - Derivations: none.
 - Figures: one cycle's collective timeline (dt MIN → fixer SUM at the last stage → redo MAX → output barriers).
-- Code: `src/mesh/meshblock.cpp:510-528@dae902b` (MIN), `:832-838` (fixer SUM, single block), `:1288` (redo MAX);
-  `src/mesh/mesh.cpp:346-355@dae902b` (fixer SUM, multi-block); `src/utils/signal_handler.cpp:64@dae902b`
+- Code: `src/mesh/meshblock.cpp:510-528@e894700` (MIN), `:832-838` (fixer SUM, single block), `:1288` (redo MAX);
+  `src/mesh/mesh.cpp:346-355@e894700` (fixer SUM, multi-block); `src/utils/signal_handler.cpp:64@e894700`
   `CheckSignalFlags` (MAX).
 - Tests: `test_check_redo_parallel.release`; `tests/test_cycle_diagnostics_parallel.cpp`
   (`test_cycle_diagnostics_parallel.release`).
@@ -4658,8 +4658,8 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   meters, redo flags and the fixer. Switch: CMake `CUDA=ON`; env `DEVICE=cuda`, `DEVICE_ID`.
 - Derivations: none.
 - Figures: the per-step host↔device sync points (from issue #291's counts).
-- Code: `src/mesh/meshblock_options.cpp:274@dae902b`; `examples/run_hydro.cpp:39-47@dae902b`;
-  `src/recon/recon_dispatch.cu:18@dae902b` (tiling for lines >1024); `tests/cuda_test_gate.hpp` (a CPU build never
+- Code: `src/mesh/meshblock_options.cpp:274@e894700`; `examples/run_hydro.cpp:39-47@e894700`;
+  `src/recon/recon_dispatch.cu:18@e894700` (tiling for lines >1024); `tests/cuda_test_gate.hpp` (a CPU build never
   enters CUDA tests).
 - Tests: CUDA twins: `test_weno5_cuda_line.release`, `test_x1_seam_split_*_cuda`,
   `test_cubed_sphere_exchange.release` `_cuda`, `*_cuda_python` entries (`tests/CMakeLists.txt:277-311`),
@@ -4686,10 +4686,10 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   include_ghost_zones, x1/x2/x3_slice, output_sumx1..3, cartesian_vector, super-resolution}`; CMake `NETCDF` (default ON).
 - Derivations: none.
 - Figures: file naming and the combine flow (parts → root mppnccombine → combined file, barrier, barrier).
-- Code: `src/output/output_type.cpp:64@dae902b` `OutputOptionsImpl::from_yaml`; `src/output/netcdf.cpp:37@dae902b`
+- Code: `src/output/output_type.cpp:64@e894700` `OutputOptionsImpl::from_yaml`; `src/output/netcdf.cpp:37@e894700`
   `write_output_file` (`:127` nc_create, `:166` cubed-sphere tile offsets, `:194` NC_DOUBLE switch);
-  `src/output/combine_netcdf.cpp:27@dae902b` `ready_to_combine` (counts local blocks), `:39` `combine_blocks` (`:62`
-  barrier, `:70` ReleaseOnExit, `:121` `mppnccombine`); `src/output/mppnccombine.cpp:94@dae902b`;
+  `src/output/combine_netcdf.cpp:27@e894700` `ready_to_combine` (counts local blocks), `:39` `combine_blocks` (`:62`
+  barrier, `:70` ReleaseOnExit, `:121` `mppnccombine`); `src/output/mppnccombine.cpp:94@e894700`;
   `python/api/pd_combine.py` (CLI `pd-combine`).
 - Tests: `test_user_output.release` — `OutputPrecision.netcdf_double_precision_reads_back_exactly`,
   `netcdf_float_output_keeps_nonfinite`, `yaml_double_precision_defaults_off_and_is_reported`, `OutputSlice.*`,
@@ -4711,7 +4711,7 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   `meshblock.cpp:214`).
 - Derivations: none.
 - Figures: none.
-- Code: `src/output/pnetcdf.cpp:48@dae902b` constructor; `:60` `write_output_file` (`:74-79` bpp check); `cmake/parameters.cmake:28-43@dae902b`.
+- Code: `src/output/pnetcdf.cpp:48@e894700` constructor; `:60` `write_output_file` (`:74-79` bpp check); `cmake/parameters.cmake:28-43@e894700`.
 - Tests: none registered (the refusal was exercised by hand in PR #213, single rank).
 - Limits / known issues: multi-rank PnetCDF output is not covered by any ctest.
 - Discrepancies: none.
@@ -4733,12 +4733,12 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   Switch: YAML output `type: restart` (always combined); driver argument `-r/--restart <file>`.
 - Derivations: none (format and bookkeeping). The FNV-1a keys need only a statement.
 - Figures: bundle file layout; the schedule-restore decision tree (key match → own slot → first unclaimed → new output).
-- Code: `src/output/restart.cpp:24@dae902b` `write_output_file` (`:47-61` schedule tensors, `:64-81` name, `:90`
-  `save_tensors`); `src/output/combine_restart.cpp:18@dae902b` magic, `:35` `make_restart_bundle`, `:76`
-  `combine_blocks` (`:95` barrier); `src/input/read_restart_file.cpp:154@dae902b` `load_pt_from_bundle`, `:223`
-  `load_restart`; `src/mesh/meshblock.cpp:1306@dae902b` `_init_from_restart` (`:1343` precise keys, `:1379` positional
-  file number, `:1388` dt clamp, `:1400` scalar rebuild); `src/output/output_type.cpp:16@dae902b` `schedule_key`,
-  `:24` `schedule_key_v2`; `src/hydro/hydro.hpp:183-186@dae902b` (meters not carried).
+- Code: `src/output/restart.cpp:24@e894700` `write_output_file` (`:47-61` schedule tensors, `:64-81` name, `:90`
+  `save_tensors`); `src/output/combine_restart.cpp:18@e894700` magic, `:35` `make_restart_bundle`, `:76`
+  `combine_blocks` (`:95` barrier); `src/input/read_restart_file.cpp:154@e894700` `load_pt_from_bundle`, `:223`
+  `load_restart`; `src/mesh/meshblock.cpp:1306@e894700` `_init_from_restart` (`:1343` precise keys, `:1379` positional
+  file number, `:1388` dt clamp, `:1400` scalar rebuild); `src/output/output_type.cpp:16@e894700` `schedule_key`,
+  `:24` `schedule_key_v2`; `src/hydro/hydro.hpp:187-190@e894700` (meters not carried).
 - Tests: `tests/run_restart_multiblock.py` (`test_restart_multiblock`, non-Apple) — straka bpp 2, shallow_xy bpp 4 and
   shallow_splash bpp 6 in one process; the restarted final NetCDF equals the uninterrupted one exactly (max abs diff == 0,
   NetCDF float32 by default). `run_restart_cycle_limit.py` (S1.1); `run_restart_dt_change.py`
@@ -4766,10 +4766,10 @@ because its claims draw on Ch3 seams, Ch14 and the physics chapters. Cross-refer
   cycle. Time-weighted mean/std statistics accumulate between writes. A final write happens at finalize (netcdf skips
   final writes, restart writes `final`). Signals (SIGTERM, SIGINT, SIGALRM wall time) are MAX-reduced and stop the
   run. Switch: output `dt`, `variables` (`*_stat` selection).
-- Derivations: time-weighted moments: re-derive from `src/output/output_type.cpp:282-345@dae902b`.
+- Derivations: time-weighted moments: re-derive from `src/output/output_type.cpp:282-345@e894700`.
 - Figures: a schedule timeline across a restart, showing #272 (next_time clamp) and #277 (rewrite).
-- Code: `src/mesh/meshblock.cpp:985@dae902b`; `src/output/output_type.cpp:297@dae902b` `AccumulateStats`;
-  `src/utils/signal_handler.cpp:64@dae902b`; `src/mesh/meshblock.cpp:1121@dae902b` `finalize`.
+- Code: `src/mesh/meshblock.cpp:985@e894700`; `src/output/output_type.cpp:297@e894700` `AccumulateStats`;
+  `src/utils/signal_handler.cpp:64@e894700`; `src/mesh/meshblock.cpp:1121@e894700` `finalize`.
 - Tests: `test_user_output.release` `OutputStatistics.primitive_statistics_are_time_weighted_and_reset`,
   `scalar_statistics_...`.
 - Limits / known issues: signals are checked only at `check_redo`. A rank that never reaches it hangs
@@ -4852,7 +4852,7 @@ The human-readable index of every ctest entry at the pin, grouped by the chapter
 
 <details><summary>Research note from the inventory (scope, recommendations)</summary>
 
-Scope: an index of every ctest entry registered by `tests/CMakeLists.txt@dae902b`, grouped by the chapter that owns the
+Scope: an index of every ctest entry registered by `tests/CMakeLists.txt@e894700`, grouped by the chapter that owns the
 topic (chapter numbers from the proposed outline). Each entry gives one line on what it asserts and the tolerance where
 it is visible. It also lists the example decks used as regression (straka, bryan, shallow-water, uranus) and the files
 that exist but are not registered. **Recommendation:** keep this chapter as the human-readable index. Generate the
@@ -4865,11 +4865,11 @@ other view.
 #### 15.1 registration mechanics and labels
 <sub>inventory E: Scheme: registration mechanics and labels</sub>
 
-- `setup_test(name)` -> ctest `name.<b>`, a gtest binary, no labels (`cmake/macros/macro_setup_test.cmake:8-34@dae902b`).
+- `setup_test(name)` -> ctest `name.<b>`, a gtest binary, no labels (`cmake/macros/macro_setup_test.cmake:8-34@e894700`).
 - `setup_parallel_test(name N)` -> `name.<b>` run by `torchrun --no-python --nproc-per-node=N`
-  (`cmake/macros/macro_setup_parallel_test.cmake:8-34@dae902b`).
+  (`cmake/macros/macro_setup_parallel_test.cmake:8-34@e894700`).
 - `snapy_add_python_test(name ...)` -> ctest `name_python`, with labels and timeout, enrolled for `SNAPY_TEST_PYTHONPATH`
-  (`tests/CMakeLists.txt:201-218@dae902b`).
+  (`tests/CMakeLists.txt:204-221@e894700`).
 - Switch arms: `seam_arm` (`:38-46`), `seam_arm_mp` (`:78-83`), the `_wb_ref4`/`_x1_centroid` duplicates (`:93-101`), the
   `_radial_exact` python duplicates (`:232-237`).
 - Labels in use: `python`, `boundary`, `exchange`, `ucx`, `gpu`, `cuda`, `cubed-sphere`, `diagnostic`, `forcing`, `eos`,
@@ -4877,9 +4877,9 @@ other view.
   `restart`, `examples`, `decomp`, `gloo`, `long`.
 - Gates: `if(CUDA)` registrations; `UCX_FOUND`; `APPLE` (`test_gloo_one_tensor` only on Apple, restart tests only on
   non-Apple); `FULL_TESTS`. Non-CUDA builds disable entries with `cuda` in the name or a `cuda`/`gpu` label
-  (`tests/CMakeLists.txt:514-533@dae902b`). C++ `_cuda` gtest cases inside CPU binaries skip via `snapy_cuda_test_enabled()`.
+  (`tests/CMakeLists.txt:517-536@e894700`). C++ `_cuda` gtest cases inside CPU binaries skip via `snapy_cuda_test_enabled()`.
 - CI: Linux runs all registered entries except `test_shallow_xy_decomp`. PRs use FULL_TESTS=OFF; push/manual runs on
-  Linux use ON (`.github/workflows/ci.yml:87,105-113@dae902b`). macOS PRs run only `test_eos`, `test_plm`,
+  Linux use ON (`.github/workflows/ci.yml:87,105-113@e894700`). macOS PRs run only `test_eos`, `test_plm`,
   `test_gloo_one_tensor`, `test_python_import_path_python`.
 - Figures: a tree from the CMake option set to the registered and enabled entries.
 
@@ -4941,7 +4941,7 @@ other view.
 | `test_hydrostatic.<b>` | cubed-sphere hydrostatic atmosphere stays at rest | 1e-8 |
 | `test_wb_wall_corner.<b>` | uniform-in-x2 rest column keeps u2 = 0 (stock and user-named wall); x2 split == one block; scalar corner prim == cons | 1e-12 |
 | `test_x1_seam_split*.<b>`, `test_x1_seam_split_mp*` | see Ch.12 matrix | 1e-13 |
-| `test_bryan_balance_ic` | bryan `balance-ic`: passes = 1 fails with the cap error; default converges; the dry case does not enter the moist loop (`tests/run_bryan_balance_ic.cmake:27-61@dae902b`) | TIMEOUT 21 s |
+| `test_bryan_balance_ic` | bryan `balance-ic`: passes = 1 fails with the cap error; default converges; the dry case does not enter the moist loop (`tests/run_bryan_balance_ic.cmake:27-61@e894700`) | TIMEOUT 21 s |
 
 
 #### 15.6 Ch.6 Gravity and energy
@@ -5078,25 +5078,25 @@ other view.
 
 | Example | Deck(s) | ctest | Check |
 |---|---|---|---|
-| straka (2-D density current; cartesian, weno5, lmars, ideal-gas, grav1 -9.8, nghost 3, default gravity-work cell+fixer) | `examples/straka.yaml`, `straka_single.yaml`, `straka_proc2.yaml`, `straka_mesh2.yaml` | `test_straka` (label `reference`; 2 ranks; vs Zenodo `straka-ref.nc`), `test_straka_redo`, all restart tests | L2 of theta difference < 50 (`tests/test_straka.py:17@dae902b`) |
+| straka (2-D density current; cartesian, weno5, lmars, ideal-gas, grav1 -9.8, nghost 3, default gravity-work cell+fixer) | `examples/straka.yaml`, `straka_single.yaml`, `straka_proc2.yaml`, `straka_mesh2.yaml` | `test_straka` (label `reference`; 2 ranks; vs Zenodo `straka-ref.nc`), `test_straka_redo`, all restart tests | L2 of theta difference < 50 (`tests/test_straka.py:17@e894700`) |
 | shallow_xy (cartesian shallow-water, shallow-roe) | `shallow_xy*.yaml` | `test_shallow_xy` (FULL, 4 ranks), `test_shallow_xy_decomp` | L2 of rho < 50; decomp bitwise |
-| shallow_splash (gnomonic shallow-water) | `shallow_splash*.yaml` | `test_shallow_splash` (FULL, 6 ranks), `test_shallow_splash_decomp`, `_ucx_cuda_decomp` | L2 of rho < 50 (`tests/test_shallow_splash.py:17@dae902b`) |
+| shallow_splash (gnomonic shallow-water) | `shallow_splash*.yaml` | `test_shallow_splash` (FULL, 6 ranks), `test_shallow_splash_decomp`, `_ucx_cuda_decomp` | L2 of rho < 50 (`tests/test_shallow_splash.py:17@e894700`) |
 | bryan (moist bubble; ideal-moist, limiter, weno5, lmars) | `examples/bryan.yaml` edited in place | `test_bryan_balance_ic` | balance-ic cap/convergence/dry path |
 | uranus (moist-mixture, VIC 1) | `tests/test_uranus_cycle1_abort.yaml`, `test_uranus_late_abort.yaml`, `test_abnormal_exit_floor.yaml` via `run_hydro.<b>` | `test_uranus_cycle1_abort.<b>` | termination strings and exit code |
-| shock, jupiter_*, earth_crm, run_hydro | built (`examples/CMakeLists.txt:5-11@dae902b`) | none (CI's macOS exclude list names `test_shock_cpu`, `test_run_hydro_cpu`, which are not registered at dae902b) | none |
+| shock, jupiter_*, earth_crm, run_hydro | built (`examples/CMakeLists.txt:5-11@e894700`) | none (CI's macOS exclude list names `test_shock_cpu`, `test_run_hydro_cpu`, which are not registered at dae902b) | none |
 
 - Figures: (1) a pyramid of the test suite: unit gtests, python oracles, switch arms, multi-rank, reference examples;
   (2) a bar chart of entries per chapter.
 - Limits / known issues:
   - Reference checks use a loose L2 < 50 on the final theta/rho field against Zenodo files
-    (`tests/run_straka.cmake:8@dae902b`), which needs network access or a cached file.
+    (`tests/run_straka.cmake:8@e894700`), which needs network access or a cached file.
   - `tests/run_example_mass_check.py` is not registered (orphan). `run_shallow_*.cmake` are registered only under FULL_TESTS.
   - The CI macOS exclude regex names `test_shock_cpu` and `test_run_hydro_cpu`, which do not exist at dae902b (stale).
   - CUDA arms are never run in CI.
   - Python ctests test the installed snapy unless `SNAPY_TEST_PYTHONPATH` is set (warning at
-    `tests/CMakeLists.txt:357-359@dae902b`).
+    `tests/CMakeLists.txt:360-362@e894700`).
 - Discrepancies: #217's Limits (Mesh line lacks ke) is superseded (see Ch.13). `gw__NEXTPR_spec_wbref_exact.md:286`
-  (no CUDA or multi-process runs of WB_REF4) is superseded by the arms at `tests/CMakeLists.txt:55-87@dae902b`.
+  (no CUDA or multi-process runs of WB_REF4) is superseded by the arms at `tests/CMakeLists.txt:55-90@e894700`.
 
 ---
 
@@ -5147,7 +5147,7 @@ cross-cutting items the research found, to be confirmed by the chapter authors:
 6. `moist_mixture.hpp:43-54` call-order comment is stale relative to `_ensure_cache`.
 7. Evaporation extent law: the report says "not landed"; it is in kintera at the pin.
 8. `plume-forcing` is accepted by the YAML whitelist but cannot be installed (plume EOS removed).
-9. `sources/deriv__diffusion-face-coefficient.md` is the pre-`e659b69` version; cite `docs/derivations/diffusion-face-coefficient.md@dae902b`.
+9. `sources/deriv__diffusion-face-coefficient.md` is the pre-`e659b69` version; cite `docs/derivations/diffusion-face-coefficient.md@e894700`.
 
 ---
 
@@ -5333,16 +5333,16 @@ Folded in from inventory A (1.14); Ch. 12.2 is the full treatment.
 - Derivations: per the owning physics chapter.
 - Figures: none.
 - Code (name / reader / default):
-  - `SNAP_X1_CENTROID_EXACT` / `src/coord/x1_centroid.cpp:96@dae902b` / "0".
-  - `SNAP_WB_REF4` / `src/hydro/wb_ref4.cpp:87@dae902b` / "0". It is also implied by `SNAP_X1_CENTROID_EXACT`
+  - `SNAP_X1_CENTROID_EXACT` / `src/coord/x1_centroid.cpp:96@e894700` / "0".
+  - `SNAP_WB_REF4` / `src/hydro/wb_ref4.cpp:87@e894700` / "0". It is also implied by `SNAP_X1_CENTROID_EXACT`
     (`wb_ref4.cpp:94`).
   - `SNAP_X1_MASS_COVARIANCE` / `src/hydro/hydro_forward.cpp:41@dae902b` / "0".
-  - `SNAP_FLUX_COVARIANCE` / `src/hydro/hydro.cpp:212@dae902b` / "0".
-  - `SNAP_GRAVITY_WORK_RADIAL_EXACT` / `src/hydro/hydro.cpp:226@dae902b` / "1". It acts only with `gravity-work: face`.
+  - `SNAP_FLUX_COVARIANCE` / `src/hydro/hydro.cpp:221@e894700` / "0".
+  - `SNAP_GRAVITY_WORK_RADIAL_EXACT` / `src/hydro/hydro.cpp:245@e894700` / "1". It acts only with `gravity-work: face`.
   - Parallel / IO: `BACKEND`, `DEVICE`, `DEVICE_ID`, `RANK`, `LOCAL_RANK`, `WORLD_SIZE`, `PROCESS_RANK`,
-    `PROCESS_WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT` (`src/layout/layout.cpp:189-219@dae902b`). commux defaults
+    `PROCESS_WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT` (`src/layout/layout.cpp:189-219@e894700`). commux defaults
     `COMMUX_COALESCE=1`, `COMMUX_GROUP=1`, and `UCX_TLS` without CUDA transports when DEVICE=cpu
-    (`src/layout/process_group_ucx.cpp:26-30@dae902b`).
+    (`src/layout/process_group_ucx.cpp:26-30@e894700`).
 - Tests: the seam arms in `tests/CMakeLists.txt:38-87` set these per ctest entry.
 - Limits / known issues: a rank-to-rank mismatch in a numerics switch would make shared faces two-valued, with no check.
   This follows from the code comments; no test covers it.
