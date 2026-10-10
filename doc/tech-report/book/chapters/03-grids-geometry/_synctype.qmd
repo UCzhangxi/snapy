@@ -1,0 +1,116 @@
+## Sync types and the velocity frame at seams (`type`) {#sec-ch03-synctype}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/mesh/meshblock.cpp, src/mesh/mesh.cpp, src/layout/cubed_sphere_layout.cpp, src/coord/cubed_sphere_utils.cpp, src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, tests/test_coordinate.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $\mathsf M$ the $3\times3$ pointwise matrix that takes a panel velocity to the
+global spherical frame at one ghost position [-].
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: says which variables each sync carries and how their velocities are treated across a cubed-sphere panel
+edge: conserved momenta are covariant (raised before the rotation, lowered after), primitive velocities are
+contravariant (rotated only), scalars are not rotated. **Switch**: `SyncOptions.type` (`kConserved`, `kPrimitive`,
+`kScalar`). **Default**: `kConserved`. **Requires**: nothing. **Order**: exact (a change of basis).
+**Defining equation**: @eq-ch03-synctype-matrix.
+:::
+
+The stage update exchanges conserved variables, `hydro_u` and `scalar_s`, and rebuilds the scalar primitive from them
+afterwards; the initial sync exchanges primitives, `hydro_w` and `scalar_r`. The face-state syncs carry primitive face
+states (@sec-ch03-cslrsync) and the donor factor is a scalar (@sec-ch03-thetacopy). On a slab or cubed layout the type
+does not matter, because a copy needs no rotation. On the cubed sphere the velocity of a strip is rotated to the global
+spherical frame before it leaves the sender and into the receiver's panel frame after it lands; the type decides
+whether the metric is applied around that rotation.
+
+### Derivation
+
+The panel frame's velocity components are contravariant along the unit tangent vectors; the conserved momenta are
+stored covariant (@eq-ch03-gnomonic-lower). The rotation to the spherical frame is defined on contravariant
+components, through Cartesian components on the sphere. For a conserved strip the sender therefore raises first and
+the receiver lowers last, and the code folds both into one matrix per ghost position:
+
+$$
+\begin{aligned}
+\mathsf M^{\to\mathrm{sph}} &= \mathsf R^{\mathrm{sph}\leftarrow\mathrm{panel}}\,\mathsf G^{-1}, \\
+\mathsf M^{\to\mathrm{panel}} &= \mathsf G\,\mathsf R^{\mathrm{panel}\leftarrow\mathrm{sph}},
+\end{aligned}
+$$ {#eq-ch03-synctype-matrix}
+
+with $\mathsf G$ the lowering of @eq-ch03-gnomonic-lower acting on $(v_2, v_3)$ and $\mathsf R$ the panel-to-spherical
+rotation (local notation). For a primitive strip $\mathsf G$ is left out. The matrix is built column by column by
+transforming the three unit vectors, in `cs_velocity_transform_matrix` ([`cubed_sphere_utils.cpp:259-298`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L259-L298)).
+Each factor is exact; the composition is a change of basis and loses nothing but round-off.
+
+### Numerical method
+
+The matrix depends only on the angular position, so it is built for one radial plane and broadcast along $x_1$, and it
+is cached per sync options, buffer, direction and shape (`_velocity_transform`). In the pack the rotation to the
+spherical frame acts on the whole packed strip, margin included, before relabelling; in the unpack the rotation back acts only on the narrow
+ghost zone after interpolation. The scalar primitive of the stage sync is rebuilt by `set_scalar_primitive` after the
+exchange and the corner refresh. @tbl-ch03-synctype-calls lists the syncs.
+
+| sync | type | interpolate | where |
+|---|---|---|---|
+| stage hydro / scalar | conserved / scalar | yes | `exchange_ghost_zones` |
+| initial hydro / scalar | primitive / scalar | yes | `initialize` |
+| face states | primitive, scalar | no | @sec-ch03-cslrsync |
+| donor factor | scalar | no | @sec-ch03-thetacopy |
+| `Mesh` level | caller's choice | yes | `Mesh::exchange_ghost_zones` |
+
+: The syncs of one block and their types. {#tbl-ch03-synctype-calls}
+
+```{python}
+#| label: fig-ch03-synctype-pipeline
+#| fig-cap: "The velocity path of a conserved strip across a panel edge: covariant components on the sender's panel are raised, rotated to the global spherical frame, relabelled and sent; on the receiver they are interpolated in the spherical frame, rotated into its panel frame and lowered. A primitive strip skips the raise and the lower; a scalar strip skips the rotations."
+#| fig-alt: "A left-to-right chain of boxes: raise, rotate to spherical, send, interpolate, rotate to panel, lower."
+#| echo: false
+from snapy_report.ch03.fig_synctype_pipeline import make_fig
+make_fig()
+```
+
+@fig-ch03-synctype-pipeline draws the path of one strip.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| stage sync, scalar rebuild | [`meshblock.cpp:913-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L978) | `set_scalar_primitive` | none |
+| initial sync | [`meshblock.cpp:382-394`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L382-L394) | `kPrimitive` | none |
+| initial sync under `Mesh` | [`meshblock.cpp:434-449`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L434-L449) | `initialize_under_mesh` | none |
+| `Mesh`-level sync | [`mesh.cpp:389-396`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L396) | `exchange_ghost_zones` | `type` |
+| matrix with raise or lower | [`cubed_sphere_utils.cpp:259-298`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L259-L298) | `cs_velocity_transform_matrix` | `type` |
+| cached matrix, one radial plane | [`cubed_sphere_layout.cpp:122-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L122-L152) | `_velocity_transform` | `type` |
+| pack rotation | [`cubed_sphere_layout.cpp:736-753`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L736-L753) | `kConserved` | `type` |
+| unpack rotation | [`cubed_sphere_layout.cpp:939-956`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L939-L956) | `kPrimitive` | `type` |
+
+: Code map of the sync types. {#tbl-ch03-synctype-code}
+
+In step order (@tbl-ch03-synctype-code):
+
+1. The caller picks the type in `SyncOptions`; `_velocity_transform` passes the cosine to the matrix only for
+   `kConserved` ([`cubed_sphere_layout.cpp:122-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L122-L152)).
+2. `serialize` applies `cs_apply_velocity_transform_` to the velocity rows of a conserved or primitive strip
+   ([`cubed_sphere_layout.cpp:736-753`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L736-L753)); `deserialize` applies the inverse matrix with
+   `cs_apply_velocity_transform_` ([`cubed_sphere_layout.cpp:939-956`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L939-L956)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_coordinate` | the cached matrices, with and without the metric, equal the direct transforms | $10^{-4}$ rel., $10^{-5}$ abs. | float32 cases |
+| `test_cubed_sphere_vertical_velocity_exchange_python` | a radial velocity crosses every edge unchanged | $10^{-12}$ | @sec-ch03-exchange |
+
+: Tests of the sync types. C++ entries carry the build suffix (`.release`). {#tbl-ch03-synctype-tests}
+
+The matrix case is `cached_cubed_sphere_velocity_matrices_match_direct` ([`test_coordinate.cpp:307-354`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L307-L354)); it
+runs on CPU and CUDA in float32 and float64 through `DeviceTest`. Their pass status at the pin was not run for this
+chapter (missing evidence).
+
+### Limits
+
+No known limits. A tangential velocity crossing an edge is not tested end to end; only the radial component is (not
+measured). The switch combinations that are tested are listed in the switch coverage matrix of chapter 12.

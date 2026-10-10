@@ -1,0 +1,118 @@
+## Generic ghost exchange (`SyncOptions`) {#sec-ch03-exchange}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/layout/layout.hpp, src/layout/layout.cpp, src/mesh/meshblock.cpp, tests/test_mesh_exchange.py, tests/test_cubed_sphere_vertical_velocity_exchange.py
+status: draft
+-->
+
+Local symbols (flagged to the editor): $q^{\mathrm{c}}_{k,j}$ a synthesised corner ghost value; $q^{\mathrm{L}}$ and
+$q^{\mathrm{B}}$ the ghost strips left ($x_2$ side) and below ($x_3$ side) of a corner, with $j_0$, $k_0$ their
+first interior column and row next to the corner.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: for each neighbour across a face, copies the neighbour's interior slab of width $n_g$ into this block's
+ghost slab, then synthesises each $x_2$-$x_3$ ghost corner as the mean of the two adjacent ghost strips. **Switch**:
+`SyncOptions` (`type`, `skip_corner`, `interpolate`, `dim`, phase flags). **Default**: conserved variables, corners
+skipped and synthesised, no interpolation. **Requires**: nothing. **Order**: exact copy; the corner is a
+convention. **Defining equation**: @eq-ch03-exchange-corner.
+:::
+
+Every ghost that is not at a physical face (@sec-ch03-physfaces) is filled by an exchange. A sync packs, for each
+direction with a neighbour, the interior slab next to that face into a send buffer, moves the buffers (chapter 14),
+and unpacks each received buffer into the ghost slab of the same direction. By default only face neighbours are
+exchanged; afterwards the four $x_2$-$x_3$ ghost corners are filled from the edge strips. The per-stage sync exchanges
+the conserved variables of the hydro and, when there are scalars, of the scalar; @sec-ch03-synctype lists the other
+syncs. On the cubed sphere the same steps run with interpolation across panel edges (@sec-ch03-csinterp).
+
+### Derivation
+
+The face exchange is a copy and needs no derivation. The corner is a convention, stated here. With the left ghost
+strip $q^{\mathrm{L}}$ (offset $\Delta x_2 = -1$) and the bottom strip $q^{\mathrm{B}}$ (offset $\Delta x_3 = -1$), the
+lower-left corner ghost at $(k, j)$ is
+
+$$
+q^{\mathrm{c}}_{k,j} = \tfrac12\left(q^{\mathrm{L}}_{k_0,\,j} + q^{\mathrm{B}}_{k,\,j_0}\right),
+$$ {#eq-ch03-exchange-corner}
+
+that is, the mean of the left strip's value in the same $x_2$ column at the row next to the corner and the bottom
+strip's value in the same $x_3$ row at the column next to the corner. @eq-ch03-exchange-corner and its three mirror
+images are `fill_corners` ([`layout.cpp:710-751`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L710-L751)). It reproduces a constant field; for a field with a
+gradient it is a first-order fill, because both terms are read up to $n_g$ cells away from the corner cell. It is not checked by an executable
+check; the tests below cover the face copies.
+
+### Numerical method
+
+Slabs are addressed by the offset $(\Delta x_3, \Delta x_2, \Delta x_1) \in \{-1,0,1\}^3$; `get_buffer_id` maps an
+offset to one of 9 buffers (27 on `cubed`). The sent slab is the $n_g$-wide interior next to the face; the received
+slab is the ghost zone across it. With `skip_corner` only offsets with one non-zero component are exchanged. The
+`dim` option restricts a sync to one direction (used for face states, @sec-ch03-cslrsync). Physical faces are skipped.
+`fill_corners` runs at the end of `finalize` when corners are skipped and the sync is not one phase of a split;
+for a split cubed-sphere sync it runs once after both phases. Only $x_2$-$x_3$ corners are synthesised; corners that
+involve $x_1$ are not. The per-stage sync runs at the start of `MeshBlock::forward`, before reconstruction reads the
+ghosts. @fig-ch03-exchange-stencil shows the slabs and buffer ids.
+
+```{python}
+#| label: fig-ch03-exchange-stencil
+#| fig-cap: "The $3\\times3$ neighbour stencil of one block in $x_2$-$x_3$, with the buffer id of each offset. Face neighbours (orange arrows) send their interior slabs into this block's hatched ghost slabs; the four corner ghost blocks (purple) are not exchanged but synthesised from the two adjacent strips."
+#| fig-alt: "A block in the centre of a three by three arrangement, numbered 0 to 8, with arrows from the four face neighbours and the corners marked as synthesised."
+#| echo: false
+from snapy_report.ch03.fig_exchange_stencil import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| buffer id of an offset | [`layout.hpp:32-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L32-L35) | `get_buffer_id` | none |
+| sync options and defaults | [`layout.hpp:134-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L134-L157) | `SyncOptions` | none |
+| pack | [`layout.cpp:477-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L477-L538) | `serialize` | `skip_corner` |
+| unpack | [`layout.cpp:668-708`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L668-L708) | `deserialize` | none |
+| corners | [`layout.cpp:710-751`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L710-L751) | `fill_corners` | `skip_corner` |
+| wait, unpack, corners | [`layout.cpp:753-775`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L753-L775) | `finalize` | none |
+| one sync, or two phases | [`meshblock.cpp:554-595`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L595) | `exchange` | `interpolate` |
+| per-stage sync | [`meshblock.cpp:913-930`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L930) | `exchange_ghost_zones` | none |
+
+: Code map of the generic exchange. {#tbl-ch03-exchange-code}
+
+In step order (@tbl-ch03-exchange-code):
+
+1. `exchange_ghost_zones` syncs `hydro_u` as conserved with interpolation on, then `scalar_s` as scalar
+   ([`meshblock.cpp:913-930`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L930)).
+2. `exchange` takes the two-phase branch on a subdivided cubed sphere, otherwise calls `_exchange_once`, which is
+   `begin_exchange`, `launch_exchange`, `finalize_exchange` ([`meshblock.cpp:554-595`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L595)).
+3. `serialize` copies each interior slab into the cached send buffer of its `get_buffer_id`
+   ([`layout.cpp:477-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L477-L538)).
+4. `finalize` waits on the messages, calls `deserialize` and then `fill_corners` ([`layout.cpp:753-775`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L753-L775)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_mesh_exchange_python` | each ghost of a $2\times2$ slab in one process equals its neighbour's payload | exact | integer payloads |
+| `test_cubed_sphere_vertical_velocity_exchange_python` | a uniform radial velocity crosses every panel edge unchanged | $10^{-12}$ abs. $+ 10^{-12}$ rel. | round-off of the frame rotations |
+| `test_exchange` | ghosts hold the neighbour's payload, two ranks | value bounds | payloads identify the sender |
+
+: Tests of the generic exchange. C++ entries carry the build suffix (`.release`). {#tbl-ch03-exchange-tests}
+
+The slab check, in `test_mesh_exchange.py`, is the final `torch.all` comparison ([`test_mesh_exchange.py:20-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L20-L50)).
+The radial-velocity check sets `ABS_TOL` and `REL_TOL` ([`test_cubed_sphere_vertical_velocity_exchange.py:7-9`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L7-L9))
+and compares the worst ghost error against them with `ideal_match`
+([`test_cubed_sphere_vertical_velocity_exchange.py:95-110`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L95-L110)). The two-rank case uses `ghosts_match_expected`
+([`test_exchange.cpp:135-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L135-L180)). The Python tests run on CPU in one process; `test_exchange.release` runs on two
+ranks with gloo. Their pass status at the pin was not run for this chapter (missing evidence). No test checks the
+synthesised corners.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Corners that involve $x_1$ (blocks split in $x_1$ on `cubed`) are never exchanged or synthesised.
+:::
+
+At a physical $x_1$ wall such corners are rewritten by the corner refresh (@sec-ch03-cornerrefresh); at an internal
+$x_1$ seam they keep stale values (read from the code; not measured). No dimension-split stencil reads them; a
+cross-derivative operator could. The switch combinations that are tested are listed in the switch coverage matrix
+of chapter 12.

@@ -1,0 +1,146 @@
+## $x_1$ seams between blocks (`layout: cubed`, `nb1` > 1) {#sec-ch03-x1seams}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/hydro/hydro.cpp, src/hydro/hydro_forward.cpp, src/layout/layout.cpp, src/eos/equation_of_state.cpp, tests/test_pref_local_seam.cpp, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $s$ an $x_1$ seam face shared by the block below ($\mathrm{B}$) and above
+($\mathrm{T}$); $\mathbf F^{\mathrm{B}}_s$, $\mathbf F^{\mathrm{T}}_s$ the $x_1$ fluxes the two blocks compute there;
+$p^{\mathrm{top}}$ the reference face pressure a block receives at its upper face.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: makes a column split into several $x_1$ blocks behave like one block: the hydrostatic reference scan is
+relayed down the column, the reference ghost rows are the neighbour's interior rows, the switch-specific ghost rows
+are exchanged, and across process seams the seam flux is averaged. **Switch**: YAML `distribute: {layout: cubed, nb1}`
+with `nb1` > 1. **Default**: off (`nb1: 1`). **Requires**: `nghost` $\ge 3$ under `SNAP_WB_REF4`; blocks of one process
+must run concurrently. **Order**: round-off agreement with one block, not bitwise. **Defining equation**:
+@eq-ch03-x1seams-average.
+:::
+
+Only the `cubed` layout splits $x_1$ (@sec-ch03-layouts). The vertical schemes of chapter 5 are column operations: the
+hydrostatic reference is a scan from the top of the column, and several switches read windows that reach past a block
+edge. Four mechanisms make a split column match one block. (a) The reference scan is relayed from the top block down,
+each block passing its bottom face value to the block below. (b) The reference ghost rows (`pref`, `dref`) are
+overwritten with the neighbour's interior rows. (c) Under `SNAP_X1_CENTROID_EXACT` the plain-mean ghost cells and the
+two face pressures past the seam are the neighbour's. (d) Across process seams only, the seam-face flux, face pressure
+and reference flux are replaced by the mean of the two sides. Wall reconstructions and wall mirroring are gated on a
+physical face, so they never act at a seam; column-wide EOS repairs gather the whole column.
+
+### Derivation
+
+**Single-valued seam flux.** Block B updates its top cell with $-A_s\mathbf F^{\mathrm{B}}_s/V$ and block T its bottom
+cell with $+A_s\mathbf F^{\mathrm{T}}_s/V$. The column total changes at the seam by
+$A_s(\mathbf F^{\mathrm{T}}_s - \mathbf F^{\mathrm{B}}_s)\Delta t$ per stage, zero only if the two agree. Both blocks
+replace their value by
+
+$$
+\bar{\mathbf F}_s = \tfrac12\left(\mathbf F^{\mathrm{B}}_s + \mathbf F^{\mathrm{T}}_s\right),
+$$ {#eq-ch03-x1seams-average}
+
+and floating-point addition is commutative, so both hold the same bits and the sums telescope exactly across the seam.
+@eq-ch03-x1seams-average is the seam average in `hydro_forward.cpp`, applied to the flux slab and, packed with it, the
+face pressure and the reference flux `bflux1` ([`hydro_forward.cpp:425-499`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L499)). It is applied only across
+process seams; with mechanism (b) the two sides of an in-process seam already compute the same states, and the code
+comment states that a same-process seam is not averaged.
+
+**Reference relay.** The default reference is a scan of face pressures down from an anchor at the top of the column,
+each cell adding its own hydrostatic drop. Split into blocks, each block needs as anchor the face value the scan has
+reached at its upper face. The top block anchors itself; each other block takes $p^{\mathrm{top}}$ from the block above
+and, after its own scan, passes its bottom face value down (`take_x1_anchor` and `pass_x1_anchor`,
+[`hydro.cpp:518-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L518-L579)). The relay is serial from top to bottom, so every block's anchor equals the value the
+one-block scan has at the same face, up to the order of the additions. The scan kernel itself is chapter 5's.
+
+**Ghost rows.** A block's ghost rows of `pref`, `dref` computed locally from its ghost quadrature differ from the
+owner's interior values; the code comment records about $10^2$ Pa near a wall. Replacing them by the neighbour's
+interior rows, sent under `kWbGhostUpTag` and `kWbGhostDnTag`, makes the perturbation field identical on both
+sides of the seam ([`hydro.cpp:581-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L581-L640)). Nothing in the derivation is truncated; the remaining differences from one block are round-off from
+the order of operations. The executable check of these identities is not separate from the tests below.
+
+### Numerical method
+
+All four mechanisms run in every stage of a split column. The relay and the ghost-row exchange run inside
+`_hydro_ref_x1`, when the well-balanced reconstruction builds its reference; the plain-mean ghost rows before it; the
+seam average after the $x_1$ fluxes are computed and before the positivity limiter; the face-pressure ghost rows after
+the average. A same-process neighbour is reached through an in-memory board, a remote one through the process group
+(chapter 14); `_x1_ghost_rows` packs $m$ rows from below the top face (up) and from above the bottom face (down) and
+copies the neighbour's rows into its ghosts. The message tags are 0x7715 (relay), 0x7717 and 0x7718 (reference ghost
+rows), 0x7720 and 0x7721 (seam flux), 0x7722 to 0x7725 (face-pressure and plain-mean ghost rows). EOS column repairs
+call `gather_x1`, which joins the column's pieces bottom first. @fig-ch03-x1seams-relay shows a column of three blocks.
+
+```{python}
+#| label: fig-ch03-x1seams-relay
+#| fig-cap: "A column split into three $x_1$ blocks. Black arrows: the reference relay, top block to bottom block, one face value per seam. Purple arrows: each block's interior rows copied into the neighbour's ghost rows. At each seam face the two one-sided fluxes (orange) are replaced by their mean when the seam is between processes."
+#| fig-alt: "Three stacked blocks with downward arrows at the seams, short arrows into hatched ghost rows, and paired flux arrows at each seam face."
+#| echo: false
+from snapy_report.ch03.fig_x1seams_relay import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| WB4 needs three ghosts | [`hydro.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L94-L103) | `wb_ref4_enabled` | `SNAP_WB_REF4` |
+| neighbours below and above | [`hydro.cpp:261-268`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L261-L268) | `x1_neighbors` | `nb1` |
+| switch ghost rows | [`hydro.cpp:270-303`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L270-L303) | `_x1_ghost_rows` | `SNAP_X1_CENTROID_EXACT` |
+| relay and reference ghost rows | [`hydro.cpp:502-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L502-L640) | `_hydro_ref_x1` | `nb1` |
+| physical-face gating | [`hydro_forward.cpp:240-262`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L240-L262) | `phys_x1inner` | none |
+| seam average | [`hydro_forward.cpp:425-499`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L499) | `kSeamFluxUpTag` | none |
+| relay and boards | [`layout.cpp:879-922`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L922) | `take_x1_anchor` | none |
+| block messages, at most 16 blocks | [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877) | `send_to_block` | `blocks_per_process` |
+| column gather | [`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847) | `gather_x1` | none |
+| EOS column repair | [`equation_of_state.cpp:279-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L279-L285) | `gather_x1` | `nb1` |
+
+: Code map of the $x_1$ seams. {#tbl-ch03-x1seams-code}
+
+In step order (@tbl-ch03-x1seams-code):
+
+1. Setup refuses `SNAP_WB_REF4` (or `SNAP_X1_CENTROID_EXACT`, which implies it) with `nghost` < 3, through
+   `wb_ref4_enabled` ([`hydro.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L94-L103)).
+2. In the stage, `phys_x1inner` and `phys_x1outer` gate the wall treatments ([`hydro_forward.cpp:240-262`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L240-L262));
+   under `SNAP_X1_CENTROID_EXACT` the plain-mean ghost rows come from the neighbours with `_x1_ghost_rows`
+   ([`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285)).
+3. `_hydro_ref_x1` takes the anchor from above, scans, passes its bottom face down, and swaps reference ghost rows
+   with both neighbours using `kWbGhostDnTag` ([`hydro.cpp:502-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L502-L640)).
+4. After the $x_1$ fluxes, a process seam is averaged with `kSeamFluxDnTag` ([`hydro_forward.cpp:425-499`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L499)),
+   then the face-pressure ghost rows past the seam are exchanged with `_x1_ghost_rows`
+   ([`hydro_forward.cpp:501-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L501-L508)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_pref_local_seam` | an in-process split restarts the reference at the seam; split equals one block after 200 steps | $10^{-6}$; $10^{-12}$ relative | set in the test |
+| `test_x1_seam_split` and arms `_x1_centroid`, `_radial_exact`, `_radial_exact_off`, `_wb_ref4`, `_wb_ref4_gravity_0`, `_x1_mass_covariance` | two blocks in one process equal one block after 20 steps, per switch | $10^{-13}$ relative | round-off of 20 steps |
+| `test_x1_seam_split_mp` and arms | the same split across two ranks | $10^{-13}$ relative | as above |
+| `test_parentless_cloud_nb1_mp` | column repair across two processes keeps mass | in the test | chapter 10 |
+
+: Tests of the $x_1$ seams. C++ entries carry the build suffix (`.release`). {#tbl-ch03-x1seams-tests}
+
+The reference cases are `local_blocks_restart_the_reference_at_the_seam` ([`test_pref_local_seam.cpp:99-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L99-L143)) and
+`in_process_split_matches_one_block_after_200_steps` ([`test_pref_local_seam.cpp:300-331`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L300-L331)). The arms run one
+gtest each with their environment through `seam_arm` ([`CMakeLists.txt:36-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L36-L61)); the comparisons are in
+`split_gap` and its callers ([`test_x1_seam_split.cpp:202-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L202-L286)). With `SNAP_GRAVITY_WORK_RADIAL_EXACT` the split
+column is expected to differ and the test asserts only the $E+P$ drift of the split column ($10^{-13}$) and prints the
+gap. CUDA twins of four arms are registered by `seam_arm` when CUDA is built ([`CMakeLists.txt:62-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L62-L78)); the
+`_mp` entries run on two ranks with `torchrun`. Their pass status at the pin was not run for this chapter (missing
+evidence).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Blocks of one process in a split column must run concurrently; a block waits at most 5 minutes for its anchor.
+- At most 16 blocks per process can exchange block messages.
+- `SNAP_GRAVITY_WORK_RADIAL_EXACT` keeps a one-sided slope at block edges, so a split column differs from one block.
+:::
+
+A split column is not bitwise equal to one block; the tests use $10^{-13}$ and $10^{-12}$. Issue #250 recorded, before
+the relay and ghost-row exchange existed, that $x_1$ splits on CPU with gloo differed from one rank by at most
+$8.0\times10^{-15}$ relative while two GPUs with UCX were bitwise (`sources/gh__ISSUE_THREADS_138-250.md`, issue #250);
+that measurement predates the pin and was not repeated here. The header comment of `test_pref_local_seam.cpp` still
+says that `HydroImpl` restarts the scan in a second same-process block and that the test does not fix it, while the
+assertions expect the fixed behaviour ([`test_pref_local_seam.cpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L1-L15)). The switch combinations that are tested are listed in the switch coverage matrix of chapter 12.

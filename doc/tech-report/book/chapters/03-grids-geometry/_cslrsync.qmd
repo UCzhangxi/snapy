@@ -1,0 +1,104 @@
+## Cubed-sphere face-state seam sync {#sec-ch03-cslrsync}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, src/layout/cubed_sphere_layout.cpp, sources/canoe__tracer_seam_TECH_REPORT.md, tests/test_flux_covariance_seams.py
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: before the $x_2$ and $x_3$ Riemann solves, the reconstructed left and right states at panel-edge faces are
+exchanged as raw copies, one face deep, so that both panels solve the same Riemann problem at a shared face.
+**Switch**: none. **Default**: always on with `layout: cubed-sphere`. **Requires**: the direction-suffixed keys
+`*_wl:+` and `*_wr:-`. **Order**: exact copy. **Defining rule**: the suffix rule of the Derivation layer.
+:::
+
+At a face between two panels, each panel reconstructs the state on its own side from its interior and the state on
+the other side from its interpolated ghosts. Without a sync the two panels would solve different Riemann problems for
+the same face and the fluxes would not cancel. snapy sends each panel's interior-side state to the neighbour, which
+overwrites its ghost-side state with it; then both hold the same pair. Because a panel edge can join two edges of the
+same orientation, where one panel's "left" is the other's "right" in the other panel's frame, the two states travel
+under keys whose suffix selects the direction, and the receiving block assigns the role in its own frame. The scalar
+once used a single key that swapped the states at those edges and made the solver pick the downwind state
+([chengcli/snapy#220](https://github.com/chengcli/snapy/issues/220)).
+
+### Derivation
+
+The argument is in `sources/canoe__tracer_seam_TECH_REPORT.md` §4 to §6; it is stated here against the code. In a
+block's own frame, at its last face along $+x_2$ the left state $q^{\mathrm L}$ comes from its interior and the right
+state $q^{\mathrm R}$ from its ghosts; at its first face the reverse. The pack and unpack rules for a key with a suffix
+are:
+
+- a key ending `:+` is sent only toward a direction with no negative offset and received only from a direction with
+  no positive offset;
+- a key ending `:-` is the mirror image.
+
+The rules are the `suffix` tests in the cross-panel pack ([`cubed_sphere_layout.cpp:710-719`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L710-L719)) and the
+`suffix` tests in the unpack ([`cubed_sphere_layout.cpp:924-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L924-L932)). With $q^{\mathrm L}$ sent as `hydro_wl:+` and $q^{\mathrm R}$ as
+`hydro_wr:-`, a block sends from its last face only $q^{\mathrm L}$, its interior state there, and from its first face
+only $q^{\mathrm R}$, again its interior state. A neighbour that lies on the receiver's negative side delivers into the
+receiver's $q^{\mathrm L}$; one on its positive side into $q^{\mathrm R}$. Both rules are evaluated in the receiver's
+own frame, so at an edge where both panels see the other on their positive side the interior state of the sender lands
+in the receiver's $q^{\mathrm R}$, which in the receiver's frame is the side the sender occupies. In every case the
+ghost-side state at a shared face is replaced by the neighbour's interior state, and the two blocks hold the same
+ordered pair. Nothing is approximated.
+
+### Numerical method
+
+The sync runs inside each stage, after the $x_2$ and $x_3$ reconstruction and before the solves. Both directions are
+begun, launched and finalised together. The options are `cross_panel_only(true)`, `interpolate(false)` and
+`type(kPrimitive)`, with `dim` set to the direction, so only the one face layer at panel edges moves; the
+velocity frame rotation of @sec-ch03-csinterp is applied to the states, the reverse flag reorders the strip along the
+edge, and the flip and transpose flags are no-ops on a strip one face deep. The scalar runs the same sync with
+`type(kScalar)` before its own solves. @fig-ch03-cslrsync-roles draws the roles at a same-orientation edge.
+
+```{python}
+#| label: fig-ch03-cslrsync-roles
+#| fig-cap: "Left and right states at a face shared by two panels whose edges have the same orientation. Each panel's interior-side state (filled triangle) is sent; each ghost-side state (open triangle) is overwritten with the neighbour's interior state, so both panels hold the same pair."
+#| fig-alt: "Two cells on either side of a face, each panel's own axis arrow pointing toward the face, with triangles marking the exchanged states."
+#| echo: false
+from snapy_report.ch03.fig_cslrsync_roles import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| hydro $x_2$, $x_3$ face-state sync | [`hydro_forward.cpp:542-587`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L542-L587) | `send_vars2` | `layout: cubed-sphere` |
+| scalar face-state sync | [`scalar.cpp:80-125`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L80-L125) | `send_vars2` | `layout: cubed-sphere` |
+| one-face strip | [`cubed_sphere_layout.cpp:668-674`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L668-L674) | `part_opts` | `dim` |
+| suffix rule, pack | [`cubed_sphere_layout.cpp:710-719`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L710-L719) | `suffix` | none |
+| suffix rule, unpack | [`cubed_sphere_layout.cpp:924-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L924-L932) | `suffix` | none |
+
+: Code map of the face-state seam sync. {#tbl-ch03-cslrsync-code}
+
+In step order (@tbl-ch03-cslrsync-code):
+
+1. After `precon23` reconstructs the $x_2$ states, the hydro puts them in `send_vars2` under `hydro_wl:+` and
+   `hydro_wr:-` and begins the exchange; the same for $x_3$ ([`hydro_forward.cpp:542-570`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L542-L570)).
+2. It launches both and finalises both with `finalize_exchange` ([`hydro_forward.cpp:572-587`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L572-L587)); the solves
+   follow.
+3. The scalar does the same with `scalar_wl:+` and `scalar_wr:-` ([`scalar.cpp:80-125`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L80-L125)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_flux_covariance_seams_python` | six panels with the #289 term on conserve mass, vapour and $E+\mathrm{PE}$ over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
+| `test_flux_positivity_cubedsphere_python` | tracer mass is conserved across seams and the hat stays in $[0,1]$ | $10^{-13}$ drift | `DRIFT_TOL`, @sec-ch03-thetacopy |
+
+: Tests that exercise the face-state sync. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cslrsync-tests}
+
+The conservation arm is `arm_conservation` and its threshold `DRIFT_TOL`
+([`test_flux_covariance_seams.py:34-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_seams.py#L34-L93)); a shared face whose two panels solved different problems would leak
+and fail it. There is no dedicated test of the suffix rule itself. The tests run on CPU in one process. Their pass
+status at the pin was not run for this chapter (missing evidence).
+
+### Limits
+
+No known limits. The transpose and flip flags are computed for these strips but have no effect on a strip one face
+deep (read from the code). The suffix rule has no direct unit test (not measured). The switch combinations that are
+tested are listed in the switch coverage matrix of chapter 12.

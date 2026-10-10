@@ -1,0 +1,108 @@
+## Donor factor across seams: raw copy (`limiter`) {#sec-ch03-thetacopy}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, sources/canoe__theta_seam_TECH_REPORT.md, tests/test_flux_positivity_cubedsphere.py, tests/test_sedimentation_cubed_seam.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $\mathcal F_f$ the requested species flux through face $f$ before limiting
+[kg m$^{-2}$ s$^{-1}$]; $d(f)$ the donor cell of face $f$, the upwind cell the flux drains.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: the positivity limiter's donor factor $\Theta$ is exchanged into the ghost cells as a raw, index-matched
+copy, never interpolated, so both blocks that share a face scale its flux by the donor's own factor. **Switch**:
+`dynamics.equation-of-state.limiter` with at least one species (hydro), and the same setting for scalars.
+**Default**: on whenever the limiter is on. **Requires**: nothing. **Order**: exact copy. **Defining equation**:
+@eq-ch03-thetacopy-face.
+:::
+
+The tracer flux positivity limiter of chapter 8 computes, per cell and species, a factor $\Theta\in[0,1]$ and scales
+every face flux that drains the cell by it. The limited flux of a face must be one number on both sides, or the mass
+removed from the donor is not the mass added to the receiver. At a block seam one side's donor is a ghost, so that
+ghost must hold the donor's own $\Theta$. On a cubed sphere an interpolated ghost would be a blend of several cells'
+factors, not the donor's; the exchange therefore uses `interpolate(false)`. The species enthalpy that the withheld
+mass carries is recomputed from the ghost state instead of being exchanged. In the history:
+[chengcli/snapy#220](https://github.com/chengcli/snapy/issues/220).
+
+### Derivation
+
+The argument is `sources/canoe__theta_seam_TECH_REPORT.md` §1 and §6. With the limited flux of face $f$ written as
+
+$$
+\mathcal F^{\Theta}_f = \Theta_{d(f)}\,\mathcal F_f,
+$$ {#eq-ch03-thetacopy-face}
+
+the two blocks sharing $f$ each evaluate $\Theta_{d(f)}$, one from its interior and one from its ghost. If the ghost
+holds a different number $\tilde\Theta$, the face carries $\Theta\mathcal F_f$ out of one cell and
+$\tilde\Theta\mathcal F_f$ into the other, and $(\Theta - \tilde\Theta)\mathcal F_f A_f\Delta t$ of species mass is
+created or destroyed per stage. Equality needs the ghost to be the donor's value bit for bit. A raw copy delivers
+exactly the neighbour's interior cell that occupies the ghost position, after the same reverse, flip and transpose
+relabelling as every cubed-sphere strip; within a panel and across $x_1$ seams the ghost is the same cell anyway. The
+scaling @eq-ch03-thetacopy-face is `flux_positivity_scale_`, called after the copy
+([`hydro_forward.cpp:671-698`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L698)). Nothing is approximated.
+
+### Numerical method
+
+$\Theta$ is a cell quantity per species, computed in each stage after the $x_1$ seam fluxes are made single-valued
+(@sec-ch03-x1seams) and before the fluxes are scaled. Its ghosts are filled like conserved-variable ghosts: the
+exchange at internal faces (with corners synthesised as usual), then every installed bfunc in scalar mode at physical
+faces. The scalar module does the same for its tracers. @fig-ch03-thetacopy-seam shows the leak an interpolated factor
+would cause.
+
+```{python}
+#| label: fig-ch03-thetacopy-seam
+#| fig-cap: "A face on a panel seam with its donor cell on panel A. With a raw copy (top) panel B's ghost holds $\\Theta_A$ and both sides scale the flux by it. With an interpolated ghost (bottom) panel B scales by a blend $\\tilde\\Theta$, and the difference $(\\Theta_A - \\tilde\\Theta)\\mathcal F_f$ leaks at the face."
+#| fig-alt: "Two rows of two cells across a seam; the top row has equal factors on both sides, the bottom row shows unequal factors and a leak arrow."
+#| echo: false
+from snapy_report.ch03.fig_thetacopy_seam import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| limiter on, factor and census | [`hydro_forward.cpp:648-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L669) | `flux_positivity_theta` | `limiter` |
+| raw copy and bfunc fill (hydro) | [`hydro_forward.cpp:671-688`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L688) | `interpolate` | none |
+| raw copy and bfunc fill (scalar) | [`scalar.cpp:137-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L137-L155) | `sync_theta` | `limiter` |
+
+: Code map of the donor-factor copy. {#tbl-ch03-thetacopy-code}
+
+In step order (@tbl-ch03-thetacopy-code):
+
+1. With the limiter on and `ny` > 0, `flux_positivity_theta` computes $\Theta$ and its meters
+   ([`hydro_forward.cpp:648-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L669)).
+2. `species_enthalpy` is recomputed from the primitives, ghosts included; $\Theta$ is exchanged with
+   `topts` set to `interpolate(false)` and
+   `type(kScalar)`, and each installed bfunc fills it at physical faces through `bfuncs`
+   ([`hydro_forward.cpp:671-688`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L688)).
+3. The withheld mass keeps its energy and momentum with `flux_positivity_carry_`, and the fluxes are scaled with
+   `flux_positivity_scale_` ([`hydro_forward.cpp:690-698`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L690-L698)).
+4. The scalar does the same in `sync_theta` ([`scalar.cpp:137-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L137-L155)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_flux_positivity_cubedsphere_python` | both arms conserve every tracer across the +X/+Y seam; the limiter fires; the hat stays in $[0,1]$ | $10^{-13}$ drift; $-10^{-15}$ to $1+10^{-5}$ | `DRIFT_TOL` and bounds in the script |
+| `test_flux_positivity_cubedsphere_moist_python` | the same with moist species | as above | in the script |
+| `test_sedimentation_cubed_seam` | a two-rank $x_1$ seam with sedimentation and the limiter keeps mass | in the test | @sec-ch03-x1seams |
+
+: Tests of the donor-factor copy. C++ entries carry the build suffix (`.release`). {#tbl-ch03-thetacopy-tests}
+
+The seam test places the downwind edge of a tracer hat on the +X/+Y seam so that $\Theta$ jumps there, and checks the bounds and
+`DRIFT_TOL` ([`test_flux_positivity_cubedsphere.py:118-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_cubedsphere.py#L118-L135)). Its docstring, on the donor
+factor `theta`, records a leak of $10^{-3}$ per 300 cycles with an interpolated fill
+([`test_flux_positivity_cubedsphere.py:1-11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_cubedsphere.py#L1-L11)); that number has no sha, deck or run attached (missing evidence). Both Python tests have CUDA twins
+(`_cuda_python`) registered when CUDA is built; the sedimentation test runs on two ranks. Their pass status at the pin
+was not run for this chapter (missing evidence).
+
+### Limits
+
+The corner ghosts of $\Theta$ are synthesised by `fill_corners` (@sec-ch03-exchange) and are not any cell's factor; a
+corner cell is never the donor of a face whose flux the block updates with (read from the code; not measured). The
+raw copy and the bfunc fill apply the no-op `custom` bfunc at panel edges (@sec-ch03-physfaces). The switch
+combinations that are tested are listed in the switch coverage matrix of chapter 12.

@@ -1,0 +1,89 @@
+## $x_1$-wall corner refresh inside tangential ghost slabs {#sec-ch03-cornerrefresh}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/mesh/meshblock.cpp, src/bc/bc_func.hpp, src/mesh/mesh.cpp, tests/test_wb_wall_corner.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: after the tangential exchange, each installed $x_1$ boundary function except outflow is applied again
+inside the $x_2$ and $x_3$ ghost slabs, so the ghost corners next to an $x_1$ wall match the updated column.
+**Switch**: none. **Default**: always on in the block's per-stage sync. **Requires**: boundary functions that give the
+same ghosts when called again on an $n_g$-wide slab. **Order**: exact. **Defining rule**: stated in the Derivation
+layer.
+:::
+
+The tangential exchange fills the $x_2$ and $x_3$ ghost slabs with the neighbour's interior, but within those slabs the
+$x_1$ ghost rows (the corners next to an $x_1$ wall) hold whatever the neighbour's wall wrote last, or stale values on
+a periodic edge. A stencil with cross-derivatives, such as viscosity next to the wall, then reads a wall corner that
+does not belong to this column. Re-applying the $x_1$ boundary function on the slabs makes those corners the wall
+ghosts of the updated slab. In the history: [chengcli/snapy#265](https://github.com/chengcli/snapy/issues/265).
+
+### Derivation
+
+There is nothing to derive; it is a consistency rule. For each installed $x_1$ bfunc that is not outflow, and each
+tangential direction with more than one cell, the bfunc is called on the first and last $g = \min(n_g, n/2)$ cells of
+that direction, unless that tangential face is itself physical and not periodic, in which case its own bfunc already
+wrote the corner. The rule relies on the contract stated with the `BC_FUNCTION` macro: a face function called again on
+a tangential slab must not depend on the slab's size and must give the same ghosts ([`bc_func.hpp:28-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L28-L35)).
+Outflow is excluded because its background must match the whole block and it needs primitives.
+
+### Numerical method
+
+The refresh runs at the end of every per-stage sync, on `hydro_u` as conserved and on `scalar_s` as scalar, after
+both exchanges and before the scalar primitive is rebuilt. It writes only $x_1$ ghost rows inside the tangential ghost
+slabs. @fig-ch03-cornerrefresh-wall shows the cells it rewrites.
+
+```{python}
+#| label: fig-ch03-cornerrefresh-wall
+#| fig-cap: "An $x_1$ wall (thick line) meeting an $x_2$ block seam (dashed purple). The tangential ghost slab (hatched) is filled by the exchange; its cells below the wall (green) are then rewritten by the $x_1$ wall function, so they mirror this side of the seam rather than holding the neighbour's earlier values."
+#| fig-alt: "A grid corner where a horizontal wall meets a vertical seam; the ghost cells below the wall on the far side of the seam are highlighted."
+#| echo: false
+from snapy_report.ch03.fig_cornerrefresh_wall import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| refresh after the exchange | [`meshblock.cpp:932-974`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L932-L974) | `refresh` | none |
+| contract of a boundary function | [`bc_func.hpp:28-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L28-L35) | `BC_FUNCTION` | none |
+
+: Code map of the corner refresh. {#tbl-ch03-cornerrefresh-code}
+
+In step order (@tbl-ch03-cornerrefresh-code):
+
+1. `physical` is true for an installed, non-periodic tangential face ([`meshblock.cpp:945-950`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L945-L950)).
+2. `refresh` loops over the two $x_1$ faces, skips a missing or `is_outflow` function and an $x_1$ axis of one cell,
+   and calls the function on each tangential slab whose face is not `physical` ([`meshblock.cpp:951-971`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L971)).
+3. It runs for `hydro_u` and `scalar_s` with their types ([`meshblock.cpp:972-973`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L972-L973) for `refresh`).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_wb_wall_corner` | a resting polytrope uniform in $x_2$ with viscosity keeps $\max\lvert v_2\rvert/c_s$ and $\max\lvert\mathbf v\rvert/c_s$ small, for the stock wall and a user-named wall | $10^{-12}$ | rest to round-off |
+| `test_wb_wall_corner` | a two-block $x_2$ split equals one block | exactly 0 | bitwise |
+| `test_wb_wall_corner` | the scalar corner primitive matches its conserved value | exactly 0 | bitwise |
+
+: Tests of the corner refresh. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cornerrefresh-tests}
+
+The cases are `x2_uniform_rest_keeps_u2_zero` and `user_wall_keeps_u2_zero` ([`test_wb_wall_corner.cpp:160-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L160-L190)),
+`x2_split_matches_one_block_exactly` ([`test_wb_wall_corner.cpp:295-318`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L295-L318)) and
+`scalar_corner_primitive_matches_conserved` ([`test_wb_wall_corner.cpp:321-336`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L321-L336)), each with a `_cuda` twin that
+skips without a GPU. One process. Their pass status at the pin was not run for this chapter (missing evidence).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `Mesh::exchange_ghost_zones` does not refresh corners; only the block's per-stage sync does.
+- Only $x_1$ walls are refreshed; $x_2$-$x_3$ corners are synthesised (@sec-ch03-exchange).
+:::
+
+The `Mesh`-level sync is a plain exchange ([`mesh.cpp:389-396`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L396) for `exchange_ghost_zones`). A user boundary
+function that breaks the contract would write wrong corners without an error (read from the code; not measured). The
+switch combinations that are tested are listed in the switch coverage matrix of chapter 12.

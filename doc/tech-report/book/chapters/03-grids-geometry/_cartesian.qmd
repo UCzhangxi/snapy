@@ -1,0 +1,105 @@
+## Cartesian metric (`cartesian`) {#sec-ch03-cartesian}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/coord/cartesian.cpp, src/coord/coordinate.cpp, src/coord/coordinate.hpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: uniform widths from the global grid; face areas are products of two widths, the volume the product of
+three, the centre the midpoint. **Switch**: YAML `geometry.type: cartesian`. **Default**: this is the default type.
+**Requires**: nothing. **Order**: exact. **Defining equation**: @eq-ch03-cartesian-metric.
+:::
+
+On a Cartesian grid every metric quantity is a product of cell widths, and the widths are the global $\Delta x_a$ of
+@sec-ch03-globalgrid, so a cell's metric does not depend on which block holds it. The cell centre is the midpoint of
+its faces, which is also the volume centroid, and the non-orthogonality cosine that the cubed sphere needs
+(@sec-ch03-gnomonic) is identically zero. The finite-volume operator is the plain flux divergence; there are no
+geometric source terms. The type is the default when `geometry.type` is absent.
+
+### Derivation
+
+For a cell $[x_{1,i-1/2}, x_{1,i+1/2}]\times[x_{2,j-1/2}, x_{2,j+1/2}]\times[x_{3,k-1/2}, x_{3,k+1/2}]$ with widths
+$\Delta x_1, \Delta x_2, \Delta x_3$ the measures are the integrals of $\mathrm{d}x_2\,\mathrm{d}x_3$,
+$\mathrm{d}x_1\,\mathrm{d}x_3$, $\mathrm{d}x_1\,\mathrm{d}x_2$ and $\mathrm{d}V$:
+
+$$
+\begin{aligned}
+A_{i\pm1/2} &= \Delta x_2\,\Delta x_3, \\
+A_{j\pm1/2} &= \Delta x_1\,\Delta x_3, \\
+A_{k\pm1/2} &= \Delta x_1\,\Delta x_2, \\
+V_i &= \Delta x_1\,\Delta x_2\,\Delta x_3.
+\end{aligned}
+$$ {#eq-ch03-cartesian-metric}
+
+The face areas of @eq-ch03-cartesian-metric are `face_area1` to `face_area3` and the volume is `cell_volume`
+([`coordinate.cpp:425-440`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L425-L440)). The centroid of a uniform weight over an interval is its midpoint,
+$x_{1,i} = \tfrac12(x_{1,i-1/2}+x_{1,i+1/2})$, computed in `reset` for `x1v` ([`cartesian.cpp:22-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cartesian.cpp#L22-L28)).
+Integrating the conservation law $\partial_t q + \nabla\cdot\mathbf F = 0$ over the cell and dividing by $V_i$ gives
+the update of the cell average by the face-area-weighted flux difference over the volume, with no further term,
+because the basis vectors are constant. Every quantity here is exact; the executable check is the product test of
+the Tests layer.
+
+### Numerical method
+
+Widths `dx1f`, `dx2f`, `dx3f` are cell quantities, one per cell including ghosts; `x1v` holds the midpoints; `dx1v`
+(the centre spacing) equals the width. All are built once in `reset` from the global width. The divergence takes the
+face fluxes $\mathbf F_a$ (face averages, from the Riemann solver), multiplies them by the face areas, differences
+them across each interior cell and divides by $V_i$; ghost cells receive no divergence. @fig-ch03-cartesian-cell
+draws one cell with its three face areas.
+
+```{python}
+#| label: fig-ch03-cartesian-cell
+#| fig-cap: "One Cartesian cell with its widths and the three face areas $\\Delta x_2\\Delta x_3$, $\\Delta x_1\\Delta x_3$ and $\\Delta x_1\\Delta x_2$; the centre is the midpoint."
+#| fig-alt: "A box with its three widths labelled and one face of each orientation shaded."
+#| echo: false
+from snapy_report.ch03.fig_cartesian_cell import make_fig
+make_fig()
+```
+
+A mesh generator (`reset_coordinates`) may move the faces; the Cartesian override then recomputes widths, midpoints
+and centre spacings from the moved faces, so the grid is no longer uniform and @eq-ch03-cartesian-metric uses the
+local widths ([`cartesian.cpp:50-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cartesian.cpp#L50-L60) for the $x_1$ part).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| widths, centres, zero cosine | [`cartesian.cpp:8-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cartesian.cpp#L8-L48) | `reset` | `type: cartesian` |
+| face areas and volume | [`coordinate.cpp:425-440`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L425-L440) | `cell_volume` | none |
+| flux divergence | [`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553) | `divergence` | none |
+| stage operator (no source) | [`coordinate.cpp:585-591`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L585-L591) | `forward` | none |
+| type selection | [`coordinate.cpp:593-610`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L593-L610) | `create` | `geometry.type` |
+
+: Code map of the Cartesian metric. {#tbl-ch03-cartesian-code}
+
+In step order (@tbl-ch03-cartesian-code):
+
+1. `create` builds a `Cartesian` module when `type` is `cartesian`; an unknown type stops setup with "Unknown
+   coordinate type" ([`coordinate.cpp:593-610`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L593-L610)).
+2. `reset` sets the three cosine buffers to zero and the widths, midpoints and centre spacings from the global width
+   ([`cartesian.cpp:8-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cartesian.cpp#L8-L48)).
+3. In each stage, `forward` returns the `divergence` of the three fluxes and ignores the face pressure
+   ([`coordinate.cpp:585-591`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L585-L591)); `divergence` forms the area-weighted differences over the interior cells
+   and divides by `cell_volume` ([`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_coordinate` | the volume is the product of the caller's widths | $10^{-14}$ relative | round-off of a three-factor product |
+| `test_coordinate` | a degenerate $x_1$ beside live axes has width 5 | $10^{-14}$ absolute | round-off of one difference |
+
+: Tests of the Cartesian metric. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cartesian-tests}
+
+The cases are `cell_volume_is_the_product_of_the_callers_widths` ([`test_coordinate.cpp:781-787`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L781-L787)) and
+`a_degenerate_axis_beside_live_ones` ([`test_coordinate.cpp:789-806`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L789-L806)). Both run on CPU only, one block, one
+rank. Their pass status at the pin was not run for this chapter (missing evidence).
+
+### Limits
+
+No known limits beyond those of the global grid (@sec-ch03-globalgrid). The divergence of a mesh-generator grid is not
+tested at the pin (not measured). The switch combinations that are tested are listed in the switch coverage matrix of chapter 12.

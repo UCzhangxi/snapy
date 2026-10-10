@@ -1,0 +1,224 @@
+## Spherical-polar metric and sources (`spherical-polar`) {#sec-ch03-sphpolar}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/coord/spherical_polar.cpp, src/coord/spherical_polar.hpp, src/coord/coordinate.hpp, tests/test_coordinate.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $r_\pm = x_{1,i\pm1/2}$ and $\theta_\pm = x_{2,j\pm1/2}$, the faces of one cell;
+$f^{(a)}_{i\pm1/2}$ the $x_1$ face flux of the momentum component $m_a$ (`flux1[IVY]`, `flux1[IVZ]`) [kg m$^{-1}$
+s$^{-2}$]; $p_{i\pm1/2}$ the face pressure returned by the Riemann solver [Pa].
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: the exact $r^2\sin\theta$ measures of a spherical-polar cell, volume centroids for the cell centres, and the
+curvature source terms of the momentum equations. **Switch**: YAML `geometry.type: spherical-polar`. **Default**:
+off. **Requires**: $x_2$ inside $[0,\pi]$. **Order**: the metric is exact; the source terms are second order.
+**Defining equation**: @eq-ch03-sphpolar-metric.
+:::
+
+On a spherical-polar grid $(x_1, x_2, x_3) = (r, \theta, \varphi)$ every face area and volume is the exact integral of
+the metric over the cell, so the discrete divergence of a uniform field is exact, and the cell centres are volume
+centroids, so a stored cell value sits where a cell average of a linear field equals the point value. Because the
+basis vectors turn from cell to cell, the momentum equations carry geometric source terms. The radial one can be
+written so that the pressure force reduces to the plain face difference of the Riemann solver's face pressure,
+which the well-balanced reconstruction of chapter 5 balances against gravity.
+
+The scheme is on when `geometry.type` is `spherical-polar`. Its $x_1$ pressure source has a second form under
+`SNAP_X1_CENTROID_EXACT` (chapter 5 owns that form); the curved-face corrections of chapter 4 read the radial face
+moments of @sec-ch03-facemoments. The coefficient names `coord_src1_i` to `coord_src3_j` follow the code.
+
+### Derivation
+
+The volume element is $\mathrm{d}V = r^2\sin\theta\,\mathrm{d}r\,\mathrm{d}\theta\,\mathrm{d}\varphi$. Integrating it,
+and the area elements of the three face families, over cell $(i,j,k)$ gives
+
+$$
+\begin{aligned}
+A_{i\pm1/2} &= r_\pm^2\,\lvert\cos\theta_- - \cos\theta_+\rvert\,\Delta\varphi, \\
+A_{j\pm1/2} &= \tfrac12\left(r_+^2 - r_-^2\right)\lvert\sin\theta_\pm\rvert\,\Delta\varphi, \\
+A_{k\pm1/2} &= \tfrac12\left(r_+^2 - r_-^2\right)\Delta\theta, \\
+V_i &= \tfrac13\left(r_+^3 - r_-^3\right)\lvert\cos\theta_- - \cos\theta_+\rvert\,\Delta\varphi.
+\end{aligned}
+$$ {#eq-ch03-sphpolar-metric}
+
+In the notation of NOTATION.md, $V_i = \varpi_{jk}V^{(1)}_i$ with $V^{(1)}_i = \tfrac13(r_+^3-r_-^3)$ and the solid
+angle $\varpi_{jk} = \lvert\cos\theta_- - \cos\theta_+\rvert\Delta\varphi$. @eq-ch03-sphpolar-metric is
+`face_area1` to `face_area3` and `cell_volume` ([`spherical_polar.cpp:178-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L211)).
+
+The cell centres are the centroids of the measure along each axis:
+
+$$
+\begin{aligned}
+x_{1,i} &= \frac{\int r^3\,\mathrm{d}r}{\int r^2\,\mathrm{d}r}
+         = \frac34\,\frac{r_+^4 - r_-^4}{r_+^3 - r_-^3}, \\
+x_{2,j} &= \frac{\int \theta\sin\theta\,\mathrm{d}\theta}{\int\sin\theta\,\mathrm{d}\theta}
+         = \frac{(\sin\theta_+ - \theta_+\cos\theta_+) - (\sin\theta_- - \theta_-\cos\theta_-)}{\cos\theta_- - \cos\theta_+},
+\end{aligned}
+$$ {#eq-ch03-sphpolar-centroids}
+
+with the integrals over the cell's own interval and $x_{3,k}$ the midpoint. @eq-ch03-sphpolar-centroids is
+`radial_centers` and `polar_centers` ([`spherical_polar.cpp:17-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L17-L28)); with a single $x_2$ cell the code sets `x2v`
+to the midpoint instead ([`spherical_polar.cpp:64-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L64-L70)).
+
+The momentum equations in conservation form, written for the physical components $m_a = \rho v_a$, are the divergence
+of the momentum flux $\rho\mathbf v\mathbf v + p\mathsf I$ plus terms from the turning of the basis. For the radial
+component the extra terms are $\left[\rho(v_2^2 + v_3^2) + 2p\right]/r$. Averaging over the cell, and using that the
+measure separates, the factor $1/r$ becomes its volume average and the factor $\cot\theta$ of the $\theta$ equation
+becomes its own:
+
+$$
+\begin{aligned}
+\langle r^{-1}\rangle_{V_i} &= \frac{\tfrac12\left(r_+^2 - r_-^2\right)}{\tfrac13\left(r_+^3 - r_-^3\right)}, \\
+\langle\cot\theta\rangle_{V_i} &= \frac{\sin\theta_+ - \sin\theta_-}{\cos\theta_- - \cos\theta_+}.
+\end{aligned}
+$$
+
+These are `coord_src1_i` and `coord_src1_j` (`coord_src3_j` is the same value). Without face pressures the radial
+source is, to second order,
+
+$$
+S^{(1)}_i = \langle r^{-1}\rangle_{V_i}\left[\rho_i\left(v_{2,i}^2 + v_{3,i}^2\right) + 2p_i\right],
+$$ {#eq-ch03-sphpolar-src1}
+
+computed in `forward` as `src1` ([`spherical_polar.cpp:243-279`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L243-L279)), which is subtracted from the divergence
+row of $m_1$. The approximation is the replacement of the cell average of a product by the product of cell values,
+an $O(h^2)$ error.
+
+When the Riemann solver returns the face pressures $p_{i\pm1/2}$ and they are inside the $m_1$ flux, the code
+replaces $2p_i\langle r^{-1}\rangle_{V_i}$ by
+
+$$
+S^{p}_i = \frac{A_{i+1/2}\,p_{i+1/2} - A_{i-1/2}\,p_{i-1/2}}{V_i} - \frac{p_{i+1/2} - p_{i-1/2}}{h_i}.
+$$ {#eq-ch03-sphpolar-facep}
+
+@eq-ch03-sphpolar-facep is the `pressure_gradient` branch ([`spherical_polar.cpp:265-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L265-L275)). Its
+first term cancels the pressure part of the flux divergence exactly, so the net pressure force on $m_1$ is
+$-(p_{i+1/2} - p_{i-1/2})/h_i$, the plain face difference. For a uniform $p$ it equals $p\,(A_{i+1/2} -
+A_{i-1/2})/V_i = 2p\,\langle r^{-1}\rangle_{V_i}$ by @eq-ch03-sphpolar-metric, so it agrees with
+@eq-ch03-sphpolar-src1 in that limit. Under `SNAP_X1_CENTROID_EXACT` the face difference is replaced by `x1_pressure_source`,
+the $r^2$-weighted moment of a quintic through six faces ([`spherical_polar.cpp:246-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L246-L264)); chapter 5 derives it.
+
+For $m_2$ the source has a curvature part $\langle r^{-1}\rangle\langle\cot\theta\rangle(\rho v_3^2 + p)$, applied
+as written, and a part $-\rho v_1v_2/r$ that the code puts in angular-momentum form. Combined with the $x_1$ flux
+divergence of $m_2$, the target form is
+
+$$
+\begin{aligned}
+&\frac{A_{i+1/2}f^{(2)}_{i+1/2} - A_{i-1/2}f^{(2)}_{i-1/2}}{V_i}
++ c_i\left(A_{i-1/2}f^{(2)}_{i-1/2} + A_{i+1/2}f^{(2)}_{i+1/2}\right) \\
+&\qquad = \frac{r_+A_{i+1/2}f^{(2)}_{i+1/2} - r_-A_{i-1/2}f^{(2)}_{i-1/2}}{x^{\mathrm{m}}_{1,i}\,V_i},
+\end{aligned}
+$$ {#eq-ch03-sphpolar-angmom}
+
+with $c_i = h_i/[(r_- + r_+)V_i]$. The identity follows from $1 \pm h_i/(r_-+r_+) = 2r_\pm/(r_-+r_+)$. The right side
+is a difference of face quantities divided by $x^{\mathrm{m}}_{1,i}V_i$, so $\sum_i x^{\mathrm{m}}_{1,i}V_i m_{2,i}$
+changes only through the domain-end faces: the $x_1$ fluxes conserve this discrete angular momentum. The same form is
+used for $m_3$, and for $m_3$ along $x_2$ with $\sin\theta$ in place of $r$. The code coefficient is `coord_src2_i`
+([`spherical_polar.cpp:92-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L92-L94)), and the term is added to the $m_2$ and $m_3$ rows through `face_area1`
+([`spherical_polar.cpp:281-307`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L281-L307)); the Limits layer records how the code's area factor
+differs from @eq-ch03-sphpolar-angmom.
+
+What is exact: the measures, the centroids, the coefficient averages and the telescoping identity. What is truncated:
+the product averages in @eq-ch03-sphpolar-src1, at $O(h^2)$. The coefficient averages, the centroid and the two source identities are checked as lines `[C4]` and `[C5]`
+of `src/snapy_report/ch03/geometry_check.out`; the tests cited below check the measures, the centroids, the
+coefficients and the face-pressure form in the code.
+
+### Numerical method
+
+`x1v` and `x2v` hold the centroids of @eq-ch03-sphpolar-centroids, `x3v` the midpoint; the widths `dx1f`, `dx2f`,
+`dx3f` are face differences of the sliced faces, ghosts included, and `dx1v`, `dx2v`, `dx3v` centroid spacings. The
+transverse lengths used by diffusion and the curl, `center_width2` $= r\,\Delta\theta$ and `center_width3`
+$= r\sin\theta\,\Delta\varphi$, are taken at the centroids. All are built once in `reset`; a mesh generator triggers a
+rebuild from the moved faces. The sources run in every stage, in `forward`, after the flux divergence and before the
+stage update, and only on interior cells for the face-flux terms; the point-value terms use the primitives of the
+whole block. @fig-ch03-sphpolar-centroids shows where the three radial positions of a cell lie.
+
+```{python}
+#| label: fig-ch03-sphpolar-centroids
+#| fig-cap: "A spherical-polar shell cell between $r_-$ and $r_+$ with its midpoint $x^{\\mathrm{m}}_{1,i}$, its volume centroid $x_{1,i}$ (where the cell value is stored) and the face-measure centroid of its $x_2$ and $x_3$ faces. The arrow marks the outward radial source."
+#| fig-alt: "A wedge-shaped shell cell with three radial tick marks, for the midpoint, the volume centroid and the face centroid."
+#| echo: false
+from snapy_report.ch03.fig_sphpolar_centroids import make_fig
+make_fig()
+```
+
+With one $x_2$ cell (`nx2` = 1) there is no $x_2$ flux; the $m_3$ source then uses the point form
+$\langle r^{-1}\rangle\langle\cot\theta\rangle\rho v_3v_2$ instead of the $x_2$ angular-momentum form. The
+shallow-water equation of state drops the pressure terms from the $m_1$ and $m_2$ sources. The face pressures
+`_face_pressure1` exist whenever a block has more than one $x_1$ cell ([`hydro.cpp:160-168`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L160-L168)), so in a hydro
+run the face-pressure form @eq-ch03-sphpolar-facep is the one that runs and @eq-ch03-sphpolar-src1 keeps its
+pressure term only on blocks with a single $x_1$ cell.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| radial and polar centroids | [`spherical_polar.cpp:17-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L17-L28) | `radial_centers` | none |
+| setup check, widths, coefficients | [`spherical_polar.cpp:42-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L42-L109) | `reset` | `type: spherical-polar` |
+| transverse lengths | [`spherical_polar.cpp:158-176`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L158-L176) | `center_width2` | none |
+| face areas and volume | [`spherical_polar.cpp:178-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L211) | `cell_volume` | none |
+| radial face moments | [`spherical_polar.cpp:213-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L213-L222) | `face_moment2_x1` | `SNAP_FLUX_COVARIANCE` |
+| geometric sources | [`spherical_polar.cpp:224-310`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L224-L310) | `forward` | `SNAP_X1_CENTROID_EXACT` |
+| mesh-generator rebuild | [`spherical_polar.cpp:111-156`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L111-L156) | `reset_coordinates` | none |
+
+: Code map of the spherical-polar metric. {#tbl-ch03-sphpolar-code}
+
+In step order (@tbl-ch03-sphpolar-code):
+
+1. `reset` refuses an $x_2$ range outside $[0,\pi]$ with "Spherical-polar coordinates require x2 in [0, pi]" when
+   there is more than one $x_2$ cell ([`spherical_polar.cpp:42-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L42-L48)).
+2. It zeroes the cosine buffers and builds the widths and, with `radial_centers`, the centroids
+   ([`spherical_polar.cpp:52-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L52-L76)), then the five coefficients `coord_src1_i` to `coord_src3_j`
+   ([`spherical_polar.cpp:78-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L78-L104)).
+3. In each stage `forward` calls the base divergence, then forms `src1` with one of three pressure forms: the quintic
+   moment when `SNAP_X1_CENTROID_EXACT` is set and its stencil is usable, the face-pressure form when face pressures
+   are given, else $2p\langle r^{-1}\rangle$ ([`spherical_polar.cpp:243-279`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L243-L279)).
+4. It adds the $m_2$ curvature term and the $x_1$ angular-momentum terms of $m_2$ and $m_3$, then the $x_2$
+   angular-momentum term of $m_3$ or, with one $x_2$ cell, its point form, as `use_x2_fluxes` selects
+   ([`spherical_polar.cpp:281-307`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L281-L307)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_coordinate` | centroids, areas, volume and the five coefficients equal reference formulas | $10^{-12}$ rel. and abs. | round-off of the closed forms |
+| `test_coordinate` | with face pressures the $m_1$ row ignores the cell pressure | $10^{-6}$ rel. and abs. | set in the test |
+| `test_coordinate` | the $m_1$ row is the plain face-pressure difference | $10^{-6}$ rel. and abs. | set in the test |
+| `test_x1_centroid_rest_python` | a column at rest stays at rest under `SNAP_X1_CENTROID_EXACT` | `TOL_ON` $10^{-10}$ | chapter 5 |
+
+: Tests of the spherical-polar metric. C++ entries carry the build suffix (`.release`). {#tbl-ch03-sphpolar-tests}
+
+The reference-formula case is `geometry_matches_athena_reference_formulas`
+([`test_coordinate.cpp:146-221`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L146-L221)); it compares `x1v`, `x2v`, the three areas, the volume and `coord_src1_i` to
+`coord_src3_j` with `torch::allclose`. The face-pressure cases are
+`spherical_polar_radial_source_preserves_face_pressure_gradient` and
+`spherical_polar_radial_source_uses_face_pressure_in_x1_momentum` ([`test_coordinate.cpp:645-719`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L645-L719)); the first
+sets the face pressure to the face radius and checks that the $m_1$ row equals
+$(p_{i+1/2}-p_{i-1/2})/h_i$, the second checks that two cell pressures give the same $m_1$ row once face pressures
+are given. The face-pressure cases run on CPU and, through the `DeviceTest` parameter, on CUDA when it is built; the
+reference-formula case runs on CPU only. All are one block, one rank. No case checks the $m_2$ and $m_3$ source
+terms. Their pass status at the pin was not run for this chapter (missing evidence).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The $m_2$ and $m_3$ angular-momentum terms are untested: no test at the pin checks them (read from the tests).
+- `nx2` = 1 uses a midpoint for `x2v`, not the polar centroid.
+:::
+
+A hypothesis from reading the code, not measured: the angular-momentum terms of `forward` multiply `coord_src2_i`,
+which divides by the radial factor $V^{(1)}_i$ only, by the full face area `face_area1` $= r_\pm^2\varpi_{jk}$
+([`spherical_polar.cpp:286-296`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L286-L296)). @eq-ch03-sphpolar-angmom needs $r_\pm^2$ there, so as
+written the term carries an extra factor of the cell's solid angle $\varpi_{jk}$. The $x_2$ term multiplies
+`coord_src1_i` and `coord_src2_j` by the full `face_area2` $= \tfrac12(r_+^2-r_-^2)\lvert\sin\theta_\pm\rvert
+\Delta\varphi$ where the $\sin\theta$ form needs $\lvert\sin\theta_\pm\rvert$ alone
+([`spherical_polar.cpp:297-303`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L297-L303)). If this reading is right, the $-\rho v_1v_2/r$ and
+$-\rho v_1v_3/r$ terms are scaled by $\varpi_{jk}$ and the $x_2$ term by a dimensional factor, in every
+multidimensional spherical-polar run with tangential velocity; a radial column with $v_2 = v_3 = 0$ does not see it.
+This needs a failing test before any change (the editor tracks it as an open question).
+
+The `x2` refusal is skipped when there is one $x_2$ cell. The switch combinations that are tested are listed in the
+switch coverage matrix of chapter 12.

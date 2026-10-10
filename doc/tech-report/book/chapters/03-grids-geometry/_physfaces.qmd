@@ -1,0 +1,99 @@
+## Physical and internal faces (`external`) {#sec-ch03-physfaces}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/mesh/meshblock.cpp, src/mesh/meshblock_options.cpp, src/bc/bc_func.cpp, src/hydro/hydro.cpp, src/layout/layout.cpp, tests/test_forcing_cubed_sphere.yaml
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: decides, per block face, whether its ghosts come from a boundary function (a physical face) or from a
+neighbour (an internal face): a face is physical exactly when a boundary function is installed on it. **Switch**:
+YAML `boundary-condition: {external: {x1-inner, ..., x3-outer}}`. **Default**: `reflecting` on every face.
+**Requires**: nothing. **Order**: n/a. **Defining rule**: stated in the Derivation layer.
+:::
+
+Each named boundary condition becomes a boundary function (bfunc) per face. At construction, on the `slab` and
+`cubed` layouts, every face that has a neighbouring block, and every face of a periodic direction, has its bfunc
+removed; the exchange then fills its ghosts. The predicate `is_physical_boundary` simply asks whether a bfunc is
+installed. On the cubed sphere nothing is removed: panel edges carry the no-op `custom` bfuncs, which leave the ghosts
+to the cubed-sphere exchange, and that exchange does not consult the predicate. The boundary conditions themselves are
+chapter 11.
+
+### Derivation
+
+There is nothing to derive; the scheme is a rule, stated here in full. On the `slab` and `cubed` layouts a face loses
+its bfunc when the block has a neighbouring block across it or when its axis is periodic; this is the reset of the
+internal `bfuncs` at construction ([`meshblock.cpp:137-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L137-L179)). Afterwards a face is physical exactly when a
+bfunc is installed on it, which is all that `is_physical_boundary` tests
+([`meshblock_options.cpp:213-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L213-L234)). For a multi-axis offset the first non-zero component in the order $x_3$,
+$x_2$, $x_1$ names the face, as `face_of` does in the same lines. On the cubed sphere no bfunc is removed.
+
+### Numerical method
+
+The rule runs once, when the block is built. The generic exchange skips every physical face when it packs and unpacks
+(@sec-ch03-exchange), so a physical face's ghosts are only ever written by its bfunc. A wall is a narrower notion:
+`is_wall_boundary` is true only for the whitelisted names `reflecting` and `fixed_temperature`, which diffusion uses,
+and `is_x1_wall` is a physical $x_1$ face that is not periodic, which the gravity work and the wall reconstructions
+use. On an axis with one cell no bfunc is installed, so its faces are never physical. @fig-ch03-physfaces-slab shows
+a $2\times2$ slab decomposition.
+
+```{python}
+#| label: fig-ch03-physfaces-slab
+#| fig-cap: "A $2\\times2$ slab decomposition with reflecting $x_2$ walls and periodic $x_3$. Thick black lines are physical faces (a boundary function is installed); dashed reddish-purple lines are internal faces between blocks; dotted lines are periodic faces, which are internal too and wrap around."
+#| fig-alt: "Four squares in a two by two arrangement; outer left and right edges thick, inner edges dashed, top and bottom edges dotted."
+#| echo: false
+from snapy_report.ch03.fig_physfaces_slab import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| names to bfuncs, default `reflecting` | [`meshblock_options.cpp:98-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L98-L137) | `bfuncs` | `boundary-condition` |
+| internal faces lose their bfunc | [`meshblock.cpp:137-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L137-L179) | `bfuncs` | `distribute` |
+| face of an offset; physical predicate | [`meshblock_options.cpp:213-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L213-L234) | `is_physical_boundary` | none |
+| wall whitelist | [`meshblock_options.cpp:243-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L243-L272) | `is_wall_boundary` | none |
+| the no-op panel-edge bfunc | [`bc_func.cpp:7-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L7-L8) | `custom_inner` | `custom` |
+| $x_1$ wall | [`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209) | `is_x1_wall` | none |
+| exchange skips physical faces | [`layout.cpp:496-510`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L496-L510) | `is_physical_boundary` | none |
+
+: Code map of physical and internal faces. {#tbl-ch03-physfaces-code}
+
+In step order (@tbl-ch03-physfaces-code):
+
+1. For each live axis the two names are read (default `reflecting`), suffixed `_inner` or `_outer` and looked up;
+   an unknown name stops setup with "Boundary function ... is not defined", from the lookup into `bfuncs`
+   ([`meshblock_options.cpp:98-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L98-L137)).
+2. On `slab` and `cubed`, the constructor removes the `bfuncs` of internal and periodic faces
+   ([`meshblock.cpp:137-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L137-L179)); on `cubed-sphere` it removes none.
+3. Every consumer then asks `is_physical_boundary`, `is_wall_boundary` or `is_x1_wall`.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_exchange_decomp` | internal-face ghosts come from the right neighbour | value bounds | @sec-ch03-layouts |
+| `test_wb_wall_corner` | a periodic $x_2$ edge and an $x_2$ split behave as internal faces | $10^{-12}$, exact | @sec-ch03-cornerrefresh |
+
+: Tests that exercise the face classification. C++ entries carry the build suffix (`.release`). {#tbl-ch03-physfaces-tests}
+
+No test targets the classification alone. The forcing deck records why it must have more than one $x_1$ cell: with
+`nx1: 1` no $x_1$ bfunc is installed, `is_physical_boundary` is false at the top and bottom, and every top or bottom
+forcing returns early, so a test of them passes on zeros ([`test_forcing_cubed_sphere.yaml:1-11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing_cubed_sphere.yaml#L1-L11)). The cases above run on CPU; their pass status at the pin was not run for this chapter
+(missing evidence).
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- On the cubed sphere `is_physical_boundary` is true at panel edges, because the `custom` bfunc is installed there.
+:::
+
+Code that loops over every installed bfunc applies the no-op `custom` at panel edges, which is harmless; code that
+asks `is_physical_boundary` on $x_2$ or $x_3$ of a cubed sphere would classify a panel edge as physical (inferred from
+the code; at the pin the only tangential callers are in the generic layout, which the cubed sphere does not use for
+its own exchange; not measured). The switch combinations that are tested are listed in
+the switch coverage matrix of chapter 12.

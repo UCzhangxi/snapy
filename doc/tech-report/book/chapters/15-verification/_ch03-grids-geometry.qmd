@@ -1,0 +1,47 @@
+## Grids and geometry: tests and checks {#sec-ch15-ch03-tests}
+
+This catalogue accompanies @sec-ch03. The source pin is `snapy@e894700ff7aee30b52882e5202b16461413780b0`. No snapy
+executable, installed snapy package, CUDA test or multi-rank test was run for this draft; "registered" below
+describes source evidence, not a measured pass.
+
+### Independent report checks
+
+The command `python3 src/snapy_report/ch03/geometry_check.py` checks the closed forms of chapter 3 with numpy and
+sympy, without importing snapy. Its committed output is `src/snapy_report/ch03/geometry_check.out`; the pytest
+wrapper `src/tests/test_checks.py` runs it with every other chapter's checks.
+
+| output label | assertion | tolerance | what it does not establish |
+|---|---|---|---|
+| `[C1]`-`[C3]` | radial face centroids, moment and shift; the test rationals | exact symbolic | the compiled helpers |
+| `[C4]`-`[C5]` | spherical-polar averages, centroid, face-pressure and angular-momentum identities | exact symbolic | the code's area factor (@sec-ch03-sphpolar) |
+| `[C6]`-`[C9]` | gnomonic angle, solid angle, lower/raise, uniform-pressure flux | $10^{-8}$ to $10^{-15}$ | the velocity source terms |
+| `[C10]` | Morton order of a $4\times4$ block grid | exact | 3-D order, cubed-sphere corners |
+| `[C11]` | cross-panel slide below $n_g-\tfrac12$ | exact bound | the exchange itself |
+
+: Independent checks of chapter 3 and their limits. {#tbl-ch15-ch03-independent}
+
+### Registered tests
+
+| test (ctest name) | assertion | tolerance | pinned source |
+|---|---|---|---|
+| `test_coordinate.<b>` | decomposed faces bitwise; programmatic grids; spherical-polar and gnomonic metric, transforms and face-pressure sources | bitwise to $10^{-4}$ | `geometry_matches_athena_reference_formulas` [`test_coordinate.cpp:146-221`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L146-L221) |
+| `test_radial_face_moments.<b>` | moment and shift equal the exact rationals | $10^{-14}$ relative | `closed_forms_match_the_exact_integrals` [`test_radial_face_moments.cpp:49-91`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radial_face_moments.cpp#L49-L91) |
+| `test_cubed_sphere_cell_volume_python` | six panels sum to the shell volume; $\nabla\cdot(r\hat{\mathbf r}) = 3$; rest | $10^{-12}$; $10^{-6}$ | `ROUNDOFF` [`test_cubed_sphere_cell_volume.py:126-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_cell_volume.py#L126-L137) |
+| `test_cubed_sphere_exchange.<b>` | nb2 = 1, 2, 4 bitwise after one stage; tag collision refused | bitwise | `subdivided_panel_exchange_matches_one_block` [`test_cubed_sphere_exchange.cpp:150-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L150-L200) |
+| `test_local_horizontal_cells_python` | the horizontal setter resolves every axis | $10^{-12}\Delta x$ | `NG` [`test_local_horizontal_cells.py:28-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_local_horizontal_cells.py#L28-L37) |
+| `test_mesh_exchange_python` | slab ghosts hold the neighbour's payload | exact | `torch.all` [`test_mesh_exchange.py:20-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L20-L50) |
+| `test_cubed_sphere_vertical_velocity_exchange_python` | radial velocity crosses panel edges unchanged | $10^{-12}$ | `ideal_match` [`test_cubed_sphere_vertical_velocity_exchange.py:95-110`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L95-L110) |
+| `test_exchange.<b>`, `test_exchange_decomp` | neighbour payloads, local and remote | value bounds | `ghosts_match_expected` [`test_exchange.cpp:135-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L135-L180) |
+| `test_flux_covariance_seams_python` | seam conservation with the #289 term | $10^{-12}$ drift | `DRIFT_TOL` [`test_flux_covariance_seams.py:34-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_seams.py#L34-L93) |
+| `test_flux_positivity_cubedsphere_python` | tracer conservation across a seam with the limiter | $10^{-13}$ drift | `DRIFT_TOL` [`test_flux_positivity_cubedsphere.py:118-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_cubedsphere.py#L118-L135) |
+| `test_pref_local_seam.<b>` | in-process $x_1$ split equals one block | $10^{-6}$; $10^{-12}$ | `local_blocks_restart_the_reference_at_the_seam` [`test_pref_local_seam.cpp:99-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L99-L143) |
+| `test_x1_seam_split*.<b>`, `test_x1_seam_split_mp*.<b>` | split column equals one block, per switch | $10^{-13}$ | `split_gap` [`test_x1_seam_split.cpp:202-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L202-L286) |
+| `test_wb_wall_corner.<b>` | wall corners at rest; $x_2$ split exact | $10^{-12}$; 0 | `user_wall_keeps_u2_zero` [`test_wb_wall_corner.cpp:160-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L160-L190) |
+
+: Registered tests that chapter 3 relies on. C++ entries carry the build suffix (`.release`). {#tbl-ch15-ch03-registered}
+
+### Gaps
+
+No test checks the spherical-polar $m_2$ and $m_3$ curvature sources, the synthesised $x_2$-$x_3$ ghost corners, the
+face-state suffix rule on its own, the `cylindrical` type, or `DeviceTest.interpolate_LR` and
+`GnomonicEquiangle.area_vol`, which print and assert nothing.
