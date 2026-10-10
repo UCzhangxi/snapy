@@ -11,6 +11,13 @@
    - Appendix A of the gravity-work draft, which is to be rebuilt from snapy evidence;
    - the figs/fig7* figures, which never ship.
 7. Derivations that exist only as commit messages (e.g. #284, #285, #288) are re-derived from the code at the pinned sha, each with an executable check.
+8. Local symbol, chapter 9 (`_x1profile.qmd`): $\varsigma$ for the $x_1$ profile of a diffusion coefficient
+   (`nu_scale_x1`, `kappa_scale_x1`); NOTATION.md has none, and $s$ is the centroid slope. For the editor to add
+   to NOTATION.md §8.
+9. Local symbol, chapter 9 (`_relax.qmd`): $\alpha_{\mathrm f}$ for the at-face extrapolation weight of
+   `relax-bot-temp` (code `a`). For the editor to add to NOTATION.md §8.
+10. Local symbol, chapter 9 (`_sponge.qmd`): $\zeta$ for the depth fraction of a cell inside a sponge layer (code
+    `eta`); $\eta$ is taken (NOTATION.md §1, §10). For the editor to add to NOTATION.md §8.
 
 ## Chapter 1 local transfer notation (draft)
 

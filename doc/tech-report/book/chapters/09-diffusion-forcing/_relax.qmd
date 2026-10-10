@@ -1,0 +1,189 @@
+## Bottom relaxation of temperature, velocity and composition (`relax-bot-temp`, `relax-bot-velo`, `relax-bot-comp`) {#sec-ch09-relax}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md 9.8; src/forcing/relax_bot_temp.cpp, relax_bot_velo.cpp, relax_bot_comp.cpp;
+         sources/canoe__forcing_io_TECH_REPORT.md; tests/test_forcing.cpp
+status: draft
+-->
+
+<!-- Local symbols: $\alpha_{\mathrm f}$, the at-face extrapolation weight of relax-bot-temp (code `a`).
+     NOTATION.md has no symbol for it. Opened as ISSUES.md item 9. -->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Nudges the first interior cell row above the physical lower $x_1$ boundary toward a target
+temperature, velocity, or composition with a time scale $\tau$.
+**Switch.** `relax-bot-temp: {tau, btemp, at-face}` (`btemp` required, `at-face` default `false`);
+`relax-bot-velo: {tau, bvx, bvy, bvz}` (targets default 0); `relax-bot-comp: {tau, species, xfrac}`
+($\sum$`xfrac` $\le1$). $\tau>0$ [s] for all three. Each off unless its key is present.
+**Order.** Explicit relaxation, first order in time per stage; the at-face target is exact for a linear $T$.
+**Defining equation.** @eq-ch09-relax-temp, @eq-ch09-relax-velo and @eq-ch09-relax-comp.
+:::
+
+The three modules stand in for a surface layer that the grid does not resolve. Each acts only in the bottom row of
+interior cells and only on the block that owns the physical lower $x_1$ boundary. `relax-bot-temp` adds heat at
+constant volume to bring the temperature toward `btemp`; with `at-face: true` it relaxes the temperature
+extrapolated to the lower face instead of the cell value, because a prescribed surface temperature is a value at
+the face. `relax-bot-velo` adds a momentum drag toward the target velocity, lowered to covariant components on the
+cubed sphere. `relax-bot-comp` exchanges mass between dry air and the named species at fixed density and
+temperature, with the internal-energy change computed by kintera.
+
+None of the three changes the total energy for the momentum part: `relax-bot-velo` leaves $E$ untouched, so the
+kinetic energy it removes becomes internal energy, as for the sponges (@sec-ch09-sponge).
+
+*Aliases.* chengcli/snapy#219 introduced `at-face` with the uniform-grid weights $1.5$/$-0.5$ and the gain
+$1/1.5$; #279 generalised them to the coordinate spacing.
+
+### Derivation
+
+#### Temperature
+
+Let cell $0$ be the bottom interior cell and cell $1$ the one above it, with centroids $x_{1,0}$, $x_{1,1}$ and the
+lower face at $x_{1,-1/2}$. The cell form adds, in one stage,
+
+$$
+\Delta E_0 = \frac{\Delta t}{\tau}\,\rho_0c_{v,0}\,(T_{\mathrm b} - T^{\mathrm{tgt}}),
+$$ {#eq-ch09-relax-temp}
+
+with $T_{\mathrm b}$ = `btemp` and $T^{\mathrm{tgt}}=T_0$ ([`relax_bot_temp.cpp:80-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L80-L104)). With `at-face` the
+target is the linear extrapolation of the two cell values to the face,
+
+$$
+\begin{aligned}
+T^{\mathrm{tgt}} &= (1+\alpha_{\mathrm f})\,T_0 - \alpha_{\mathrm f}\,T_1, \\
+\alpha_{\mathrm f} &= \frac{x_{1,0} - x_{1,-1/2}}{x_{1,1} - x_{1,0}},
+\end{aligned}
+$$ {#eq-ch09-relax-face}
+
+and the increment is multiplied by the gain $1/(1+\alpha_{\mathrm f})$, `gain`
+([`relax_bot_temp.cpp:82-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L82-L103)).
+The target is exact for a linear $T$ on any spacing [check `src/snapy_report/ch09/relax_check.py`, output
+`relax_check.out`, `[C1]`]; on uniform cells $\alpha_{\mathrm f}=\tfrac12$, the target is $1.5T_0-0.5T_1$ and the
+gain $\tfrac23$ (`[C2]`). The gain follows from the chain rule: only cell $0$ is heated, and
+$\partial T^{\mathrm{tgt}}/\partial T_0 = 1+\alpha_{\mathrm f}$, so heating cell $0$ at $(T_{\mathrm b}-T^{\mathrm{tgt}})/ [\tau(1+\alpha_{\mathrm f})]$ moves the face value at exactly $(T_{\mathrm b}-T^{\mathrm{tgt}})/\tau$ (`[C3]`).
+
+#### Velocity
+
+With $\mathbf v_{\mathrm b} = $ (`bvx`, `bvy`, `bvz`) the target for the contravariant components
+$(v^1, v^2, v^3)$ of the bottom cell,
+
+$$
+\Delta m_{a} = \frac{\Delta t}{\tau}\,\rho_0\,g_{ab}\,(v_{\mathrm b}^{b} - v_0^{b}),
+$$ {#eq-ch09-relax-velo}
+
+where $g_{ab}$ lowers the index; it is the identity on orthogonal grids and on the cubed sphere has
+$g_{23}=\cos\theta_{jk}$; the force is lowered with `coord_vec_lower_` ([`relax_bot_velo.cpp:65-75`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_velo.cpp#L65-L75)),
+whose kernel is `coord_vec_lower_impl` ([`coord_utils_impl.h:19-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L19-L24)). The argument for lowering is the one of @sec-ch09-sponge: the stored
+momenta are covariant, and an unlowered force rotates the wind instead of braking it.
+
+#### Composition
+
+Let $y_n$ be the mass fractions of the species $n=1..N_y$ in the bottom cell, $\rho$ the total density, and $y^{\mathrm{tgt}}_n$
+the mass fractions of the target state: the current mole fractions with the named species set to `xfrac` and dry
+air taking the rest, converted back to mass fractions. One stage adds
+
+$$
+\begin{aligned}
+\Delta\rho_{\mathrm d} &= -\frac{\Delta t}{\tau}\,\rho\sum_n(y^{\mathrm{tgt}}_n - y_n), \\
+\Delta(\rho y_n) &= \frac{\Delta t}{\tau}\,\rho\,(y^{\mathrm{tgt}}_n - y_n), \\
+\Delta E &= \frac{\Delta t}{\tau}\,\big[U(\rho y^{\mathrm{tgt}}, T) - U(\rho y, T)\big],
+\end{aligned}
+$$ {#eq-ch09-relax-comp}
+
+as `delta` ([`relax_bot_comp.cpp:95-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L95-L117)). The total density is unchanged (`[C4]`) and the momentum is untouched.
+$U(\cdot, T)$ is kintera's volumetric internal energy at the cell temperature, `VT->U`
+([`kintera thermo_y.cpp:240-245`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L240-L245)), with the partial densities from `DY->V`
+([`kintera thermo_y.cpp:212-226`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L212-L226)) and the mole/mass conversions `Y->X` ([`kintera thermo_y.cpp:196-211`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L196-L211))
+and `X->Y` ([`kintera thermo_x.cpp:140-150`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_x.cpp#L140-L150)). So the swap is isothermal provided kintera's $U$ is the same
+function as snapy's equation of state uses; the test below checks that for the ideal-moist fixture.
+
+*Exact and truncated.* All three are explicit relaxations: for $\Delta t\ll\tau$ the bottom row approaches its target
+as $e^{-t/\tau}$ to first order in $\Delta t/\tau$; with $\Delta t=\tau$ the composition reaches its target in one
+step, which the test uses.
+
+### Numerical method
+
+@fig-ch09-relax-face shows the at-face target.
+
+```{python}
+#| label: fig-ch09-relax-face
+#| fig-cap: "The at-face target of relax-bot-temp on uniform cells. Sky-blue circles: the temperatures of the bottom cell and the one above it; bluish-green dashed line and diamond: their linear extrapolation to the lower face (thick black line), the value that is relaxed toward btemp (dotted blue line)."
+#| fig-alt: "Two cells above a wall, two temperature points, a dashed line through them extended to the wall ending in a diamond, and a horizontal dotted target line above."
+#| echo: false
+from snapy_report.ch09.fig_relax_face import make_fig
+make_fig()
+```
+
+The modules read the bottom row of interior cells and, for `at-face`, the row above it; they read no ghost. `at-face`
+needs two interior cells in the row selection, which `PartOptions::depth` caps at $n_g$, so it requires
+$n_g\ge2$ ([`relax_bot_temp.cpp:86-92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L86-L92)). They run in every stage, explicit, in the forcing loop
+(@sec-ch09-framework).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| temperature options | [`relax_bot_temp.cpp:15-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L15-L45) | `RelaxBotTempOptionsImpl::from_yaml` | `btemp` required |
+| @eq-ch09-relax-temp, @eq-ch09-relax-face | [`relax_bot_temp.cpp:58-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L58-L106) | `RelaxBotTempImpl::forward` | `at-face` |
+| velocity options | [`relax_bot_velo.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_velo.cpp#L17-L34) | `RelaxBotVeloOptionsImpl::from_yaml` | |
+| @eq-ch09-relax-velo | [`relax_bot_velo.cpp:47-77`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_velo.cpp#L47-L77) | `RelaxBotVeloImpl::forward` | |
+| composition options | [`relax_bot_comp.cpp:20-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L20-L52) | `RelaxBotCompOptionsImpl::from_yaml` | `species`, `xfrac` |
+| species lookup, kintera modules | [`relax_bot_comp.cpp:61-80`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L61-L80) | `RelaxBotCompImpl::reset` | |
+| @eq-ch09-relax-comp | [`relax_bot_comp.cpp:82-119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L82-L119) | `RelaxBotCompImpl::forward` | |
+| struct default `btemp` | [`forcing.hpp:450-451`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/forcing.hpp#L450-L451) | `btemp` | not used from YAML |
+
+: Code map of the bottom relaxations. {#tbl-ch09-relax-code}
+
+1. Each `from_yaml` checks keys and values: $\tau>0$; `btemp` present and positive; `at-face` a literal
+   `true`/`false`; `species` and `xfrac` of equal length, no duplicates, each `xfrac` in $[0,1]$, sum $\le1$
+   (`RelaxBotTempOptionsImpl::from_yaml`, [`relax_bot_temp.cpp:15-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L15-L45);
+   `RelaxBotVeloOptionsImpl::from_yaml`, [`relax_bot_velo.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_velo.cpp#L17-L34);
+   `RelaxBotCompOptionsImpl::from_yaml`, [`relax_bot_comp.cpp:20-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L20-L52)).
+2. `RelaxBotCompImpl::reset` builds its own kintera `ThermoY` and `ThermoX`, and refuses an unknown species or the
+   dry species ([`relax_bot_comp.cpp:61-80`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L61-L80)).
+3. Each `forward` returns at once unless the lower $x_1$ face is physical, then adds its increment to the bottom row
+   ([`relax_bot_temp.cpp:58-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_temp.cpp#L58-L106), [`relax_bot_velo.cpp:47-77`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_velo.cpp#L47-L77),
+   [`relax_bot_comp.cpp:82-119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/relax_bot_comp.cpp#L82-L119)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_forcing.cpp` (`test_forcing.release`), `relax_bottom_temperature` | @eq-ch09-relax-temp in the bottom row, zero elsewhere | `allclose` defaults | closed form |
+| same, `relax_bottom_temperature_at_face_rejects_non_bool` | `at-face` must be `true` or `false` | exact (throws) | parser contract |
+| same, `relax_bottom_temperature_at_face_under_an_inversion` | the at-face tendency with $T_0<T_1$ | rtol $10^{-13}$ | round-off |
+| same, `relax_bottom_temperature_at_face_uses_coordinate_spacing` | a linear $T$ on stretched centres (0.5 and 2.5 above the face) gives zero tendency when $T^{\mathrm{tgt}}=T_{\mathrm b}$ | exact | linear exactness |
+| same, `relax_bottom_temperature_at_face` | default off is bit for bit the cell form; on uniform cells the at-face tendency uses $1.5/-0.5$ and gain $\tfrac23$ and reads no ghost | exact; rtol $10^{-13}$ | contracts; round-off |
+| same, `relax_bottom_velocity` | @eq-ch09-relax-velo on an orthogonal grid | `allclose` defaults | closed form |
+| same, `cubed_sphere_sponge_drag_is_covariant` | covers `relax-bot-velo` on six panels: drag antiparallel to the covariant momentum | $10^{-12}$ of the larger product | see @sec-ch09-sponge |
+| same, `relax_bottom_composition_preserves_state` | with $\Delta t=\tau$ the bottom mole fraction becomes `xfrac`; density, velocity unchanged; the temperature after snapy's ideal-moist U$\to$W is unchanged | `allclose` defaults; $10^{-8}$ for $T$ | single step, float64 |
+| same, `relax_bottom_composition_handles_multidimensional_ghost_zones` | the same on a 3-D block | per test | |
+| same, `reject_invalid_values`, `reject_unknown_composition_species` | option refusals | exact (throws) | contracts |
+| `tests/test_tracer_dry_convention.py` (`test_tracer_dry_convention_python`), relax arm | the tracer rides the dry air `relax-bot-comp` converts, both ways | `TOL` $=10^{-12}$ | round-off |
+| `tests/test_dry_carry_zero_base.py` (`test_dry_carry_zero_base_python`) | with `relax-bot-comp` and a user source driving the dry base of the tracer carry to zero, the result stays finite and equals the closed form | $10^{-12}$ absolute | round-off |
+| this section's check, `relax_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the bottom relaxations. {#tbl-ch09-relax-tests}
+
+**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+line; deck: the check itself; run: `python3 relax_check.py`, numpy 2.4.6, double]. ctest cases: **pending: pinned
+ctest run**.
+**Coverage.** CPU only; no multi-rank arm.
+
+### Limits
+
+1. **`at-face` cost stability** on the one initial condition tried (chengcli/snapy#219 Limits); it is off by
+   default. Not re-measured.
+2. **kintera's $U$ against snapy's.** `relax_bottom_composition_preserves_state` shows the swap is isothermal for
+   the ideal-moist fixture `test_diffusion_moist.yaml` (constant heat capacities). For the moist-mixture equation of
+   state, or species with temperature-dependent heat capacities, it is not tested.
+3. **`btemp` default.** The options struct defaults `btemp` to 300 K ([`forcing.hpp:450-451`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/forcing.hpp#L450-L451)), but YAML
+   requires it; a Python user who builds the options directly gets 300 K silently.
+4. **Velocity target naming.** `bvx`, `bvy`, `bvz` are the targets of $v^1$, $v^2$, $v^3$; with $x_1$ vertical,
+   `bvx` is the vertical target, not an $x$ component.
+5. **Energy of the velocity drag.** $E$ is untouched, so the removed kinetic energy heats the bottom row; intended
+   for a drag, but not stated in the code.
+6. **Solids.** The modules read the solid placeholder state if a solid cell sits in the bottom row
+   (`sources/canoe__diffusion_ghost_TECH_REPORT.md` §7). Not tested.

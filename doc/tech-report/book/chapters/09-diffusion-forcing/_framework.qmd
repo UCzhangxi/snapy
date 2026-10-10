@@ -1,0 +1,125 @@
+## The forcing framework: parsing, registration and the stage tendency (`forcing:`) {#sec-ch09-framework}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 9.1; src/hydro/register_forcing_modules.cpp, src/hydro/hydro_options.cpp, src/hydro/hydro_forward.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Turns each key of the YAML block `forcing:` into one module that adds $\Delta t\,\mathbf S$ to the
+stage increment $\Delta\mathbf U$, after the flux divergence.
+**Switch.** The presence of each key; no key, no module. Default: no forcing.
+**Requires.** Nothing; the modules have their own requirements (the sections below).
+**Order.** Each module is first order in time within a stage; the Runge–Kutta average makes the sum of the
+stages as accurate as the integrator.
+**Defining equation.** @eq-ch09-framework-stage.
+:::
+
+snapy treats every source term other than the flux divergence as a *forcing*: a module that reads the
+stage-entry primitives and adds its contribution, multiplied by the full step $\Delta t$, to the same increment the
+flux divergence started. The modules run in a fixed order, they see the same primitives, and none of them sees the
+others' contributions, so the order does not change the result. The framework also records how much dry-air
+density the forcings added, so that passive tracers can be carried with it.
+
+The YAML parser refuses unknown keys under `forcing:` and refuses the removed key `fric-heat` with a message
+that explains why. Twelve keys are accepted: `const-gravity` (Chapter 6), `coriolis`, `diffusion`, `body-heat`,
+`top-cool`, `bot-heat`, `relax-bot-comp`, `relax-bot-temp`, `relax-bot-velo`, `top-sponge-lyr`,
+`bot-sponge-lyr` and `plume-forcing`. The last is accepted but never installed (@sec-ch09-plume).
+
+*Aliases.* chengcli/snapy#217 introduced the key list as "twelve forcing keys".
+
+### Derivation
+
+The semi-discrete update of cell $i$ is $\mathrm{d}\mathbf U_i/\mathrm{d}t = \mathcal L_i(\mathbf U)$, with the
+right-hand side the flux divergence plus the sum of the source terms $\mathbf S^{m}$ of the registered modules
+$m = 1..M$. One stage forms the increment
+
+$$
+\Delta\mathbf U_i = -\Delta t\,(\nabla\cdot\mathbf F)_i + \Delta t\sum_{m=1}^{M}\mathbf S^{m}_i(\mathbf W, T)
+$$ {#eq-ch09-framework-stage}
+
+and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U + w_2^{(s)}\Delta\mathbf U$ (Chapter 7). @eq-ch09-framework-stage is built in `HydroImpl::forward`
+([`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765)): the divergence term on interior cells, then the module loop. Each
+$\mathbf S^m$ is evaluated on the same $\mathbf W$ and on $T$ computed once from it, so the sum does not depend on
+the order of the loop; only round-off does. Nothing here needs a derivation beyond this sentence: the framework
+is a sum. No executable check is attached, because there is no closed form to check; the tests below check the
+two properties the sum must have, linearity in $\Delta t$ and registration.
+
+The dry-air part of the forcings' increment, $\Delta\rho_{\mathrm{d}}^{\mathrm{forc}} = \Delta\mathbf U[\rho_{\mathrm{d}}]$
+after the loop minus before it, is stored as `_forcing_dry` only when the block carries passive scalars
+([`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765)). The tracer carry that consumes it is Chapter 10.
+
+### Numerical method
+
+@fig-ch09-framework-order shows the registration order and where the increment goes.
+
+```{python}
+#| label: fig-ch09-framework-order
+#| fig-cap: "Registration order of the native forcing modules. Each sky-blue box is a module, numbered in the order it is installed; the dashed box is accepted by the parser but never installed at the pin. The orange line is the flux-divergence increment the loop starts from, and the green line what happens to the increment after the loop."
+#| fig-alt: "Twelve boxes in three rows of four, numbered 1 to 12 and connected by arrows, with plume-forcing dashed; a text line above for the start of the increment and one below for what follows it."
+#| echo: false
+from snapy_report.ch09.fig_framework_order import make_fig
+make_fig()
+```
+
+The loop runs in every Runge–Kutta stage, inside `HydroImpl::forward`, after the flux divergence and before the
+gravity-work bookkeeping and the vertical implicit correction (Chapter 6 and Chapter 7). All modules are
+explicit. Each module decides itself which cells it touches: `body-heat` touches interior cells only, the
+diffusion module adds a divergence of face fluxes, and the boundary modules (`top-cool`, `bot-heat`, the three
+relaxations, the two sponges) act only on a block that owns the physical $x_1$ boundary they name. Increments a
+module writes into ghost cells do not survive: the ghosts are refilled from the interior after the stage
+(Chapter 11).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| refuse `fric-heat` | [`hydro_options.cpp:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L68-L72) | `fric-heat` | removed key |
+| the twelve keys | [`hydro_options.cpp:73-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L73-L76) | `check_keys` | `forcing:` |
+| per-module parsing | [`hydro_options.cpp:78-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L78-L120) | `from_yaml` | each key |
+| install in fixed order | [`register_forcing_modules.cpp:6-84`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/register_forcing_modules.cpp#L6-L84) | `_register_forcings_module` | each key |
+| register as submodules | [`hydro/hydro.cpp:143-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L143-L152) | `_register_forcings_module` | |
+| increment and loop | [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765) | `forcings` | |
+| dry increment for tracers | [`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765) | `_forcing_dry` | scalars present |
+| tracer carry | [`meshblock.cpp:676-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L676-L678) | `carry_dry_source` | scalars present |
+
+: Code map of the forcing framework. {#tbl-ch09-framework-code}
+
+1. `HydroOptionsImpl::from_yaml` refuses `fric-heat` ([`hydro_options.cpp:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L68-L72)), checks the keys with `check_keys` ([`hydro_options.cpp:73-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L73-L76)) and parses each module's
+   options with its `from_yaml` ([`hydro_options.cpp:78-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L78-L120)). The `plume-forcing` options are parsed only with `plume-eos`.
+2. The `HydroImpl` constructor calls `_register_forcings_module`
+   ([`register_forcing_modules.cpp:6-84`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/register_forcing_modules.cpp#L6-L84)) and registers each module under its key
+   ([`hydro/hydro.cpp:143-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L143-L152)).
+3. Each stage, `HydroImpl::forward` starts the increment from the divergence, computes $T$ once and runs the
+   loop ([`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765)).
+4. `MeshBlockImpl::advance_local` hands the dry increment to the tracers with `carry_dry_source`
+   ([`meshblock.cpp:676-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L676-L678)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_hydro_options.cpp` (`test_hydro_options.release`), `reject_removed_and_unknown_forcing_keys` | `fric-heat` and unknown keys are refused | exact (throws) | a parser contract |
+| `tests/test_forcing.cpp` (`test_forcing.release`), `meshblock_registers_parent_dependent_modules` | a MeshBlock built with body heat and diffusion installs both modules | exact | a registration contract |
+| same file, `boundary_fluxes_scale_with_timestep` | the boundary-flux modules give $\Delta\mathbf U(2\Delta t) = 2\Delta\mathbf U(\Delta t)$ | `allclose` defaults | linearity in $\Delta t$; default tolerances of `torch::allclose` (rtol $10^{-5}$, atol $10^{-8}$) |
+
+: Tests of the forcing framework. {#tbl-ch09-framework-tests}
+
+**Evidence.** No number is quoted in this section. The three tests above have not been run at the pin:
+**pending: one pinned build and ctest run at the pin** (listed in the chapter's pending list).
+**Coverage.** CPU only; no CUDA arm and no multi-rank arm.
+
+### Limits
+
+1. **Ghost-cell increments.** Modules that do not restrict themselves to interior cells (the sponges, `top-cool`,
+   `bot-heat` across $x_2$, $x_3$) also write into ghost cells. The refill after the stage overwrites them. Not a
+   defect; stated so that a reader of `du` is not surprised.
+2. **Immersed solids.** The loop sees the solid placeholder state written into $\mathbf W$ before it by
+   `mark_prim_solid_` ([`hydro_forward.cpp:217-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L217-L218)). The diffusion module is the measured case (@sec-ch09-wallcoef);
+   the relaxations and `body-heat` read the same state and are not measured.
+3. **`plume-forcing`** is accepted by the parser and never installed (@sec-ch09-plume).
+4. **Untested combinations.** No ctest runs two boundary modules together. See the switch coverage matrix
+   (Chapter 12).

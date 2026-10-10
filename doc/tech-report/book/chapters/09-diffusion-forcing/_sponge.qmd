@@ -1,0 +1,131 @@
+## Sponge layers: Rayleigh drag near the top and bottom boundaries (`top-sponge-lyr`, `bot-sponge-lyr`) {#sec-ch09-sponge}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 9.9; src/forcing/top_sponge_lyr.cpp, bot_sponge_lyr.cpp; src/coord/coord_utils_impl.h;
+         sources/canoe__forcing_io_TECH_REPORT.md (Defect 1); tests/test_forcing.cpp
+status: draft
+-->
+
+<!-- Local symbols: $\zeta$, the depth fraction of a cell inside a sponge layer (code `eta`). NOTATION.md has no
+     symbol for it, and $\eta$ is the gnomonic panel coordinate and the general small quantity (NOTATION.md
+     sections 1 and 10). Opened as ISSUES.md item 10. -->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Damps all three velocity components toward zero in a layer of given width at the top or bottom of
+the domain, with a $\sin^2$ ramp.
+**Switch.** `top-sponge-lyr: {tau, width}`, `bot-sponge-lyr: {tau, width}`, both $>0$ [s, m]. Off unless the key
+is present.
+**Order.** Explicit relaxation, first order in time per stage.
+**Defining equation.** @eq-ch09-sponge-drag.
+:::
+
+A sponge layer absorbs waves that would otherwise reflect from the top or bottom boundary. snapy's sponges are a
+Rayleigh drag $-\rho\mathbf v/\tau$ multiplied by a profile that is 1 at the boundary and falls to 0 at `width`
+away from it as $\sin^2$. The drag acts on the momentum only; the total energy is untouched, so the kinetic energy
+it removes becomes internal energy in the same cell. On the cubed sphere the drag is lowered to covariant
+components so that it brakes the wind instead of rotating it.
+
+*Aliases.* "Defect 1 — the drag was not antiparallel to the wind" in `sources/canoe__forcing_io_TECH_REPORT.md`;
+the same lowering as "Fix Coriolis (#168)".
+
+### Derivation
+
+For a cell whose lower face is $x_{1,i-1/2}$, the depth fraction inside a top layer of width $w$ is
+
+$$
+\zeta_i = \min\Big(1, \max\Big(0, \frac{w - (x_{1,\mathrm{top}} - x_{1,i-1/2})}{w}\Big)\Big),
+$$
+
+with $x_{1,\mathrm{top}}$ the upper face of the block, and for a bottom layer the distance is
+$x_{1,i-1/2}-x_{1,\mathrm{bot}}$ (`eta` in the code; [`top_sponge_lyr.cpp:58-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L58-L61), [`bot_sponge_lyr.cpp:58-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L58-L61)).
+One stage adds
+
+$$
+\Delta m_a = -\frac{\Delta t}{\tau}\,\sin^2\!\big(\tfrac{\pi}{2}\zeta_i\big)\,\rho_i\,g_{ab}v^b_i
+$$ {#eq-ch09-sponge-drag}
+
+to the three momentum rows and nothing to the energy (`force`, [`top_sponge_lyr.cpp:62-73`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L62-L73)). Because the
+distance is measured from each cell's *lower* face, the bottom cell of a bottom sponge has $\zeta=1$, while the top
+cell of a top sponge has $\zeta = 1 - h/w$ [check `src/snapy_report/ch09/sponge_check.py`, output
+`sponge_check.out`, `[C1]`: scale 0.8536 for $h/w=0.25$].
+
+*Heating.* With $a = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy of the cell rises by the
+kinetic energy removed, $\tfrac12\rho|\mathbf v|^2[1-(1-a)^2]$, which is positive for $0<a<2$ (`[C2]`). The sponge
+is therefore an energy-conserving drag with frictional heating, not a sink of total energy.
+
+*Covariant lowering.* The primitive velocities $v^b$ are contravariant and the stored momenta $m_a$ covariant. On
+the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\theta_{jk}\ne0$, and
+`coord_vec_lower_impl` forms $f_2 = f^2 + \cos\theta\,f^3$, $f_3 = f^3 + \cos\theta\,f^2$
+([`coord_utils_impl.h:19-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L19-L24)). The lowered drag is antiparallel to the covariant momentum and its power
+$v^af_a = -\rho a\,g_{ab}v^av^b$ is negative for $|\cos\theta|<1$ (`[C3]`). Without the lowering the cross product of
+force and covariant momentum is $\cos\theta\,(v_3^2-v_2^2)$ per unit $\rho a$, non-zero away from the panel centres
+(`[C4]`: 0.455 at a corner with $\cos\theta=-\tfrac12$, $\mathbf v=(1, 0.3)$). On an orthogonal grid
+$\cos\theta=0$ and the lowering is the identity bit for bit.
+
+*Exact and truncated.* The profile is exact as defined; the drag is explicit, first order in $\Delta t/\tau$.
+
+### Numerical method
+
+@fig-ch09-sponge-profile shows the two profiles per cell.
+
+```{python}
+#| label: fig-ch09-sponge-profile
+#| fig-cap: "Scale factor of the top (bluish green, solid) and bottom (orange, dashed) sponge layers per cell, for 20 cells of 0.5 m and a width of 2 m, from the port of the module; the dotted blue curves are the continuous sin^2 profiles. Each cell takes the value at its lower face, so the bottom profile is full in the bottom cell and the top profile is below 1 in the top cell."
+#| fig-alt: "Step plot of two sponge scale factors over a 10 m column: one rising near the top, one falling from 1 near the bottom, with smooth dotted reference curves."
+#| echo: false
+from snapy_report.ch09.fig_sponge_profile import make_fig
+make_fig()
+```
+
+The drag is a cell source at every cell of the block, ghosts included; ghost increments are overwritten by the
+boundary fill. Only the block that owns the physical boundary applies it (`is_physical_boundary`,
+[`top_sponge_lyr.cpp:52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L52)).
+It runs in every stage, explicit, in the forcing loop (@sec-ch09-framework).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| options | [`top_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L17-L34) | `TopSpongeLyrOptionsImpl::from_yaml` | `top-sponge-lyr` |
+| top drag | [`top_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L47-L76) | `TopSpongeLyrImpl::forward` | |
+| options | [`bot_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L17-L34) | `BotSpongeLyrOptionsImpl::from_yaml` | `bot-sponge-lyr` |
+| bottom drag | [`bot_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L47-L76) | `BotSpongeLyrImpl::forward` | |
+| lowering | [`coord_utils_impl.h:19-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L19-L24) | `coord_vec_lower_impl` | cubed sphere |
+
+: Code map of the sponge layers. {#tbl-ch09-sponge-code}
+
+1. `from_yaml` requires $\tau>0$ and $w>0$ ([`top_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L17-L34),
+   [`bot_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L17-L34)).
+2. `forward` returns unless the block owns the physical boundary, forms $\zeta$ and the $\sin^2$ scale, builds the
+   force from $\rho v^b$, lowers it and subtracts it ([`top_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L47-L76),
+   [`bot_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L47-L76)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_forcing.cpp` (`test_forcing.release`), `cubed_sphere_sponge_drag_is_covariant` | on six panels the top sponge, the bottom sponge and `relax-bot-velo` give a drag antiparallel to the covariant momentum; the unlowered direction differs; the drag is not zero | $\lvert f\times m\rvert\le10^{-12}$ of the larger product; $>10^{-10}$; $>0$ | double round-off; non-vacuity |
+| same, `reject_invalid_values` | option refusals | exact (throws) | contracts |
+| this section's check, `sponge_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the sponge layers. {#tbl-ch09-sponge-tests}
+
+**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+line; deck: the check itself; run: `python3 sponge_check.py`, numpy 2.4.6, double]. The covariance test was found
+vacuous in its first form and rewritten (`sources/canoe__forcing_io_TECH_REPORT.md`, Defect 1, "Verification"; its
+PASS/FAIL arms were run at commits that are not pins of this report). ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU only. The test checks the direction of the drag, not its size: **no test of the drag magnitude or
+of the profile** (a gap; `[C1]` and `[C2]` cover the formulas only).
+
+### Limits
+
+1. **Truncated under an $x_1$ split.** Only the block owning the boundary applies the sponge; a `width` taller than
+   that block is cut off at its other face. Not tested.
+2. **Lower-face convention.** $\zeta$ uses each cell's lower face, so the top and bottom sponges are not mirror
+   images (`[C1]`).
+3. **Drag on $v^1$.** The vertical velocity is damped as well as the horizontal ones.
+4. **Not run at scale on the cubed sphere** (chengcli/snapy#219 Limits).
+5. **Leftover file.** `src/forcing/sponge_lyr.cpp_` is not compiled (wrong extension).

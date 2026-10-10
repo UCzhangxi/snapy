@@ -1,0 +1,149 @@
+## Diffusion face coefficient at a wall: one-sided extrapolation instead of the ghost (automatic) {#sec-ch09-wallcoef}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 9.5; src/forcing/diffusion.cpp; src/mesh/meshblock_options.cpp;
+         sources/canoe__diffusion_ghost_TECH_REPORT.md §§3-5, 7
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** On an $x_1$ face that is a reflecting wall, takes the diffusion coefficient ($\rho$, $\rho c_v$,
+or either times an $x_1$ profile) by linear extrapolation from the two nearest interior cells instead of
+averaging the wall cell with its ghost.
+**Switch.** None: automatic when the $x_1$ boundary function is named `reflecting_inner`/`_outer` or
+`fixed_temperature_inner`/`_outer`. Every other face keeps the two-cell average.
+**Order.** Second order at the wall face, against first order for the mirror average.
+**Defining equation.** @eq-ch09-wallcoef-extrap.
+:::
+
+A reflecting wall fills its ghost cells with the mirror image of the interior. That is the right state for the
+Riemann solver, but the average of a cell and its mirror is the cell's own value, half a cell away from the wall,
+so the face coefficient of a stratified column is off by a factor $e^{\mp h/2H}$ at the walls, an $O(h)$ error.
+The diffusion module therefore extrapolates the coefficient from the two interior cells next to the wall, which
+reads no ghost at all and is exact for a linear profile.
+
+The fix is restricted to $x_1$ and to a whitelist of boundary names. An $x_2$ or $x_3$ reflecting face is as likely
+to be a symmetry plane, where the mirror is exact and the average is the better estimate; and `reflecting` is the
+default for every face a configuration does not name, so widening the rule would change runs that did not ask for
+it. Periodic faces, outflow, custom and solid boundary functions keep the average.
+
+*Aliases.* "Defect B" of `sources/canoe__diffusion_ghost_TECH_REPORT.md`; its "Defect A", the immersed-solid
+placeholder state, is not fixed (Limits).
+
+### Derivation
+
+Let cell $0$ touch the wall and cell $1$ be its interior neighbour, with widths $h_0$, $h_1$. The wall face is
+$h_0/2$ from the centre of cell $0$ and the two centres are $(h_0+h_1)/2$ apart, so the linear interpolant through the
+two centre values, evaluated at the face, is
+
+$$
+q_f = (1+t)\,q_0 - t\,q_1, \qquad t = \frac{h_0}{h_0+h_1},
+$$ {#eq-ch09-wallcoef-extrap}
+
+the same expression at both walls, because the offset to the face and the direction to the second cell change sign
+together. @eq-ch09-wallcoef-extrap is `extrapolate_to_wall` ([`diffusion.cpp:114-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L114-L136)). It is exact for
+a linear $q$ on any widths [check `src/snapy_report/ch09/wallcoef_check.py`, output `wallcoef_check.out`, `[C1]`,
+max error $8.9\times10^{-16}$ over 100 random stretched columns] and so second order for a smooth one. If
+$q_f\le0$ the code returns $q_0$, which also reads no ghost (`[C3]`).
+
+The mirror average, by contrast, returns $q_0$ itself. For $\rho=\rho_0e^{-x_1/H}$ with the lower wall at $x_1=0$
+the ratio of the mirror average to the wall value is exactly $e^{-h/2H}$ at the lower wall and $e^{+h/2H}$ at the
+upper one, an $O(h)$ error; the extrapolation error falls at second order (`[C2]`: fitted orders 0.994 and 1.985
+for $h/H$ from $1/32$ to $1/64$).
+
+Which fluxes the coefficient matters for follows from the mirror parities. Density and temperature are mirrored
+even, so the face-normal temperature difference at a reflecting wall is exactly zero and the conductive wall flux
+vanishes whatever the coefficient. The normal velocity is mirrored odd, so $\partial_1v_1 = 2v_{1,0}/h_0$ at the wall
+(`[C4]`), and the viscous normal stress at the wall carries the coefficient. The fix changes the viscous wall flux
+and, with an $x_1$ profile on conduction, nothing else at a reflecting wall.
+
+*Exact and truncated.* The coefficient is exact for linear profiles and $O(h^2)$ otherwise; the normal-stress kernel
+at the wall stays $O(h)$ (@sec-ch09-viscosity, Limits).
+
+### Numerical method
+
+@fig-ch09-wallcoef-wall compares the two estimates at the lower wall.
+
+```{python}
+#| label: fig-ch09-wallcoef-wall
+#| fig-cap: "The diffusion coefficient at a reflecting x1 wall (thick black line) for rho = exp(-x1/H) with h = H/2. The blue curve is the exact profile, the sky-blue circles the two interior cell values and the hatched reddish-purple cell the mirror ghost (reddish-purple circle). Their average is the vermillion square on the wall, which equals the wall cell's value; the bluish-green dashed line is the extrapolation from the two interior cells, which lands on the bluish-green diamond near the exact wall value."
+#| fig-alt: "Plot of an exponential density near a wall, with a hatched ghost cell to the left of the wall, two interior cell values, the mirror-average point on the wall below the curve and the extrapolated point on the wall close to the curve."
+#| echo: false
+from snapy_report.ch09.fig_wallcoef_wall import make_fig
+make_fig()
+```
+
+The extrapolation is applied to the first and last $x_1$ face of a block when that face is a whitelisted wall and
+the block has at least three $x_1$ faces (two interior cells); with fewer the average is kept, in
+`face_coefficient` ([`diffusion.cpp:142-159`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L142-L159)). A seam between two blocks has no boundary function and so is never a wall.
+The same rule applies to the product of a coefficient and an $x_1$ profile, which is extrapolated as one quantity
+(@sec-ch09-x1profile). It runs wherever the module computes a coefficient, in every stage.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| @eq-ch09-wallcoef-extrap and the fallback | [`diffusion.cpp:114-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L114-L136) | `extrapolate_to_wall` | |
+| average, or wall faces | [`diffusion.cpp:142-159`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L142-L159) | `face_coefficient` | |
+| $x_1$ only | [`diffusion.cpp:496-502`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L496-L502) | `is_wall_boundary` | $x_1$ faces |
+| the whitelist | [`meshblock_options.cpp:243-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L243-L272) | `is_wall_boundary` | boundary names |
+| unnamed function warns | [`meshblock_options.cpp:250-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L250-L258) | `TORCH_WARN_ONCE` | |
+| installed-function test | [`meshblock_options.cpp:229-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L229-L234) | `is_physical_boundary` | |
+
+: Code map of the wall face coefficient. {#tbl-ch09-wallcoef-code}
+
+1. For each active direction `DiffusionImpl::forward` asks `is_wall_boundary` for the lower and upper $x_1$ face
+   only ([`diffusion.cpp:496-502`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L496-L502)).
+2. `is_wall_boundary` returns true for an installed function whose recorded name is on the whitelist
+   ([`meshblock_options.cpp:243-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L243-L272)); a function with no recorded name warns once with `TORCH_WARN_ONCE` and returns false
+   ([`meshblock_options.cpp:250-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L250-L258)).
+3. `face_coefficient` averages every face and overwrites the wall faces with `extrapolate_to_wall`
+   ([`diffusion.cpp:142-159`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L142-L159), [`diffusion.cpp:114-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L114-L136)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_diffusion.cpp` (`test_diffusion.release`), `wall_face_coefficient_reads_no_ghost` | on a linear density a uniform $\mathrm{d}T/\mathrm{d}n$ gives the same tendency in every interior cell, wall cells included | $10^{-5}$ | float32 arm |
+| same, `wall_flux_does_not_depend_on_the_ghost_density` | changing the ghost density leaves the wall flux unchanged; the wall flux is not zero | $10^{-10}$; $>10^{-6}$ | float64 round-off; non-vacuity |
+| same, `x2_wall_is_not_one_sided` | an $x_2$ reflecting wall keeps the average | $10^{-4}$ relative | the half-slope signature of the average |
+| same, `periodic_x1_face_is_not_extrapolated` | a periodic $x_1$ face keeps the average | $10^{-4}$ relative | as above |
+| same, `wall_names_are_an_exact_whitelist` | only the four names count as walls | exact | contract |
+| this section's check, `wallcoef_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
+
+: Tests of the wall face coefficient. {#tbl-ch09-wallcoef-tests}
+
+**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+line; deck: the check itself; run: `python3 wallcoef_check.py`, numpy 2.4.6, double]. The source report measured
+the wall coefficient off by $-14.72$ % and $+15.52$ % at $h/H=0.35$ before the fix
+[`sources/canoe__diffusion_ghost_TECH_REPORT.md` §4; sha snapy@43e04fda904d7401f1ee204c73b34460f09ff5fe, not a pin
+of this report; deck and run as described there]; re-measuring at the pin needs a committed deck: **pending**. ctest cases: **pending: pinned
+ctest run**.
+**Coverage.** CPU float32/float64 and CUDA when present for the `DeviceTest` cases; no multi-rank test; no
+stretched grid, because snapy has none, so the general weight $t\ne\tfrac12$ is covered only by `[C1]`.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+Without a `boundary-condition.external` block no boundary functions exist and the rule never fires. Immersed
+solids are read as fluid by the diffusion module, with a face heat capacity about 500 times too large.
+:::
+
+1. **Immersed solids (not fixed).** The solid placeholder state, $\rho=10^3$ and $p=10^9$ by default, is written into $\mathbf W$ by `mark_prim_solid_` before the forcings run
+   ([`hydro_forward.cpp:217-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L217-L218)). A fluid face next to a solid
+   then has $\rho c_v$ $500.5$ times the fluid value and a temperature jump of a factor 10 (`[C5]`). The source
+   measured $+1.126125\times10^3$ of energy per stage in the two flanking cells of a uniform column
+   [`sources/canoe__diffusion_ghost_TECH_REPORT.md` §3; sha
+   snapy@43e04fda904d7401f1ee204c73b34460f09ff5fe, not a pin of this report]. No configuration in the tree combines
+   a solid mask with diffusion; the path is deliberately left as it was (same report §3a). Not tested at the pin.
+2. **Dormant without named boundaries.** No boundary block, or a function installed from Python with no `name`,
+   means no wall: the average is used, with a one-time warning in the second case.
+3. **`fixed_temperature_*`** is on the whitelist but no such boundary function is registered in the tree
+   (chengcli/snapy#216), so that entry changes nothing at the pin.
+4. **Positivity fallback** is element-wise and silent; a wall face can be second order in some columns and first
+   order in others. Not observed to fire; not measured.
+5. **Block too short.** With fewer than two interior $x_1$ cells, `nface` $<3$, the average is kept
+   ([`diffusion.cpp:147-148`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L147-L148)).

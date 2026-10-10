@@ -1,0 +1,57 @@
+# Diffusion, viscosity and forcing {#sec-ch09}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md chapter 9
+status: draft
+-->
+
+This chapter covers every source term snapy adds to the stage increment besides the flux divergence and gravity:
+the forcing framework that parses, installs and sums them; user stage forcings written in TorchScript; the
+Coriolis force; the isotropic viscosity and heat conduction with their face coefficients at walls and their
+optional $x_1$ profiles; prescribed heating and cooling; the bottom relaxations of temperature, velocity and
+composition; and the sponge layers. All of them are explicit and act through the same increment, in a fixed order
+that does not change the result. Constant gravity and its work are Chapter 6; sedimentation is Chapter 10. Two
+entries record code that is present but never runs: the plume forcing and the unbuilt turbulence closure.
+
+<!-- PENDING: the chapter's dependency map (STYLE.md section 10.1) is drawn from the switch coverage matrix of
+     Chapter 12, which is not written yet. -->
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| Forcing framework (@sec-ch09-framework) | `forcing:` keys | none | — | `test_forcing` |
+| User stage forcings (@sec-ch09-user) | `set_user_stage_forcings` | none | user | `test_stage_forcing_dry_tracer_python` |
+| Coriolis (@sec-ch09-coriolis) | `coriolis` | off | exact pointwise | `test_forcing` |
+| Viscosity and conduction (@sec-ch09-viscosity) | `diffusion` | off | 2 (1 at walls) | `test_diffusion` |
+| Wall face coefficient (@sec-ch09-wallcoef) | automatic | on at named walls | 2 | `test_diffusion` |
+| $x_1$ coefficient profiles (@sec-ch09-x1profile) | `nu_scale_x1`, `kappa_scale_x1` | none | 2 | `test_diffusion_x1_scale` |
+| Heating and cooling (@sec-ch09-heating) | `body-heat`, `top-cool`, `bot-heat` | off | exact pointwise | `test_forcing` |
+| Bottom relaxation (@sec-ch09-relax) | `relax-bot-temp`, `-velo`, `-comp` | off | 1 in time | `test_forcing` |
+| Sponge layers (@sec-ch09-sponge) | `top-sponge-lyr`, `bot-sponge-lyr` | off | 1 in time | `test_forcing` |
+| Plume forcing (@sec-ch09-plume) | `plume-forcing` | never installed | — | none |
+| Turbulence (@sec-ch09-turbulence) | none | not built | — | none |
+
+: The schemes of this chapter. "Order" is the spatial order of the discrete operator, or the order in time for the
+relaxations; all are explicit. {#tbl-ch09-schemes}
+
+{{< include 09-diffusion-forcing/_framework.qmd >}}
+
+{{< include 09-diffusion-forcing/_user.qmd >}}
+
+{{< include 09-diffusion-forcing/_coriolis.qmd >}}
+
+{{< include 09-diffusion-forcing/_viscosity.qmd >}}
+
+{{< include 09-diffusion-forcing/_wallcoef.qmd >}}
+
+{{< include 09-diffusion-forcing/_x1profile.qmd >}}
+
+{{< include 09-diffusion-forcing/_heating.qmd >}}
+
+{{< include 09-diffusion-forcing/_relax.qmd >}}
+
+{{< include 09-diffusion-forcing/_sponge.qmd >}}
+
+{{< include 09-diffusion-forcing/_plume.qmd >}}
+
+{{< include 09-diffusion-forcing/_turbulence.qmd >}}

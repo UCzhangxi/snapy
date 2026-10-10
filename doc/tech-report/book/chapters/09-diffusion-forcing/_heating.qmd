@@ -1,0 +1,124 @@
+## Body heating, top cooling and bottom heating (`body-heat`, `top-cool`, `bot-heat`) {#sec-ch09-heating}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 9.7; src/forcing/body_heat.cpp, top_cool.cpp, bot_heat.cpp; tests/test_forcing.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** `body-heat` heats every interior cell whose pressure lies in a band at a fixed rate of
+temperature change at constant volume; `top-cool` and `bot-heat` remove or add a fixed energy flux, spread evenly
+over the top or bottom `depth` cells.
+**Switch.** `forcing/body-heat: {dTdt, pmin, pmax}`, defaults 0, 0, 1 [K s$^{-1}$, Pa, Pa];
+`top-cool: {flux, depth}`, `flux` $\le0$, default 0 and 1; `bot-heat: {flux, depth}`, `flux` $\ge0$, default 0
+and 1 [W m$^{-2}$, cells]. Each off unless its key is present.
+**Order.** Exact sources; explicit, first order in time per stage.
+**Defining equation.** @eq-ch09-heating-body and @eq-ch09-heating-flux.
+:::
+
+These three modules are prescribed heat sources for idealised convection. They touch only the total energy, so
+they change the temperature and, through it, the pressure; mass and momentum are untouched. `body-heat` is a
+volumetric rate; `top-cool` and `bot-heat` stand for a radiative or surface flux at the top or bottom of the
+domain, applied only by the block that owns that physical $x_1$ boundary.
+
+The default `pmax` is 1 Pa: a `body-heat` block that does not set `pmin` and `pmax` heats only cells with
+$0\le p\le1$ Pa, which in most decks is none.
+
+### Derivation
+
+*Body heating.* At constant volume the internal energy changes by $\rho c_v\,\mathrm{d}T$, so a heating rate
+$\dot T$ adds, in one stage and in every interior cell with $p_{\min}\le p_i\le p_{\max}$,
+
+$$
+\Delta E_i = \Delta t\,\dot T\,\rho_ic_{v,i} ,
+$$ {#eq-ch09-heating-body}
+
+with $c_v$ the mixture value of the equation of state at the cell's state, in `BodyHeatImpl::forward`
+([`body_heat.cpp:43-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L43-L55)). For a
+constant $c_v$ at fixed density this raises $T$ by exactly $\dot T\Delta t$ [check
+`src/snapy_report/ch09/heating_check.py`, output `heating_check.out`, `[C3]`]; a $c_v$ that depends on $T$ makes
+it first order in $\Delta t$.
+
+*Boundary fluxes.* A flux $F$ [W m$^{-2}$] spread over the $d$ cells next to the boundary is applied to each of
+those cells as a uniform volumetric rate
+
+$$
+\Delta E_i = \Delta t\,\frac{F}{h_{\mathrm b}\,d} ,
+$$ {#eq-ch09-heating-flux}
+
+with $h_{\mathrm b}$ the width of the boundary cell, `dz`, in `TopCoolImpl::forward`
+([`top_cool.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L42-L56)) and `BotHeatImpl::forward` ([`bot_heat.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L42-L56)). The energy delivered to a column of unit horizontal area is
+$\sum_i\Delta E_ih_i = \Delta t\,F\,\bar h/h_{\mathrm b}$, with $\bar h$ the mean width of the $d$ cells: exactly $F$
+on uniform cells (`[C1]`), and $F$ times $\bar h/h_{\mathrm b}$ otherwise, 0.872 for cells growing upward by 10 % with
+$d=4$ (`[C2]`). On a spherical-polar grid the cell volume is not $h$ times a fixed area, so the delivered power is
+not $F$ either; not measured.
+
+*Exact and truncated.* Both sources are exact pointwise for the stage-entry state; nothing is truncated in space.
+
+### Numerical method
+
+@fig-ch09-heating-column shows where each module acts.
+
+```{python}
+#| label: fig-ch09-heating-column
+#| fig-cap: "Where the three heating modules act in an x1 column bounded by walls (thick black lines). Blue: the top d cells cooled by top-cool; vermillion: the bottom d cells heated by bot-heat; orange: the cells inside the pressure band of body-heat; light blue: untouched cells."
+#| fig-alt: "A vertical stack of ten cells with the top three, the bottom two and three middle cells shaded, each labelled with the module and its formula."
+#| echo: false
+from snapy_report.ch09.fig_heating_column import make_fig
+make_fig()
+```
+
+All three are cell sources: no stencil and no ghosts are read. `body-heat` acts on interior cells only.
+`top-cool` and `bot-heat` slice only in $x_1$, so they also write the $x_2$, $x_3$ ghost cells of their rows, which
+the boundary fill overwrites. They run in every stage, explicit, in the forcing loop (@sec-ch09-framework).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| options, `pmin` $\le$ `pmax` | [`body_heat.cpp:15-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L15-L30) | `BodyHeatOptionsImpl::from_yaml` | `body-heat` |
+| @eq-ch09-heating-body | [`body_heat.cpp:43-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L43-L55) | `BodyHeatImpl::forward` | |
+| options, `flux` $\le0$ | [`top_cool.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L16-L30) | `TopCoolOptionsImpl::from_yaml` | `top-cool` |
+| @eq-ch09-heating-flux, top | [`top_cool.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L42-L56) | `TopCoolImpl::forward` | |
+| options, `flux` $\ge0$ | [`bot_heat.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L16-L30) | `BotHeatOptionsImpl::from_yaml` | `bot-heat` |
+| @eq-ch09-heating-flux, bottom | [`bot_heat.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L42-L56) | `BotHeatImpl::forward` | |
+
+: Code map of the heating modules. {#tbl-ch09-heating-code}
+
+1. Each `from_yaml` checks its keys and signs ([`body_heat.cpp:15-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L15-L30),
+   [`top_cool.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L16-L30), [`bot_heat.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L16-L30)).
+2. `BodyHeatImpl::forward` masks the interior by the pressure band and adds @eq-ch09-heating-body
+   ([`body_heat.cpp:43-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L43-L55)).
+3. `TopCoolImpl::forward` and `BotHeatImpl::forward` return at once unless the block's upper or lower $x_1$ face is
+   physical, then add @eq-ch09-heating-flux ([`top_cool.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L42-L56),
+   [`bot_heat.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L42-L56)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_forcing.cpp` (`test_forcing.release`), `body_heat_uses_pressure_mask_and_mixture_cv` | heating only inside the band, with the mixture $c_v$ | `allclose` defaults | closed form |
+| same, `boundary_fluxes_scale_with_timestep` | `top-cool` and `bot-heat` are linear in $\Delta t$ | `allclose` defaults | linearity |
+| same, `meshblock_registers_parent_dependent_modules` | `body-heat` is installed by a MeshBlock | exact | registration |
+| same, `reject_invalid_values` | `body-heat` option refusals | exact (throws) | contracts |
+| this section's check, `heating_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
+
+: Tests of the heating modules. {#tbl-ch09-heating-tests}
+
+**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+line; deck: the check itself; run: `python3 heating_check.py`, numpy 2.4.6, double]. ctest cases: **pending:
+pinned ctest run**.
+**Coverage.** CPU only. No test of the delivered column power, of `depth` $>1$, or under an $x_1$ split.
+
+### Limits
+
+1. **Stretched cells.** @eq-ch09-heating-flux uses the boundary cell's width for all $d$ cells, so the delivered
+   power is $F$ only on uniform cells (`[C2]`).
+2. **Curved grids.** No correction for the cell volume of spherical-polar or cubed-sphere grids; not measured.
+3. **`depth` larger than the block** is not checked against the block's $x_1$ cells; not tested.
+4. **`body-heat` default band** `pmax` = 1 Pa (above).
+5. **Under an $x_1$ split** only the block that owns the boundary applies `top-cool` or `bot-heat`; a `depth` that
+   reaches into the next block is truncated there. Not tested.
