@@ -1,0 +1,109 @@
+## User stage forcings: TorchScript modules called every stage (`set_user_stage_forcings`) {#sec-ch09-user}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 9.2; src/mesh/meshblock.cpp; tests/test_jit_user_forcing.py, tests/test_stage_forcing_dry_tracer.py
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Calls user TorchScript modules once per Runge–Kutta stage and adds what they return to the
+hydro and scalar increments.
+**Switch.** The C++ or Python call `MeshBlockImpl::set_user_stage_forcings(filenames)`; there is no YAML key.
+Default: none.
+**Requires.** Each module returns `Dict[str, Tensor]` with keys `hydro_du` and/or `scalar_ds` of the increments'
+shapes; `scalar_ds` needs passive scalars.
+**Order.** As the user writes it; the returned value is an increment over the full step.
+**Defining equation.** @eq-ch09-user-add.
+:::
+
+A user stage forcing is a source term written in Python, compiled with `torch.jit.script`, saved, and loaded by
+file name. In every stage the block hands each module one dictionary with all its buffers and the stage variables,
+the step $\Delta t$ and the stage index, and adds what the module returns to the native increments, after the
+native forcings, the vertical implicit correction and the passive-scalar update, and before the Runge–Kutta
+average. A user dry-air density change carries the passive tracers like a native one.
+
+The returned `hydro_du` is added as it is. The framework does not multiply it by $\Delta t$: a module that models
+a rate $\mathbf S$ returns $\Delta t\,\mathbf S$ itself.
+
+### Derivation
+
+Let $\Delta\mathbf U^{\mathrm{nat}}$ be the native increment of the stage (@eq-ch09-framework-stage plus the
+implicit correction) and $\mathbf G^{q}$ the `hydro_du` of user module $q = 1..Q$. The stage hands the
+integrator
+
+$$
+\Delta\mathbf U = \Delta\mathbf U^{\mathrm{nat}} + \sum_{q=1}^{Q}\mathbf G^{q}(\mathbf V, \Delta t, s),
+$$ {#eq-ch09-user-add}
+
+with $\mathbf V$ the dictionary of block buffers and stage variables. @eq-ch09-user-add is applied to the `user_stage_forcings` in
+[`meshblock.cpp:689-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L689-L742). Each module sees $\mathbf V$ as it was before any user module ran, because the dictionary is built once by `stage_forcing_variables`
+([`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738)). Through the Runge–Kutta average a user
+increment enters the step with the stage weight $w_2^{(s)}$, exactly as a native one; the test below asserts that
+for rk1, rk2, rk3 and rk3s4. No closed form is involved, so no executable check is attached.
+
+### Numerical method
+
+@fig-ch09-user-forcing shows the interface. The modules are moved to the block's device when they are loaded by `set_user_stage_forcings`
+([`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109)) and are called on that device. They run once per stage of every step, and
+again in a redone step (Chapter 7).
+
+```{python}
+#| label: fig-ch09-user-forcing
+#| fig-cap: "Interface of a user stage forcing. The sky-blue box is the dictionary the block builds once per stage; the white box is the user module; the orange boxes are the two keys it may return and where each is added. The green note marks the dry-air part that carries passive tracers; the vermillion note the inputs the block refuses."
+#| fig-alt: "Flow diagram: a dictionary box, an arrow to a module box, two arrows to boxes labelled hydro_du and scalar_ds, with notes above and below."
+#| echo: false
+from snapy_report.ch09.fig_user_forcing import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| load, move to device | [`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109) | `set_user_stage_forcings` | API call |
+| input dictionary | [`meshblock.cpp:38-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L38-L48) | `stage_forcing_variables` | |
+| output checks | [`meshblock.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L50-L65) | `stage_forcing_result` | |
+| add `hydro_du`, `scalar_ds` | [`meshblock.cpp:690-723`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L690-L723) | `apply_extra_forcing` | |
+| call each module | [`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738) | `user_stage_forcings` | |
+| dry carry | [`meshblock.cpp:740-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L740-L742) | `carry_dry_source` | scalars present |
+
+: Code map of the user stage forcings. {#tbl-ch09-user-code}
+
+1. `set_user_stage_forcings` loads every file with `torch::jit::load`, moves it to the block's device and puts it in evaluation mode, in
+   `set_user_stage_forcings` ([`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109)).
+2. In `advance_local`, after the native and scalar tendencies, the block builds the dictionary with
+   `stage_forcing_variables` ([`meshblock.cpp:38-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L38-L48)): every named buffer first, then the stage variables,
+   which replace a buffer of the same name.
+3. It calls each of the `user_stage_forcings` with the dictionary, $\Delta t$ and the stage index
+   ([`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738)), checks the result with
+   `stage_forcing_result` ([`meshblock.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L50-L65)) and adds it in `apply_extra_forcing`
+   ([`meshblock.cpp:690-723`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L690-L723)), which refuses a wrong shape, an unknown key, or `scalar_ds` without
+   scalars.
+4. The user dry-density change carries the tracers with `carry_dry_source`
+   ([`meshblock.cpp:740-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L740-L742)), against the scalar increment from before the user modules, so an
+   explicit `scalar_ds` is not debited by a simultaneous dry removal.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_jit_user_forcing.py` (`test_jit_user_forcing_python`) | a scripted module with a nested submodule and a buffer adds $0.25\cdot1 + 0.5$ to the dry density in one stage at $\Delta t = 0$ | `torch.testing.assert_close` defaults (float64: rtol $10^{-7}$, atol $10^{-7}$) | the returned value is added as is, not times $\Delta t$ |
+| `tests/test_stage_forcing_dry_tracer.py` (`test_stage_forcing_dry_tracer_python`) | for rk1, rk2, rk3, rk3s4 a user dry increment in stage $s$ changes the density by $w_2^{(s)}$ times it; an explicit `scalar_ds` is not coupled to a dry removal; tracer ratios stay in $[-10^{-12}, 1+10^{-12}]$ | $10^{-12}$ absolute | round-off of a few operations on values of order 1 |
+
+: Tests of the user stage forcings. {#tbl-ch09-user-tests}
+
+**Evidence.** No number is quoted. **Pending: pinned ctest run** of both tests at the pin.
+**Coverage.** CPU in CI. `test_stage_forcing_dry_tracer.py` takes `--device cuda`; whether a CUDA arm is
+registered at the pin is not checked here. No multi-rank arm.
+
+### Limits
+
+1. **No time scaling.** A module that returns a rate instead of $\Delta t$ times the rate is wrong by a factor
+   $\Delta t$, with no warning.
+2. **Through the limited EOS.** A module whose increment drives the state through a floor makes the step redo
+   (chengcli/snapy#226); the redo machinery is Chapter 7 and Chapter 8.
+3. **Ordering.** User modules see the stage variables, not the native increment; a module cannot react to what the
+   native forcings did in the same stage.
