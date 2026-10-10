@@ -1,0 +1,119 @@
+## The $x_1$ mass-flux covariance (`SNAP_X1_MASS_COVARIANCE`) {#sec-ch04-x1masscov}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.17
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- The stored velocity is $m_1/\rho$, which is not the cell average of the velocity in a stratified column.
+- Switch: `SNAP_X1_MASS_COVARIANCE`, a build-time flag, default off.
+- The correction subtracts $\tfrac{h^2}{12}\rho_1 w_1/\rho$ from the reconstructed velocity before the solver runs.
+- It needs at least three $x_1$ cells per block, which the code enforces.
+- Next to a reflecting wall the density slope is one-sided, because the mirrored ghost is not the stratified column.
+:::
+
+This is the $x_1$ member of the same family as @sec-ch04-fluxcov, and it comes from the same identity. The
+difference is where the error enters: not in a face average across the column, but in the primitive variable
+the code stores and reconstructs.
+
+### Derivation
+
+The code stores conserved variables as cell averages and forms the primitive velocity as $m_1/\rho$. Written
+out, that is $\langle\rho w\rangle/\langle\rho\rangle$, and by @eq-ch04-fluxcov-identity
+
+$$
+\frac{\langle\rho w\rangle}{\langle\rho\rangle}
+ = \langle w\rangle + \frac{h^2}{12}\,\frac{\rho' w'}{\rho} + O(h^4).
+$$ {#eq-ch04-x1masscov-gap}
+
+So the quantity the reconstruction is handed is not the cell average of the velocity: in a stratified column,
+where $\rho'$ is $O(1)$, it is the cell average plus a second-order term. Reconstructing it and multiplying by
+the face density puts that term straight into the face mass flux.
+
+`[C4]` measures @eq-ch04-x1masscov-gap directly on an exponential density profile with a sinusoidal velocity,
+comparing the stored $m_1/\rho$ with the exact cell average of $w$: over $n_1 = 16 \to 128$ the gap falls as
+$2.89\times10^{-3}\to4.56\times10^{-5}$, a fitted order of 2.00, and after subtracting the discrete estimate
+of the second term it falls as $1.62\times10^{-4}\to4.07\times10^{-8}$, a fitted order of 3.99. The correction
+does what the identity says it should: second order becomes fourth.
+
+That is the whole scheme. It is worth noting what it does *not* claim. It recovers the cell average of the
+velocity; whether the resulting face mass flux is fourth order then depends on the reconstruction that follows,
+which for most types is lower order than that. The correction removes one specific second-order error, not
+every one.
+
+The wall is the one place the stencil changes. A reflecting boundary mirrors the density into the ghost cells
+evenly, and an even mirror is not the continuation of a stratified column, so a centred difference in the first
+interior cell would read a density slope that is not there. The code substitutes a one-sided second-order
+difference over the first three interior cells, and `[C6]` confirms that difference is second order, falling as
+$2.69\times10^{-3}\to4.44\times10^{-5}$ with a fitted order of 1.98. The corrected velocity is then mirrored
+*oddly* into the ghosts, which is the correct parity for a velocity at a reflecting wall.
+
+### Numerical method
+
+```{python}
+#| label: fig-ch04-x1masscov-order
+#| fig-cap: "The gap between the stored velocity and the cell average of the velocity, against resolution. Vermillion circles are the stored m1 over rho, which differs from the cell average at second order in a stratified column; green squares are the same quantity after the correction of this section, at fourth order. The dotted lines are reference slopes of two and four. Data from the committed output of the chapter's covariance check."
+#| fig-alt: "A log-log plot of maximum velocity error against cell count, with two descending series and two dotted reference slope lines."
+#| echo: false
+from snapy_report.ch04.fig_x1cov_order import make_fig
+make_fig()
+```
+
+The block is at `x1_mass_covariance` ([`hydro_forward.cpp:314-344`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L344)), inside the $x_1$ sweep and before the Riemann solver
+runs. The two derivatives use the centred helper at `d1_centred` ([`hydro_forward.cpp:40-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L40-L52)), which copies its
+end values rather than extrapolating. The correction itself is the single line at
+`dx1f` ([`hydro_forward.cpp:334`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L334)), and it is applied to the reconstructed velocity, so the solver and
+everything downstream see the corrected value.
+
+The one-sided wall slope is at `one_sided` ([`hydro_forward.cpp:320-332`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L320-L332)), applied only at a boundary that is both
+physical and not outflow; an outflow boundary keeps the centred difference, since there is no mirror to
+distrust. The odd mirror of the corrected velocity follows at `narrow` ([`hydro_forward.cpp:335-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L335-L343)).
+
+The three-cell requirement is enforced where the switch is read, at `TORCH_CHECK` ([`hydro.cpp:104-112`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L104-L112)): a block
+with fewer than three $x_1$ cells fails with a message naming the switch rather than silently reading a ghost.
+The switch itself is read once per process at `x1_mass_covariance` ([`hydro.cpp:231-239`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L231-L239)).
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the correction block | [`hydro_forward.cpp:314-344`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L344) | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
+| the centred derivative | [`hydro_forward.cpp:40-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L40-L52) | `d1_centred` | |
+| the correction itself | [`hydro_forward.cpp:334`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L334) | `dx1f` | |
+| one-sided slope at a wall | [`hydro_forward.cpp:320-332`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L320-L332) | `one_sided` | physical, not outflow |
+| odd mirror of the result | [`hydro_forward.cpp:335-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L335-L343) | `flip` | physical, not outflow |
+| the three-cell check | [`hydro.cpp:104-112`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L104-L112) | `TORCH_CHECK` | |
+| the switch, read once | [`hydro.cpp:231-239`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L231-L239) | `x1_mass_covariance` | |
+
+: Code map of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/CMakeLists.txt` seam arm | a block with fewer than three $x_1$ cells is refused | the check fires |
+| this chapter's check | `[C4]` second order becomes fourth; `[C5]` bitwise zero at rest; `[C6]` the one-sided wall slope is second order | fitted orders, bitwise |
+
+: Tests of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Default off. A deck that does not set the flag carries the second-order gap of
+  @eq-ch04-x1masscov-gap in every stratified column.
+- At least three $x_1$ cells per block are required, and the run fails rather than degrading if that is not met.
+:::
+
+1. **One error, not all of them.** The correction recovers the cell average of the velocity. The order of the
+   face mass flux that follows is set by the reconstruction, and for `dc` or `plm` that is lower than fourth.
+   @fig-ch04-x1masscov-order should be read as a measurement of the gap, not of the flux.
+2. **Outflow boundaries keep the centred stencil.** The one-sided slope is applied only at reflecting walls.
+   Whether the mirrored ghost at an outflow boundary is a good continuation of the column is not analysed in
+   any source, and this section does not claim it is.
+3. **The $x_1$ centroid conversion is elsewhere.** The radial member of this family, which converts between the
+   $r^2$ cell measure and the face measure in $x_1$, is inseparable from the well-balanced reference and is
+   covered in chapter 5.

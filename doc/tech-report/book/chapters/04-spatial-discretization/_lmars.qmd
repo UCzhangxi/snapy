@@ -1,0 +1,100 @@
+## LMARS (`type: lmars`) {#sec-ch04-lmars}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.9
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A low-Mach approximate Riemann solver: one face velocity and one face pressure, then a pure upwind of the state.
+- Switch: `type: lmars`. It is what the shipped example decks select, though not the YAML default.
+- Consistent: equal left and right states give the exact physical flux.
+- Writes a face pressure, so it works with the curved-grid pressure force and the well-balanced path.
+- The species rows and a dry row split the mass flux exactly.
+:::
+
+LMARS replaces the full wave structure of a Riemann problem with two numbers: an acoustically-corrected face
+velocity and an acoustically-corrected face pressure. The sign of the face velocity then decides which side the
+rest of the state is taken from. The result is cheap, robust at low Mach number, and the production choice in
+every shipped deck.
+
+### Derivation
+
+Let $\bar\rho$ be the arithmetic mean density and $\bar c$ the mean sound speed built from the mean pressure.
+The face velocity and pressure are
+
+$$
+\bar u = \tfrac12(u_L + u_R) + \frac{p_L - p_R}{2\bar\rho\bar c},\qquad
+\bar p = \tfrac12(p_L + p_R) + \tfrac12\bar\rho\bar c\,(u_L - u_R).
+$$ {#eq-ch04-lmars-face}
+
+Each is a centred average plus an acoustic correction proportional to the jump in the *other* variable, with
+$\bar\rho\bar c$ the acoustic impedance. `[C6]` checks both halves separately: a pure pressure jump of $0.2$
+with no velocity jump drives $\bar u = -0.080582$, which is exactly the second term of @eq-ch04-lmars-face, and
+two states converging at $0.3$ raise $\bar p$ to $1.354965$ above the mean of $1.0$, which is exactly the
+impedance times the velocity jump.
+
+Consistency follows immediately and `[C5]` checks it: with $w_L = w_R$ both jump terms vanish, so $\bar u = u$
+and $\bar p = p$, and the returned flux agrees with the exact physical flux to $8.9\times10^{-16}$. That is the
+property that makes the scheme usable at all; a solver that fails it would generate flux from a uniform state.
+
+The mass rows are the part most easily misread. The dry row does not carry the total mass flux: it carries
+$\bar u\rho\,r_d$ with $r_d = 1 - \sum_n y_n$, and each species row carries $\bar u\rho y_n$. `[C7]` confirms
+the split is exact, with the dry row and three species rows summing to $\bar u\rho$ to $1.1\times10^{-16}$.
+A reader who takes the first mass row for the total mass flux will be wrong by the species fraction.
+
+### Numerical method
+
+The body is [`lmars_impl.h:17-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L17-L78). It computes the enthalpies of both sides first, at
+`wli` ([`lmars_impl.h:28-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L28-L31)), adding the kinetic term and $p/\rho$ to the internal enthalpy the caller
+passed; then the means and @eq-ch04-lmars-face at [`lmars_impl.h:34-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L34-L43); then branches on the sign
+of $\bar u$ and fills every row from the upwind side at [`lmars_impl.h:47-77`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L47-L77).
+
+The face pressure is written out at `face_pressure` ([`lmars_impl.h:40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L40)) when the caller asked for one, and it is
+the same $\bar p$ that enters the normal momentum row, so the pressure force the geometric source sees and the
+pressure in the flux are the same number by construction.
+
+The upwind branch is on $\bar u$, which already contains the acoustic correction. At low Mach number that
+correction is what decides the branch when the centred velocity is near zero, which is the mechanism behind the
+scheme's low-Mach behaviour: the pressure jump, not the velocity, selects the side.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the solver body | [`lmars_impl.h:17-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L17-L78) | `lmars_impl` | `type: lmars` |
+| face-local row map | [`lmars_impl.h:20-22`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L20-L22) | `ivx` | |
+| enthalpies | [`lmars_impl.h:28-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L28-L31) | `hl` | |
+| the face velocity and pressure | [`lmars_impl.h:34-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L34-L43) | `ubar` | |
+| face pressure written out | [`lmars_impl.h:40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L40) | `face_pressure` | caller asked |
+| upwind on the sign of the face velocity | [`lmars_impl.h:47-77`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/lmars_impl.h#L47-L77) | `ubar` | |
+| registration | [`riemann_solver.cpp:58-59`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L58-L59) | `LmarsSolver` | |
+
+: Code map of LMARS. {#tbl-ch04-lmars-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_riemann.cpp` | the solver against reference states | per test |
+| `tests/run_straka.cmake` | an end-to-end density-current deck against a reference file, WENO5 and LMARS | reference file |
+| this chapter's check | `[C5]` consistency; `[C6]` the acoustic structure; `[C7]` the exact mass-row split | round-off |
+
+: Tests of LMARS. {#tbl-ch04-lmars-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The mean sound speed is built from the arithmetic mean of the two pressures and densities. Across a strong
+  jump that mean is not a physical sound speed on either side, and no source in the repository bounds the error
+  that follows.
+:::
+
+1. **No entropy fix and no wave structure.** Everything that is not the acoustic correction is pure upwinding,
+   so a strong expansion is resolved by the flux limiter and the floors rather than by the solver.
+2. **Hypothesis, untested here.** That the acoustic correction is what gives the scheme its low-Mach behaviour
+   is an argument from @eq-ch04-lmars-face, not a measurement; no deck in the repository measures a Mach-number
+   scaling of the dissipation.

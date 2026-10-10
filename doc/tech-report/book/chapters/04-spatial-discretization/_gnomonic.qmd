@@ -1,0 +1,90 @@
+## Geometric sources on the gnomonic cubed sphere {#sec-ch04-gnomonic}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.15
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- The same structure as the spherical-polar source, on a grid whose two tangential directions are not orthogonal.
+- Switch: none; selected by the `gnomonic-equiangle` coordinate type.
+- The solid angle is exact, from a corner difference, and the radial integral is exact.
+- The non-orthogonal metric adds cosine cross terms the spherical-polar source does not have.
+- The cell centre is the arithmetic mid-radius, which is not the centroid of the cell measure.
+:::
+
+The cubed sphere replaces the polar singularity with six panels of an equiangular gnomonic grid. Within a panel
+the two tangential coordinates are angles about two different axes, and they are not orthogonal: the metric has
+an off-diagonal term, and the geometric source carries cross terms because of it.
+
+### Derivation
+
+The exactness of the geometry is the part worth stating. The solid angle of a cell is a difference of corner
+values at `solid_angle_kj` ([`gnomonic_equiangle.cpp:128-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L128-L137)), which is exact for a gnomonic quadrilateral rather than
+a quadrature of it, and the radial face area and volume are that solid angle times the exact radial factors at
+[`gnomonic_equiangle.cpp:207-208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L207-L208) and [`gnomonic_equiangle.cpp:219-226`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L219-L226). Because both use
+the *same* solid angle, the radial identity `[C2]` checks holds on this grid for the same reason it holds on
+the spherical-polar one, and the six panels' volumes sum to the shell volume exactly, which is what the
+cubed-sphere volume test asserts.
+
+The source itself is at `forward` ([`gnomonic_equiangle.cpp:415-473`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L415-L473)), with the radial part at
+`src1` ([`gnomonic_equiangle.cpp:443-460`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L443-L460)) and the two tangential parts at
+`src2` ([`gnomonic_equiangle.cpp:463-470`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L463-L470)). The metric coefficients they use are built once at
+`x_ov_rD_kji` ([`gnomonic_equiangle.cpp:142-147`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L142-L147)). No source in the repository derives these cross terms; this
+section records their form from the code and refers the geometry itself to chapter 3.
+
+### Numerical method
+
+The radial pressure force is the same plain difference of face pressures as on the spherical-polar grid, so
+everything said in @sec-ch04-sphsrc about the dependence on the solver applies here unchanged.
+
+One property deserves care. The cell centre on this grid is the arithmetic mid-radius, at
+`x1v` ([`gnomonic_equiangle.cpp:36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L36)), and not the centroid of the cell's own $r^2$ measure. A cell average
+and a value at that centre therefore differ at second order, which matters whenever initial conditions are
+written as point values at the stored centre and read as cell averages. The derivation note records this as a
+consistency condition on how a deck's initial state is prepared, not as an error in the grid.
+
+The exact volume is used unconditionally. A consequence recorded in the pull request that made it so is that
+the usual switch-off property does not hold on this grid: turning the related corrections off does not return
+the code bitwise to the previous answer, because the volume itself changed. That is consistent with the code
+and is recorded here for a reader comparing runs across that change.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| exact solid angle | [`gnomonic_equiangle.cpp:128-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L128-L137) | `solid_angle_kj` | |
+| radial face area | [`gnomonic_equiangle.cpp:207-208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L207-L208) | `face_area1` | |
+| exact cell volume | [`gnomonic_equiangle.cpp:219-226`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L219-L226) | `cell_volume` | |
+| metric coefficients | [`gnomonic_equiangle.cpp:142-147`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L142-L147) | `x_ov_rD_kji` | |
+| the source | [`gnomonic_equiangle.cpp:415-473`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L415-L473) | `forward` | gnomonic-equiangle |
+| mid-radius cell centre | [`gnomonic_equiangle.cpp:36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L36) | `x1v` | |
+
+: Code map of the gnomonic geometric source. {#tbl-ch04-gnomonic-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_cubed_sphere_cell_volume.py` | six panel volumes sum to the shell volume; the radial identity per cell | `1e-12`, rest `1e-6` |
+| `tests/test_hydrostatic.cpp` | a six-panel isentropic shell stays at rest over 100 steps | $\max\lvert v_1\rvert < 10^{-8}$ |
+| `tests/test_coordinate.cpp` | the radial source uses the face pressure, and preserves a face-pressure gradient | `1e-8`, `1e-6` |
+
+: Tests of the gnomonic geometric source. {#tbl-ch04-gnomonic-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The stored cell centre is the mid-radius, not the centroid of the cell measure. Initial conditions written as
+  point values there are consistent with the scheme only if they are intended as cell averages.
+- The exact volume is unconditional, so a run before and after that change does not agree bitwise even with the
+  related corrections switched off.
+:::
+
+1. **The exact-centroid switch does nothing here.** It is defined for the radial measure of the spherical-polar
+   grid and has no effect on this one.
+2. **No derivation on record.** The cross terms of the source are recorded from the code only. A reader wanting
+   to check them has to re-derive the gnomonic metric, which chapter 3 sets out.

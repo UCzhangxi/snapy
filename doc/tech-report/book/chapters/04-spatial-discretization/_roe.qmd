@@ -1,0 +1,84 @@
+## Roe (`type: roe`) {#sec-ch04-roe}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.11
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A linearised solver: the centred flux minus a characteristic decomposition of the jump.
+- Switch: `type: roe`, and it is the YAML default when no type is named.
+- Roe averages use the square-root density weighting; species rows ride on the entropy wave.
+- Writes a face pressure.
+- No entropy fix: the wave speeds are used as absolute values with a floor, not corrected at a sonic point.
+:::
+
+Roe's solver linearises the problem about an average state chosen so that the linearised jump reproduces the
+exact flux difference. The flux is then the average of the two physical fluxes minus the sum over waves of
+their strength times their speed, which is where the upwinding comes from.
+
+### Derivation
+
+The averaging is the square-root weighting, at `sqrtdl` ([`roe_impl.h:39-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L39-L48)): each quantity is weighted by
+the square root of its density so that the linearised system reproduces the jump exactly. The sound speed
+follows from the averaged enthalpy and velocity at `cs_sq` ([`roe_impl.h:117-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L117-L118)), with a floor applied
+through `roe_max` so that a non-positive argument cannot reach the square root.
+
+The three wave strengths at `alpha_m` ([`roe_impl.h:137-140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L137-L140)) are the familiar ones: two acoustic strengths
+carrying the velocity jump against the pressure jump over the squared sound speed, and the two tangential
+momentum strengths riding on the entropy wave.
+
+The species rows are the part specific to snapy. Each gets its own entropy-wave strength at
+`alpha_n` ([`roe_impl.h:155-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L155-L161)), built as the jump in that species' partial density minus the pressure
+jump times the species' share. That construction is what keeps a species from being generated at a contact,
+and no source in the repository derives it; it is recorded here from the code.
+
+### Numerical method
+
+The body is [`roe_impl.h:24-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L24-L217). It assembles the centred flux, then subtracts half the sum of
+each wave's absolute speed times its strength times its right eigenvector, with the mass and species rows at
+`alpha_n` ([`roe_impl.h:149-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L149-L161)).
+
+The absolute speeds at `spd_0` ([`roe_impl.h:127-129`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L127-L129)) are taken directly, with no entropy fix. At a sonic
+point one of the three speeds passes through zero and its dissipation vanishes with it, which is the classical
+condition under which a Roe solver can admit an expansion shock. Nothing in the code detects that case.
+
+The face pressure is written at `face_pressure` ([`roe_impl.h:119-124`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L119-L124)).
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the solver body | [`roe_impl.h:24-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L24-L217) | `roe_impl` | `type: roe`, the YAML default |
+| square-root averaging | [`roe_impl.h:39-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L39-L48) | `sqrtdl` | |
+| sound speed with a floor | [`roe_impl.h:117-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L117-L118) | `cs_sq` | |
+| face pressure written out | [`roe_impl.h:119-124`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L119-L124) | `face_pressure` | caller asked |
+| wave speeds, no entropy fix | [`roe_impl.h:127-129`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L127-L129) | `spd_0` | |
+| acoustic and shear strengths | [`roe_impl.h:137-140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L137-L140) | `alpha_m` | |
+| per-species entropy strengths | [`roe_impl.h:155-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L155-L161) | `alpha_n` | tracers present |
+| registration | [`riemann_solver.cpp:56-57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L56-L57) | `RoeSolver` | |
+
+: Code map of the Roe solver. {#tbl-ch04-roe-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_riemann.cpp` | the solver against reference states | per test |
+
+: Tests of the Roe solver. {#tbl-ch04-roe-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- No entropy fix. At a sonic point the dissipation of the vanishing wave vanishes with it, and a Roe solver in
+  that state can admit an expansion shock. No test in the repository exercises a transonic rarefaction.
+:::
+
+1. **Default by omission.** This is the solver a deck gets when it names none, while every shipped example
+   names LMARS. The two have different dissipation, so an unset key is a silent change of scheme.
+2. **Floors in place of a fix.** The `roe_max` floors keep the square root defined but say nothing about the
+   accuracy of the linearisation where they bind.

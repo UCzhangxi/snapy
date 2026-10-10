@@ -1,0 +1,62 @@
+## Donor cell (`type: dc`) {#sec-ch04-dc}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.3
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- The face state is the adjacent cell value: no stencil, no limiter.
+- Switch: `type: dc`, and it is the YAML default.
+- First order at the face, so first order in the flux divergence.
+- Needs one ghost cell, which is why it is the only interpolant that runs on a block with `nghost = 1`.
+:::
+
+The simplest reconstruction there is, and the default the code falls back to when a deck names no type. The
+left state of a face is the value of the cell to its left and the right state is the value of the cell to its
+right, so the face carries a jump wherever the solution is not constant and the Riemann solver does all the
+work.
+
+### Derivation
+
+A cell average equals the point value at the cell centre to $O(h^2)$, but the face is half a cell away from
+either centre, so using the cell value at the face is wrong at $O(h)$. `[C7]` measures that directly: the face
+error falls as $9.79\times10^{-2} \to 1.23\times10^{-2}$ over $n_1 = 32 \to 256$, a fitted order of 1.00.
+
+First order at the face is the whole story of the scheme. It is also why donor cell is the useful control arm
+in a test: any correction that claims to raise an order can be run against it and the difference is unambiguous.
+
+### Numerical method
+
+The implementation is a copy, at [`interpolation.hpp:88-105`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.hpp#L88-L105): `left` and `right` take the
+neighbouring cell value with no arithmetic at all. Because the stencil is one cell wide, the ghost width the
+framework computes from it is the smallest of any interpolant, and donor cell is the only type that runs on a
+block with a single ghost layer.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the interpolant | [`interpolation.hpp:88-105`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.hpp#L88-L105) | `DonorCellInterpImpl` | `type: dc` |
+| registration | [`interpolation.cpp:11-12`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L11-L12) | `DonorCellInterp` | |
+
+: Code map of donor cell. {#tbl-ch04-dc-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_plm.cpp` | a constant field is reconstructed exactly | allclose defaults |
+| `tests/test_x1_seam_split.cpp` | runs donor cell on a block with one ghost cell | `1e-13` |
+| this chapter's check | `[C7]` first order at the face | fitted order |
+
+: Tests of donor cell. {#tbl-ch04-dc-tests}
+
+### Limits
+
+1. **First order everywhere.** Nothing in the scheme adapts: smooth regions are reconstructed as badly as
+   discontinuities. A deck that leaves `type` unset gets this scheme, which is rarely what is wanted for a
+   production run and is easy to miss because no warning is printed.

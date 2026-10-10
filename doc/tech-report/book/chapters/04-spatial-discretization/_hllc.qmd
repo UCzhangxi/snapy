@@ -1,0 +1,77 @@
+## HLLC (`type: hllc`) {#sec-ch04-hllc}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.10
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A three-wave solver: two acoustic waves and the contact between them.
+- Switch: `type: hllc`. Wave speeds come from a PVRS pressure estimate.
+- Writes a face pressure, the contact pressure.
+- Resolves a contact discontinuity exactly, which the two-wave family cannot.
+:::
+
+HLLC keeps the structure LMARS discards. It estimates the fastest left- and right-moving signal speeds, places
+a contact wave between them, and picks the flux according to where the face sits relative to the three. The
+extra wave is what lets it carry a contact discontinuity without smearing it.
+
+### Derivation
+
+The derivation this section can give is the code's own, because no source in the repository derives the wave
+speed estimates for snapy. The structure is the standard one and the body is written in numbered steps that
+follow it.
+
+The middle-state pressure comes first, from a PVRS estimate at `rhoa` ([`hllc_impl.h:29-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L29-L38)), and it is
+that pressure that sets the two outer wave speeds at `bp` ([`hllc_impl.h:48-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L48-L54)): each is the normal
+velocity on its side, displaced by the sound speed scaled by a factor that is one for a rarefaction and larger
+for a shock. The speeds are then clipped so that the left speed is never positive and the right never negative,
+which guarantees the face lies between them and the selection below is well posed.
+
+The contact speed and the contact pressure follow at `cp` ([`hllc_impl.h:56-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L56-L72)), and the contact
+pressure is what is written out as the face pressure.
+
+### Numerical method
+
+The body is [`hllc_impl.h:17-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L17-L136), in the numbered steps the comments mark: the middle-state
+estimate, the sound speeds, the outer wave speeds, the contact, the two one-sided fluxes at
+`vxl` ([`hllc_impl.h:74-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L74-L101)), and the weighted combination at `ivx` ([`hllc_impl.h:102-130`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L102-L130)) which
+selects by the sign of the speeds rather than by a branch.
+
+The face pressure is set at `face_pressure` ([`hllc_impl.h:72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L72)), so like LMARS this solver can drive the curved-grid
+pressure force and the well-balanced path.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the solver body | [`hllc_impl.h:17-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L17-L136) | `hllc_impl` | `type: hllc` |
+| PVRS middle state | [`hllc_impl.h:29-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L29-L38) | `Step 2` | |
+| outer wave speeds | [`hllc_impl.h:48-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L48-L54) | `bp` | |
+| contact speed and pressure | [`hllc_impl.h:56-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L56-L72) | `Step 5` | |
+| face pressure written out | [`hllc_impl.h:72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L72) | `face_pressure` | caller asked |
+| registration | [`riemann_solver.cpp:60-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L60-L61) | `HLLCSolver` | |
+
+: Code map of HLLC. {#tbl-ch04-hllc-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_riemann.cpp` | the solver against reference states | per test |
+
+: Tests of HLLC. {#tbl-ch04-hllc-tests}
+
+No check in this chapter ports HLLC: the claims it would assert, consistency and the contact resolution, are
+not measured anywhere in the repository either, which is recorded below rather than papered over.
+
+### Limits
+
+1. **Untested properties.** That this implementation resolves an isolated contact exactly, and that it is
+   consistent in the sense `[C5]` checks for LMARS, are both properties of textbook HLLC. Neither is asserted
+   by a test here and neither is measured in this chapter. They should be read as expected, not as verified.
+2. **No moist wave speeds.** The PVRS estimate uses one ratio of specific heats per side. For a moist mixture
+   the relevant speed is not that of either constituent, and no source bounds the resulting error.

@@ -1,0 +1,111 @@
+## WENO3 and WENO5 (`type: weno3`, `weno5`) {#sec-ch04-weno}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.6
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A convex combination of candidate polynomials, weighted away from the rough ones by Jiang-Shu indicators.
+- Switches: `type: weno3`, `type: weno5`. Only density and tracers use them; velocity and pressure take the
+  matching linear polynomial (@sec-ch04-framework).
+- Where the field is smooth the nonlinear weights approach the linear ones and the scheme becomes `cp3` or `cp5`.
+- At a critical point WENO3 falls to second order. WENO5 does not, on the profile measured here.
+- The smoothness floor is a fixed $10^{-6}$, not scaled to the magnitude of the data.
+:::
+
+WENO is the scheme that makes a high order survive a discontinuity. Instead of one wide stencil it builds
+several narrow candidates, measures how rough each one looks, and takes a weighted average that all but
+discards any candidate straddling a jump. Away from a jump the weights settle to fixed values chosen so that
+the combination reproduces the wide centred polynomial.
+
+### Derivation
+
+Both forms share the same structure: candidates $p_k$, smoothness indicators $\beta_k$, linear weights $d_k$,
+and nonlinear weights
+
+$$
+\alpha_k = \frac{d_k}{(\beta_k + \varepsilon)^2},\qquad
+\phi_{\text{face}} = \frac{\sum_k \alpha_k p_k}{\sum_k \alpha_k},\qquad \varepsilon = 10^{-6}.
+$$ {#eq-ch04-weno-weights}
+
+The claim that makes the scheme high order is that the *linear* weights rebuild the wide polynomial exactly.
+`[C2]` and `[C3]` check that symbolically, not numerically, and both differences are identically zero: with
+$d = (\tfrac23, \tfrac13)$ the two WENO3 candidates rebuild `cp3`, and with $d = (\tfrac3{10}, \tfrac6{10},
+\tfrac1{10})$ the three WENO5 candidates rebuild `cp5`. So wherever the indicators are equal, these schemes
+*are* the centred polynomials of @sec-ch04-cp.
+
+What the smoothness indicators then do is break that equality near a jump. They are the Jiang-Shu forms, sums
+of squared undivided differences, at `beta0` ([`interp_simple.hpp:99-100`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L99-L100)) and
+[`interp_simple.hpp:141-146`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L141-L146).
+
+The order a WENO scheme attains in practice is not the order of its linear weights, and the chapter measures
+both regimes rather than quoting the design figure. `[C4]` finds, over $n_1 = 16 \to 64$ on a monotone profile
+with no critical point, fitted orders of 2.98 for WENO3 and 5.00 for WENO5: the design orders. Through two
+critical points, over $n_1 = 32 \to 256$, WENO3 falls to a fitted 2.09 while the linear `cp3` on the same
+profile keeps 2.99. WENO5 keeps 5.62 there.
+
+The WENO3 result is the expected behaviour of the Jiang-Shu weights, not a defect: at a critical point the
+indicators of the two candidates become equal at leading order and the nonlinear weights fail to approach the
+linear ones fast enough to preserve third order. It is nonetheless a property a user should know about, because
+a smooth field full of extrema, which is what a resolved wave field is, is reconstructed at second order by a
+scheme named for its third.
+
+### Numerical method
+
+The two interpolants are `interp_weno3` ([`interp_simple.hpp:94-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L94-L106)) and
+`interp_weno5` ([`interp_simple.hpp:134-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L134-L153)), written out in full with the candidates, the indicators and the
+weights in the order of @eq-ch04-weno-weights. The measured orders are drawn in @fig-ch04-cp-order.
+
+The floor $\varepsilon$ is the literal `1e-6` inside both bodies. It is not scaled by the magnitude of the
+data, so for a field whose squared differences are far below $10^{-6}$ the floor dominates every indicator, all
+$\alpha_k$ collapse to the $d_k$, and the scheme silently becomes its linear partner. For a field far above it
+the floor is irrelevant. Neither regime is wrong, but the crossover depends on the units the deck is written
+in, and nothing warns at it.
+
+Only `interp1` is a WENO interpolant. Under `weno5` the density and tracer rows are reconstructed by
+`interp_weno5` ([`interp_simple.hpp:134-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L134-L153)) while velocity and pressure take `cp5`, selected at
+[`interpolation.cpp:29-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L29-L36). A deck that chooses `weno5` to survive a shock therefore gets an
+unlimited fifth-order linear reconstruction of its velocity and pressure through that same shock.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| WENO3 | [`interp_simple.hpp:94-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L94-L106) | `interp_weno3` | `type: weno3`, `interp1` only |
+| WENO5 | [`interp_simple.hpp:134-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L134-L153) | `interp_weno5` | `type: weno5`, `interp1` only |
+| WENO3 indicators | [`interp_simple.hpp:99-100`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L99-L100) | `beta0` | |
+| WENO5 indicators | [`interp_simple.hpp:141-146`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L141-L146) | `beta0` | |
+| the `interp2` partner | [`interpolation.cpp:29-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L29-L36) | `Center5Interp` | `weno5` |
+
+: Code map of the WENO interpolants. {#tbl-ch04-weno-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_weno.cpp` | the WENO interpolants on reference data | per test |
+| `tests/test_weno5_cuda_line.cpp` | the CUDA path reproduces the CPU line | per test |
+| `tests/test_plm.cpp` | a constant field is reconstructed exactly, `weno5` arm | allclose defaults |
+| this chapter's check | `[C2]`, `[C3]` the linear weights rebuild `cp3` and `cp5` exactly; `[C4]` measured orders in both regimes | symbolic; fitted orders |
+
+: Tests of the WENO interpolants. {#tbl-ch04-weno-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- WENO3 is second order at a critical point, measured at 2.09 here. If third order through smooth extrema is
+  wanted, this interpolant does not provide it.
+- The smoothness floor is an absolute $10^{-6}$. Whether it dominates the indicators depends on the units of
+  the deck, and no warning is printed either way.
+:::
+
+1. **Only half the state is limited.** Velocity and pressure bypass WENO entirely. Whether that is the right
+   split is a design question no source in the repository answers.
+2. **Uniform-mesh weights.** As for the linear polynomials, the candidates and indicators assume equal cell
+   widths.
+3. **WENO5 through critical points.** The fitted 5.62 is above the design order and was measured on one
+   profile over one ladder; it should be read as "did not degrade here", not as a general order claim.

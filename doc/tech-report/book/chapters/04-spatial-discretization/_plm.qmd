@@ -1,0 +1,81 @@
+## PLM, the van Leer harmonic-mean slope (`type: plm`) {#sec-ch04-plm}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md chapter 4, scheme 4.4
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+- A piecewise-linear reconstruction whose slope is the harmonic mean of the two one-sided differences.
+- Switch: `type: plm`.
+- Second order where the field is smooth, first order at an extremum, and total-variation diminishing.
+- The slope is set to zero wherever the two one-sided differences have opposite signs.
+:::
+
+PLM takes the three cells around a face and fits a line through the middle one. What makes it a *limited*
+scheme rather than a plain centred slope is the choice of slope: the harmonic mean of the left and right
+differences, which collapses to zero whenever they disagree in sign.
+
+### Derivation
+
+Write the two one-sided differences as $\Delta_L = \phi_i - \phi_{i-1}$ and $\Delta_R = \phi_{i+1} - \phi_i$.
+The slope the code uses is
+
+$$
+\Delta_m = \begin{cases}
+\dfrac{2\,\Delta_L\Delta_R}{\Delta_L + \Delta_R} & \Delta_L\Delta_R > 0,\\[2mm]
+0 & \text{otherwise,}
+\end{cases}
+$$ {#eq-ch04-plm-slope}
+
+and the left face value of cell $i$ is $\phi_i - \tfrac12\Delta_m$. Three properties follow, and `[C5]` checks
+all three on twenty thousand random triples.
+
+The slope vanishes at every extremum, because an extremum is exactly the case $\Delta_L\Delta_R \le 0$; the
+check measures the face value there against the cell value and finds them bitwise equal. That is what makes the
+scheme first order at an extremum and second order elsewhere.
+
+The face value never leaves the interval spanned by the two cells it sits between, which is the
+total-variation-diminishing property; the check finds no violation.
+
+On a smooth field the two differences agree and @eq-ch04-plm-slope reduces to their common value, so the face
+value is the centred one and the scheme is second order. The check confirms the limit exactly on a linear field.
+
+### Numerical method
+
+The implementation is `dwm` ([`interp_simple.hpp:57-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L57-L63)) and reads as @eq-ch04-plm-slope does, with the
+sign test written as a product. The file also carries `minmod`, `superbee`, `vanleer` and an MC limiter at
+[`interp_simple.hpp:11-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L11-L33), none of which the PLM interpolant calls: the harmonic mean is hard-coded.
+Those four functions are dead code at this pin.
+
+### Code
+
+| what | code link | symbol | switch / condition |
+|---|---|---|---|
+| the slope and face value | [`interp_simple.hpp:57-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L57-L63) | `interp_plm` | `type: plm` |
+| registration | [`interpolation.cpp:13-14`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L13-L14) | `PLMInterp` | |
+| unused limiters | [`interp_simple.hpp:11-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L11-L33) | `minmod` | never called |
+
+: Code map of PLM. {#tbl-ch04-plm-code}
+
+### Tests
+
+| test | asserts | tolerance |
+|---|---|---|
+| `tests/test_plm.cpp` | a constant field is reconstructed exactly in all three directions | allclose defaults |
+| this chapter's check | `[C5]` the harmonic mean: TVD, zero slope at every extremum, centred in the smooth limit | bitwise and round-off |
+
+: Tests of PLM. {#tbl-ch04-plm-tests}
+
+No test measures the order of PLM. Second order away from extrema is an argument from
+@eq-ch04-plm-slope and the check's smooth limit, not a measured ladder.
+
+### Limits
+
+1. **Dead limiters.** Four limiter functions sit beside the interpolant and none is reachable. A reader
+   choosing a limiter from the file will not find a switch that selects one.
+2. **Uniform-mesh slope.** @eq-ch04-plm-slope assumes equal cell widths; on a stretched grid the harmonic mean
+   of the raw differences is not the limited slope of the underlying linear fit.
