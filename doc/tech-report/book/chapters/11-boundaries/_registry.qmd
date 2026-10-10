@@ -1,0 +1,91 @@
+## Register and classify block faces (`boundary-condition/external/*`) {#sec-ch11-registry}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Face callbacks fill physical ghosts; layout exchange supplies internal and wrapped faces. Classification depends on the predicate used, not only on the boundary label.
+Default: reflecting.
+Order: exact discrete operation or local derivation below; coupled solver order not measured.
+:::
+
+### Derivation
+
+This is dispatch infrastructure, so there is no differential equation to discretize. A face is physical exactly
+when its callback exists. A diffusion wall is a physical face with a recorded reflecting or fixed-temperature name.
+The hydro predicate `is_x1_wall` instead accepts physical x1 faces whose names do not start with `periodic`.
+These are different sets: an outflow face passes the hydro predicate but not the diffusion whitelist.
+This follows directly from `is_wall_boundary` ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271)) and `is_x1_wall` ([`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209)).
+
+A repeated fill must reproduce the same ghost values from the owned slab. This is an idempotence contract,
+not a guarantee for arbitrary callbacks: the registry comment requires it because a callback also runs on a
+thin tangential ghost slab (`BC_FUNCTION`, [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39)). Check C1 exercises this contract for the built-in mirror
+and copy rules; no spatial order is assigned to dispatch.
+
+The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
+`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+
+### Numerical method
+
+The face order is x1 inner/outer, x2 inner/outer, x3 inner/outer. In a four-dimensional hydro tensor these
+map to dimensions 3, 2 and 1. Context carries EOS, coordinates, references, representation and ghost width.
+Construction nulls exchange-owned callbacks for slab/cubed layouts; the cubed-sphere branch is separate.
+A non-null custom callback therefore still counts as physical. No accuracy order follows from classification.
+
+@fig-ch11-registry-stencil illustrates the operations, with labelled roles independent of colour.
+
+```{python}
+#| label: fig-ch11-registry-stencil
+#| fig-cap: "Register and classify block faces. Schematic only; no simulation measurements."
+#| fig-alt: "Labelled schematic of the registry boundary operation; ghosts and owned cells have separate text labels."
+#| echo: false
+from snapy_report.ch11.fig_registry_stencil import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| registry | [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39) | `BC_FUNCTION` | See Summary |
+| context | [`bc.hpp:19-42`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc.hpp#L19-L42) | `BoundaryFuncOptions` | See Summary |
+| yaml | [`meshblock_options.cpp:88-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L88-L127) | `periodic_z` | See Summary |
+| yamlxy | [`meshblock_options.cpp:139-201`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L139-L201) | `periodic_x` | See Summary |
+| classify | [`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271) | `is_wall_boundary` | See Summary |
+| null | [`meshblock.cpp:138-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L138-L166) | `bfuncs` | See Summary |
+| x1wall | [`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209) | `is_x1_wall` | See Summary |
+
+: Implementation sites for registry. {#tbl-ch11-registry-code}
+
+1. Validate YAML keys and append `_inner` or `_outer`; reject names absent from the registry. The anchor `periodic_z` is in [`meshblock_options.cpp:88-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L88-L127).
+2. Set layout periodic flags, then null callbacks owned by exchange during construction. The anchor `bfuncs` is in [`meshblock.cpp:138-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L138-L166).
+3. Classify at the consuming operator: unnamed programmatic callbacks warn once and return false for the diffusion wall test. The anchor `is_wall_boundary` is in [`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_yaml_keys.release` | Unknown key identifies its path | Exact string containment | Test constant / assertion |
+| `test_wb_wall_corner.release` | Stock and custom-named wall keep rest | Mach at most 1e-12 | Test constant / assertion |
+
+: Source-defined assertions for registry; no runtime results. {#tbl-ch11-registry-tests}
+
+The assertion anchor `EXPECT` is in [`test_yaml_keys.cpp:37-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L37-L64).
+
+The assertion anchor `EXPECT` is in [`test_wb_wall_corner.cpp:166-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L166-L190).
+
+Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
+Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+### Limits
+
+The fixed-temperature names occur in the whitelist, but no built-in registration is present in the boundary
+implementation inspected here. They do not establish an available thermal BC. The comment calling outflow
+zero-gradient in `is_wall_boundary` is stale relative to the characteristic implementation ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271),
+[`bc_func.cpp:108-133`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L108-L133)). Cubed-sphere custom panel faces require care wherever a physical-face test is used.
+
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

@@ -1,0 +1,84 @@
+## Repeat the nearest owned cell (`extrapolation`) {#sec-ch11-extrapolation}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Fill every ghost layer with the same boundary-adjacent owned cell. This is the zero-gradient copy condition.
+Default: off; fallback for outflow auxiliary scalars and shallow water.
+Order: exact discrete operation or local derivation below; coupled solver order not measured.
+:::
+
+### Derivation
+
+For a smooth field with a prescribed zero normal derivative, a constant extension supplies ghost values.
+The discrete rule is the nearest owned-cell average repeated at every ghost depth:
+
+$$
+q_{i-l}=q_i.
+$$ {#eq-ch11-extrapolation-copy}
+
+At the lower wall $i$ is the first owned index and $l=1,\ldots,n_g$; the upper rule uses the last owned cell.
+`extrapolation_inner` ([`bc_func.cpp:52-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L52-L66)) broadcasts a width-one slab, implementing @eq-ch11-extrapolation-copy.
+For a general smooth field, Taylor expansion between the donor and ghost centroids gives a leading difference
+proportional to their separation times the normal derivative, hence $O(h)$ at fixed depth on a uniform grid.
+This is a consistency estimate for ghost values, not a measured solver convergence rate. C1 checks exact
+constant preservation and idempotence.
+
+The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
+`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+
+### Numerical method
+
+Collapsed axes are skipped. Primitive, conserved and scalar calls all use the same copy. `radiating`
+selects this fallback before validating EOS and reference context for auxiliary `kScalar` fields or shallow water.
+Thus an auxiliary limiter field does not undergo the acoustic split. This callback runs with physical fills,
+including the supported corner refresh.
+
+@fig-ch11-extrapolation-stencil illustrates the operations, with labelled roles independent of colour.
+
+```{python}
+#| label: fig-ch11-extrapolation-stencil
+#| fig-cap: "Repeat the nearest owned cell. Schematic only; no simulation measurements."
+#| fig-alt: "Labelled schematic of the extrapolation boundary operation; ghosts and owned cells have separate text labels."
+#| echo: false
+from snapy_report.ch11.fig_extrapolation_stencil import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| extrap | [`bc_func.cpp:52-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L52-L66) | `extrapolation_inner` | See Summary |
+| radiating | [`bc_func.cpp:108-133`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L108-L133) | `radiating` | See Summary |
+
+: Implementation sites for extrapolation. {#tbl-ch11-extrapolation-code}
+
+1. Select the first or last owned width-one slab. The anchor `extrapolation_inner` is in [`bc_func.cpp:52-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L52-L66).
+2. Broadcast it to the whole ghost slab without changing owned cells. The anchor `extrapolation_inner` is in [`bc_func.cpp:52-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L52-L66).
+3. Use the same operation for the early scalar/shallow-water outflow fallback. The anchor `radiating` is in [`bc_func.cpp:108-133`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L108-L133).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_radiating_boundary.release` | Acoustic pulse comparison arm | No assertion on extrapolation arm | Test constant / assertion |
+
+: Source-defined assertions for extrapolation; no runtime results. {#tbl-ch11-extrapolation-tests}
+
+The assertion anchor `EXPECT_LT` is in [`test_radiating_boundary.cpp:395-441`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L395-L441).
+
+Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
+Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+### Limits
+
+Zero gradient is not an acoustic nonreflection condition. The pulse test prints an extrapolation
+comparison but only asserts the outflow arm, so no measured reflection fraction for extrapolation is claimed.
+
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

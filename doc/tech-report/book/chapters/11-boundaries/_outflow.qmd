@@ -1,0 +1,179 @@
+## Select outgoing acoustic and advected perturbations (`outflow`) {#sec-ch11-outflow}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+Local symbols: $\mathbf W^{\mathrm{bg}}$ denotes the saved initial boundary background, which is distinct
+from the well-balanced reference. $v_{\mathrm{out}}$ is outward velocity [$\mathrm{m\,s^{-1}}$]; $Z_{\mathrm{ac}}$
+is acoustic impedance [$\mathrm{kg\,m^{-2}\,s^{-1}}$]; $a_+$ and $a_-$ are acoustic perturbations
+[$\mathrm{m\,s^{-1}}$]; $d_{\mathrm{ent}}$ is the advected density combination [$\mathrm{kg\,m^{-3}}$];
+$\alpha_{\mathrm{bc}}$ is a dimensionless admissibility factor. All are proposed in the chapter's notation issue.
+A prefix $\delta$ below means subtraction of this background, not the centroid offset $\delta_i$.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Build primitive ghosts from the saved initial background plus outgoing perturbations. A shared factor keeps hydro composition and tracers admissible.
+Default: off; external faces default reflecting.
+Order: exact discrete operation or local derivation below; coupled solver order not measured.
+:::
+
+### Derivation
+
+Freeze an admissible background and an outward Cartesian face frame. Linearized mass, normal momentum and
+pressure equations have material derivatives proportional respectively to minus background density, minus
+inverse background density and minus background density times squared sound speed, all multiplying the
+appropriate normal derivative. For the outer x1 face, write the frozen material derivative as
+$\mathrm D/\mathrm Dt=\partial_t+v_{\mathrm{out}}^{\mathrm{bg}}\partial_1$.
+The three equations are
+
+$$
+\begin{aligned}
+\frac{\mathrm D\delta\rho}{\mathrm Dt}&=-\rho^{\mathrm{bg}}\partial_1\delta v_{\mathrm{out}},\\
+\frac{\mathrm D\delta v_{\mathrm{out}}}{\mathrm Dt}&=-\frac{1}{\rho^{\mathrm{bg}}}\partial_1\delta p,\\
+\frac{\mathrm D\delta p}{\mathrm Dt}&=-\rho^{\mathrm{bg}}(c_s^{\mathrm{bg}})^2\partial_1\delta v_{\mathrm{out}}.
+\end{aligned}
+$$
+
+Eliminating the pressure and velocity coupling gives the combinations
+
+$$
+\begin{aligned}
+Z_{\mathrm{ac}}&=\rho^{\mathrm{bg}}c_s^{\mathrm{bg}},\\
+a_\pm&=\delta v_{\mathrm{out}}\pm\delta p/Z_{\mathrm{ac}},\\
+d_{\mathrm{ent}}&=\delta\rho-\delta p/(c_s^{\mathrm{bg}})^2.
+\end{aligned}
+$$ {#eq-ch11-outflow-modes}
+
+Adding/subtracting the linearized momentum equation and the pressure equation divided by impedance yields
+transport of $a_\pm$ at the two acoustic speeds; subtracting the pressure equation divided by squared sound
+speed from continuity cancels its divergence term and leaves advection of $d_{\mathrm{ent}}$.
+Integrating each constant-coefficient transport equation over a boundary-adjacent cell gives its incoming
+minus outgoing face transport. A characteristic entering from outside has no interior-determined perturbation:
+the boundary chooses zero perturbation for that incoming mode. The code uses the *current* outward velocity
+and sound speed for this selector, while @eq-ch11-outflow-modes uses the background impedance and sound speed.
+Thus it is a locally linear characteristic prescription, not the exact nonlinear exterior solution.
+
+Keep $a_+$ when $v_{\mathrm{out}}+c_s\ge0$, keep $a_-$ when $v_{\mathrm{out}}-c_s\ge0$, and otherwise set each
+to zero. Keep $d_{\mathrm{ent}}$, tangential velocity, composition and tracer-ratio perturbations when
+$v_{\mathrm{out}}\ge0$; otherwise set them to zero. Equality selects the outgoing branch. Invert the split:
+
+$$
+\begin{aligned}
+\delta v_{\mathrm{out}}&=(a_++a_-)/2,\\
+\delta p&=Z_{\mathrm{ac}}(a_+-a_-)/2,\\
+\delta\rho&=d_{\mathrm{ent}}+\delta p/(c_s^{\mathrm{bg}})^2.
+\end{aligned}
+$$ {#eq-ch11-outflow-inverse}
+
+`plus`, `minus` and `entropy` ([`bc_func.cpp:135-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L135-L165)) implement both @eq-ch11-outflow-modes and @eq-ch11-outflow-inverse.
+For the lower face, reversing the coordinate normal before splitting and reversing it back after inversion
+accounts for the sign in the velocity update. The same selected interior perturbation is supplied to every
+ghost, but each ghost retains its own saved background.
+
+For any lower-bounded component $q$ with floor $q_{\min}$, admissibility requires
+$q^{\mathrm{bg}}+\alpha_{\mathrm{bc}}\delta q\ge q_{\min}$.
+If $\delta q<0$, division gives the bound $(q^{\mathrm{bg}}-q_{\min})/(-\delta q)$;
+otherwise that component imposes no reduction. Start with one, take the minimum of all bounds, multiply each
+binding bound below one by 0.99, and clamp the result to $[0,1]$. Apply this to density, pressure, every $y_n$,
+the complement $1-\sum_n y_n$, and every passive tracer ratio $r_n$. Nonnegative complement enforces the
+composition sum. The same factor multiplies every perturbation, including tracers:
+
+$$
+\mathbf W^{\mathrm{ghost}}=\mathbf W^{\mathrm{bg,ghost}}+
+\alpha_{\mathrm{bc}}\delta\mathbf W.
+$$ {#eq-ch11-outflow-admissible}
+
+`alpha` ([`bc_func.cpp:167-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L167-L207)) implements @eq-ch11-outflow-admissible. Convexity of these linear inequalities proves
+admissibility for an admissible background in exact arithmetic. It proves neither a positive temperature
+for every EOS nor nonlinear nonreflection. C2 checks the invertible acoustic algebra; C3 verifies the shared
+limiter against independent inequality bounds, including a species-complement and tracer-limited case.
+
+The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
+`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+
+### Numerical method
+
+Capture the background before the first physical fill, including initialized ghost values. Transform
+both current and saved velocities to the face frame, compute a perturbation from the nearest owned cell,
+select outgoing modes, limit each ghost, then transform back. The operator writes only ghosts.
+Conserved calls go through `apply_boundaries`: consecutive outflow faces share a primitive conversion;
+before another callback, pending faces are converted and flushed. Tracer densities use dry density, not
+primitive total density. The cartoon shows mode directions and the convex contraction separately.
+No coupled wall/seam convergence or reflection measurement is reported here.
+
+@fig-ch11-outflow-stencil illustrates the operations, with labelled roles independent of colour.
+
+```{python}
+#| label: fig-ch11-outflow-stencil
+#| fig-cap: "Select outgoing acoustic and advected perturbations. Schematic only; no simulation measurements."
+#| fig-alt: "Labelled schematic of the outflow boundary operation; ghosts and owned cells have separate text labels."
+#| echo: false
+from snapy_report.ch11.fig_outflow_stencil import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| init | [`meshblock.cpp:401-431`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L431) | `boundary_reference_w` | See Summary |
+| background | [`bc_func.cpp:92-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L92-L106) | `check_background` | See Summary |
+| radiating | [`bc_func.cpp:108-133`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L108-L133) | `radiating` | See Summary |
+| split | [`bc_func.cpp:135-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L135-L165) | `plus` | See Summary |
+| alpha | [`bc_func.cpp:167-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L167-L207) | `alpha` | See Summary |
+| outflow | [`bc_func.cpp:210-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L210-L218) | `is_outflow` | See Summary |
+| apply | [`meshblock.cpp:1441-1519`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1441-L1519) | `apply_boundaries` | See Summary |
+| fixer | [`meshblock.cpp:850-907`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L850-L907) | `solid` | See Summary |
+
+: Implementation sites for outflow. {#tbl-ch11-outflow-code}
+
+1. Use the scalar/shallow-water fallback first. Otherwise require EOS, coordinates and a saved same-shape reference. The anchor `radiating` is in [`bc_func.cpp:108-133`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L108-L133).
+2. Require a supported EOS, primitive type, finite input, positive finite sound speeds, and admissible background density, pressure and composition. The anchor `check_background` is in [`bc_func.cpp:92-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L92-L106).
+3. Split in the face frame, select modes using current speeds, and reconstruct the selected perturbation. The anchor `plus` is in [`bc_func.cpp:135-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L135-L165).
+4. Validate tracer background shape, finiteness and nonnegativity; reduce the shared factor and verify reconstructed ghosts are finite. The anchor `alpha` is in [`bc_func.cpp:167-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L167-L207).
+5. Flush conserved pending faces in face order using dry-density tracer conversion. The anchor `apply_boundaries` is in [`meshblock.cpp:1441-1519`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1441-L1519).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_radiating_boundary.release` | Modes on all faces and three EOS types | Float32 0.03; float64 1e-8 | Test constant / assertion |
+| `test_radiating_boundary.release` | Mixed-face representation and order | Hydro rtol 1e-12, atol 1e-9 | Test constant / assertion |
+| `test_radiating_boundary.release` | Dry-air tracer ratios | Below 1e-12 | Test constant / assertion |
+| `test_radiating_boundary.release` | PLM/WENO5 pulses, both signs | Reflected fraction below 0.05 | Test constant / assertion |
+| `test_radiating_boundary.release` | Joint limiter and restart | Inequalities; exact restart equality | Test constant / assertion |
+| `test_radiating_boundary.release` | CPU/CUDA agreement | rtol = atol = 1e-10 | Test constant / assertion |
+| `test_radiating_boundary_python` | Manual fill preserves reference and interior | Exact equality | Test constant / assertion |
+
+: Source-defined assertions for outflow; no runtime results. {#tbl-ch11-outflow-tests}
+
+The assertion anchor `EXPECT` is in [`test_radiating_boundary.cpp:46-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L46-L98).
+
+The assertion anchor `EXPECT` is in [`test_radiating_boundary.cpp:177-259`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L177-L259).
+
+The assertion anchor `EXPECT` is in [`test_radiating_boundary.cpp:288-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L288-L360).
+
+The assertion anchor `EXPECT_LT` is in [`test_radiating_boundary.cpp:395-441`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L395-L441).
+
+The assertion anchor `alpha` is in [`test_radiating_boundary.cpp:536-561`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L536-L561).
+
+The assertion anchor `allclose` is in [`test_radiating_boundary.cpp:563-578`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L563-L578).
+
+The assertion anchor `assert` is in [`test_radiating_boundary_python.py:16-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary_python.py#L16-L36).
+
+Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
+Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+### Limits
+
+Outflow is skipped by the tangential corner refresh ([`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978)). The gravity-work fixer is not an open-boundary
+energy budget: its x1 mass-crossing check can reject an open boundary; the error directs users to
+`gravity-work-fixer: false` ([`meshblock.cpp:850-907`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L850-L907)). The implicit closure remains reflecting in the cited operator, so a
+characteristic ghost fill does not establish a characteristic implicit boundary. The test's restart continuation
+and missing-reference rejection are explicit in `restart_continuation_and_missing_reference` ([`test_radiating_boundary.cpp:445-468`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L445-L468)).
+Saved backgrounds are fixed initialization data; adaptive exterior evolution is not implemented by this callback.
+
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

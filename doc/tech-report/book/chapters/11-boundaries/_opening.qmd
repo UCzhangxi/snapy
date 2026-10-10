@@ -1,0 +1,31 @@
+This chapter distinguishes physical face callbacks, exchange-owned ghosts, and immersed-solid interfaces.
+It follows the existing stage map and configuration matrix, deriving boundary-specific parity, acoustic
+selection, admissibility, mask rectification and implicit closure. Source tests are catalogued separately
+from the report's executed formula checks; no solver runtime measurement is supplied here.
+
+@fig-ch11-opening-dependencies shows the verified local requirements. The complete switch matrix is
+@sec-ch12-matrix; the stage ownership map is @sec-ch01-stage.
+
+```{python}
+#| label: fig-ch11-opening-dependencies
+#| fig-cap: "Boundary dependencies and exclusions. Each labelled row states a local requirement; the sequence is a reading map, not a timing measurement."
+#| fig-alt: "Registry feeds physical fills; outflow requires background and context; corners require idempotence; solid VIC needs an unsplit column; WB wall predicates differ."
+#| echo: false
+from snapy_report.ch11.fig_dependencies import make_fig
+make_fig()
+```
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| @sec-ch11-registry | `boundary-condition/external/*` | reflecting | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-reflecting | `reflecting` | reflecting on external faces | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-periodic | `periodic` | off; external faces default reflecting | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-extrapolation | `extrapolation` | off; fallback for outflow auxiliary scalars and shallow water | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-outflow | `outflow` | off; external faces default reflecting | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-custom | `custom; solid` | off | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-timing | `apply_boundaries; exchange_ghost_zones` | called by initialization and stage paths | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-exchange | `SyncOptions` | interpolate false; skip_corner true | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-solids | `boundary-condition/internal/*; vars["solid"]` | max-iter 5; density 1e3; pressure 1e9 | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-wb | `dynamics/wb-wall-clamp` | true | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+
+: Boundary scheme map. {#tbl-ch11-opening-schemes}

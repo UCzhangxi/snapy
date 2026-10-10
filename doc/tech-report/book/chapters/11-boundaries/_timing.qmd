@@ -1,0 +1,97 @@
+## Order physical fills, exchange and corner refresh (`apply_boundaries; exchange_ghost_zones`) {#sec-ch11-timing}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Physical fills and exchange have different owners. Reapply non-outflow x1 callbacks on exchange-owned tangential slabs so wall corners match the newly received state.
+Default: called by initialization and stage paths.
+Order: exact discrete operation or local derivation below; coupled solver order not measured.
+:::
+
+### Derivation
+
+This is an operator-order contract. Copying neighbour values and applying a physical wall need not commute
+at their overlap: exchange can overwrite a wall corner. Reapplying the wall map to the newly exchanged strip
+restores the same parity relation as on the owned strip, provided the callback uses interior values and is
+idempotent. The registry contract (`BC_FUNCTION`, [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39)) and `refresh` ([`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978)) encode these requirements.
+C1 includes a two-dimensional corner where exchange overwrites a prior mirror and a restricted second fill
+restores parity. This is an exact discrete ownership check, not a convergence proof.
+
+The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
+`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+
+### Numerical method
+
+Initialization captures the boundary background, fills primitives, exchanges them, converts to conserved
+variables, records solid fill states and fills conserved fields. The standalone block `forward` exchanges
+before advancing. `Mesh::forward` advances then exchanges; its multi-block fixer path fills physical boundaries
+again after the shared correction. Each local advance refills solid hydro cells after the RK combine, performs
+last-stage saturation adjustment when enabled, applies the fixer when not deferred, then fills physical faces.
+
+The block exchange refresh uses only the first two (x1) callbacks, skips outflow, and restricts each call to
+nonphysical tangential ghost slabs. Scalar primitive ratios are then recomputed. No accuracy order follows
+solely from this sequence; wall rest and phase-change tests are the available assertions.
+
+@fig-ch11-timing-stencil illustrates the operations, with labelled roles independent of colour.
+
+```{python}
+#| label: fig-ch11-timing-stencil
+#| fig-cap: "Order physical fills, exchange and corner refresh. Schematic only; no simulation measurements."
+#| fig-alt: "Labelled schematic of the timing boundary operation; ghosts and owned cells have separate text labels."
+#| echo: false
+from snapy_report.ch11.fig_timing_stencil import make_fig
+make_fig()
+```
+
+### Code
+
+The primitive initialization `exchange` calls are explicit in [`meshblock.cpp:375-396`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L375-L396).
+Auxiliary scalar `sync_theta` exchanges raw data and then applies face functions with scalar type in [`scalar.cpp:140-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L140-L153).
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| init | [`meshblock.cpp:401-431`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L431) | `boundary_reference_w` | See Summary |
+| finalinit | [`meshblock.cpp:454-500`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L454-L500) | `fill_solid_hydro_u` | See Summary |
+| advance | [`meshblock.cpp:545-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L572) | `exchange_ghost_zones` | See Summary |
+| refill | [`meshblock.cpp:782-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L782-L842) | `apply_boundaries` | See Summary |
+| mesh | [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365) | `advance_local` | See Summary |
+| exchange | [`meshblock.cpp:913-929`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L929) | `exchange_ghost_zones` | See Summary |
+| corner | [`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978) | `refresh` | See Summary |
+| meshex | [`mesh.cpp:389-395`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L395) | `exchange_ghost_zones` | See Summary |
+| registry | [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39) | `BC_FUNCTION` | See Summary |
+
+: Implementation sites for timing. {#tbl-ch11-timing-code}
+
+1. Initialize and capture independent references before physical fills. The anchor `boundary_reference_w` is in [`meshblock.cpp:401-431`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L431).
+2. Use the ordering of the selected block or mesh forward API; do not assume their exchange calls occupy the same position. The anchor `advance_local` is in [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365).
+3. After block exchange, refresh x1 wall corners with the conserved/scalar representation and recompute scalar ratios. The anchor `refresh` is in [`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978).
+4. At stage end, fill after enabled saturation adjustment and gravity correction. The anchor `apply_boundaries` is in [`meshblock.cpp:782-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L782-L842).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_wb_wall_corner.release` | Rest survives wall/exchange overlap | Mach at most 1e-12 | Test constant / assertion |
+| `test_wall_saturation.release` | Boundary phase-change energy and water | Relative error below 1e-12 | Test constant / assertion |
+
+: Source-defined assertions for timing; no runtime results. {#tbl-ch11-timing-tests}
+
+The assertion anchor `EXPECT` is in [`test_wb_wall_corner.cpp:166-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L166-L190).
+
+The assertion anchor `1.e-12` is in [`test_wall_saturation.cpp:59-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wall_saturation.cpp#L59-L89).
+
+Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
+Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+### Limits
+
+Only x1 callbacks participate in this refresh; outflow is excluded. The public `Mesh::exchange_ghost_zones`
+method only constructs sync options and calls exchange ([`mesh.cpp:389-395`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L395)), so callers cannot assume it supplies the
+block method's refresh. Custom callbacks depending on the full orthogonal shape violate the documented contract.
+
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

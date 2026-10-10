@@ -42,3 +42,19 @@
 12. Chapter 2 source inventory corrects the commented-out 14-variable test in OUTLINE section 2.3.
     The draft does not treat it as active coverage. Publication follow-ups: compiled H2 heat-capacity plot,
     moist-mixture temperature-map regression, active-set evidence, editor skeleton integration and renders.
+
+
+## Chapter 11 local notation and evidence
+
+The boundary schemes propose these local symbols for notation-table integration:
+`outflow`: $\mathbf W^{\mathrm{bg}}$ (saved initial boundary state, separate from the hydrostatic reference),
+$v_{\mathrm{out}}$ (outward velocity), $Z_{\mathrm{ac}}$ (acoustic impedance), $a_\pm$ (acoustic perturbations),
+$d_{\mathrm{ent}}$ (advected density combination), $\alpha_{\mathrm{bc}}$ (shared admissibility factor), and
+$\delta q$ (difference from the saved boundary background; not the centroid offset $\delta_i$).
+`solids`: $D_i(b,l)$ (minimum prefix flip count), $m_b$ (minimum run length),
+$\mathrm{cost}_i(b)$ (candidate flip cost), and $\mathsf H$ (normal reflection matrix).
+Remove the local-symbol notes once the shared notation table incorporates these concepts.
+
+Runtime gaps: outflow/WB/VIC and corner combinations, periodic solid closure, scalar/diffusion coupling
+through solids, and at least three-resolution wall-reference convergence. These are missing evidence,
+not measured defects. The source tests and report formula checks are separated in the Chapter 15 catalogue.
