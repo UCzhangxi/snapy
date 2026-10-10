@@ -1,0 +1,86 @@
+## Driver loop and accepted steps (`integration:`) {#sec-ch01-driver}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.1; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+The driver chooses the time step, executes every stage, checks rejection, and writes accepted states.
+Caller supplied; integration defaults belong to pyharp.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+The driver chooses the time step, executes every stage, checks rejection, and writes accepted states. There is no main
+time loop inside a MeshBlock. The C++ example applies kinetics after all dynamics stages and before the rejection
+decision.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+The driver keeps the clock unchanged when a step is rejected. A positive return from `check_redo` repeats the cycle; a
+negative return ends it. `max_time_step` first reduces the local hydro limit with MIN, then applies the Courant factor
+and the redo halving. Outputs are scheduled after the accepted clock increment. The `straka` driver also writes
+immediately after initialization, including restart. No independent spatial or temporal order belongs to this control
+flow; it inherits the selected operators.
+
+@fig-ch01-driver-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-driver-flow
+#| fig-cap: "Driver loop and accepted steps. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: caller: choose dt; all stages; kinetics (run_hydro); reject / accept; accepted outputs."
+#| echo: false
+from snapy_report.ch01.fig_driver_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| driver | [`run_hydro.cpp:157-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L157-L205) | `check_redo` | API / see Summary |
+| straka | [`straka.cpp:136-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L136-L165) | `forward` | API / see Summary |
+| dt | [`meshblock.cpp:510-528`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L510-L528) | `max_time_step` | API / see Summary |
+| redo | [`meshblock.cpp:1278-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1304) | `check_redo` | API / see Summary |
+| output | [`meshblock.cpp:985-1002`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L985-L1002) | `make_outputs` | API / see Summary |
+| final | [`meshblock.cpp:1121-1144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1144) | `finalize` | API / see Summary |
+
+: Implementation anchors for driver loop and accepted steps. {#tbl-ch01-driver-code}
+
+1. Read `check_redo` for the driver part of this path ([`run_hydro.cpp:157-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L157-L205)).
+2. Read `forward` for the straka part of this path ([`straka.cpp:136-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L136-L165)).
+3. Read `max_time_step` for the dt part of this path ([`meshblock.cpp:510-528`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L510-L528)).
+4. Read `check_redo` for the redo part of this path ([`meshblock.cpp:1278-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1304)).
+5. Read `make_outputs` for the output part of this path ([`meshblock.cpp:985-1002`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L985-L1002)).
+6. Read `finalize` for the final part of this path ([`meshblock.cpp:1121-1144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1144)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_restart_cycle_limit` | Resume cycle and logged values | absolute 1e-12; time 1e-9 | Runner constants; rationale not documented |
+| `test_check_redo_parallel.release` | Collective redo and rollback | exact equality | Saved tensors are copied back |
+
+: Source assertions for driver. {#tbl-ch01-driver-tests}
+
+The assertion anchor `first_restart` is in [`run_restart_cycle_limit.py:168-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_cycle_limit.py#L168-L198).
+
+The assertion anchor `check_redo` is in [`test_check_redo_parallel.cpp:43-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_check_redo_parallel.cpp#L43-L68).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+The restart writer saves output counters before `make_outputs` increments them. Together with the unconditional
+initial output in `straka`, this is a code-level reason to investigate repeated restart outputs; no overwrite
+experiment is reported here. Driver-split kinetics is outside the MeshBlock stage.

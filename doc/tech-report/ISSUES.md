@@ -2,7 +2,7 @@
 
 1. The gravity-work draft's Fig. 6 plots Mach/Courant boxes whose numbers were removed. Drop the figure; any replacement is regenerated from a committed script on snapy runs.
 2. The draft's T1 numbers lack a deck and a sha. Mark them "missing evidence". The chapter author reruns them on the pinned sha or removes them.
-3. The WB-reference spec numbers rest on commit c5b810d. The chapter author re-measures them with tests/test_wb_ref4_order.py at the pinned sha.
+3. The WB-reference spec numbers refer to an unresolved historical revision (full identifier unavailable; missing evidence). The chapter author re-measures them with tests/test_wb_ref4_order.py at the pinned sha.
 4. The H2-dissociation EOS note cites a deck outside snapy. Drop that citation and keep the EOS physics with kintera evidence only.
 5. Numbers from one-step harness runs on commits not in snapy were removed. The 1/R chapter rebuilds its table from the in-snapy closure run.
 6. Carried over:
@@ -11,3 +11,7 @@
    - Appendix A of the gravity-work draft, which is to be rebuilt from snapy evidence;
    - the figs/fig7* figures, which never ship.
 7. Derivations that exist only as commit messages (e.g. #284, #285, #288) are re-derived from the code at the pinned sha, each with an executable check.
+
+## Chapter 1 local transfer notation (draft)
+
+`book/chapters/01-overview/_stage.qmd` proposes $J^{\mathrm d}_{i+1/2}$ for the time-integrated implicit dry transfer [kg] and $J^{\mathrm{tr}}_{n,i+1/2}$ for its upwind passive-tracer transfer [kg]. These avoid collision with $P$ (corrected potential energy) and $G$ (total mass flow). Superscripts $\mathrm{base}$, $\mathrm{entry}$ and $\mathrm{source}$ (with $\mathrm{carry}$ for the selected ratio) identify source-free, entry and source quantities. The editor should add or replace these in NOTATION and then remove the scheme's local-symbol note. Chapter 1 contains no new runtime measurement.

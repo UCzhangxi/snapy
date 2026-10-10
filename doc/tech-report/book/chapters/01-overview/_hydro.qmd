@@ -1,0 +1,91 @@
+## Follow the hydro increment through seven sections (`dynamics:`) {#sec-ch01-hydro}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.7; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Hydro converts conserved state to primitives, constructs directional fluxes, limits species transport, takes the
+geometric divergence, adds forcing and gravity work, and applies the optional vertical implicit correction.
+Physics choices are owned by their chapters and @sec-ch12-matrix.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+Hydro converts conserved state to primitives, constructs directional fluxes, limits species transport, takes the
+geometric divergence, adds forcing and gravity work, and applies the optional vertical implicit correction. Its result
+is an increment, not an updated conserved state.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+The seven sections are primitive conversion; x1 reconstruction, Riemann flux, sedimentation and process-seam
+averaging; horizontal left/right states and panel exchange; horizontal fluxes and positivity; divergence with
+geometric sources; forcing and gravity work; and implicit correction. Communication occurs inside this pipeline as
+well as in the driver wrapper: x1 process-seam fluxes, panel states and donor factors must be synchronized at their
+own use sites. Disabled directions and unresolved dimensions are gated separately. Orders and wall closures are
+derived by the owning physics chapters.
+
+@fig-ch01-hydro-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-hydro-flow
+#| fig-cap: "Follow the hydro increment through seven sections. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: EOS; x1 flux / seam; horizontal LR / panel; flux / donor factors; divergence / geometry; forcing / gravity; implicit increment."
+#| echo: false
+from snapy_report.ch01.fig_hydro_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| hydro | [`hydro_forward.cpp:198-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L198-L219) | `forward` | API / see Summary |
+| reference | [`hydro_forward.cpp:287-290`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L287-L290) | `_hydro_ref_x1` | per physics options |
+| reconstruction | [`hydro_forward.cpp:345-358`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L345-L358) | `precon1` | per physics options |
+| riemann | [`hydro_forward.cpp:399-406`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L399-L406) | `priemann` | per physics options |
+| solve | [`hydro_forward.cpp:958-969`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L958-L969) | `_apply_implicit_correction` | per physics options |
+| sed | [`hydro_forward.cpp:417-445`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L417-L445) | `psed` | API / see Summary |
+| lr | [`hydro_forward.cpp:542-586`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L542-L586) | `sync_opts` | API / see Summary |
+| flux | [`hydro_forward.cpp:589-627`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L589-L627) | `flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| theta | [`hydro_forward.cpp:648-698`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L698) | `flux_positivity_theta` | EOS limiter |
+| div | [`hydro_forward.cpp:724-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L724-L765) | `_div` | API / see Summary |
+| implicit | [`hydro_forward.cpp:929-944`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L944) | `dt_corr` | `implicit-scheme` |
+| weights | [`hydro_forward.cpp:985-995`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L995) | `cw` | API / see Summary |
+
+: Implementation anchors for follow the hydro increment through seven sections. {#tbl-ch01-hydro-code}
+
+1. Read `forward` for the hydro part of this path ([`hydro_forward.cpp:198-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L198-L219)).
+2. Read `psed` for the sed part of this path ([`hydro_forward.cpp:417-445`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L417-L445)).
+3. Read `sync_opts` for the lr part of this path ([`hydro_forward.cpp:542-586`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L542-L586)).
+4. Read `flux_covariance` for the flux part of this path ([`hydro_forward.cpp:589-627`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L589-L627)).
+5. Read `flux_positivity_theta` for the theta part of this path ([`hydro_forward.cpp:648-698`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L698)).
+6. Read `_div` for the div part of this path ([`hydro_forward.cpp:724-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L724-L765)).
+7. Read `dt_corr` for the implicit part of this path ([`hydro_forward.cpp:929-944`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L944)).
+8. Read `cw` for the weights part of this path ([`hydro_forward.cpp:985-995`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L995)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| No dedicated test | Missing evidence | Not applicable | Not applicable |
+
+: Source assertions for hydro. {#tbl-ch01-hydro-tests}
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+The implicit time step is stage-weighted only for an integrator with three stages. A direct hydro caller that has not
+published a valid stage receives a one-time warning and uses the full time step. Same-process x1 seam flux averaging
+is explicitly excluded by the cited code. Neither case is newly measured here.

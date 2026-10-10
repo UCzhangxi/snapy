@@ -1,0 +1,79 @@
+## Build options from YAML and reject unknown keys (`from_yaml`) {#sec-ch01-options}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.11; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+`ADD_ARG` supplies chainable setters and const or mutable getters.
+No global default: each reader owns its fallback.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+`ADD_ARG` supplies chainable setters and const or mutable getters. YAML readers build the module tree and selected
+readers reject keys outside their fixed list. The root reader delegates layout, hydro, scalar, integration, output,
+coordinates and boundaries.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+Validate at the reader that owns the key. `check_keys` ignores non-map nodes and otherwise reports the unknown key
+together with valid keys and any delegated reader. The root options reader has no equivalent whole-document whitelist.
+This is configuration validation, with no numerical stencil, stage or accuracy order.
+
+@fig-ch01-options-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-options-flow
+#| fig-cap: "Build options from YAML and reject unknown keys. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: YAML root; owning reader; fixed-key validation; sub-options; module construction."
+#| echo: false
+from snapy_report.ch01.fig_options_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| args | [`add_arg.h:3-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/add_arg.h#L3-L25) | `ADD_ARG` | API / see Summary |
+| keys | [`check_keys.cpp:12-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/check_keys.cpp#L12-L30) | `check_keys` | API / see Summary |
+| yaml | [`meshblock_options.cpp:13-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L13-L88) | `from_yaml` | API / see Summary |
+| layoutopts | [`layout.cpp:221-239`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L221-L239) | `from_yaml` | API / see Summary |
+| scalaropts | [`scalar_options.cpp:11-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L11-L54) | `from_yaml` | API / see Summary |
+
+: Implementation anchors for build options from yaml and reject unknown keys. {#tbl-ch01-options-code}
+
+1. Read `ADD_ARG` for the args part of this path ([`add_arg.h:3-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/add_arg.h#L3-L25)).
+2. Read `check_keys` for the keys part of this path ([`check_keys.cpp:12-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/check_keys.cpp#L12-L30)).
+3. Read `from_yaml` for the yaml part of this path ([`meshblock_options.cpp:13-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L13-L88)).
+4. Read `from_yaml` for the layoutopts part of this path ([`layout.cpp:221-239`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L221-L239)).
+5. Read `from_yaml` for the scalaropts part of this path ([`scalar_options.cpp:11-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L11-L54)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_yaml_keys.release` | Unknown key path appears in error | exact substring | Configuration contract |
+
+: Source assertions for options. {#tbl-ch01-options-tests}
+
+The assertion anchor `expect_refused` is in [`test_yaml_keys.cpp:22-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L22-L64).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+The accepted `distribute.backend` spelling does not set the backend: the layout reads `BACKEND` instead. Programmatic
+defaults and YAML defaults must be compared per reader; this chapter does not equate them. Numerical
+environment-switch coverage is in @sec-ch12-matrix and the environment appendix.

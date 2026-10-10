@@ -1,0 +1,86 @@
+## Expose the C++ API to Python (`import snapy`) {#sec-ch01-python}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.12; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+The Python initializer imports torch and the external packages, then the extension.
+Import sets float64, one intra-op thread and one inter-op thread.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+The Python initializer imports torch and the external packages, then the extension. The extension exposes row
+constants, restart loading and component bindings, while the distribution submodule accepts an external process group.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+`MeshBlock.forward` releases the Python GIL around the C++ stage call. The Python API therefore reaches the same stage
+and exchange ordering described above. Packaging declares build requirements separately from runtime requirements; the
+command entry points include combine and inspect tools. Import and binding introduce no independent spatial order or
+ghost treatment.
+
+@fig-ch01-python-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-python-flow
+#| fig-cap: "Expose the C++ API to Python. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: Python imports; extension bindings; Mesh / MeshBlock API; C++ stage and kernels."
+#| echo: false
+from snapy_report.ch01.fig_python_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| pyinit | [`__init__.py:1-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L16) | `torch` | API / see Summary |
+| pybind | [`snapy.cpp:32-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/snapy.cpp#L32-L60) | `load_restart` | API / see Summary |
+| pymesh | [`pymesh.cpp:179-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/pymesh.cpp#L179-L186) | `forward` | API / see Summary |
+| pydist | [`pylayout.cpp:136-141`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/pylayout.cpp#L136-L141) | `set_process_group` | API / see Summary |
+| pyproject | [`pyproject.toml:1-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L31) | `dependencies` | API / see Summary |
+| scripts | [`pyproject.toml:52-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L60) | `pd-combine` | API / see Summary |
+| testpath | [`CMakeLists.txt:350-362`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L350-L362) | `SNAPY_TEST_PYTHONPATH` | API / see Summary |
+
+: Implementation anchors for expose the c++ api to python. {#tbl-ch01-python-code}
+
+1. Read `torch` for the pyinit part of this path ([`__init__.py:1-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L16)).
+2. Read `load_restart` for the pybind part of this path ([`snapy.cpp:32-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/snapy.cpp#L32-L60)).
+3. Read `forward` for the pymesh part of this path ([`pymesh.cpp:179-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/pymesh.cpp#L179-L186)).
+4. Read `set_process_group` for the pydist part of this path ([`pylayout.cpp:136-141`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/pylayout.cpp#L136-L141)).
+5. Read `dependencies` for the pyproject part of this path ([`pyproject.toml:1-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L31)).
+6. Read `pd-combine` for the scripts part of this path ([`pyproject.toml:52-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L60)).
+7. Read `SNAPY_TEST_PYTHONPATH` for the testpath part of this path ([`CMakeLists.txt:350-362`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L350-L362)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_python_import_path_python` | Import origin and PYTHONPATH ordering | exact path comparisons | Package-under-test contract |
+| `test_jit_user_forcing_python` | Nested scripted module adds increment | assert_close defaults | Library defaults, not specified by test |
+
+: Source assertions for python. {#tbl-ch01-python-tests}
+
+The assertion anchor `where` is in [`test_python_import_path.py:1-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L1-L23).
+
+The assertion anchor `expected` is in [`test_jit_user_forcing.py:44-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_jit_user_forcing.py#L44-L71).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+Python ctests need `SNAPY_TEST_PYTHONPATH` pointing to the package built from the pin; otherwise CMake warns that they
+exercise an installed package instead. The import-path check skips with status 125 when no target path is supplied.
+Legacy convenience scripts are not taken as evidence for the current binding signature.

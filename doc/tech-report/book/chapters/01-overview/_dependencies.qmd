@@ -1,0 +1,82 @@
+## Locate dependencies outside snapy (`find_package`) {#sec-ch01-dependencies}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.13; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Kintera supplies thermodynamics and restart tensor serialization.
+Kintera minimum 2.5.13; Harp and Disort required without a version here.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+Kintera supplies thermodynamics and restart tensor serialization. Harp supplies the integrator constructed by the
+MeshBlock. Python imports pyharp and pydisort as well as kintera; those imports are not a radiation operator inside
+the hydro pipeline.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+The dependency boundary is visible at creation, stage adjustment and restart IO call sites. The report derives the
+propagation of supplied stage weights, but their selection and the stop predicate live in the external integrator.
+Build metadata pins torch 2.10.0 for the build and declares Linux commux and pinc requirements. Runtime version
+requirements must be read separately. Appendix E owns external-component equations and full version analysis.
+
+@fig-ch01-dependencies-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-dependencies-flow
+#| fig-cap: "Dependencies used by snapy. Labelled green boxes name independent services and black arrows connect snapy to each service; no arrow implies that one external service calls another."
+#| fig-alt: "Sequence: snapy; Harp integrator; Kintera thermo / restart; torch tensors; comm / IO libraries."
+#| echo: false
+from snapy_report.ch01.fig_dependencies_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| deps | [`CMakeLists.txt:94-107`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L94-L107) | `Kintera` | API / see Summary |
+| pyproject | [`pyproject.toml:1-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L31) | `dependencies` | API / see Summary |
+| pyinit | [`__init__.py:1-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L16) | `torch` | API / see Summary |
+| modules | [`meshblock.cpp:181-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L181-L275) | `pintg` | API / see Summary |
+| last | [`meshblock.cpp:785-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L785-L842) | `pthermo` | API / see Summary |
+| save | [`restart.cpp:84-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/restart.cpp#L84-L90) | `save_tensors` | API / see Summary |
+| load | [`read_restart_file.cpp:223-230`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/read_restart_file.cpp#L223-L230) | `load_tensors` | API / see Summary |
+
+: Implementation anchors for locate dependencies outside snapy. {#tbl-ch01-dependencies-code}
+
+1. Read `Kintera` for the deps part of this path ([`CMakeLists.txt:94-107`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L94-L107)).
+2. Read `dependencies` for the pyproject part of this path ([`pyproject.toml:1-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L31)).
+3. Read `torch` for the pyinit part of this path ([`__init__.py:1-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L16)).
+4. Read `pintg` for the modules part of this path ([`meshblock.cpp:181-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L181-L275)).
+5. Read `pthermo` for the last part of this path ([`meshblock.cpp:785-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L785-L842)).
+6. Read `save_tensors` for the save part of this path ([`restart.cpp:84-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/restart.cpp#L84-L90)).
+7. Read `load_tensors` for the load part of this path ([`read_restart_file.cpp:223-230`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/read_restart_file.cpp#L223-L230)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| No dedicated test | Missing evidence | Not applicable | Not applicable |
+
+: Source assertions for dependencies. {#tbl-ch01-dependencies-tests}
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+No dependency integration run is supplied here. Harp stage coefficients cannot be justified by a snapy line alone. The
+kintera minimum is tied in the CMake comments to the saturation-failure counter used by redo. Radiation functionality
+in dependencies is outside this chapter and outside the seven-section hydro call map.

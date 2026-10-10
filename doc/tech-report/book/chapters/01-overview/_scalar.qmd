@@ -1,0 +1,83 @@
+## Transport passive scalars with dry mass (`scalar:`) {#sec-ch01-scalar}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.8; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Scalar transport reconstructs the ratio to conserved dry density and upwinds it with the hydro dry-mass flux.
+YAML nvar default 0; upper-bound default -1 (disabled).
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+Scalar transport reconstructs the ratio to conserved dry density and upwinds it with the hydro dry-mass flux. It
+therefore follows hydro in each stage. Names supplied in YAML set the scalar count; missing reconstruction inherits
+the horizontal hydro choice.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+Horizontal panel exchange uses directional left/right keys with interpolation disabled. The donor factor also uses a
+raw exchange, followed by physical boundary functions, before flux scaling. The scalar stage result is combined by the
+parent MeshBlock. Implicit dry transfer and dry-source carry are described in @sec-ch01-stage. Reconstruction,
+boundary and limiter choices determine accuracy; no scalar convergence rate is measured in this code map.
+
+@fig-ch01-scalar-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-scalar-flow
+#| fig-cap: "Transport passive scalars with dry mass. Labelled green boxes name operations or owners; black arrows show the reading sequence, not a timing measurement."
+#| fig-alt: "Sequence: dry density / scalar density; ratio reconstruction; hydro dry flux; panel states / donor copy; scalar increment."
+#| echo: false
+from snapy_report.ch01.fig_scalar_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| scalar | [`scalar.cpp:64-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L64-L98) | `forward` | API / see Summary |
+| scalarlimit | [`scalar.cpp:127-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L127-L161) | `sync_theta` | API / see Summary |
+| scalaropts | [`scalar_options.cpp:11-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L11-L54) | `from_yaml` | API / see Summary |
+| yaml | [`meshblock_options.cpp:13-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L13-L88) | `from_yaml` | API / see Summary |
+| transfer | [`meshblock.cpp:650-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L650-L678) | `mass_corr` | API / see Summary |
+
+: Implementation anchors for transport passive scalars with dry mass. {#tbl-ch01-scalar-code}
+
+1. Read `forward` for the scalar part of this path ([`scalar.cpp:64-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L64-L98)).
+2. Read `sync_theta` for the scalarlimit part of this path ([`scalar.cpp:127-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L127-L161)).
+3. Read `from_yaml` for the scalaropts part of this path ([`scalar_options.cpp:11-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar_options.cpp#L11-L54)).
+4. Read `from_yaml` for the yaml part of this path ([`meshblock_options.cpp:13-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L13-L88)).
+5. Read `mass_corr` for the transfer part of this path ([`meshblock.cpp:650-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L650-L678)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_scalar.release` | Initialization, shape, finite increment | allclose defaults; exact shape | API contract; numeric rationale absent |
+| `test_scalar.release` | Positive density, bounded ratio | 1e-5 float32; 1e-12 float64 | Test constants; rationale not documented |
+
+: Source assertions for scalar. {#tbl-ch01-scalar-tests}
+
+The assertion anchor `scalar_s` is in [`test_scalar.cpp:91-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_scalar.cpp#L91-L104).
+
+The assertion anchor `tol` is in [`test_scalar.cpp:159-163`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_scalar.cpp#L159-L163).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+The forward routine divides directly by conserved dry density. Its behavior for a zero dry-density field is not
+established by the positive-density scalar tests cited here. The upper-bound and positivity mechanisms are documented
+by the moist and positivity chapters; combinations remain in @sec-ch12-matrix.

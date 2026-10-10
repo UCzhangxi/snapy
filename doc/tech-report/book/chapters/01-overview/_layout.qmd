@@ -1,0 +1,86 @@
+## Locate tensor rows, faces and ghost slabs (`NMASS / PartOptions`) {#sec-ch01-layout}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
+sources: OUTLINE.md entry 1.10; pinned Code table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+Hydro buffers have variable, x3, x2, x1 axes.
+NMASS default 0; exterior slabs default true.
+Order: code map; no independent measured convergence order.
+No defining equation: this section maps control flow or data ownership.
+:::
+
+Hydro buffers have variable, x3, x2, x1 axes. A resolved direction includes ghosts on both sides; a one-cell direction
+has no ghost storage. Primitive and conserved row meanings differ even though their row indices agree.
+
+### Derivation
+
+No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
+their owning chapters.
+
+### Numerical method
+
+Cell values occupy the final three axes; x1 is contiguous in the nominal layout. The first species row follows energy
+or pressure. At a face the left and right reconstruction slots share the face index; `_apply_inplace` offsets their
+output slices by one. `part` takes offsets in x3, x2, x1 order, returning an interior or boundary slab with optional
+extensions and depth. In the Code table, `il` and `iu` are the first and last interior math indices, not new physical
+variables. Layout has no convergence order.
+
+@fig-ch01-layout-flow shows the data or call sequence.
+
+```{python}
+#| label: fig-ch01-layout-flow
+#| fig-cap: "A lower-wall storage stencil. Blue circles are cell averages, orange triangles are face states, the hatched cell is a ghost and the thick black line is the physical wall. The shared face index holds both reconstructed states."
+#| fig-alt: "Cells i-1, i and i+1, with i-1 a ghost and the wall at face i-1/2."
+#| echo: false
+from snapy_report.ch01.fig_layout_flow import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| indices | [`snap.h:34-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L64) | `ICY` | API / see Summary |
+| sizes | [`coordinate.hpp:59-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L59-L61) | `nc1` | API / see Summary |
+| ends | [`coordinate.hpp:169-183`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L169-L183) | `il` | API / see Summary |
+| partopts | [`meshblock.hpp:105-114`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.hpp#L105-L114) | `PartOptions` | `PartOptions` |
+| part | [`meshblock.cpp:284-325`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L284-L325) | `part` | API / see Summary |
+| reconstruct | [`reconstruct.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L50-L65) | `_apply_inplace` | API / see Summary |
+| modules | [`meshblock.cpp:181-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L181-L275) | `pintg` | API / see Summary |
+
+: Implementation anchors for locate tensor rows, faces and ghost slabs. {#tbl-ch01-layout-code}
+
+1. Read `ICY` for the indices part of this path ([`snap.h:34-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L64)).
+2. Read `nc1` for the sizes part of this path ([`coordinate.hpp:59-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L59-L61)).
+3. Read `il` for the ends part of this path ([`coordinate.hpp:169-183`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L169-L183)).
+4. Read `PartOptions` for the partopts part of this path ([`meshblock.hpp:105-114`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.hpp#L105-L114)).
+5. Read `part` for the part part of this path ([`meshblock.cpp:284-325`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L284-L325)).
+6. Read `_apply_inplace` for the reconstruct part of this path ([`reconstruct.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L50-L65)).
+7. Read `pintg` for the modules part of this path ([`meshblock.cpp:181-275`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L181-L275)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_scalar.release` | Initialization, shape, finite increment | allclose defaults; exact shape | API contract; numeric rationale absent |
+| `test_mesh_exchange_python` | Selected neighbor slab | exact equality | Integer rank field copied |
+
+: Source assertions for layout. {#tbl-ch01-layout-tests}
+
+The assertion anchor `scalar_s` is in [`test_scalar.cpp:91-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_scalar.cpp#L91-L104).
+
+The assertion anchor `ghost` is in [`test_mesh_exchange.py:37-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L37-L50).
+
+No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
+the missing runs and the distinction between assertions and observations.
+
+### Limits
+
+NMASS greater than zero is rejected by the species-layout static assertion. Degenerate axes cannot supply an ordinary
+multi-cell stencil. The tests here exercise selected shapes and slabs rather than every depth/extension combination.
