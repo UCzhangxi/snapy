@@ -24,7 +24,7 @@ the scheme's own $x_1$ mass fluxes to fourth order in every cell, wall cells inc
 :::
 
 With `gravity-work: face`, snapy books the energy that gravity exchanges with the flow in the form of a flux
-difference of potential energy across each cell's $x_1$ faces (the face form, @sec-ch06-face). This scheme adds
+difference of potential energy across each cell's $x_1$ faces (the face form). This scheme adds
 one term to that work in every cell, @eq-ch06-dwork-d, where $\dot\rho$ is the stage's $x_1$ density tendency,
 $s_i$ the centroid slope of @eq-ch06-dwork-slope and $\sigma_i^2$ the variance of $x_1$ over the cell. The added
 term is the work done by moving the mass of a cell whose density is not uniform inside it.
@@ -33,7 +33,7 @@ The face form conserves total energy $E$ plus the discrete potential energy $\ma
 $\mathrm{PE}_d$ is itself only a second-order approximation of the true potential energy of the cell averages.
 The face form therefore books a gravity work with an $O(h^2)$ error in every cell: the trapezoid term
 $\tfrac{h^2}{12}\partial_1^2F$, plus two $O(h^2/r)$ curvature terms on spherical-polar grids. The cp3/cp5/weno5
-reconstructions remove part of it with the curvature flux $\mathcal K$ (@sec-ch06-face), but that flux is zero at
+reconstructions remove part of it with the curvature flux $\mathcal K$ (the face form), but that flux is zero at
 walls, which leaves the two wall cells of every column first order. This scheme replaces $\mathrm{PE}_d$ by a
 fourth-order potential energy $P$ and books exactly the work that conserves $E+P$. The result is a gravity work
 that is $O(h^4)$ relative to the exact work of the scheme's own $x_1$ mass fluxes, in every cell, measured on
@@ -45,9 +45,9 @@ So the default run (`gravity-work: cell`) is unaffected, and every `gravity-work
 spherical-polar grid uses this scheme unless it is switched off. On a `gnomonic-equiangle` (cubed-sphere) grid
 with `gravity-work: face` the scheme has no form: setup warns once and the plain face work is kept. With it
 active the curvature flux $\mathcal K$ is turned off, because the scheme already removes the term $\mathcal K$
-removes and the two together are back to $O(h^2)$; it never meets the gravity-work fixer (@sec-ch06-fixer), which
+removes and the two together are back to $O(h^2)$; it never meets the gravity-work fixer, which
 runs only with `gravity-work: cell`; and with an implicit scheme part of it is booked inside the vertical
-implicit operator (@sec-ch06-vic). Under it the conserved invariant is $E+P$, the cycle diagnostics log $P$ as
+implicit operator (the VIC gravity work). Under it the conserved invariant is $E+P$, the cycle diagnostics log $P$ as
 `pe=`, and every $E+\mathrm{PE}_d$ check measures the wrong quantity.
 
 *Aliases.* "Leg D" of the gravity-work round, hence "scheme D" in commit messages; "option F" in
@@ -79,7 +79,7 @@ $$
 \end{aligned}
 $$
 
-The $x_2$, $x_3$ components of gravity book cell work only (@sec-ch06-cell) and play no part here. The potential
+The $x_2$, $x_3$ components of gravity book cell work only (the cell form) and play no part here. The potential
 $\phi(x_1) = -g_1x_1$ does not depend on time, and $\rho v_1g_1 = -\rho\mathbf v\cdot\nabla\phi$, so
 $E+\rho\phi$ is conserved:
 
@@ -401,7 +401,7 @@ prints is in the Tests layer.
 
 #### How the scheme enters the vertical implicit solve
 
-With `implicit-scheme` $\neq 0$, the vertical implicit correction (VIC, @sec-ch07b) solves each column for a new
+With `implicit-scheme` $\neq 0$, the vertical implicit correction (VIC, the vertical implicit solve) solves each column for a new
 stage increment $\boldsymbol\delta_i$. The explicit increment $\Delta\mathbf U^{(0)}$ is its right-hand side, and
 under rk3 the solve is handed $\Delta t_c = w_2^{(s)}\Delta t$, set as `dt_corr` in
 [`hydro_forward.cpp:929-933`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L933).
@@ -423,7 +423,7 @@ Its unknowns are, in order, the total mass, the normal momentum, the two tangent
 the energy. The solved energy is written back from `delta` as the stage's energy increment in
 [`vic_redistribute_impl.h:174-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L174-L179).
 With `gravity-work: face` the energy row already contains the face form for the mass the solve moves
-([UCzhangxi/snapy#283](https://github.com/chengcli/snapy/issues/283); derived in @sec-ch06-vic), assembled under
+([UCzhangxi/snapy#283](https://github.com/chengcli/snapy/issues/283); derived in the VIC gravity-work scheme), assembled under
 the `face_work` flag in
 [`vic_assemble_full_impl.h:101-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L101-L120)
 for full VIC and
@@ -493,7 +493,7 @@ column with exactly these entry updates and right-hand side, solves it in the co
 or swapping its lower and upper weights leaves an $O(1)$ residual.
 
 After the solve the raw solution is redistributed among the constituents and clamped where a constituent would go
-negative (@sec-ch07b). Let $\Delta\rho_i$ be the solved density change, `du` summed over the mass rows after
+negative (the vertical implicit solve). Let $\Delta\rho_i$ be the solved density change, `du` summed over the mass rows after
 redistribution. The code's `moved` is `du - du0`, i.e. $\Delta\rho_i-\Delta\rho^{(0)}$, and it can differ from
 $\delta\rho-\Delta\rho^{(0)}$. After the redistribution the code adds, in fluid cells, the remainder
 
@@ -530,7 +530,9 @@ an unsplit one at $O(h^4)$. This derivation is independently corroborated for th
 construction in `sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md` §§2.3-2.6; its §4.4 disputes several
 claims of the derivation note and must be dispositioned before this section is approved.
 
+::: {.callout-important title="Check"}
 The identities above are checked by `d_face_work_pe_check.py`, 11 claims, all passing.
+:::
 
 ### Numerical method
 
