@@ -16,7 +16,7 @@ $\int_{r_-}^{r_+} r^n\,\mathrm{d}r$ [m$^{n+1}$].
 ::: {.callout-note title="At a glance"}
 **What**: the exact $x_1$ second moment of an $x_2$/$x_3$ face and the exact distance between a cell's volume
 centroid and that face's centroid, in a cancellation-free form. **Switch**: read only when `SNAP_FLUX_COVARIANCE` is
-set (chapter 12). **Default**: off (the helpers exist on every grid). **Requires**: nothing.
+set (@sec-ch12-flux-covariance). **Default**: off (the helpers exist on every grid). **Requires**: nothing.
 **Order**: exact. **Defining equations**: @eq-ch03-facemoments-moment, @eq-ch03-facemoments-shift.
 :::
 
@@ -25,7 +25,7 @@ grid that weight is uniform in $x_1$; on the spherical-polar and cubed-sphere gr
 $r\,\mathrm{d}r$ times an angular factor while the cell spans $r^2\,\mathrm{d}r$ times one. Two numbers follow from
 the face measure: its $x_1$ variance, which sets the size of the covariance of two fields over the face, and the
 offset between where a cell average lives and where the face average lives. Both enter the $O(\Delta x_1^2)$ face-flux
-corrections of chapter 4. This scheme supplies them exactly; the flux use is chapter 4's. In the history it is part
+corrections of @sec-ch04. This scheme supplies them exactly; the flux use is in @sec-ch04. In the history it is part
 of [chengcli/snapy#289](https://github.com/chengcli/snapy/issues/289) and its follow-up items.
 
 ### Derivation
@@ -60,8 +60,12 @@ $$ {#eq-ch03-facemoments-shift}
 @eq-ch03-facemoments-shift is `radial_face_centroid_shift_` ([`coordinate.cpp:467-488`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L467-L488)). On a Cartesian grid
 the two measures are the same uniform weight, so the moment is $h^2/12$ and the shift is zero; these are the base-class
 values `face_moment2_x1` and `face_centroid_shift_x1` ([`coordinate.cpp:442-465`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L442-L465)). Both formulas are exact,
-not truncated; @eq-ch03-facemoments-moment recovers $h^2/12$ as $h/x^{\mathrm{m}}\to0$. The checks are lines `[C1]` to
-`[C3]` of `geometry_check.out`.
+not truncated; @eq-ch03-facemoments-moment recovers $h^2/12$ as $h/x^{\mathrm{m}}\to0$.
+
+::: {.callout-important title="Check"}
+`geometry_check.py`, lines `[C1]` to `[C3]` of `geometry_check.out`: the centroids, the moment and the shift
+against the exact integrals, exact symbolic (sympy).
+:::
 
 ### Numerical method
 
@@ -75,7 +79,7 @@ the $x_2$/$x_3$ fluxes. @fig-ch03-facemoments-ratio plots both against $h/x^{\ma
 
 ```{python}
 #| label: fig-ch03-facemoments-ratio
-#| fig-cap: "The radial face moment divided by its Cartesian value $h^2/12$ (solid) and the face-centroid shift divided by its leading term $h^2/(12x^{\\mathrm{m}})$ (dashed), against the relative cell width $h/x^{\\mathrm{m}}$. Both tend to 1 as the cell becomes thin; the moment is the Cartesian one to within $h^2/(12(x^{\\mathrm{m}})^2)$."
+#| fig-cap: "The radial face moment divided by its Cartesian value $h^2/12$ (solid) and the face-centroid shift divided by its leading term $h^2/(12x^{\\mathrm{m}})$ (dashed), against the relative cell width $h/x^{\\mathrm{m}}$. Both are dimensionless and tend to $1$ as the cell becomes thin; the moment is the Cartesian one to within $h^2/(12(x^{\\mathrm{m}})^2)$."
 #| fig-alt: "Two curves starting at 1 at zero relative width and bending down as the width grows."
 #| echo: false
 from snapy_report.ch03.fig_facemoments_ratio import make_fig
@@ -124,5 +128,5 @@ functions with no device-specific path. Its pass status at the pin was not run f
 ### Limits
 
 No known limits beyond the degenerate-face mask, which drops the curvature correction on ghost cells that reach
-$r \le 0$. The helpers are used only by `SNAP_FLUX_COVARIANCE`; their effect on the solution belongs to chapter 4. The
-switch combinations that are tested are listed in the switch coverage matrix of chapter 12.
+$r \le 0$. The helpers are used only by `SNAP_FLUX_COVARIANCE`; their effect on the solution belongs to @sec-ch04. The
+switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
