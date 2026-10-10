@@ -30,6 +30,8 @@ setup_test(test_yaml_keys)
 setup_test(test_sedimentation_guards)
 setup_test(test_balance_column)
 setup_test(test_hydro_ref_x1)
+# #289: rest face density of the x1 WB reference next to a closed wall
+setup_test(test_wb_wall_face_density)
 setup_test(test_uranus_cycle1_abort)
 setup_test(test_pref_local_seam)
 setup_test(test_x1_seam_split)
