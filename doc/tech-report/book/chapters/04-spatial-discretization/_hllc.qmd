@@ -34,6 +34,11 @@ which guarantees the face lies between them and the selection below is well pose
 The contact speed and the contact pressure follow at `cp` ([`hllc_impl.h:56-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L56-L72)), and the contact
 pressure is what is written out as the face pressure.
 
+A line-for-line port of the solver for a dry ideal gas measures the two textbook properties. Equal left and right
+states give the physical flux to $4.7\times10^{-14}$ relative over 200 random states [check
+`src/snapy_report/ch04/solvers_check.py`, output `solvers_check.out`, `[C1]`]. An isolated contact (equal $p$ and
+$u$, a density jump of 3) is resolved exactly, at rest and moving either way (`[C2]`).
+
 ### Numerical method
 
 The body is [`hllc_impl.h:17-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/hllc_impl.h#L17-L136), in the numbered steps the comments mark: the middle-state
@@ -62,16 +67,17 @@ pressure force and the well-balanced path.
 | test | asserts | tolerance |
 |---|---|---|
 | `tests/test_riemann.cpp` | the solver against reference states | per test |
+| this chapter's check, `solvers_check.py` | `[C1]` consistency, `[C2]` exact contact, on a port | round-off |
 
 : Tests of HLLC. {#tbl-ch04-hllc-tests}
 
-No check in this chapter ports HLLC: the claims it would assert, consistency and the contact resolution, are
-not measured anywhere in the repository either, which is recorded below rather than papered over.
+`solvers_check.py` ports HLLC and measures consistency and the contact resolution. No ctest in the repository
+asserts either.
 
 ### Limits
 
-1. **Untested properties.** That this implementation resolves an isolated contact exactly, and that it is
-   consistent in the sense `[C5]` checks for LMARS, are both properties of textbook HLLC. Neither is asserted
-   by a test here and neither is measured in this chapter. They should be read as expected, not as verified.
+1. **Untested in ctest.** That this implementation resolves an isolated contact exactly, and that it is
+   consistent, are measured only on the numpy port of `solvers_check.py` (`[C1]`, `[C2]`), for a dry ideal gas.
+   No ctest asserts them, and the moist path is not measured.
 2. **No moist wave speeds.** The PVRS estimate uses one ratio of specific heats per side. For a moist mixture
    the relevant speed is not that of either constituent, and no source bounds the resulting error.
