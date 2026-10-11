@@ -200,8 +200,16 @@ minus (2).
    a split column gives the one-block state: measured (`tests/test_x1_seam_split.cpp`, isothermal spherical
    column with a seam density bump, $t$ fixed), the 1-vs-2-block gap is 0 bit for bit at $n_z$ = 32, 64, 128
    (before: $8.0\times10^{-7}$, $6.3\times10^{-8}$, $2.3\times10^{-9}$), and the split E+P drift is
-   $\le 4.4\times10^{-15}$. The VIC row (`implicit_hydro.cpp`) still couples the slope inside each block only,
-   and its post-solve term uses the per-block slope; the implicit vertical solve itself is per block. In 2-D/3-D, x2/x3 fluxes book no gravity work and move mass between columns at
+   $\le 4.4\times10^{-15}$. An implicit scheme refuses any x1 split and a periodic x1
+   column: it requires both x1 faces of a block to be physical (`hydro.cpp:413-416`), and a block next to an x1
+   seam or on a periodic x1 column has its x1 boundary functions nulled (`meshblock.cpp:142-147`). So a VIC
+   block always holds the whole column between two walls, and the per-block slope of the VIC row and of its
+   post-solve term (`implicit_hydro.cpp`) is the one-block slope; they never meet a seam
+   (`test_x1_seam_split_vic_refuses_split` pins the refusal). **Limit: periodic x1.** The explicit work finds
+   its seams through `x1_neighbors()`, which is $\{-1, -1\}$ on a periodic x1 column (`hydro.cpp:263`), so the
+   internal seams of a periodic x1 column keep the one-sided slope and the split differs there from one block. A
+   gravitating periodic x1 column has no single-valued potential ($-g_1x_1$ jumps at the periodic face), so the
+   corrected PE is not defined there in any case. In 2-D/3-D, x2/x3 fluxes book no gravity work and move mass between columns at
    the same radius; on spherical-polar $V = \Omega(\theta,\varphi)V_r(r)$ and $\sigma^2$, $s$ depend on $r$ only, so
    $\sum_{\rm columns}P$ depends only on each shell's total mass, which they conserve: E+P stays exact (§8.6 for Cartesian).
 4. Numbers below.
