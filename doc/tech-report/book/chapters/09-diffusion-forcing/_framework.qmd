@@ -45,12 +45,15 @@ and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\math
 ([`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765)): the divergence term on interior cells, then the module loop. Each
 $\mathbf S^m$ is evaluated on the same $\mathbf W$ and on $T$ computed once from it, so the sum does not depend on
 the order of the loop; only round-off does. Nothing here needs a derivation beyond this sentence: the framework
-is a sum. No executable check is attached, because there is no closed form to check; the tests below check the
-two properties the sum must have, linearity in $\Delta t$ and registration.
+is a sum. A port of the assembly with three toy modules that read only $\mathbf W$ and $T$ checks its properties.
+The six loop orders give the same increment to $4.4\times10^{-16}$ of its size
+[check `src/snapy_report/ch09/framework_check.py`, output `framework_check.out`, `[C1]`]. The increment is linear in
+$\Delta t$ (`[C2]`). The tests below check linearity and registration on the real modules.
 
 The dry-air part of the forcings' increment, $\Delta\rho_{\mathrm{d}}^{\mathrm{forc}} = \Delta\mathbf U[\rho_{\mathrm{d}}]$
 after the loop minus before it, is stored as `_forcing_dry` only when the block carries passive scalars
-([`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765)). The tracer carry that consumes it is in @sec-ch10.
+([`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765)). It holds the modules' dry increment only, not the divergence term, and is not formed
+without tracers (`[C3]`). The tracer carry that consumes it is in @sec-ch10.
 
 ### Numerical method
 
@@ -105,12 +108,15 @@ module writes into ghost cells do not survive: the ghosts are refilled from the 
 | `tests/test_hydro_options.cpp` (`test_hydro_options.release`), `reject_removed_and_unknown_forcing_keys` | `fric-heat` and unknown keys are refused | exact (throws) | a parser contract |
 | `tests/test_forcing.cpp` (`test_forcing.release`), `meshblock_registers_parent_dependent_modules` | a MeshBlock built with body heat and diffusion installs both modules | exact | a registration contract |
 | same file, `boundary_fluxes_scale_with_timestep` | the boundary-flux modules give $\Delta\mathbf U(2\Delta t) = 2\Delta\mathbf U(\Delta t)$ | `allclose` defaults | linearity in $\Delta t$; default tolerances of `torch::allclose` (rtol $10^{-5}$, atol $10^{-8}$) |
+| this section's check, `framework_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
 
 : Tests of the forcing framework. {#tbl-ch09-framework-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** No number is quoted in this section. The three tests above have not been run at the pin:
-**pending: one pinned build and ctest run at the pin** (listed in the chapter's pending list).
+**Evidence.** Check numbers: [sha: the assembly of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported; deck:
+three toy modules, the check itself; run: `python3 framework_check.py`, numpy 2.4.6]. The three tests above have
+not been run at the pin: **pending: one pinned build and ctest run at the pin** (listed in the chapter's pending
+list).
 **Coverage.** CPU only; no CUDA arm and no multi-rank arm.
 :::
 

@@ -33,6 +33,12 @@ and before the next step is seen by the neighbours only after the next stage's e
 `MeshBlockImpl::forward` gives the reason for exchange-before: on the cubed sphere, a one-signed seam bias from
 condensation applied between calls ([`meshblock.cpp:545-552`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L552)).
 
+A two-block periodic model with a first-order upwind stage shows the difference. With no update between steps,
+both orders give the single-domain result bit for bit [check `src/snapy_report/ch07/exchange_check.py`, output
+`exchange_check.out`, `[C1]`]. A source of 0.1 added between steps to the cell next to the seam leaves
+exchange-before exact, while exchange-after reads a stale ghost and differs by $1.0\times10^{-1}$ at most
+(`[C2]`). The same source in a cell that is no ghost of the other block changes nothing (`[C3]`).
+
 ### Numerical method
 
 See @fig-ch07-exchange-order for the two orders.
@@ -71,12 +77,16 @@ boundary fill at the end of each stage is in the boundary-conditions chapter.
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_mesh_multi_block.cpp` (`test_mesh_multi_block.release`, 2 ranks) | after a Mesh exchange, every ghost side of every local block holds the neighbour's value, for local and remote neighbours | `allclose` defaults | exact copies |
+| this section's check, `exchange_check.py` | `[C1]`–`[C3]` | exact | a model, no round-off enters |
 
 : Tests of the exchange placement. {#tbl-ch07-exchange-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** No number is quoted. ctest case: **pending: pinned ctest run**.
-**Coverage.** CPU, 2 ranks. No test compares the two drivers on the same problem.
+**Evidence.** Check numbers: [sha: the two call orders of snapy@e894700ff7aee30b52882e5202b16461413780b0, modelled
+on a two-block upwind problem; deck: the check itself; run: `python3 exchange_check.py`, numpy 2.4.6]. ctest
+case: **pending: pinned ctest run**.
+**Coverage.** CPU, 2 ranks. No ctest compares the two drivers on the same problem; the check compares them on a
+model only.
 :::
 
 ### Limits
