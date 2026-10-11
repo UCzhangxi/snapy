@@ -8,7 +8,7 @@ Rules (Xi, 2026-10-10): the unit of work is a whole chapter. When you finish, ta
 "taking X" in the report thread first. Open a draft PR into tech-report early. An owner silent 30 min past an ETA
 loses the chapter to the next free person. Queue empty: cross-review a finished chapter.
 
-Last update: 2026-10-10 19:1x PT, tech-report d7998f7
+Last update: 2026-10-10 19:2x PT, tech-report ffcfc9e
 
 ## In progress
 
@@ -16,9 +16,9 @@ Last update: 2026-10-10 19:1x PT, tech-report d7998f7
 |---|---|---|---|---|
 | ch2 fixes, then ch13 (13.4 waits for #303) | @chengcli | ch2 fixes commit ready locally, checking before push | after the ch2 PR | - |
 | ch7 Time integration (7.A + 7.B) | @gitlinffff | draft PR: 7.1-7.3 written with checks and figures; 7.4, 7.5, 7.6-7.13 (VIC) to come | ~3-4 h from 19:0x (author estimate) | #35 (0238189) |
-| ch14 Parallelism, GPU, restart/IO, reproducibility | @zoeyzyhu | draft PR: 12 section skeletons render clean; filling from launch and backends | not yet given | #34 (a0918ae) |
+| ch14 Parallelism, GPU, restart/IO, reproducibility | @zoeyzyhu | all 12 sections written (2 short #303 placeholders), 227 citations pass; full-book render running, then push | soon | #34 |
 | ch6 Gravity and energy: 6.1-6.3, 6.5 + 3 figure functions | @happysky19 | not yet acknowledged | - | - |
-| Appendix D: environment-switch table | @XinyueWang05 | started (format-patch doc) | after sizing | - |
+| Appendix D: environment-switch table | @XinyueWang05 | drafted: 20 switches, 54 citations pass, full-book render clean vs base; patch docs to be applied by the lead | review + ~30 min fixes | patch eda1ea4 |
 
 ## Queue (take from the top)
 
