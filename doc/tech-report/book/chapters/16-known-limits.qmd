@@ -2,12 +2,12 @@
 
 <!-- PROVENANCE
 pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: the Limits layer of every chapter on tech-report at 010bca05ece095ded16205aef1451f01db75edba; ch13 from
-draft PR #38 at c2d1ea20df5c72aa00efbf60c3bd664f887768f3; OUTLINE.md, known limits
+sources: the Limits layer of every chapter on tech-report at d342385dceab74ba197d86e05e78e82215432486;
+OUTLINE.md, known limits
 status: draft
 -->
 
-This chapter collects the Limits layers of the other chapters in one place, grouped by severity. It states no limit that its source section does not state, and where a section and the outline disagree, the section is followed. There are 144 items from 13 chapters, 6 more from the conservation chapter that is not in the book yet, and three placeholders for limits that a pending code change alters.
+This chapter collects the Limits layers of the other chapters in one place, grouped by severity. It states no limit that its source section does not state, and where a section and the outline disagree, the section is followed. There are 150 items from 14 chapters, and three placeholders for limits that a pending code change alters.
 
 Each item names the section it comes from and the evidence that section gives: a code location at chengcli/snapy `e894700ff7aee30b52882e5202b16461413780b0` (symbol and `file:lines`), a registered test, an executable check with its check line, or an issue. The links to the code are in the source sections; "stated in the section" marks an item whose section states it from the code without a narrower citation. Two kinds of statement are not repeated here: the remark, made in most Limits layers, that untested switch combinations are listed in the switch coverage matrix (@sec-ch12-matrix), which is one item below, and statements about what an author did or did not run for a draft, which describe the evidence of a chapter, not a limit of the code.
 
@@ -31,8 +31,9 @@ Three classes are used:
 | @sec-ch10 | 3 | 5 | 3 | 11 |
 | @sec-ch11 | 2 | 5 | 1 | 8 |
 | @sec-ch12 | 0 | 5 | 1 | 6 |
+| @sec-ch13 | 0 | 2 | 4 | 6 |
 | @sec-ch14 | 3 | 5 | 8 | 16 |
-| total | 33 | 79 | 32 | 144 |
+| total | 33 | 81 | 36 | 150 |
 
 : Items per chapter and class. {#tbl-ch16-counts}
 
@@ -163,6 +164,8 @@ Items where a scheme, switch or path is limited to some configurations, or a com
 | PnetCDF output is float only, one block per process, and no test covers it on several ranks. | @sec-ch14-pnetcdf | `PNetcdfOutput` (`pnetcdf.cpp:48-58`) |
 | The restart tests vary blocks per process in one process (not the global block count) and launch one or two processes. | @sec-ch14-restart | test `test_restart_multiblock`; test `test_restart_cycle_limit` |
 | No test compares the dynamics bitwise across a change of process count over many steps; the cubed-sphere decomposition evidence is one stage in one process; restart continuation is checked on a printed cycle line. | @sec-ch14-repro | test `test_exchange_decomp`; test `test_restart_cycle_limit` |
+| The `div` output diagnostic uses two-cell face means, not the reconstructed states, so it is not the divergence the scheme saw. | @sec-ch13-output-diag | `interp_to_face` (`load_diag_output_data.cpp:22-45`) |
+| No registered test checks `mass0=` over a full example run; the only such check is a script no CMake rule calls, comparing first and last samples. | @sec-ch13-regression | `check_mass` (`run_example_mass_check.py:133-144`) |
 
 : Restricted applicability. {#tbl-ch16-restricted}
 
@@ -204,23 +207,12 @@ Items where cost, diagnostics, documentation or defaults that surprise a user, w
 | A resumed run rewrites its last outputs, including its source restart file, and the restart index does not advance (chengcli/snapy#277, open); run-to-date meters are not carried across a restart. | @sec-ch14-restart | chengcli/snapy#277; `gravity_work_fix` (`hydro.hpp:186-190`) |
 | An output interval shorter than the step fires every step until the schedule catches up; the statistics sample accepted states only. | @sec-ch14-schedule | `MeshBlockImpl::make_outputs` (`meshblock.cpp:985-1002`) |
 | `pd-combine` globs every `*.out*.nc` in the directory, needs NCO, deletes its inputs by default, and does not join per-block files. | @sec-ch14-tools | `ParseOutputFields` (`pd_combine.py:43-59`) |
+| The cycle line is a record, not a check: a drift in `mass0=` is visible only to a reader or a test that parses the log. | @sec-ch13-cycle | `print_cycle_info` (`run_hydro.cpp:161-164`) |
+| `limcut` measures the $x_1$ flux only; a limiter acting in $x_2$ or $x_3$ shows only in `thetamin` and `thetasevere`. | @sec-ch13-limiter-meters | `_lim_cut` (`hydro_forward.cpp:690-705`) |
+| The VIC clamp meter is a run maximum: it says that a clamp bound somewhere at some time, not when or where. | @sec-ch13-vicclamp | `vicclamp` (`meshblock.cpp:1108`) |
+| The log names redo causes but not the cells or rank that raised them; only a VIC refusal prints its column. | @sec-ch13-redo-view | `reduce_redo_flags` (`meshblock.cpp:1288-1300`) |
 
 : Performance and usability. {#tbl-ch16-usability}
-
-## Conservation budgets and diagnostics (not in the book yet) {#sec-ch16-ch13}
-
-The conservation chapter is on draft PR #38 (head `c2d1ea20df5c72aa00efbf60c3bd664f887768f3`), so its sections cannot be cross-referenced yet; they are named by title. The items join the tables above, with references, when it merges.
-
-| limit | class | section (draft) | evidence |
-|--------------------------------------------------|------------|----------------|----------------------|
-| The `div` output diagnostic uses two-cell face means, not the reconstructed states, so it is not the divergence the scheme saw. | restricted | Output diagnostics | `interp_to_face` (`load_diag_output_data.cpp:22-45`) |
-| No registered test checks `mass0=` over a full example run; the only such check is a script no CMake rule calls, comparing first and last samples. | restricted | Regression of the cycle line | `check_mass` (`run_example_mass_check.py:133-144`) |
-| The cycle line is a record, not a check: a drift in `mass0=` is visible only to a reader or a test that parses the log. | usability | Cycle line | `print_cycle_info` (`run_hydro.cpp:161-164`) |
-| `limcut` measures the $x_1$ flux only; a limiter acting in $x_2$ or $x_3$ shows only in `thetamin` and `thetasevere`. | usability | Limiter meters | `_lim_cut` (`hydro_forward.cpp:690-705`) |
-| The VIC clamp meter is a run maximum: it says that a clamp bound somewhere at some time, not when or where. | usability | VIC clamp meter | `vicclamp` (`meshblock.cpp:1108`) |
-| The log names redo causes but not the cells or rank that raised them; only a VIC refusal prints its column. | usability | Redo causes in the log | `reduce_redo_flags` (`meshblock.cpp:1288-1300`) |
-
-: Limits of the conservation chapter, from draft PR #38. {#tbl-ch16-ch13}
 
 ## Waiting for chengcli/snapy#303 {#sec-ch16-pending}
 
