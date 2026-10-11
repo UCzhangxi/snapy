@@ -42,7 +42,11 @@ with $\mathbf V$ the dictionary of block buffers and stage variables. @eq-ch09-u
 [`meshblock.cpp:689-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L689-L742). Each module sees $\mathbf V$ as it was before any user module ran, because the dictionary is built once by `stage_forcing_variables`
 ([`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738)). Through the Runge–Kutta average a user
 increment enters the step with the stage weight $w_2^{(s)}$, exactly as a native one; the test below asserts that
-for rk1, rk2, rk3 and rk3s4. No closed form is involved, so no executable check is attached.
+for rk1, rk2, rk3 and rk3s4. A port of the addition checks the sum. With three modules the result is the native
+increment plus every `hydro_du`, the same for all six module orders to $4.4\times10^{-16}$
+[check `src/snapy_report/ch09/user_check.py`, output `user_check.out`, `[C1]`]. A `hydro_du` of the wrong shape
+and an unsupported key are refused (`[C2]`). Through the stage weights, a constant user increment $\mathbf G$ in
+every stage adds exactly $\mathbf G$ per step with every integrator (`[C3]`).
 
 ### Numerical method
 
@@ -92,11 +96,14 @@ make_fig()
 |---|---|---|---|
 | `tests/test_jit_user_forcing.py` (`test_jit_user_forcing_python`) | a scripted module with a nested submodule and a buffer adds $0.25\cdot1 + 0.5$ to the dry density in one stage at $\Delta t = 0$ | `torch.testing.assert_close` defaults (float64: rtol $10^{-7}$, atol $10^{-7}$) | the returned value is added as is, not times $\Delta t$ |
 | `tests/test_stage_forcing_dry_tracer.py` (`test_stage_forcing_dry_tracer_python`) | for rk1, rk2, rk3, rk3s4 a user dry increment in stage $s$ changes the density by $w_2^{(s)}$ times it; an explicit `scalar_ds` is not coupled to a dry removal; tracer ratios stay in $[-10^{-12}, 1+10^{-12}]$ | $10^{-12}$ absolute | round-off of a few operations on values of order 1 |
+| this section's check, `user_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
 
 : Tests of the user stage forcings. {#tbl-ch09-user-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** No number is quoted. **Pending: pinned ctest run** of both tests at the pin.
+**Evidence.** Check numbers: [sha: the addition of snapy@e894700ff7aee30b52882e5202b16461413780b0 and the stage
+weights of pyharp@4721715855e937c1e8b218e964c0655f46e56e29, ported; deck: the check itself; run:
+`python3 user_check.py`, numpy 2.4.6]. **Pending: pinned ctest run** of both tests at the pin.
 **Coverage.** CPU in CI. `test_stage_forcing_dry_tracer.py` takes `--device cuda`; whether a CUDA arm is
 registered at the pin is not checked here. No multi-rank arm.
 :::
