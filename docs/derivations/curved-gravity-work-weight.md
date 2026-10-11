@@ -487,7 +487,7 @@ x1 wall cells (§8), and it shows:
 
 On a gnomonic-equiangle (cubed-sphere) grid F carries one more term, because `x1v` is not the $r^2$ centroid
 there (§12). Other grids (cylindrical) have no form for F: there the setup warns once and the plain face work is
-kept. `gravity-work: cell`, the default, is unchanged bit for bit. The explicit E+PE$_d$ oracles of §10 that test the
+kept. `gravity-work: cell` is unchanged bit for bit. The explicit E+PE$_d$ oracles of §10 that test the
 plain face form run with the switch set to 0.
 
 ### 11.3 The remaining error
