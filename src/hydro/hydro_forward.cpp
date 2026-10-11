@@ -814,9 +814,24 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     // off
     bool radial_exact = !gw_cell && radial_exact_work();
     if (radial_exact) {
-      face_gravity_work += corrected_pe_work(
-          -dt * vertical_mass_div, pmb->pcoord->x1f, pmb->pcoord->x1v, is, ie,
-          grav1, x1_measure(pmb->pcoord->options->type()));
+      auto drho = -dt * vertical_mass_div;
+      auto measure = x1_measure(pmb->pcoord->options->type());
+      auto [below, above] = x1_neighbors();
+      if (below < 0 && above < 0) {
+        face_gravity_work += corrected_pe_work(
+            drho, pmb->pcoord->x1f, pmb->pcoord->x1v, is, ie, grav1, measure);
+      } else {
+        // x1 seam: the neighbour's drho one cell past it, so a seam cell
+        // takes the centred slope of one block (#303)
+        auto shape = drho.sizes().vec();
+        shape.back() = pmb->pcoord->x1v.size(0);
+        auto full = torch::zeros(shape, drho.options());
+        full.slice(-1, is, ie).copy_(drho);
+        _x1_ghost_rows(full, 1, false, 0x7726);
+        face_gravity_work +=
+            corrected_pe_work_seam(full, pmb->pcoord->x1f, pmb->pcoord->x1v, is,
+                                   ie, grav1, measure, below >= 0, above >= 0);
+      }
     }
 
     // cp3/cp5/weno5 faces: the face average exceeds m = rho*v by

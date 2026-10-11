@@ -173,9 +173,12 @@ double energy_p(Mesh mesh, MeshVariables const& vars) {
     auto u = vars[b].at("hydro_u");
     auto rho = u[IDN];
     auto pe = rho * coord->x1v;
+    // across the seam the ghost rho is the neighbour's (exchanged after every
+    // stage), so this is the P of one block (#303)
+    auto [below, above] = mesh->blocks[b]->phydro->x1_neighbors();
     pe.slice(-1, is, ie) -=
-        corrected_pe_work(rho.slice(-1, is, ie), coord->x1f, coord->x1v, is, ie,
-                          -1., X1Measure::radial);
+        corrected_pe_work_seam(rho, coord->x1f, coord->x1v, is, ie, -1.,
+                               X1Measure::radial, below >= 0, above >= 0);
     auto vol = coord->cell_volume();
     total += ((u[IPR] + pe) * vol).slice(-1, is, ie).sum().item<double>();
   }
