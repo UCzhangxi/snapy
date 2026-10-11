@@ -62,8 +62,12 @@ unchanged if and only if $\sum_n y_n$ is: the phase reactions move mass between 
 so kintera returns fractions whose sum equals the input sum up to its solver tolerance, and $\rho$ after the write-back
 equals $\rho$ before to that tolerance. The energy is therefore conserved exactly and the total water to the
 tolerance of the phase solve; `test_wall_saturation` measures both below $10^{-12}$ relative over a whole run
-(Tests layer). No executable check is added in this chapter: the identities above are read off the code, and the
-solve's own algebra is checked by `saturation_check.py` of @sec-ch02.
+(Tests layer). A port of the write-back confirms the three consequences with a stand-in for the solve [check
+`src/snapy_report/ch10/satadj_check.py`, output `satadj_check.out`, `[C1]`]: the dry, momentum and energy rows are
+bitwise unchanged; $\rho$ is unchanged to $1.4\times10^{-16}$ relative when the solve keeps $\sum_n y_n$ and moves by
+$\rho$ times its change otherwise (`[C2]`). A cell the solve leaves alone gets $\rho_n$ back as $(\rho_n/\rho)\,\rho$,
+to $2.1\times10^{-16}$ relative but not always bitwise (`[C3]`). The solve's own algebra is checked by
+`saturation_check.py` of @sec-ch02.
 
 ### Numerical method
 
@@ -126,6 +130,7 @@ message a user sees, and the redo log line of @sec-ch10-redo names the cause.
 | `test_balance_column.release` | moist column stays at rest | $10^{-10}$ | dry case's bound |
 | `test_vic_moist_device_python` | CPU equals CUDA, one step | $10^{-9}$ | 17 times the recorded gap |
 | `test_check_redo_saturation_python` | a failed cell redoes the step | logical | failure protocol |
+| this chapter's check, `satadj_check.py` | `[C1]`-`[C3]` the write-back changes only the species rows | round-off |
 
 : Tests of the saturation adjustment in the step. Assertions are read from the test sources at the pin; none was
 run for this draft. {#tbl-ch10-satadj-tests}

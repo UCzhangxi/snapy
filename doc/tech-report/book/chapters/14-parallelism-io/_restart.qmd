@@ -42,6 +42,10 @@ The first case catches an interval that shrank between the runs (issue #272): a 
 interval ahead would delay the output, or, for an output disabled with a far-future time, keep it from ever firing.
 An output that is new in the resumed card joins the grid of multiples of its interval at or below $t_r$, so it fires at
 the first output check. Both are in `_init_from_restart` (`next_time`, [`meshblock.cpp:1376-1398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1376-L1398)).
+A port of the rule confirms the clamp of a shrunk interval and of a far-future time, and that a time within one
+interval or an interval $\Delta t_o \le 0$ keeps the saved time [check `src/snapy_report/ch14/restart_check.py`,
+output `restart_check.out`, `[C1]`]. A new output starts on the grid of multiples of $\Delta t_o$ at or below $t_r$
+and fires at the first check (`[C2]`), and a clamped output writes every $\Delta t_o$ from $t_r + \Delta t_o$ (`[C3]`).
 
 ### Numerical method
 
@@ -109,6 +113,7 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 |---|---|---|---|
 | `test_restart_cycle_limit` | two ranks, straka, restart every 30 s, `nlim: 120`: the run resumed from the first restart file starts at the same cycle as the uninterrupted run at that time, with the same time, $\Delta t$, mass and energy; both end at cycle 120 and at the same time | $10^{-12}$ abs. (first cycle line); $10^{-9}$ abs. (end time) | printed cycle lines |
 | `test_restart_multiblock` | straka with 2, shallow-xy with 4 and shallow-splash with 6 blocks in one process: reloading the restart file gives the same NetCDF frame | exact (`max_abs == 0`) | float NetCDF output |
+| this chapter's check, `restart_check.py` | `[C1]`-`[C3]` the resumed next time | exact; grid to round-off | float compare |
 | `test_restart_dt_change` | an output whose interval shrank fires on the new grid after a resume (#272) | frame-time window | `run_restart_dt_change.py` |
 | `test_restart_output_schedule` | appended and inserted output streams keep their schedules and file counters | exact | integer and time compare |
 | `test_restart_key_collision` | an interval edited to equal another output's does not renumber that output; legacy and keyless files | exact | integer compare |
