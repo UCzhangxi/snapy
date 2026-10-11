@@ -1,0 +1,98 @@
+## Redo causes and termination status: what the log says about a rejected step and the end of a run (`apply_redo`) {#sec-ch13-redo-view}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13.5; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; tests/test_uranus_cycle1_abort.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Prints, for every rejected step, a list of the causes that rejected it. At the end of the run
+it prints why the run stopped, and returns exit status 1 when none of the normal stop reasons holds.
+**Switch.** None.
+**Order.** Not a discretisation.
+**Defining equation.** None; the section reads the decision of @sec-ch07-redo as a log.
+:::
+
+The mechanics of step acceptance (the six causes, the collective decision, the halving and the restore)
+are @sec-ch07-redo. This section is the reader's side: what a line of the log means, and how to read the end of a
+run.
+
+### Derivation
+
+There is nothing to derive; the section states how the log encodes the decision. A rejected step prints
+`Redoing the step with smaller dt (causes: ...)`. The list names each set bit of the globally reduced cause mask
+once, in bit order: `floor` (1), `clamp` (2), `limiter` (4), `nan` (8), `saturation` (16), `vic-solve` (32). The 63
+nonzero masks print 63 different lists, and each list decodes back to its mask; mask 37 prints
+`floor limiter vic-solve` [check `src/snapy_report/ch13/redo_view_check.py`, output `redo_view_check.out`, `[C1]`].
+When the redo count passes `max_redo`, the run ends with "Maximum number of redo attempts exceeded. Terminating."
+If `vic-solve` is among the causes, the message adds "after restoring the rejected VIC step input" (`[C2]`).
+
+At the end, `finalize` prints the first reason that holds, in this order: a terminate signal, an interrupt, the
+wall-time alarm, the cycle limit `nlim` (when it is not negative) and the time limit `tlim`. If none holds it
+prints "Terminating abnormally" and returns 1. Of the 32 combinations of the five reasons, only the empty one
+returns 1 (`[C3]`).
+
+### Numerical method
+
+See @fig-ch13-redo-view for the cause bits.
+
+```{python}
+#| label: fig-ch13-redo-view
+#| fig-cap: "The six redo causes as the log prints them: the bit of the cause mask, the word in the cause list, and the local test that sets it on any rank before the MAX reduction. A VIC solve failure (vermillion) is the one cause that still restores the step input after max_redo. The grey line is the message for mask 37."
+#| fig-alt: "A six-row table of cause bits 1 to 32, their printed names and the condition behind each, above an example log line."
+#| echo: false
+from snapy_report.ch13.fig_redo_view import make_fig
+make_fig()
+```
+
+Each rank sets its six flags in `local_redo_flags` ([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286)). They are reduced with
+MAX and packed into the mask by `reduce_redo_flags` ([`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300)). `apply_redo` prints the
+cause list and the two terminal messages ([`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276)). A Mesh with several local blocks
+ORs their flags first, through `local_redo_flags` ([`mesh.cpp:431-437`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L431-L437)). `finalize` writes the final
+output, prints the stop reason with the final `time`, `cycle`, `tlim` and `nlim`, and returns the status
+([`meshblock.cpp:1121-1144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1144)). The example driver returns that status from `main` as `status`, so a shell
+or a test harness sees it as the exit code ([`run_hydro.cpp:202-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L202-L205)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| local flags | [`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286) | `local_redo_flags` | |
+| mask | [`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300) | `reduce_redo_flags` | |
+| cause list, terminal messages | [`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276) | `apply_redo` | `max_redo` |
+| Mesh flags | [`mesh.cpp:431-437`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L431-L437) | `local_redo_flags` | |
+| stop reason and status | [`meshblock.cpp:1121-1144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1144) | `finalize` | `tlim`, `nlim` |
+
+: Code map of the redo causes and termination status. {#tbl-ch13-redo-view-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_uranus_cycle1_abort.cpp` (`test_uranus_cycle1_abort.release`), `abnormal_termination_exits_nonzero` | a floor deck whose log says "Terminating abnormally" exits nonzero | exit status | contract |
+| same file, `column_finishes_the_two_cycles`, `column_reaches_cycle_40` | the logs say "Terminating on cycle limit" and contain no "Maximum number of redo attempts exceeded"; the second contains no "Redoing the step" at all | log text; exit status 0 | contract |
+| `tests/test_check_redo_saturation.py` (`test_check_redo_saturation_python`, CUDA twin) | a saturation failure alone redoes with cause 16 | logical | contract |
+| tests of the decision itself | listed in @sec-ch07-redo | — | — |
+| this section's check, `redo_view_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
+
+: Tests of the redo causes and termination status. {#tbl-ch13-redo-view-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the messages of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported as
+string logic; deck: the check itself; run: `python3 redo_view_check.py`, numpy 2.4.6]. ctest cases:
+**pending: pinned ctest run**.
+**Coverage.** Logic only.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The log names the causes but not the cells or the rank that raised them; the MAX reduction keeps only whether
+any rank did. Only a VIC refusal prints its column, rank, step, stage and retry (@sec-ch07-vic-reject).
+:::
+
+1. **No count.** No meter counts the redos of a run; the count is the number of "Redoing" lines in the log.
+2. **Single-block signals.** Only the Mesh path checks signals before the redo decision (@sec-ch07-redo).
