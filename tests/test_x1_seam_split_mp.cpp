@@ -5,9 +5,9 @@
 // rank 0: max over rho, rho v1 and E of |split - ref| / max|ref|.
 //
 // The arm is read from the environment, one ctest entry each
-// (tests/CMakeLists.txt): switches off and SNAP_GRAVITY_WORK_RADIAL_EXACT (1,
-// or 0 for the control) check the cross-rank split against the in-process
-// split only, since there the split differs from one block (printed);
+// (tests/CMakeLists.txt): switches off checks the cross-rank split against
+// the in-process split only; SNAP_GRAVITY_WORK_RADIAL_EXACT (1, or 0 for the
+// control; its seam slope is centred across ranks, #303),
 // SNAP_X1_CENTROID_EXACT and SNAP_WB_REF4 check it against one block as well.
 // The radial arm, on, also checks the split E + P summed over the two ranks.
 //
@@ -282,6 +282,9 @@ TEST(X1SeamSplitMp, split_across_two_ranks_matches_one_process) {
             "drift %.3e\n",
             arm, nx1, g.two, g.one, g.drift);
         EXPECT_LE(g.two, 1e-13) << "nz " << nx1;
+        // the seam takes one block's centred slope (#303): one block's state,
+        // to the round-off of the other arms
+        EXPECT_LE(g.one, 1e-13) << "nz " << nx1;
       }
       if (on) EXPECT_LE(g.drift, 1e-13) << "rank " << rank << ", nz " << nx1;
     }

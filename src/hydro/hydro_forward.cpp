@@ -816,6 +816,10 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     if (radial_exact) {
       auto drho = -dt * vertical_mass_div;
       auto measure = x1_measure(pmb->pcoord->options->type());
+      // limit: x1_neighbors() is {-1, -1} on a periodic x1 column, so its
+      // block edges keep the one-sided slope; a gravitating periodic x1
+      // column has no single-valued potential (-g1 x1 jumps at the periodic
+      // face), so the corrected PE is not defined there in any case
       auto [below, above] = x1_neighbors();
       if (below < 0 && above < 0) {
         face_gravity_work += corrected_pe_work(

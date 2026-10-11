@@ -1050,7 +1050,8 @@ void print_cycle_diagnostics(
         if (hydro->radial_exact_work()) {
           int is = coord->il(), ie = coord->iu() + 1;
           // across an x1 seam the ghost rho (exchanged after every stage) is
-          // the neighbour's: P of a split column is one block's (#303)
+          // the neighbour's: P of a split column is one block's (#303); a
+          // periodic x1 column keeps the one-sided slope (hydro_forward.cpp)
           auto [below, above] = hydro->x1_neighbors();
           pe.slice(-1, is, ie) -= corrected_pe_work_seam(
               rho, coord->x1f, coord->x1v, is, ie, grav1,

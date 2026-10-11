@@ -9,11 +9,13 @@
 // hydrostatic-split mode. RED before that exchange (one-sided windows at
 // every block edge).
 //
-// SNAP_GRAVITY_WORK_RADIAL_EXACT keeps its slope one-sided at every block
-// edge (its ghost density change is not exchanged), so a split column
-// differs; with that switch set in the environment (1, or 0 for the control)
-// the second test prints the gap at nz 32/64/128 and, on, checks E + P on the
-// split column (docs/derivations/curved-gravity-work-weight.md sec 7).
+// SNAP_GRAVITY_WORK_RADIAL_EXACT exchanges the stage's density change across
+// the seam and takes the centred slope there, one-sided only at the walls
+// (#303), so the split column keeps the one-block state; with that switch set
+// in the environment (1, or 0 for the control) the second test checks a zero
+// gap at nz 32/64/128 and, on, E + P (the one-block P) on the split column
+// (docs/derivations/curved-gravity-work-weight.md sec 7). An implicit scheme
+// refuses an x1 split, so the VIC row has no seam (vic_refuses_x1_split).
 //
 // SNAP_WB_REF4 alone (ctest test_x1_seam_split_wb_ref4): each block computes
 // the resolution flag from its own scan pressures, ghosts included, and only
@@ -59,6 +61,9 @@ namespace {
 
 constexpr double kR0 = 5.0, kLz = 2.0, kGamma = 1.4, kSeed = 0.05;
 
+// implicit-scheme of the columns: 0 explicit, 9 the full VIC solve
+int g_scheme = 0;
+
 std::string column_yaml(int nx1, double nh, char const* gw, int ng = 3) {
   char buf[2048];
   std::snprintf(buf, sizeof(buf), R"(
@@ -83,7 +88,7 @@ dynamics:
 integration:
   type: rk3
   cfl: 0.4
-  implicit-scheme: 0
+  implicit-scheme: %d
 forcing:
   const-gravity: {grav1: -1., non-hydrostatic: %g, gravity-work: %s}
 boundary-condition:
@@ -95,7 +100,7 @@ boundary-condition:
     x3-inner: periodic
     x3-outer: periodic
 )",
-                kR0, kR0 + kLz, nx1, ng, nh, gw);
+                kR0, kR0 + kLz, nx1, ng, g_scheme, nh, gw);
   return buf;
 }
 
@@ -308,6 +313,29 @@ TEST(X1SeamSplit, centroid_exact_split_matches_one_block) {
 
 TEST(X1SeamSplit, radial_exact_split_gap) {
   radial_exact_split_gap(torch::kCPU);
+}
+
+// the VIC row's slope is per block (implicit_hydro.cpp); that is the one-block
+// slope only because an implicit scheme refuses an x1 split: pin the refusal
+TEST(X1SeamSplit, vic_refuses_x1_split) {
+  g_scheme = 9;
+  auto one = make_column(1, 32, 1., "face");
+  auto two = make_column(2, 32, 1., "face");
+  g_scheme = 0;
+  MeshVariables v1(1), v2(2);
+  fill_column(one, v1, false);
+  fill_column(two, v2, false);
+  one->initialize(v1);
+  two->initialize(v2);
+  double dt = 0.3 * (kLz / 32) / std::sqrt(kGamma);
+  EXPECT_NO_THROW(step(one, v1, dt));
+  try {
+    step(two, v2, dt);
+    ADD_FAILURE() << "an implicit scheme stepped a column split in x1";
+  } catch (std::exception const& e) {
+    EXPECT_NE(std::string(e.what()).find("requires nb1 = 1"), std::string::npos)
+        << e.what();
+  }
 }
 
 TEST(X1SeamSplit, wb_ref4_flag_at_the_seam_split_matches_one_block) {
