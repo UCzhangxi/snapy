@@ -1,37 +1,215 @@
 ## What each form conserves (summary and oracle guide) {#sec-ch06-conserves}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
-sources: OUTLINE.md 6.6
-status: placeholder
+pin: snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 (main on chengcli/snapy, the #303 squash-merge)
+sources: OUTLINE.md 6.6; sections 6.1-6.5 of this chapter; chengcli/snapy#303 body;
+         docs/derivations/curved-gravity-work-weight.md@9ad0936779ae001dba65c9eafccaa7c058686c97 sections 12.5a, 12.10;
+         code links below
+status: draft
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**Pending.** This section waits for chengcli/snapy#303, which changes the gravity work on the cubed sphere.
+**What it does.** Says, for each gravity-work form, which energy is exact, per stage or per step, explicit and
+implicit, which logged numbers measure it, and which test is its oracle. **Key.** `gravity-work`, default `face`,
+with `SNAP_GRAVITY_WORK_RADIAL_EXACT` on by default; `gravity-work-fixer` only with `cell`. **Defining
+equation.** @eq-ch06-dwork-booked.
 :::
 
-It will tabulate, for the cell form with and without the fixer, the face form, `face-wallc` and the corrected-PE
-work, which energy each conserves per stage and per step, explicit and implicit, which logged quantity
-(`pe=`, `fixgrav=`) measures it, and which test oracle checks it.
+This section describes main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, after chengcli/snapy#303; the
+rest of the book is pinned at snapy@e894700ff7aee30b52882e5202b16461413780b0. Two things changed between the
+pins and both matter here. The default of `gravity-work` is now `face`, and with it the corrected-PE face work of
+@sec-ch06-dwork, so a deck that omits the key conserves $E+P$, not $E+\mathrm{PE}_d$. And the corrected-PE work
+now also runs on `gnomonic-equiangle` (cubed-sphere) grids, where it books one more term for the offset between
+the cell's volume centroid and `x1v`.
+
+Every form in this chapter is the identity @eq-ch06-dwork-booked with a different discrete potential energy, so
+the question "what does it conserve" is "which $P$ does it use, and where does it stop using it". The face form
+uses $P=\mathrm{PE}_d$ everywhere; the corrected-PE work uses the fourth-order $P$ of @eq-ch06-dwork-pe; the cell
+form uses none and leaves the defect @eq-ch06-cell-defect, which the fixer removes once per step; `face-wallc`
+uses $\mathrm{PE}_d$ except in its two $x_1$ wall cells. The logged `ie=` (total energy) plus `pe=` is the
+invariant of the run's own form, because `pe=` logs $P$ whenever the corrected-PE work is active and
+$\mathrm{PE}_d$ otherwise. An oracle that checks $E+\mathrm{PE}_d$ on a default run therefore measures the wrong
+quantity.
 
 ### Derivation
 
-Pending chengcli/snapy#303.
+The template @eq-ch06-dwork-booked conserves $E+P$ exactly on a closed column for any $P$; the forms differ only
+in $P$, and the derivations are in the sections that own them. The face form is $P=\mathrm{PE}_d$
+(@eq-ch06-dwork-face). The corrected-PE work is @eq-ch06-dwork-d, conserving @eq-ch06-dwork-pe; its stage-by-stage
+argument extends to the step because $E+P$ is linear in the state and every RK stage is a convex combination
+(@sec-ch06-dwork), and in the implicit solve the matrix part @eq-ch06-dwork-couple plus the remainder
+@eq-ch06-dwork-remainder book the work of the mass actually moved. The cell form leaves @eq-ch06-cell-defect per
+stage; the fixer @eq-ch06-fixer-fix subtracts the stage-weighted sum after the last stage, so $E+\mathrm{PE}_d$
+closes per step but not per stage. `face-wallc` books $W^{\mathrm{cell}}$ instead of $W^{\mathrm{face}}$ in the
+two $x_1$ wall cells, so its $E+\mathrm{PE}_d$ defect is their cell-minus-face work (@sec-ch06-face).
+
+The one new step at this pin is the cubed-sphere term. On a `gnomonic-equiangle` grid the volume uses the $r^2$
+measure, but `x1v` is the cell's face midpoint, not its volume centroid $r_{\mathrm{c},i}$. The fourth-order
+expansion of @eq-ch06-dwork-pe4 is about the centroid, so the corrected potential energy is
+$P_i = V_i[\rho_i\phi(r_{\mathrm{c},i}) - g_1\sigma_i^2s_i[\rho]]$ with $\sigma_i^2$ about $r_{\mathrm{c},i}$.
+Since $\phi(r_{\mathrm{c},i}) = \phi_i - g_1(r_{\mathrm{c},i}-x_{1,i})$, with $\phi_i=-g_1x_{1,i}$ at `x1v`, this
+is $P_i = V_i[\rho_i\phi_i - g_1(r_{\mathrm{c},i}-x_{1,i})\rho_i - g_1\sigma_i^2s_i[\rho]]$, and inserting it into
+@eq-ch06-dwork-booked, whose face form is written with $\phi_i$ at `x1v`, gives
+
+$$
+W_i = W^{\mathrm{face}}_i + g_1\,\sigma_i^2\,s_i[\dot\rho] + g_1\,(r_{\mathrm{c},i}-x_{1,i})\,\dot\rho_i .
+$$
+
+The last term is zero on Cartesian and spherical-polar grids, where $r_{\mathrm{c},i}=x_{1,i}$. It is booked by
+`corrected_pe_work` under `radial_mid`
+([`gravity_work_radial.hpp:94-104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L94-L104)),
+which is also called for the logged $P$ and the post-solve remainder, and on the diagonal of the implicit energy
+row as `rx_mid`
+([`implicit_hydro.cpp:317-318`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/implicit/implicit_hydro.cpp#L317-L318)).
+The full derivation is `docs/derivations/curved-gravity-work-weight.md@9ad0936779ae001dba65c9eafccaa7c058686c97`
+§12.5a. No executable check of this section's own: each identity it collects is checked by the check of the
+section that derives it.
 
 ### Numerical method
 
-Pending chengcli/snapy#303.
+@tbl-ch06-conserves-summary is the oracle guide. "Stage" means $E+P$ is exact after every RK stage, "step" only
+after the whole step. Exact means to round-off on a closed column (reflecting $x_1$ walls); with an open $x_1$
+boundary every invariant changes by the potential-energy flux through it, and the fixer refuses that case.
+
+| form | exact invariant | when | logged | oracle |
+|---|---|---|---|---|
+| `cell`, no fixer | none | | `ie=`+`pe=` drifts | `test_gravity_work_fixer_python` |
+| `cell` + fixer | $E+\mathrm{PE}_d$ | step, explicit and VIC | `ie=`+`pe=`, `fixgrav=` | `test_gravity_work_fixer_python` |
+| `face`, switch 0 | $E+\mathrm{PE}_d$ | stage, explicit and VIC | `ie=`+`pe=` | `test_implicit_face_work_operator_python` |
+| `face-wallc` | none in the wall cells | | `ie=`+`pe=` | reported only |
+| `face` (default) | $E+P$ | stage, explicit and VIC | `ie=`+`pe=` ($P$) | `test_gravity_work_radial_exact_python` |
+
+: What each form conserves on a closed column, which logged sum measures it and which test checks it. "Switch 0"
+is `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`; the default `face` row also holds for grids with no corrected-PE form, as
+`face` with switch 0. Tolerances and code links are in the Code and Tests layers. {#tbl-ch06-conserves-summary}
+
+Where each form books its energy: the face form, the corrected-PE term and the cell work are all formed in step
+(6) of `HydroImpl::forward`, once per stage, as `gravity_energy_correction`, and added to the energy row before
+the implicit solve with `face` and an implicit scheme, after it otherwise (@sec-ch06-dwork). The fixer acts after
+the last stage, once per step, so only the step closes under it. With an implicit scheme the VIC carries the
+face form and the tridiagonal part of the corrected-PE term in its energy row, and the post-solve remainder books
+the rest; under `face-wallc` the face work is swapped in after the solve (@sec-ch06-vic).
+
+Block seams. At an internal $x_1$ seam the explicit corrected-PE work now exchanges one row of the stage's density
+change with the $x_1$ neighbour and takes the centred slope a single block would take; at a physical wall the
+slope stays one-sided. The logged $P$ does the same with the exchanged ghost density. So a column split in $x_1$
+conserves the one-block $P$, and the split state equals the unsplit one. The implicit scheme refuses any $x_1$
+split, so the VIC row and its remainder never meet a seam. A periodic $x_1$ column keeps the one-sided slope at
+its block edges, because $-g_1x_1$ jumps at the periodic face and has no single-valued $P$; setup warns once. No
+new figure: the stencils are those of @fig-ch06-dwork-stencil, whose panel (c) shows the one-sided seam slope of
+the previous pin.
 
 ### Code
 
-Pending chengcli/snapy#303.
+| what | code link | symbol | switch |
+|---|---|---|---|
+| default `face`; fixer default with `cell` | [`const_gravity.cpp:28-36`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28-L36) | `gravity_work` | `gravity-work` |
+| fixer off for face forms | [`hydro.cpp:65`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L65) | `gravity_work_fixer` | `gravity-work-fixer` |
+| grids with a corrected-PE form | [`gravity_work_radial.hpp:13-25`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L13-L25) | `x1_measure` | |
+| where the corrected-PE work acts | [`hydro.cpp:268-273`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L268-L273) | `radial_exact_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| corrected-PE work, seams | [`hydro_forward.cpp:828-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L828-L852) | `corrected_pe_work_seam` | `face` |
+| cell work and fixer defect | [`hydro_forward.cpp:888-918`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L888-L918) | `gwfix_stage` | `cell` |
+| face minus cell, wall cells | [`hydro_forward.cpp:921-927`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L921-L927) | `gravity_energy_correction` | `face-wallc` |
+| stage weight of the defect | [`hydro_forward.cpp:1015-1026`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L1015-L1026) | `cw` | `cell` |
+| fixer heat, counted | [`meshblock.cpp:906-910`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L906-L910) | `add_gravity_work_fix` | `cell` |
+| $\mathrm{PE}_d$ or $P$ summed | [`meshblock.cpp:1047-1060`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1047-L1060) | `pe_sum` | |
+| `pe=` printed | [`meshblock.cpp:1104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1104) | `pe_sum` | |
+| `fixgrav=` printed | [`meshblock.cpp:1113-1114`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1113-L1114) | `gravity_work_fix` | `gravity-work-fixer` |
+| `ie=` label | [`meshblock.cpp:1120-1122`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1120-L1122) | `print_cycle_diagnostics` | |
+| implicit needs one $x_1$ block | [`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430) | `TORCH_CHECK` | `implicit-scheme` |
+
+: Code map of where each form books its energy and where the logged sums are formed. {#tbl-ch06-conserves-code}
+
+1. `from_yaml` sets `gravity_work` to `face` when the key is absent and `gravity_work_fixer` to true only for
+   `cell` ([`const_gravity.cpp:28-36`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28-L36));
+   the `HydroImpl` constructor forces `gravity_work_fixer` off for a face form
+   ([`hydro.cpp:65`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L65)).
+2. `radial_exact_work` is true for `face`, $g_1\neq0$, the switch on, and a grid whose `x1_measure` is not
+   `none`: Cartesian, spherical-polar or gnomonic-equiangle
+   ([`hydro.cpp:268-273`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L268-L273)).
+   On another grid setup warns once in the `TORCH_WARN_ONCE` under `x1_measure`
+   ([`hydro.cpp:101-106`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L101-L106)),
+   and with a periodic $x_1$ in the `TORCH_WARN_ONCE` under `periodic_x1`
+   ([`hydro.cpp:91-95`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L91-L95)).
+3. Each stage, the corrected-PE term is added to the face work, by `corrected_pe_work` on a block with no $x_1$
+   neighbour and by `corrected_pe_work_seam` with the neighbour's density change at a seam
+   ([`hydro_forward.cpp:828-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L828-L852)).
+4. With `cell`, `gwfix_stage` collects the stage defect for the fixer
+   ([`hydro_forward.cpp:888-918`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L888-L918)),
+   weighted by `cw` ([`hydro_forward.cpp:1015-1026`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L1015-L1026));
+   otherwise `gravity_energy_correction` replaces the cell work, kept in the wall cells under `face-wallc`
+   ([`hydro_forward.cpp:921-927`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L921-L927)).
+5. After the last stage the fixer adds `efix` per unit mass and counts $-\mathcal D$ with `add_gravity_work_fix`
+   ([`meshblock.cpp:906-910`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L906-L910)),
+   committed when the step is accepted.
+6. The cycle diagnostics sum `pe` as $\rho\phi$ at `x1v`, minus `corrected_pe_work_seam` of the density when
+   `radial_exact_work` holds, into `pe_sum`
+   ([`meshblock.cpp:1047-1060`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1047-L1060)),
+   print it as `pe=` ([`meshblock.cpp:1104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1104)),
+   and print the run-to-date fixer energy `gravity_work_fix` as `fixgrav=` only when the fixer is on
+   ([`meshblock.cpp:1113-1114`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1113-L1114)).
+
+So `pe=` is $P$ (with $\phi$ at the volume centroid on the cubed sphere) under the corrected-PE work and
+$\mathrm{PE}_d$ under every other form. `fixgrav=` is the total energy the fixer has added over the run's
+accepted steps, in J, not reduced per step and not carried across a restart; under `cell` + fixer, `ie=`+`pe=`
+is constant and `fixgrav=` records how much heat that took.
 
 ### Tests
 
-Pending chengcli/snapy#303.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_gravity_work_radial_exact_python` | per-step $E+P$, explicit and VIC, incl. `cs`, `cs_vic` | $10^{-14}$ rel. | `EP_TOL` |
+| `test_gravity_work_radial_exact_python` | logged `ie=`+`pe=` equals $E+P$ (on), $E+\mathrm{PE}_d$ (off) | $10^{-11}$ | `DIAG_TOL` |
+| `test_gravity_work_fixer_python` | `cell` + fixer keeps $E+\mathrm{PE}_d$; no fixer drifts | $10^{-12}$; $>100\times$ | `TOL` |
+| `test_x1_seam_split_radial_exact` | 2 vs 1 $x_1$ blocks: gap 0, split $E+P$ drift | exact; $10^{-13}$ | the centred seam slope |
+| `test_implicit_face_work_operator_python` | $E+\mathrm{PE}_d$ (switch 0) or $E+P$ under VIC | $10^{-11}$ rel. | `EPE_TOL` |
+
+: Oracles of each form at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97; assertions read from the test sources,
+not run here. {#tbl-ch06-conserves-tests}
+
+The corrected-PE oracle sets `EP_TOL` and `DIAG_TOL` at
+[`test_gravity_work_radial_exact.py:55-56`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_radial_exact.py#L55-L56)
+and runs its cubed-sphere cases `cs` and `cs_vic`, one gnomonic-equiangle block with radial flow only, defined at
+[`test_gravity_work_radial_exact.py:62`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_radial_exact.py#L62).
+The fixer oracle compares the drift with `TOL` in both directions at
+[`test_gravity_work_fixer.py:204-207`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_fixer.py#L204-L207);
+its `cell` arms now state `cell`, since the default changed. The seam test requires a gap of exactly 0 with the
+switch on and at most $10^{-13}$ with it off, in `radial_exact_split_gap`
+([`test_x1_seam_split.cpp:255-275`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L255-L275)).
+`face-wallc` has no conservation oracle; `test_gravity_work_fixer` only reports its drift.
+
+Evidence, all from the chengcli/snapy#303 body:
+
+- Cubed sphere, six panels, flow across the panel seams, both $x_1$ walls closed, $E+P$ from the logged energy
+  and `pe=`: per step $1.88\times10^{-15}$ explicit and $3.14\times10^{-15}$ VIC; with the centroid term left out
+  of $P$, $1.28\times10^{-10}$ and $2.57\times10^{-10}$ [source: chengcli/snapy#303 body; sha:
+  snapy@546b1afd80d47a437a92ead745ef525f8335094a (PR head); deck/run: not stated in the body].
+- $x_1$ seams, explicit: `radial_exact_split_gap` at $n_1$ = 32, 64, 128 went from $8.0\times10^{-7}$,
+  $6.3\times10^{-8}$, $2.3\times10^{-9}$ to 0, and `test_pref_local_seam`, 4 blocks against 1, from a relative
+  density difference of $2.7\times10^{-6}$ to $7\times10^{-15}$ [source: chengcli/snapy#303 body; sha:
+  snapy@546b1afd80d47a437a92ead745ef525f8335094a (PR head); deck/run: ctest `test_x1_seam_split_radial_exact` and
+  `test_pref_local_seam`, device not stated in the body].
+
+Coverage: the six-panel $E+P$ numbers are measurements reported in the body; no ctest named in it asserts $E+P$
+on six panels. CUDA and several-rank coverage are as in @sec-ch06-dwork.
 
 ### Limits
 
-Pending chengcli/snapy#303.
+::: {.callout-warning title="Limits"}
+On a default run (`face`, switch on) every $E+\mathrm{PE}_d$ check, including `gravity_work_defect()`, measures
+the wrong invariant: check `ie=`+`pe=`. `fixgrav=` is printed only with `cell` + fixer.
+:::
+
+- `cell` without the fixer and `face-wallc` have no exact energy invariant; neither has an oracle that bounds the
+  drift.
+- Periodic $x_1$: the corrected-PE work keeps the one-sided slope at block edges and $P$ is not defined; setup
+  warns once. The fixer refuses periodic and open $x_1$.
+- An implicit scheme refuses any $x_1$ split, so implicit runs have no seam case to test.
+- VIC wall cells of the corrected-PE work are about second order, not fourth: the implicit correction flux is
+  first-order upwind and $O(\Delta t)$ (chengcli/snapy#302); conservation is unaffected.
+- A lone gnomonic block with reflecting lateral walls loses mass under lateral flow, switch on or off
+  (chengcli/snapy#301); the single-block ctest uses radial flow only.
+- Grids other than Cartesian, spherical-polar and gnomonic-equiangle keep the plain face form and $E+\mathrm{PE}_d$.
+- Untested combinations: @sec-ch12-matrix.

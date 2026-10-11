@@ -3,7 +3,8 @@
 <!-- PROVENANCE
 pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: src/mesh/mesh.cpp, src/mesh/meshblock.cpp, src/utils/signal_handler.cpp, tests/test_check_redo_parallel.cpp, tests/test_cycle_diagnostics_parallel.cpp
-status: draft; the gravity-work fixer reduction waits for chengcli/snapy#303
+status: draft; the gravity-work fixer paragraph and its Code rows describe snapy@9ad0936779ae001dba65c9eafccaa7c058686c97
+(main on chengcli/snapy, the #303 squash-merge)
 -->
 
 ### Summary
@@ -60,11 +61,19 @@ only; nothing in the state depends on them.
 
 **Gravity-work fixer.**
 
-::: {.callout-note title="Placeholder: waits for chengcli/snapy#303"}
-The fixer's five-double SUM, its order of summation over local blocks and its effect on reproducibility are
-described once #303 (the gravity-work change) has merged and the pin moves. At the pin the reduction is in
-`MeshImpl::forward` (`MeshImpl::forward`, [`mesh.cpp:331-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L363)).
-:::
+This paragraph describes main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, after chengcli/snapy#303, while the
+rest of the section is pinned at snapy@e894700ff7aee30b52882e5202b16461413780b0; the fixer's reduction code is the same
+at both. The fixer runs only with `gravity-work: cell`, which since #303 is no longer the default, so a default run
+makes no fixer reduction (@sec-ch13-fixgrav). When it runs, after the last stage of each step every block forms five
+float64 numbers on the host in `gravity_work_fixer_sums` ([`meshblock.cpp:844-868`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L844-L868)):
+the stage-weighted $E+\mathrm{PE}_d$ defect, the fluid mass, the mass through the $x_1$ boundary faces, the mass of
+the wall cells and a redo flag. Each is itself a sum over the block's cells, formed by torch on the block's device.
+With one block per process the block all-reduces its vector with SUM directly
+(`gravity_work_fixer_sums`, [`meshblock.cpp:832-839`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L832-L839)). With several local blocks,
+`MeshImpl::forward` sets `defer_gravity_work_fixer` on every block, adds the blocks' vectors into a zero vector in
+block index order, $0,1,\dots$, and makes one allreduce SUM for the process
+(`gravity_work_fixer_sums`, [`mesh.cpp:341-363`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/mesh.cpp#L341-L363)). The order in which the allreduce adds the
+processes' vectors is the backend's; the code does not fix it. Every block then applies the same reduced vector.
 
 **Barriers.** `initialize` holds all processes at a barrier before the first step
 ([`meshblock.cpp:360-366`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L360-L366)); the combines of NetCDF and restart files each have
@@ -83,8 +92,11 @@ a barrier and a mirror barrier; `finalize` ends with a barrier and, if snapy own
 | signal MAX | [`signal_handler.cpp:64-86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L64-L86) | `CheckSignalFlags` | none |
 | cycle-line reductions | [`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086) | `reduce` | none |
 | final barrier and shutdown | [`mesh.cpp:460-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L460-L508) | `finalize` | none |
+| fixer sums of one block | [`meshblock.cpp:844-868`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L844-L868) | `gravity_work_fixer_sums` | `gravity-work: cell` |
+| fixer SUM, one block per process | [`meshblock.cpp:832-839`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L832-L839) | `gravity_work_fixer_sums` | `gravity-work: cell` |
+| fixer SUM, several local blocks | [`mesh.cpp:341-363`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/mesh.cpp#L341-L363) | `gravity_work_fixer_sums` | `gravity-work: cell` |
 
-: Code map of the collectives. {#tbl-ch14-collectives-code}
+: Code map of the collectives; the fixer rows are at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97. {#tbl-ch14-collectives-code}
 
 ### Tests
 
@@ -106,5 +118,7 @@ the pin was not run for this chapter.
   handles its signal, and the others wait in the collective; the comment in
   `CheckSignalFlags` [`signal_handler.cpp:64-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L64-L68) says so.
 - Every collective is blocking and sits on the host, so each costs a device-to-host copy on GPU (@sec-ch14-gpu).
-- The order dependence of the fixer SUM is left to the placeholder above (#303).
+- The fixer SUM is a floating-point sum whose grouping changes with the decomposition (cells per block, blocks per
+  process, process count) and whose order across processes is left to the backend; no test measures its effect
+  (@sec-ch14-repro).
 :::

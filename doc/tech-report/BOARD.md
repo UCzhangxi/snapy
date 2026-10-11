@@ -12,7 +12,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 23:00 PT
+Last update: 2026-10-11 09:20 PT
 
 ## snapy code work (priority: bugs first; report work fills gaps)
 
@@ -58,12 +58,12 @@ PR C: chengcli/snapy#291 (GPU step 1.54x slower)
 ## Queue (take from the top)
 
 1. ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run): @gitlinffff, in progress (see the table above).
-2. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10/14 #45 (8 left: 2 wait for #303, 6 with stated reasons)). Done.
+2. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10/14 #45 (6 left with stated reasons; the 2 #303 ones filled)). Done.
 
-## Waiting on chengcli/snapy#303 (join the queue when it merges)
+## Done after chengcli/snapy#303 merged (main 9ad0936)
 
-6.4, 6.6, 12.8, 13.4, the ch15 rows for #303
+6.4, 6.6, 12.8, 13.4, ch14 (two), ch16 (three), the ch15 rows for #303 (ch03, ch05, ch11, ch12 tables), plus the `gravity-work` default lines in ch06/ch12; these sections cite main 9ad0936, the rest of the book stays at the pin e894700.
 
 ## In the book
 
-ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder; App B gaps for ch7/9/13 #40), ch14 (#34; 2 #303 placeholders), ch15, ch16 (#39, #42: ch13 Limits folded in, 150 items; 3 #303 placeholders), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
+ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.6 and D; 6.4/6.6 at main 9ad0936), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 at main 9ad0936; App B gaps for ch7/9/13 #40), ch14 (#34; #303 items at main 9ad0936), ch15, ch16 (#39, #42: ch13 Limits folded in, 150 items; #303 limits at main 9ad0936), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E

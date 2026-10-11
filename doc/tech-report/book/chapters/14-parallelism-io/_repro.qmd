@@ -3,7 +3,8 @@
 <!-- PROVENANCE
 pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: tests/test_coordinate.cpp, tests/test_cubed_sphere_exchange.cpp, tests/run_seam_backends.py, tests/run_restart_*.py, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp, tests/run_shallow_xy_decomp.py, src/hydro/hydro_forward.cpp, src/bc/bc_dispatch.cpp, src/eos/eos_dispatch.cpp, examples/run_hydro.cpp, examples/straka.cpp, python/__init__.py
-status: draft; the gravity-work fixer item waits for chengcli/snapy#303
+status: draft; the gravity-work fixer item describes snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 (main on
+chengcli/snapy, the #303 squash-merge)
 -->
 
 ### Summary
@@ -77,12 +78,18 @@ The rows, with the line that decides each:
   is not claimed.
 - **Reductions.** MIN and MAX collectives are order independent (@sec-ch14-collectives).
 
-::: {.callout-note title="Placeholder: waits for chengcli/snapy#303"}
-The gravity-work fixer's SUM over blocks and ranks is the one floating-point sum among the collectives that feeds
-back into the state; the SUMs of the cycle line are only printed (@sec-ch14-collectives). Whether its
-round-off makes results depend on the decomposition or the backend, and what the tests show about it, is described
-once #303 (the gravity-work change) has merged and the pin moves.
-:::
+- **Gravity-work fixer SUM.** This item describes main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, after
+  chengcli/snapy#303; the code it cites is unchanged from snapy@e894700ff7aee30b52882e5202b16461413780b0. It applies
+  only with `gravity-work: cell`, which is no longer the default. The fixer's five-double SUM
+  (@sec-ch14-collectives) is the one floating-point sum among the collectives that feeds back into the state (the
+  SUMs of the cycle line are only printed), and its result is written into the state: every cell's energy gets $-\mathcal D\rho_i/M$ (`efix`, [`meshblock.cpp:906-907`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L906-L907)).
+  The terms of $\mathcal D$ and $M$ are grouped by block (a torch sum over the block's cells on its device), then
+  by process (block index order), then across processes (the backend's order). A different decomposition, device or
+  backend regroups them, so $\mathcal D$ and $M$ can differ in the last bits and so can every cell's energy. No test
+  measures this: `test_gravity_work_fixer_python` runs one block in one process on CPU, the six-panel arm of
+  `test_flux_covariance_seams_python` runs six local blocks in one process and asserts conservation of
+  $E+\mathrm{PE}_d$ to $10^{-12}$, not agreement with another decomposition, and no test runs the fixer on more
+  than one process or compares two decompositions or backends with it on.
 
 ### Code
 
