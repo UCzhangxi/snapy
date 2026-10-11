@@ -1,0 +1,164 @@
+# Renders the snapy Technical Report (doc/tech-report/book) to HTML and PDF and runs its render gate, for every
+# pull request into the tech-report branch and every push to it. The PDF and the LaTeX log are kept as artifacts.
+name: tech-report
+
+on:
+  pull_request:
+    branches: [tech-report]
+    paths:
+      - "doc/tech-report/**"
+      - "!doc/tech-report/BOARD.md"  # the chapter board alone does not need a render
+      - ".github/workflows/tech-report.yml"
+  push:
+    branches: [tech-report, ci/tech-report-render]
+    paths:
+      - "doc/tech-report/**"
+      - "!doc/tech-report/BOARD.md"  # the chapter board alone does not need a render
+      - ".github/workflows/tech-report.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tech-report-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  QUARTO_VERSION: "1.10.19"
+  # Gates that fail on the branch as it stands and are reported, not failed, here (render_gate.py's report mode).
+  # "freeze tracked": only ch05 has a committed _freeze/, so CI executes the other chapters' cells, as a fresh
+  # clone does. Every other gate failure fails the run.
+  REPORT_ONLY_GATES: "freeze tracked"
+  # Items of the "log" gate that are reported, not failed: overfull boxes are typography, and their count depends on
+  # the TeX Live release. A log gate with any other item (missing character, multiply defined, ...) fails the run.
+  REPORT_ONLY_LOG_ITEMS: "overfull box > 10 pt"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: doc/tech-report
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install snapy-report and Jupyter
+        run: pip install -e src jupyter
+
+      - name: Install pdftotext
+        run: sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
+
+      - name: Set up Quarto and TinyTeX
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ env.QUARTO_VERSION }}
+          tinytex: true
+
+      - name: Name the outputs
+        id: name
+        run: |
+          sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "short=${sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      # render_gate.py runs the source gates, renders book/ to HTML and PDF (quarto render -M latex-clean:false,
+      # so the LaTeX log is kept), then gates the render. Its verdict is judged in the gate step below.
+      - name: Render the book
+        id: render
+        run: |
+          set +e
+          python3 tools/render_gate.py book/ 2>&1 | tee "$RUNNER_TEMP/gate.txt"
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set -e
+          pdf=$(ls book/_book/*.pdf 2>/dev/null | head -1)
+          if [ -z "$pdf" ]; then
+            echo "::error::the render produced no PDF in doc/tech-report/book/_book/"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$pdf" "$RUNNER_TEMP/out/snapy-tech-report-${{ steps.name.outputs.short }}.pdf"
+          ls -l "$RUNNER_TEMP/out"
+
+      - name: Render gate (report mode)
+        env:
+          GATE_RC: ${{ steps.render.outputs.rc }}
+        run: |
+          python3 - "$RUNNER_TEMP/gate.txt" <<'EOF'
+          import os, re, sys
+          text = open(sys.argv[1]).read().splitlines()
+          rc = int(os.environ["GATE_RC"])
+          allowed = {g.strip() for g in os.environ["REPORT_ONLY_GATES"].split(",") if g.strip()}
+          i = max((n for n, l in enumerate(text) if re.match(r"\d+ gate\(s\) passed", l)), default=None)
+          summary = text[i:] if i is not None else []
+          fail = next((l.split(":", 1)[1] for l in summary if l.startswith("  fail: ")), "")
+          fail = {g.strip() for g in fail.split(",") if g.strip()}
+          # the log gate's own items, e.g. "  ✗ overfull box > 10 pt: 1 (...)", between "[log gate]" and the next gate
+          log_items, in_log = set(), False
+          for l in text:
+              if l.startswith("["):
+                  in_log = l.startswith("[log gate]")
+              elif in_log and (m := re.match(r"\s+✗ (.+?): \d+ \(", l)):
+                  log_items.add(m.group(1))
+          log_ok = {g.strip() for g in os.environ["REPORT_ONLY_LOG_ITEMS"].split(",") if g.strip()}
+          if "log" in fail and log_items and log_items <= log_ok:
+              allowed.add("log")
+          real = sorted(fail - allowed)
+          print("::notice title=render gate (exit %d)::%s" % (rc, "%0A".join(summary) or "no verdict printed"))
+          if rc == 1 and fail & allowed:
+              print("::warning title=render gate report mode::not failing the run on: " + ", ".join(sorted(fail & allowed))
+                    + ("%0Alog items: " + ", ".join(sorted(log_items)) if "log" in fail & allowed else ""))
+          if rc not in (0, 1, 2) or not summary:
+              print("::error title=render gate::the gate crashed or printed no verdict (exit %d)" % rc)
+              sys.exit(1)
+          if rc == 1 and (real or not fail):
+              print("::error title=render gate::failed: " + (", ".join(real) or "see the gate output"))
+              sys.exit(1)
+          print("render gate: %s" % ("pass" if rc == 0 else "pending" if rc == 2 else "only report-mode failures"))
+          EOF
+
+      - name: Upload the PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapy-tech-report-${{ steps.name.outputs.short }}
+          path: ${{ runner.temp }}/out/*.pdf
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Collect the logs
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs"
+          cp book/*.log "$RUNNER_TEMP/gate.txt" "$RUNNER_TEMP/logs/" 2>/dev/null || true
+
+      - name: Upload the LaTeX log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tech-report-logs-${{ steps.name.outputs.short }}
+          path: ${{ runner.temp }}/logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # The tail of the failing log as annotations, which the public API serves without a token.
+      - name: Show the failing log
+        if: failure()
+        run: |
+          annotate() {  # $1 title, $2 file: its last 40 lines as one ::error:: annotation
+            [ -s "$2" ] || return 0
+            msg=$(tail -n 40 "$2" | sed 's/\x1b\[[0-9;]*m//g' | sed 's/%/%25/g; s/\r/%0D/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=$1 (last 40 lines)::$msg"
+          }
+          annotate "render gate output" "$RUNNER_TEMP/gate.txt"
+          log=$(ls -t book/*.log 2>/dev/null | head -1)
+          [ -n "$log" ] && annotate "LaTeX log $log" "$log"
+          true
