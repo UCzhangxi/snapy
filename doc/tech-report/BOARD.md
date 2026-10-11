@@ -7,8 +7,10 @@ https://github.com/UCzhangxi/snapy/blob/tech-report/doc/tech-report/BOARD.md
 Rules (Xi, 2026-10-10): the unit of work is a whole chapter. When you finish, take the TOP queue item and say
 "taking X" in the report thread first. Open a draft PR into tech-report early. An owner silent 30 min past an ETA
 loses the chapter to the next free person. Queue empty: cross-review a finished chapter.
+Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
+their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 20:1x PT, tech-report 9c2930c
+Last update: 2026-10-10 20:2x PT, tech-report 4729a0d
 
 ## In progress
 
