@@ -12,7 +12,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 23:00 PT
+Last update: 2026-10-11 08:45 PT
 
 ## snapy code work (priority: bugs first; report work fills gaps)
 
@@ -60,9 +60,20 @@ PR C: chengcli/snapy#291 (GPU step 1.54x slower)
 1. ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run): @gitlinffff, in progress (see the table above).
 2. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10/14 #45 (8 left: 2 wait for #303, 6 with stated reasons)). Done.
 
-## Waiting on chengcli/snapy#303 (join the queue when it merges)
+## Waiting on chengcli/snapy#303 (merged; now waiting on the round-pin move)
 
-6.4, 6.6, 12.8, 13.4, the ch15 rows for #303
+6.4, 6.6, 12.8, 13.4, the ch14 and ch16 placeholders, the ch15 rows for #303
+
+chengcli/snapy#303 merged on 2026-10-11 as `chengcli/snapy` main
+`9ad0936779ae001dba65c9eafccaa7c058686c97` (squash; its tree
+`8f90eca2e18df12938f754196c06550827ce4d86` equals the final review head `546b1af`), so the first half of the
+condition on these rows is met. The second half is not: every one of these placeholders is written "once #303 has
+merged **and the pin moves**", and the round pin of STYLE.md section 3.1 is still
+`e894700ff7aee30b52882e5202b16461413780b0` (the #297 squash). Each row describes code that #303 changed, so it
+cannot be written at the current pin, and STYLE.md section 3.1 reserves the pin move to the editor ("authors do
+not edit shas by hand"). See `reviews/pin-move-9ad0936779ae001dba65c9eafccaa7c058686c97.md` for the survey: what
+the move costs, which citations do not survive it, and the row-by-row block list. @happysky19 opened that survey
+in #47; the rows themselves are not filled and stay open until the editor rules on the pin.
 
 ## In the book
 
