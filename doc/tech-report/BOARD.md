@@ -10,7 +10,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 20:2x PT, tech-report 4729a0d
+Last update: 2026-10-10 20:3x PT, tech-report 2573011
 
 ## In progress
 
@@ -18,8 +18,8 @@ Last update: 2026-10-10 20:2x PT, tech-report 4729a0d
 |---|---|---|---|---|
 | ch2 fixes, then ch13 (13.4 waits for #303) | @chengcli | ch2 fixes commit ready locally, checking before push | after the ch2 PR | - |
 | ch7 Time integration (7.A + 7.B) | @gitlinffff | PAUSED ~2 h for a #303 check (straka over-CFL); 7.1-7.3 written, 7.4-7.13 to come | ~3-4 h from 19:0x (author estimate) | #35 (0238189) |
-| ch14 Parallelism, GPU, restart/IO, reproducibility | @zoeyzyhu | DRAFT COMPLETE, render green; to merge once the PR is out of draft (2 #303 placeholders) | done | #34 (226f978) |
-| ch6 Gravity and energy: 6.1-6.3, 6.5 + 3 figure functions | @happysky19 | not yet acknowledged | - | - |
+| ch14 Parallelism, GPU, restart/IO, reproducibility | @zoeyzyhu | READY, render green; merging (2 #303 placeholders follow later) | done | #34 (226f978) |
+| ch6 Gravity and energy: 6.1-6.3, 6.5 + 3 figure functions | @XinyueWang05 | reassigned 20:3x (previous owner silent since 17:12); starts after Appendix D | after App D | - |
 | Appendix B: derivation index | @zoeyzyhu | started | after the skeleton | - |
 | Appendix D: environment-switch table | @XinyueWang05 | drafted: 20 switches, 54 citations pass, full-book render clean vs base; patch docs to be applied by the lead | review + ~30 min fixes | patch eda1ea4 |
 
