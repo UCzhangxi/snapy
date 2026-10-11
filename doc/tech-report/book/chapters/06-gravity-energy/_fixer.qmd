@@ -66,7 +66,11 @@ the mass that crossed the $x_1$ wall faces to another. After the last stage the 
 mass, the wall-face mass, the wall cells' mass and a redo flag into five numbers; a `Mesh` with several blocks
 adds the blocks first, and one allreduce sums them over ranks. A step the redo check will discard (a limiter
 repair, a NaN, a failed implicit solve) is left alone. Then every cell gets its share and the physical
-ghosts are refilled. The sum over ranks is decomposition-dependent at round-off.
+ghosts are refilled. At snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 a `Mesh` adds its local blocks one after another in
+`gravity_work_fixer_sums` ([`mesh.cpp:348-355`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/mesh.cpp#L348-L355)) and one `allreduce` adds the ranks
+([`meshblock.cpp:834-837`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L834-L837)), so the order of the floating-point additions follows
+the decomposition and the sum can differ between decompositions at round-off. That difference has not been
+measured.
 
 ```{python}
 #| label: fig-ch06-fixer-flow
@@ -127,7 +131,8 @@ beyond round-off; for open boundaries set `gravity-work-fixer: false`.
 :::
 
 - It corrects the integral, not the local $O(h^2)$ error of the cell work.
-- The sum over ranks depends on the decomposition at round-off.
+- The order of the sums over blocks and ranks follows the decomposition, so the defect can differ between
+  decompositions at round-off; not measured.
 - At very large implicit steps sealed-wall round-off can exceed the bound (refusals near Courant 2500 to 2750 in
   #285); not universal.
 - Combinations with the study switches: @sec-ch12-matrix.

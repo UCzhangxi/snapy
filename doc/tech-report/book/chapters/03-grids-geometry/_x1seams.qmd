@@ -142,7 +142,14 @@ evidence).
 ::: {.callout-warning title="Limits"}
 - Blocks of one process in a split column must run concurrently; a block waits at most 5 minutes for its anchor.
 - At most 16 blocks per process can exchange block messages.
-- `SNAP_GRAVITY_WORK_RADIAL_EXACT` keeps a one-sided slope at block edges, so a split column differs from one block.
+- At the pin `SNAP_GRAVITY_WORK_RADIAL_EXACT` kept a one-sided slope at block edges, so a split column differed from
+  one block. Since chengcli/snapy#303 (main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97) a seam cell takes the centred slope of one block through
+  `corrected_pe_work_seam` ([`hydro_forward.cpp:836-851`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L836-L851)), and `test_x1_seam_split_radial_exact`
+  requires a gap of exactly 0 in `radial_exact_split_gap` ([`test_x1_seam_split.cpp:256-277`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L256-L277)). A
+  periodic $x_1$ column still keeps the one-sided slope at its block edges, where `x1_neighbors`
+  returns no neighbour ([`hydro_forward.cpp:832-837`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L832-L837)), and setup warns with
+  `TORCH_WARN_ONCE` ([`hydro.cpp:83-96`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L83-L96)). An implicit scheme refuses any $x_1$ split with
+  `TORCH_CHECK` ([`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430)).
 :::
 
 A split column is not bitwise equal to one block; the tests use $10^{-13}$ and $10^{-12}$. Issue #250 recorded, before
