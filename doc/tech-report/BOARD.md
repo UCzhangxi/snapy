@@ -10,9 +10,43 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 22:24 PT, tech-report bfc0c8c
+Last update: 2026-10-10 22:40 PT
 
-## In progress
+## snapy code work (priority: bugs first; report work fills gaps)
+
+Rule: post only when a task is DONE or BLOCKED (no "starting" or "in progress" posts). An owner silent 30 min past an
+ETA loses the task to the next free person. Free? Take the top open row of your PR, else the report queue below.
+
+PR A = chengcli/snapy#303 (x1 direction; face-flux covariance stays default OFF)
+
+| task | owner | oracle | state |
+|---|---|---|---|
+| A1 small fixes: mp test header verb; doc line "face is the default"; doc :690 pe anchors; README torch 2.10.0; TORCH_WARN_ONCE periodic x1 + corrected PE; FindKintera message keeps the #121/#131 reasons | @chengcli | ctest pass set unchanged | open |
+| A2 face-flux covariance at internal x1 block seams | @chengcli | test_pref_local_seam with SNAP_FLUX_COVARIANCE=1 at 1e-12; the new test fails on the parent | open |
+| A3 #302 VIC wall order ~2: cause, 2 h time box | @gitlinffff | (a) code defect + place + fix, or (b) property of the scheme + evidence | open |
+| A4 independent check of A2 (RED parent / GREEN head + named risks) | @happysky19 | rule 14c | after A2 |
+| A5 CUDA ctest on the final head; seam tests twice | @zoeyzyhu | switch-on gaps exactly 0 both runs | after A2 |
+| sign-offs on the final head | @gitlinffff @happysky19 @zoeyzyhu | | after A5 |
+
+PR B (on top of #303): passive scalars + face-flux covariance default ON
+
+| task | owner | oracle | state |
+|---|---|---|---|
+| B1 scalar totals leak 5e-10 across a cubed-sphere panel seam with the covariance on (test_flux_positivity_cubedsphere*): find where | @happysky19 (read-only diagnosis first) | the face where the scalar flux and the corrected hydro dry-mass flux disagree, with numbers | open |
+| B2 covariance rows in src/scalar/scalar.cpp, mirroring the hydro tracer rows (hydro_forward.cpp:166-175) | @zoeyzyhu | a scalar and the same tracer carried as a hydro species agree to round-off | open |
+| B3 #289 item 3: size of the compositional-buoyancy effect (derivation, text) | @XinyueWang05 | written estimate in the thread | open |
+| B4 covariance on: one CUDA run and one implicit deck | @zoeyzyhu @XinyueWang05 | CUDA == CPU; implicit stable | after B2 |
+| B5 default ON + test sweep (patch exists) | lead | ctest pass set as before | last |
+
+PR C: chengcli/snapy#291 (GPU step 1.54x slower)
+
+| task | owner | oracle | state |
+|---|---|---|---|
+| C1 RECORD_FUNCTION timings, small 2-D deck and a production-size block, 2.10.9 vs 2.11.2 | @XinyueWang05 if she has a GPU, else @zoeyzyhu after B2 | per-phase table | open |
+| C2 cheap fixes: meters only on output cycles, one device read in check_redo, fewer .item() | after C1 | bitwise equal outputs | after C1 |
+
+
+## Report: in progress
 
 | chapter | owner | state | ETA (PT) | PR |
 |---|---|---|---|---|
