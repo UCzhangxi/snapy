@@ -10,7 +10,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 22:05 PT, tech-report 951f1db
+Last update: 2026-10-10 22:24 PT, tech-report bfc0c8c
 
 ## In progress
 
@@ -21,7 +21,7 @@ Last update: 2026-10-10 22:05 PT, tech-report 951f1db
 
 ## Queue (take from the top)
 
-1. Fill the gaps the Appendix B index shows (ch7/9/13 done in #40; in progress: ch3/8/11/12 + D rows @happysky19; ch1/2/4/5 @gitlinffff after the #303 review; ch10, ch14 open)
+1. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10, ch14 open)
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
 
