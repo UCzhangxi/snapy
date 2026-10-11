@@ -71,3 +71,20 @@ symbol enters NOTATION.md.
 - `_sed.qmd`: $a_n$ particle radius, $\rho_{\mathrm p,n}$ particle density, $\beta_n$ Cunningham factor, $\lambda$ mean
   free path, $\mathrm{Kn}$ Knudsen number, and $m$, $d$, $\epsilon$ for the background gas's molecular mass, diameter
   and Lennard-Jones well depth ($k_{\mathrm B}$ as in chapter 2).
+
+## Chapter 6 local symbols (draft)
+
+Owners: chapter 6 / editor. Each scheme file lists its symbols in a "Local symbols" line; remove that line when the
+symbol enters NOTATION.md.
+- `_cell.qmd`: $\rho^{\mathrm{hs}}_i$, the hydrostatic-correction density of chapter 5 (code `rho_grav`).
+- `_face.qmd`: $m_i=\rho_iv_{1,i}$, the $x_1$ mass flux density at cell $i$ (code `rhov`).
+- `_fixer.qmd`: $\varpi_s$, the weight of stage $s$'s increment in the step (code `cw`); not $c_s$, the sound speed.
+- `_vic.qmd`: $\mathbf e_m$, the unit row vector of the normal-momentum unknown; $[\mathsf X]_\rho$, $[\mathsf X]_E$,
+  the mass and energy rows of a block $\mathsf X$.
+- NOTATION section 5 describes $F^{\mathrm{ref}}$ (code `bflux1`) as "the reference-state part of the $x_1$ mass
+  flux"; in the code it is the Riemann solver's $x_1$ mass flux before the positivity limiter and sedimentation
+  (src/hydro/hydro_forward.cpp:405-408@e894700ff7aee30b52882e5202b16461413780b0). Chapter 6 uses the code's
+  meaning; the editor should reword the NOTATION entry.
+- NOTATION section 7 writes the gravity source Jacobian as $\mathsf\Phi$, but the PDF's sans-serif font has no
+  sans capital Phi (U+1D6F7): the render drops the glyph. `_vic.qmd` writes it $\boldsymbol\Phi$ (STYLE 5, bold
+  Greek); the editor should change the NOTATION entry to match.

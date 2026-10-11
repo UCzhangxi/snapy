@@ -1,0 +1,146 @@
+## Face form of the gravity work (`gravity-work: face`, `face-wallc`) {#sec-ch06-face}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
+sources: OUTLINE.md 6.2; docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0
+         sections 1-4, 8.3; sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md sections 2.4, 3.4-3.5; code links below
+status: draft
+-->
+
+Local symbols: $m_i=\rho_iv_{1,i}$ is the $x_1$ mass flux density at cell $i$ (code `rhov`); $\mathcal K$ is the
+curvature flux of NOTATION section 3. Tracked in ISSUES.md.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Books the $x_1$ gravity work as the flux difference of potential energy across a cell's
+faces, so that $E+\mathrm{PE}_d$ is conserved exactly. **Switch.** `gravity-work: face` (or `face-wallc`, which
+keeps the cell work in the two $x_1$ wall cells); default off. **Turns off.** The gravity-work fixer.
+**Order.** Second order; fourth in the interior with the cp3/cp5/weno5 curvature flux, first in the wall cells.
+**Defining equation.** @eq-ch06-dwork-face.
+:::
+
+The face form books, in cell $i$, the work the scheme's own $x_1$ mass fluxes do against gravity: each face's
+flux carries mass from the face potential to the cell's centroid potential. Its derivation is the template of
+@eq-ch06-dwork-booked with $P=\mathrm{PE}_d$, written out as @eq-ch06-dwork-face in @sec-ch06-dwork. This section
+covers what the code does around it: it replaces the cell work the forcing added, it adds the curvature flux for
+the high-order reconstructions, it keeps the cell work in the wall cells under `face-wallc`, and it needs the
+implicit operator to carry it when an implicit scheme is on.
+
+With `gravity-work: face` the corrected-PE work of @sec-ch06-dwork is on by default
+(`SNAP_GRAVITY_WORK_RADIAL_EXACT`); this section describes the face form with that switch off, which is how the
+plain face-form tests run. Aliases: the face form and the fixer are chengcli/snapy#283; the curvature flux is
+"$\mathcal K$" in the derivation note.
+
+### Derivation
+
+The stage adds the cell work $W^{\mathrm{cell}}$ through the forcing (@sec-ch06-cell). The face form replaces it:
+the energy row receives
+
+$$
+\begin{aligned}
+\Delta E_i &\leftarrow \Delta E_i + \Delta t\,\big(W^{\mathrm{face}}_i - W^{\mathrm{cell}}_i - \nabla_{\!1}\!\cdot g_1\mathcal K\big),\\
+\mathcal K_{i-1/2} &= \tfrac{1}{12}(x_{1,i}-x_{1,i-1})(m_i-m_{i-1}),
+\end{aligned}
+$$ {#eq-ch06-face-energy}
+
+with $\mathcal K=0$ on every physical $x_1$ face and only for cp3, cp5 and weno5 reconstructions in $x_1$.
+@eq-ch06-face-energy is booked as `gravity_energy_correction`
+([`hydro_forward.cpp:891`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L891)),
+with the curvature term from `curv_flux1`
+([`hydro_forward.cpp:828-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L828-L849)).
+
+The face form conserves $E+\mathrm{PE}_d$ exactly on a closed column (`cellface_check.py` `[C1]`, to
+$3.9\times10^{-15}$ relative on Cartesian and spherical-polar columns). $\mathcal K$ does not change that: it is a
+flux, zero at both walls, so its divergence sums to zero (`[C4]`, $5\times10^{-17}$). Its purpose is accuracy. A
+high-order reconstruction's face flux exceeds the point value $m$ by $\tfrac{h^2}{12}(\partial_1^2m+\dots)$, and the
+face form books that excess as work; $\nabla_{\!1}\!\cdot g_1\mathcal K$ removes the $\partial_1^2m$ part. Against
+the exact cell average of $g_1m$ and with exact point fluxes, the face form is second order in interior and wall
+cells, and the face form with $\mathcal K$ is fourth order in the interior and first order in the two wall cells,
+where $\mathcal K$ is present on one face only (`[C3]`, `[C4]`; orders 2.00 and 2.00, then 3.99 and 1.00, at
+$n_1$ = 128 to 256). `face-wallc` books $W^{\mathrm{cell}}$ in the two wall cells, so its defect is
+exactly their cell-minus-face work (`[C5]`). Provenance of every `[Cn]` as in @sec-ch06-cell.
+
+### Numerical method
+
+@fig-ch06-face-stencil shows what the face form reads: the two $x_1$ face fluxes of cell $i$ after the positivity
+limiter and sedimentation, the face and centroid potentials, and, with $\mathcal K$, $m$ in cells $i-1$, $i$ and
+$i+1$. The fluxes are the total mass flux, the dry row plus every mass-carrying species row. Physical $x_1$ faces
+are the only ones where $\mathcal K$ is zeroed; seams between blocks keep it, reading the exchanged ghost. The
+work is explicit and added once per stage. With an implicit scheme and `gravity-work: face` the correction is
+added before the solve and the solve carries the face work in its energy row (@sec-ch06-vic); with `face-wallc`
+it is swapped in after the solve. @fig-ch06-face-order shows the measured orders.
+
+```{python}
+#| label: fig-ch06-face-stencil
+#| fig-cap: "What the face form reads. (a) Cell i: the potential flux phi F at its two x1 faces (orange triangles) and the centroid potential phi_i (sky-blue dot), weighted by the distances from the centroid to each face. (b) The curvature flux K (bluish-green triangles) at the bottom wall: it is zero on the wall face (vermillion label), so wall cell 0 sees K on one face only; the ghost cell (hatched) is not read."
+#| fig-alt: "Two panels: three cells with face markers and a centroid marker; and a wall with a hatched ghost cell, three interior cells and K markers on the two interior faces."
+#| echo: false
+from snapy_report.ch06.fig_face_stencil import make_fig
+make_fig()
+```
+
+```{python}
+#| label: fig-ch06-face-order
+#| fig-cap: "Max error of the booked work against the exact cell average of g_1 m, interior and wall cells, for the face form (vermillion) and the face form with the curvature flux K (bluish green), with exact point fluxes on 32 to 256 cells. Dotted blue lines are reference slopes h^1, h^2 and h^4. K makes the interior fourth order and leaves the wall cells first order."
+#| fig-alt: "Log-log plot of four error curves against the number of cells with three dotted reference slopes."
+#| echo: false
+from snapy_report.ch06.fig_face_order import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| mass and potential fluxes | [`hydro_forward.cpp:777-807`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L807) | `potential_flux1` | `gravity-work` |
+| face work | [`hydro_forward.cpp:809-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L809-L811) | `face_gravity_work` | `gravity-work` |
+| curvature flux | [`hydro_forward.cpp:828-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L828-L849) | `curv_flux1` | `reconstruct` |
+| face minus cell, wall cells | [`hydro_forward.cpp:890-898`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L898) | `gravity_energy_correction` | `face-wallc` |
+| x1 wall test | [`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209) | `is_x1_wall` | |
+| implicit warning | [`hydro.cpp:116-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L116-L126) | `face_work_in_operator` | `implicit-scheme` |
+
+: Code map of the face form. {#tbl-ch06-face-code}
+
+1. Sum the total $x_1$ mass flux over the dry and species rows as `vertical_mass_flux1`
+   ([`hydro_forward.cpp:777-780`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L780)).
+2. Form the face and cell potentials and the two divergences in `potential_flux_div`
+   ([`hydro_forward.cpp:794-807`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L794-L807)).
+3. Book the face work as `face_gravity_work` ([`hydro_forward.cpp:809-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L809-L811)).
+4. Subtract the curvature flux for cp3, cp5 and weno5, zeroed at physical faces, as `curv_flux1`
+   ([`hydro_forward.cpp:828-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L828-L849)).
+5. Replace the cell work, keeping it in the wall cells under `face-wallc`, as `gravity_energy_correction`
+   ([`hydro_forward.cpp:890-898`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L898)).
+
+A user can hit the setup warning "gravity-work: face-wallc with an implicit scheme: the face work sits outside the
+implicit operator" (also for `face` with `implicit-scheme: 0`).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_forcing.release` | curvature excess removed | $10^{-9}$ abs. | test threshold |
+| `test_forcing.release` | no horizontal mass divergence | $10^{-10}$ rel. | test threshold |
+| `test_gravity_work_fixer_python` | face-wallc arm, reported | n/a | reported only |
+| `test_implicit_face_work_operator_python` | rest column, Courant 66-657 | $10^{-11}$ | `EPE_TOL` |
+
+: Tests of the face form; assertions read from the test sources at the pin, not run. {#tbl-ch06-face-tests}
+
+`vertical_gravity_work_removes_the_curvature_excess` sets a quadratic $m$ on six cells. It requires the off-wall
+excess to equal $\Delta t\,\tfrac{h^2}{12}\cdot2\cdot0.04\cdot0.03$ for cp3 and five-point reconstructions
+and zero otherwise, to $10^{-9}$ absolute, as `expected` ([`test_forcing.cpp:1097-1104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L1097-L1104)). The
+plain face form is tested with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` set in the registration
+([`CMakeLists.txt:266-277`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L266-L277)). The curvature test also has a CUDA case.
+Measured values at the pin are **missing evidence**.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+With an implicit scheme, the face work must be inside the implicit operator; `face-wallc` books it after the solve,
+and a tall column then blows up at acoustic Courant about 66 (chengcli/snapy#283).
+:::
+
+- The work is $O(h^2)$ in every cell without $\mathcal K$, and first order in the wall cells with it.
+- `face-wallc` does not conserve $E+\mathrm{PE}_d$ in its two wall cells (`[C5]`).
+- The orders above use exact point fluxes; with the scheme's own fluxes the reconstruction and Riemann errors add.
+- Combinations with the study switches: @sec-ch12-matrix.

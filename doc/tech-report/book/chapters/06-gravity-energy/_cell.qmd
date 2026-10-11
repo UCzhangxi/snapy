@@ -1,0 +1,148 @@
+## Constant gravity and the cell form of the gravity work (`gravity-work: cell`) {#sec-ch06-cell}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
+sources: OUTLINE.md 6.1; sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md sections 2.1-2.4, 3.4-3.5; code links below
+status: draft
+-->
+
+Local symbols: $\rho^{\mathrm{hs}}_i$ is the hydrostatic-correction density of @sec-ch05 (code `rho_grav`).
+Tracked in ISSUES.md.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Applies constant gravity as a body force on the momenta and books the work $\rho v_1g_1$ into
+$E$ in the same cell; only the mass the positivity limiter and sedimentation add to the Riemann flux is booked in
+face form. **Switch.** YAML `forcing/const-gravity/gravity-work: cell`, the default. **Implies.** The
+gravity-work fixer (@sec-ch06-fixer), on by default with it. **Order.** Second order against the exact work, but
+no exact energy invariant. **Defining equation.** @eq-ch06-cell-work.
+:::
+
+`const-gravity` is the only gravity snapy has: a constant vector $(g_1, g_2, g_3)$ in m s$^{-2}$, read from the
+`forcing` block. It adds $\rho g_a$ to each momentum and $\rho v_ag_a$ to the total energy, in every cell and at
+every stage. The $x_1$ part is scaled by the non-hydrostatic factor $\alpha_{\mathrm{nh}}$; the rest of the
+$x_1$ gravity, $(1-\alpha_{\mathrm{nh}})$, is applied through the hydrostatic pressure correction of
+@sec-ch05. With `gravity-work: cell` the energy term stays as it is: the work is booked in the cell where the
+force acts. That is the simplest choice and the default, and it is accurate cell by cell; its cost is that it
+does not conserve total energy plus potential energy, because the work of the mass crossing a face is booked in
+the two neighbouring cells at their own centroids, not where the mass crosses. The gravity-work fixer repairs the
+integral of that defect once per step.
+
+`gravity-work` takes `cell`, `face` or `face-wallc`; any other value is refused when the forcing is read and
+again when the hydro module is built from Python. $g_2$ and $g_3$ always book cell work only.
+
+### Derivation
+
+The template of @eq-ch06-dwork-booked says that a scheme conserves $E+P$ exactly when its work satisfies
+$W_iV_i = -\dot P_i - \Delta_i[A\phi F]$ for some discrete potential energy $P$. The cell form does not start from
+a $P$. It books
+
+$$
+\begin{aligned}
+W^{\mathrm{cell}}_i &= \alpha_{\mathrm{nh}}\,\rho_iv_{1,i}g_1 + (1-\alpha_{\mathrm{nh}})\,v_{1,i}\,\rho^{\mathrm{hs}}_i ,\\
+W_i &= W^{\mathrm{cell}}_i + W^{\mathrm{face}}_i[F-F^{\mathrm{ref}}] ,
+\end{aligned}
+$$ {#eq-ch06-cell-work}
+
+where $\rho^{\mathrm{hs}}_i$ is the hydrostatic-correction density `rho_grav` of @sec-ch05,
+$W^{\mathrm{face}}[\cdot]$ is the face form @eq-ch06-dwork-face evaluated on the flux in brackets, $F$ is the total
+$x_1$ mass flux after the positivity limiter and sedimentation and $F^{\mathrm{ref}}$ is the flux the Riemann
+solver returned. The first term is added in `ConstGravityImpl::forward` from `grav1`
+([`const_gravity.cpp:48-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L48-L52))
+and, for $\alpha_{\mathrm{nh}}<1$, by the hydrostatic correction; the second is booked as `gravity_energy_correction`
+([`hydro_forward.cpp:858-859`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L858-L859)),
+the face work of the flux minus `bflux1`
+([`hydro_forward.cpp:784-788`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L784-L788)).
+When neither the limiter nor sedimentation changed the flux, $F=F^{\mathrm{ref}}$ and the cell work is all there
+is (check line `[C2]`).
+
+Summing $V_i$ times @eq-ch06-cell-work over a closed column and adding the potential-energy change
+$\sum_iV_i\phi_i\dot\rho_i$ gives the step's defect of $E+\mathrm{PE}_d$. Since the face form alone makes that
+sum vanish (@eq-ch06-dwork-booked with $P=\mathrm{PE}_d$), the defect is
+
+$$
+\mathcal D = \Delta t\sum_iV_i\big(W^{\mathrm{cell}}_i - W^{\mathrm{face}}_i[F^{\mathrm{ref}}]\big),
+$$ {#eq-ch06-cell-defect}
+
+per stage, before the stage weights of @sec-ch06-fixer. It does not telescope: each face's flux enters the two
+cells at their centroid potentials in the face form, but enters the cell form only through $\rho_iv_{1,i}$,
+which is not the face flux. `cellface_check.py` `[C2]` measures a defect of $1.6\times10^{-2}$ of
+$\sum_iV_i\lvert W^{\mathrm{cell}}_i\rvert$ on a random closed column. Locally the cell form is as accurate as the
+face form, second order against the exact cell average of $\rho v_1g_1$; it is the budget, not the local error,
+that it gets wrong. Checks: `src/snapy_report/ch06/cellface_check.py`, output `cellface_check.out` [sha: the
+formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the check itself; run:
+`python3 cellface_check.py`, numpy, double].
+
+### Numerical method
+
+The forcing runs inside the stage, with the other forcings, on the primitive state of the stage start, and its
+increment is scaled by $\Delta t$ like every other term, in the loop over `forcings`
+([`hydro_forward.cpp:764`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L764)).
+Everything is a cell average; the body force and its work are pointwise in each cell, with no stencil, so walls,
+seams and ghosts play no part. The face part of @eq-ch06-cell-work reads the two $x_1$ faces of the cell and is
+computed after the $x_1$ flux is final, that is after the positivity limiter and sedimentation. With an implicit
+scheme the vertical implicit operator linearises the same cell work (@sec-ch06-vic). @fig-ch06-cell-defect shows
+the per-cell term whose sum is @eq-ch06-cell-defect.
+
+```{python}
+#| label: fig-ch06-cell-defect
+#| fig-cap: "Per-cell contribution V(W^cell - W^face) to the E + PE_d defect of the cell form, on a random closed 24-cell column (nondimensional, g_1 = -10, one stage of length 0.01). The bars do not cancel: their sum is the defect the gravity-work fixer removes."
+#| fig-alt: "Bar chart of 24 vermillion bars of both signs along x1 from 0 to 1, with a horizontal zero line."
+#| echo: false
+from snapy_report.ch06.fig_cell_defect import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| keys and defaults | [`const_gravity.cpp:12-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L12-L44) | `from_yaml` | `const-gravity` |
+| body force and cell work | [`const_gravity.cpp:46-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L65) | `forward` | `grav1` |
+| cell mode flag | [`hydro_forward.cpp:225-231`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L225-L231) | `gw_cell` | `gravity-work` |
+| Riemann flux kept | [`hydro_forward.cpp:405-408`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L405-L408) | `bflux1` | `gravity-work` |
+| face work of $F-F^{\mathrm{ref}}$ | [`hydro_forward.cpp:784-788`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L784-L788) | `vertical_mass_flux1` | `gravity-work` |
+| hydrostatic part | [`hydro_forward.cpp:850-857`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L850-L857) | `original_gravity_work` | `non-hydrostatic` |
+| setup checks | [`hydro.cpp:55-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L68) | `gravity_work` | `gravity-work` |
+
+: Code map of the constant gravity and the cell form. {#tbl-ch06-cell-code}
+
+1. In `from_yaml`, read `grav1`..`grav3` (default 0), `non-hydrostatic` (default 1, refused outside $[0,1]$) and
+   the work mode `gravity_work` (default `cell`) ([`const_gravity.cpp:22-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L22-L34)).
+2. Default `gravity-work-fixer` to true with `cell`, and refuse it with a face form when $g_1\neq0$, in
+   `gravity_work_fixer` ([`const_gravity.cpp:35-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L35-L41)).
+3. In `forward`, add the body force and the cell work, the $x_1$ part scaled by `non_hydrostatic`
+   ([`const_gravity.cpp:48-62`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L48-L62)).
+4. Keep the Riemann mass flux as `bflux1` ([`hydro_forward.cpp:405-408`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L405-L408)).
+5. Book the face work of the rest as `gravity_energy_correction` ([`hydro_forward.cpp:858-859`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L858-L859)).
+
+The messages a user can hit are "forcing/const-gravity/gravity-work must be cell, face-wallc or face" and
+"forcing/const-gravity/gravity-work-fixer needs gravity-work: cell".
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_gravity_work_fixer_python` | cell without fixer drifts | $>100\times10^{-12}$ | planted control |
+| `test_forcing.release` | total energy against boundary flux | $10^{-9}$ abs. | test threshold |
+
+: Tests of the cell form; assertions read from the test sources at the pin, not run. {#tbl-ch06-cell-tests}
+
+The arm "cell, fixer false" of `test_gravity_work_fixer` requires the $E+\mathrm{PE}_d$ drift to exceed 100 times
+`TOL` $=10^{-12}$, so the defect @eq-ch06-cell-defect is shown to be real and the fixer load-bearing
+([`test_gravity_work_fixer.py:203-206`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_gravity_work_fixer.py#L203-L206)). `vertical_gravity_work_uses_continuity_mass_flux` checks the
+total-energy change against the boundary flux to $10^{-9}$ ([`test_forcing.cpp:870-918`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L870-L918)).
+Both are registered with the corrected-PE switch off and run on CPU. Measured values at the pin are **missing
+evidence**.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The cell form alone does not conserve $E+\mathrm{PE}_d$; with `gravity-work-fixer: false` the defect
+@eq-ch06-cell-defect accumulates.
+:::
+
+- $g_2$ and $g_3$ book cell work only, whatever `gravity-work` says; the fixer refuses them.
+- `non-hydrostatic` scales only the $x_1$ terms.
+- Combinations with the study switches are listed in @sec-ch12-matrix; no moist cell-form budget test exists.
