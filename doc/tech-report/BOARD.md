@@ -12,7 +12,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 22:55 PT
+Last update: 2026-10-10 23:00 PT
 
 ## snapy code work (priority: bugs first; report work fills gaps)
 
@@ -23,9 +23,9 @@ PR A = chengcli/snapy#303 (x1 direction; face-flux covariance stays default OFF)
 
 | task | owner | oracle | state |
 |---|---|---|---|
-| A1 small fixes: mp test header verb; doc line "face is the default"; doc :690 pe anchors; README torch 2.10.0; TORCH_WARN_ONCE periodic x1 + corrected PE; FindKintera message keeps the #121/#131 reasons | @chengcli | ctest pass set unchanged | open |
-| A2 face-flux covariance at internal x1 block seams | @chengcli | test_pref_local_seam with SNAP_FLUX_COVARIANCE=1 at 1e-12; the new test fails on the parent | open |
-| A3 #302 VIC wall order ~2: cause, 2 h time box | @gitlinffff | (a) code defect + place + fix, or (b) property of the scheme + evidence | open |
+| A1 small fixes: mp test header verb; doc line "face is the default"; doc :690 pe anchors; README torch 2.10.0; TORCH_WARN_ONCE periodic x1 + corrected PE; FindKintera message keeps the #121/#131 reasons | @chengcli | ctest pass set unchanged | accepted |
+| A2 face-flux covariance at internal x1 block seams | @chengcli | test_pref_local_seam with SNAP_FLUX_COVARIANCE=1 at 1e-12; the new test fails on the parent | accepted |
+| A3 #302 VIC wall order ~2: cause, 2 h time box | @gitlinffff | (a) code defect + place + fix, or (b) property of the scheme + evidence | DONE: (b), O(dt h) from the first-order upwind VIC correction flux; dt shrink recovers explicit; goes into the #303 Limits text |
 | A4 independent check of A2 (RED parent / GREEN head + named risks) | @happysky19 | rule 14c | after A2 |
 | A5 CUDA ctest on the final head; seam tests twice | @zoeyzyhu | switch-on gaps exactly 0 both runs | after A2 |
 | sign-offs on the final head | @gitlinffff @happysky19 @zoeyzyhu | | after A5 |
