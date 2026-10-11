@@ -156,7 +156,7 @@ the symbol in math, and never let the two touch.
 | $\mathcal E$ | the conserved energy functional of a scheme, named each time ($\mathcal E = \sum_iV_iE_i+P$ under D, $\sum_iV_iE_i+\mathrm{PE}_d$ under the plain face form) | (logged `ie=` + `pe=`) |
 | $M$, $M_{\mathrm{wall}}$ | total mass of the domain, and total mass of the $x_1$ wall cells | |
 | $\mathcal D$ | the $E+\mathrm{PE}_d$ defect of a step, the quantity the gravity-work fixer removes [J] | `gravity_work_defect()` |
-| $F^{\mathrm{ref}}$ | the reference-state part of the $x_1$ mass flux | `bflux1` |
+| $F^{\mathrm{ref}}$ | the total $x_1$ mass flux as the Riemann solver returns it (dry plus every species row), before sedimentation and the positivity limiter change the flux; under `gravity-work: cell` only $F-F^{\mathrm{ref}}$ is booked as face work. Not a reference-state flux: the superscript is not the hydrostatic $\mathrm{ref}$ of §6 (the code comment writes $F^R$) [kg m$^{-2}$ s$^{-1}$] | `bflux1` |
 
 ## 6. Hydrostatic reference state
 
@@ -191,7 +191,7 @@ $p_{\mathrm{ref}}$ for $10^5$ Pa.
 | $\mathsf A_i, \mathsf B_i, \mathsf C_i$ | the diagonal, lower and upper blocks of row $i$ of the block-tridiagonal system | `_a`, `_b`, `_c` |
 | $\mathsf A^{\pm}$ | the Roe dissipation matrices $\mathsf R\lvert\Lambda\rvert\mathsf R^{-1}$ at faces $i\pm\tfrac12$ | `Ap`, `Am` |
 | $\partial\mathbf F/\partial\mathbf U$ | flux Jacobian | `dfdq_*` |
-| $\mathsf\Phi$ | the gravity source Jacobian | `Phi` |
+| $\Phi$ | the gravity source Jacobian; upright, not sans-serif like the other matrices, because the math font has no sans-serif Greek and `\mathsf` drops the glyph in the PDF | `Phi` |
 | $\omega^{\mathrm{lo}}_i, \omega^{\mathrm{hi}}_i$ | the implicit face-work weights $\tfrac12A_{i\mp1/2}\lvert x_{1,i}-x_{1,i\mp1/2}\rvert/V_i$ | `work_lo`, `work_hi` |
 | $C$ | Courant number (named: acoustic, advective, vertical acoustic) | `cfl` |
 | $\epsilon_{\mathrm{piv}}$ | LU pivot tolerance | |
