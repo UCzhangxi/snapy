@@ -674,12 +674,12 @@ row's $g_1(\sigma^2\tilde s + \delta)[\delta\rho_{\rm raw} - \Delta\rho_0]$, wit
 The sum is $g_1(\sigma^2s + \delta)[\Delta\rho_0 + \Delta\rho_{\rm moved}]$, step 5 for the stage's total change, and the
 face part is the face form of the total flux, so steps 6–7 hold unchanged.
 
-**Where the term sits.** Line numbers in this commit's tree; at the branch head only `hydro_forward.cpp` moves, by
-−2 lines (the #298 commit), given second.
+**Where the term sits.** Line numbers in this commit's tree; at the branch head `hydro_forward.cpp` moves by
+−2 lines (the #298 commit) and `gravity_work_radial.hpp` by +1 (the review commit), given second.
 
 | site | booked work | $P$ |
 |---|---|---|
-| shared helper | `src/hydro/gravity_work_radial.hpp:100`: `work += grav1 * x1_centroid_offset(...) * drho` (`radial_mid` only); $\delta$ itself at `:76-84` | the same helper, called on $\rho$ instead of $\Delta\rho$ |
+| shared helper | `src/hydro/gravity_work_radial.hpp:100` (head `:101`): `work += grav1 * x1_centroid_offset(...) * drho` (`radial_mid` only); $\delta$ itself at `:76-84` (head `:77-85`) | the same helper, called on $\rho$ instead of $\Delta\rho$ |
 | explicit face work | `src/hydro/hydro_forward.cpp:819-821` (head `:817-819`): `corrected_pe_work(-dt * vertical_mass_div, ..., x1_measure(type))`; face part `phi_cell = -grav1 * x1v` at `:795` (head `:793`) | |
 | implicit energy row | `src/implicit/implicit_hydro.cpp:315`: `rx_mid += grav1 * x1_centroid_offset(...)`; into the matrix at `:333`, the right side at `:339` | |
 | #296 post-solve remainder | `src/implicit/implicit_hydro.cpp:466-467`: `corrected_pe_work(moved, ..., x1_measure(type))`, minus `rx_tri(raw - rx_mass0)` at `:473`, added at `:476-477` | |

@@ -3,7 +3,8 @@
 docs/derivations/curved-gravity-work-weight.md, option F).
 
 With gravity-work: face the switch adds g1 sigma^2 s[drho] to each cell's x1 gravity work,
-sigma^2 = <(x1 - x1v)^2> over the cell (h^2/12 on a Cartesian grid), s = the slope at x1v of
+sigma^2 = <(x1 - r_c)^2> about the centroid r_c of the cell measure (h^2/12 on a Cartesian grid;
+r^2-weighted on spherical-polar and the cubed sphere), s = the slope at x1v of
 the quadratic through the cell and its two x1 neighbours (one-sided at the block's x1 ends),
 and on a gnomonic-equiangle (cubed-sphere) grid, where x1v is the face midpoint and not the
 r^2 centroid r_c, also g1 (r_c - x1v) drho (derivation sec 12), so that E + P is conserved, where
@@ -178,7 +179,8 @@ def centroid_offset(x1f, x1v):
 
 
 def variance(x1f, spherical):
-    """sigma^2 about x1v, written about the cell midpoint (no cancellation at large x1 / dx)."""
+    """sigma^2 about the r^2 centroid r_c when spherical (h^2/12 otherwise), written about the cell
+    midpoint (no cancellation at large x1 / dx)."""
     h, rb = x1f[1:] - x1f[:-1], 0.5 * (x1f[1:] + x1f[:-1])
     if not spherical:
         return h * h / 12.
