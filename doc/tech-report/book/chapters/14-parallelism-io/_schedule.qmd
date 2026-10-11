@@ -39,6 +39,10 @@ By induction, $\bar q_i = \sum_{j \le i} w_j q_j / W_i$ and $M_{2,i} = \sum_{j \
 weighted mean and the weighted sum of squared deviations; $M_2/W$ is the population variance, with no small-sample
 correction. Each state is weighted by the step that ends at it (a right-endpoint rule in time). @eq-ch14-schedule-moments
 is `update_weighted_moments` and `PrimStatStd` ([`output_type.cpp:282-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L282-L360)).
+A port of the recurrence and of `AccumulateStats` agrees with the two-pass weighted mean and deviation to
+$2\times10^{-15}$ relative over 200 unequal steps [check `src/snapy_report/ch14/schedule_check.py`, output
+`schedule_check.out`, `[C1]`]. The state at the first call carries no weight (`[C2]`), and $\sigma$ has no
+small-sample correction, while a constant field gives $M_2 = 0$ exactly (`[C3]`).
 
 ### Numerical method
 
@@ -84,6 +88,7 @@ time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl:
 |---|---|---|---|
 | `test_user_output` `OutputStatistics` (primitive) | primitive mean and deviation are weighted by elapsed time and restart after a write | the test's own | `test_user_output.cpp` |
 | `test_user_output` `OutputStatistics` (scalar) | the same for scalars | the test's own | `test_user_output.cpp` |
+| this chapter's check, `schedule_check.py` | `[C1]`-`[C3]` the recurrence is the weighted mean and population deviation | round-off | two-pass formula |
 | `test_user_output` `OutputSelection` (statistics) | statistics are written only when selected | exact | string compare |
 | `test_restart_dt_change`, `test_restart_output_schedule` | schedules across a resume (@sec-ch14-restart) | see there | see there |
 

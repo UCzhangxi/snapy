@@ -40,7 +40,10 @@ which rejects $\phi \ge 64$ or $\phi < 0$ ([`layout.hpp:161-170`](https://github
 `exchange_each_var` refuses more than 32768 variables, which keeps $T$ below $2^{31}$
 ([`layout.cpp:652-666`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L652-L666)). The per-block bound $\ell < 32$ is not checked
 separately. The send tag uses the receiver's $\ell$ and the receiver's buffer id, so the sender computes what the
-receiver posts.
+receiver posts. A port of `make_comm_tag` confirms that the 55296 base tags of $\phi < 64$, $\ell < 32$ and the 27
+buffer ids are distinct and that $\phi = -1$ and $\phi = 64$ are refused [check `src/snapy_report/ch14/msgmatch_check.py`,
+output `msgmatch_check.out`, `[C1]`], that $T$ stays below $2^{31}$ (`[C2]`), and that $\ell = 32$ is accepted and
+gives the tag of $\ell = 0$ at $\phi + 1$ (`[C3]`).
 
 Two other kinds of message share the process group:
 
@@ -51,6 +54,10 @@ Two other kinds of message share the process group:
    tags (`0x77xx`) are not values of $T_0$ at $b \le 16$, and the total stays below the gather tags.
 2. `gather_x1` uses $2^{24} + \ell_\text{send}\, b + \ell_\text{recv}$
    ([`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847)).
+
+The check confirms the comment's argument for the seven relay tags in use, `0x7715` to `0x7724`: none is a base tag at
+$\ell < 16$, and folded they keep their low 16 bits and stay below $2^{24}$ (`[C4]`). Exchange tags stay below the
+`gather_x1` base $2^{24}$ only while an exchange has at most 256 variables (`[C5]`).
 
 ### Numerical method
 
@@ -106,6 +113,7 @@ checks that their data pointers do not change.
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_cubed_sphere_exchange` `CommTag.rejects_tags_that_collide_with_the_variable_offset` | `make_comm_tag(3, (0,1,0), 63)` is $63\cdot1024 + 3\cdot32 + 1$; $\phi = 64$ and $\phi = -1$ throw | exact | integer compare |
+| this chapter's check, `msgmatch_check.py` | `[C1]`-`[C5]` the tag arithmetic of the three message kinds | exact | integer compare |
 | `test_exchange` | after two identical syncs no buffer data pointer has changed; ghosts hold the neighbour's payload; with three blocks per process both a local and a remote neighbour are seen | exact pointers; value bounds | payloads identify the sender |
 
 : Tests of message matching. C++ entries carry the build suffix (`.release`). {#tbl-ch14-msgmatch-tests}
@@ -123,4 +131,6 @@ processes with tags that would alias if the offset were missing; the argument ab
   (@sec-ch14-bpp).
 - The bound $\ell < 32$ on local blocks for the base tag is implied, not checked; block-to-block messages check
   $b \le 16$.
+- From the 257th variable of one exchange on, exchange tags overlap the `gather_x1` range above $2^{24}$;
+  `exchange_each_var` refuses only more than 32768 variables (`msgmatch_check.py` `[C5]`).
 :::
