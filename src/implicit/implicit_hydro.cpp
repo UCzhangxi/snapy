@@ -301,7 +301,10 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
   auto couple_radial_exact = [&]() {
     if (!radial_exact || nx1 < 3) return;
     int is = pcoord->il(), ie = pcoord->iu() + 1, m = options->size();
-    // S[k][i]: the weight of cell k in the slope of cell i
+    // S[k][i]: the weight of cell k in the slope of cell i. One-sided only at
+    // the column's two physical walls: an implicit scheme refuses an x1
+    // split (HydroImpl::_apply_implicit_correction), so a VIC block has no
+    // internal x1 seam and this per-block slope is the one-block slope
     auto S = centroid_slope(torch::eye(nx1, w.options()),
                             pcoord->x1v.slice(0, is, ie).to(w.options()));
     auto measure = x1_measure(pcoord->options->type());
@@ -462,6 +465,8 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
       moved += (du.narrow(0, ICY, du.size(0) - ICY) -
                 _du0.narrow(0, ICY, du.size(0) - ICY))
                    .sum(0);
+    // the whole column (no x1 split under an implicit scheme, see above), so
+    // the slope is one-sided only at the two walls
     auto work =
         corrected_pe_work(moved.slice(-1, is, ie), pcoord->x1f, pcoord->x1v, is,
                           ie, grav1, x1_measure(pcoord->options->type()));

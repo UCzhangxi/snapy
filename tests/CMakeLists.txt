@@ -51,6 +51,8 @@ seam_arm(_radial_exact "SNAP_GRAVITY_WORK_RADIAL_EXACT=1" radial_exact_split_gap
 # the control: the face form without the corrected work
 seam_arm(_radial_exact_off "SNAP_GRAVITY_WORK_RADIAL_EXACT=0"
          radial_exact_split_gap)
+# the VIC row's per-block slope relies on an implicit scheme refusing an x1 split
+seam_arm(_vic_refuses_split "" vic_refuses_x1_split)
 # SNAP_WB_REF4 alone: its resolution flag switching on next to the seam
 seam_arm(_wb_ref4 "SNAP_WB_REF4=1"
          wb_ref4_flag_at_the_seam_split_matches_one_block)
