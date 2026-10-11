@@ -4,13 +4,15 @@ The one live list of who writes what. Kept by the PR lead, updated on every "tak
 posted in the Slack report thread. Read it here before you take work:
 https://github.com/UCzhangxi/snapy/blob/tech-report/doc/tech-report/BOARD.md
 
+Owners off tonight: @XinyueWang05 (blocked); nothing waits on her.
+
 Rules (Xi, 2026-10-10): the unit of work is a whole chapter. When you finish, take the TOP queue item and say
 "taking X" in the report thread first. Open a draft PR into tech-report early. An owner silent 30 min past an ETA
 loses the chapter to the next free person. Queue empty: cross-review a finished chapter.
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 22:50 PT
+Last update: 2026-10-10 22:55 PT
 
 ## snapy code work (priority: bugs first; report work fills gaps)
 
@@ -34,7 +36,7 @@ PR B (on top of #303): passive scalars + face-flux covariance default ON
 |---|---|---|---|
 | B1 scalar totals leak 5e-10 across a cubed-sphere panel seam with the covariance on (test_flux_positivity_cubedsphere*): find where | @happysky19 (read-only diagnosis first) | the face where the scalar flux and the corrected hydro dry-mass flux disagree, with numbers | open |
 | B2 covariance rows in src/scalar/scalar.cpp, mirroring the hydro tracer rows (hydro_forward.cpp:166-175) | @zoeyzyhu | a scalar and the same tracer carried as a hydro species agree to round-off | open |
-| B3 #289 item 3: size of the compositional-buoyancy effect (derivation, text) | @gitlinffff after A3 (@XinyueWang05 blocked) | written estimate in the thread | open |
+| B3 #289 item 3: size of the compositional-buoyancy effect (derivation, text) | @gitlinffff after A3 | written estimate in the thread | open |
 | B4 covariance on: one CUDA run and one implicit deck | @zoeyzyhu | CUDA == CPU; implicit stable | after B2 |
 | B5 default ON + test sweep (patch exists) | lead | ctest pass set as before | last |
 
@@ -42,7 +44,7 @@ PR C: chengcli/snapy#291 (GPU step 1.54x slower)
 
 | task | owner | oracle | state |
 |---|---|---|---|
-| C1 RECORD_FUNCTION timings, small 2-D deck and a production-size block, 2.10.9 vs 2.11.2 | @zoeyzyhu after B2 and A5 (@XinyueWang05 blocked) | per-phase table | open |
+| C1 RECORD_FUNCTION timings, small 2-D deck and a production-size block, 2.10.9 vs 2.11.2 | @zoeyzyhu after B2 and A5 | per-phase table | open |
 | C2 cheap fixes: meters only on output cycles, one device read in check_redo, fewer .item() | after C1 | bitwise equal outputs | after C1 |
 
 
@@ -51,11 +53,11 @@ PR C: chengcli/snapy#291 (GPU step 1.54x slower)
 | chapter | owner | state | ETA (PT) | PR |
 |---|---|---|---|---|
 | ch2 fixes | @chengcli | commit ready locally, checking before push (Cheng is on #303 first) | after #303 work | - |
-| ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run) | @XinyueWang05 | drafted (commit 6cc7079); waiting on its delivery (uploads fail; author's choice: fix uploads or push from her fork) | - | - |
 
 ## Queue (take from the top)
 
-1. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10, ch14 open)
+1. ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run). Earlier draft was never delivered; redo it from the chapter text. Take it when your code task is done.
+2. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10, ch14 open)
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
 
