@@ -20,6 +20,7 @@ process. **Requires**: a process group. **Order**: exact for MIN and MAX. **Defi
 | redo | MAX of 6 cause flags | 6 doubles (0 or 1) | `reduce_redo_flags` |
 | stop on a signal | MAX of the caught-signal count | 1 int32 | `SignalHandler::CheckSignalFlags` |
 | gravity-work fixer | SUM of 5 sums | 5 doubles | `MeshImpl::forward`; see below |
+| cycle line: totals, energies and meters | SUM, MIN of $\Theta$, MAX of the VIC residual, to the root | small doubles | `print_cycle_diagnostics` |
 | cell count for the timing line | SUM to the root | 1 int64 | `MeshBlockImpl::finalize` |
 
 : The collectives of one run. {#tbl-ch14-collectives}
@@ -44,12 +45,18 @@ number ([`mesh.cpp:306-328`](https://github.com/chengcli/snapy/blob/e894700ff7ae
 failure; see `local_redo_flags` in [`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286)). `reduce_redo_flags` all-reduces them
 with MAX and packs the result into a cause bit mask ([`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300)).
 Every block on every process then applies the same decision: a hit anywhere rolls back every block
-(`MeshImpl::check_redo`, [`mesh.cpp:422-449`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L449)). The redo itself is the subject of @sec-ch08.
+(`MeshImpl::check_redo`, [`mesh.cpp:422-449`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L449)). The redo itself is the subject of @sec-ch07-redo.
 
 **Signals.** SIGTERM, SIGINT and SIGALRM set flags. `CheckSignalFlags` sums the local flags with the signals blocked,
 all-reduces the count with MAX, and returns it; a non-zero value makes `check_redo` return $-1$ and the driver stop.
 With no snapy process group it falls back to a registered external group
 (`CheckSignalFlags`, [`signal_handler.cpp:64-86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L64-L86)).
+
+**Cycle line.** On every cycle that prints a line (each `ncycle_out`-th), `print_cycle_diagnostics` reduces the
+conserved totals, the kinetic and potential energies and the
+limiter meters with SUM, the smallest $\Theta$ with MIN and the VIC clamp residual with MAX, each a `reduce` to the
+root process, which prints them ([`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086), `reduce`). These sums are printed
+only; nothing in the state depends on them.
 
 **Gravity-work fixer.**
 
@@ -74,6 +81,7 @@ a barrier and a mirror barrier; `finalize` ends with a barrier and, if snapy own
 | redo MAX | [`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300) | `reduce_redo_flags` | none |
 | one decision for all blocks | [`mesh.cpp:422-449`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L449) | `check_redo` | none |
 | signal MAX | [`signal_handler.cpp:64-86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L64-L86) | `CheckSignalFlags` | none |
+| cycle-line reductions | [`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086) | `reduce` | none |
 | final barrier and shutdown | [`mesh.cpp:460-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L460-L508) | `finalize` | none |
 
 : Code map of the collectives. {#tbl-ch14-collectives-code}

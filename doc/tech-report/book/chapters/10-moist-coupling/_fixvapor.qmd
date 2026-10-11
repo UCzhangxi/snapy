@@ -61,7 +61,7 @@ window is returned with that window flattened, mass kept. The kernel fails on a 
 
 ::: {.callout-important title="Check"}
 All of this is checked by `src/snapy_report/ch10/fixvapor_check.py`, a line-for-line port of the kernel. It replays
-the inputs of the `eos_limiter` gtests (`[C1]` to `[C3]`), keeps $\sum_iV_i\rho_{n,i}$ to $2.2\times10^{-15}$ relative
+the inputs of the `eos_limiter` gtests (`[C1]`, `[C2]`, `[C3]`), keeps $\sum_iV_i\rho_{n,i}$ to $2.2\times10^{-15}$ relative
 on 1995 repaired random columns with unequal volumes (`[C4]`), finds no failure on a column with non-negative total
 (`[C5]`), repairs an interior and a bottom deficit in one scan (`[C6]`) and confirms the partial rewrite before a
 failure (`[C7]`) [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck:
@@ -78,8 +78,9 @@ vapour is repaired second and must succeed
 When the call comes from the stage update and $x_1$ is split over several blocks (`pz` > 1), every block gathers
 the full column with the dry density and the volumes, repairs it and keeps its own slice
 ([`equation_of_state.cpp:276-305`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L276-L305)).
-Failures are counted with `std::atomic` on CPU and `atomicAdd` on CUDA, and read back once per call, which costs one
-device synchronisation. @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
+Failures are counted with `std::atomic` on CPU and `atomicAdd` on CUDA, and read back once per kernel call, which
+costs one device synchronisation; a limiter call with parentless clouds runs the kernel twice
+(`nerr`, [`eos_dispatch.cu:72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/eos_dispatch.cu#L72)). @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
 
 ```{python}
 #| label: fig-ch10-fixvapor-column
