@@ -44,8 +44,9 @@ inline torch::Tensor x1_variance(torch::Tensor const& x1f, bool spherical) {
 
 //! d q / d x1 at each x along the last dimension (n = x.size(0) cells): the
 //! slope at x_i of the quadratic through cells i - 1, i, i + 1, and through
-//! the first or last three cells at the two ends (also at an x1 seam: a split
-//! column differs from one block at O(h^4), derivation sec 7). Zero for n < 3.
+//! the first or last three cells at the two ends (at an internal x1 seam the
+//! caller extends q by the neighbour's cell, corrected_pe_work_seam, so the
+//! seam cell takes the centred slope; derivation sec 7). Zero for n < 3.
 inline torch::Tensor centroid_slope(torch::Tensor const& q,
                                     torch::Tensor const& x) {
   int n = x.size(0);
@@ -99,6 +100,30 @@ inline torch::Tensor corrected_pe_work(torch::Tensor const& drho,
   auto work = grav1 * var * centroid_slope(drho, x1v.slice(0, is, ie));
   if (measure == X1Measure::radial_mid)
     work += grav1 * x1_centroid_offset(faces, x1v.slice(0, is, ie)) * drho;
+  return work;
+}
+
+//! corrected_pe_work of the interior cells [is, ie) when q, given over the
+//! whole x1 array (..., nc1), also holds the neighbour's value one cell past an
+//! internal x1 seam (seam_lo: cell is - 1, seam_hi: cell ie). The slope of a
+//! seam cell is then the centred one that a single block takes, so the work
+//! and P do not depend on the x1 decomposition; at a physical wall the slope
+//! stays one-sided (sec 7 item 3, #303).
+inline torch::Tensor corrected_pe_work_seam(torch::Tensor const& q,
+                                            torch::Tensor const& x1f,
+                                            torch::Tensor const& x1v, int is,
+                                            int ie, double grav1,
+                                            X1Measure measure, bool seam_lo,
+                                            bool seam_hi) {
+  int lo = seam_lo ? is - 1 : is, hi = seam_hi ? ie + 1 : ie;
+  auto faces = x1f.slice(0, is, ie + 1);
+  auto var = x1_variance(faces, measure != X1Measure::plain);
+  auto s = centroid_slope(q.slice(-1, lo, hi), x1v.slice(0, lo, hi))
+               .slice(-1, is - lo, ie - lo);
+  auto work = grav1 * var * s;
+  if (measure == X1Measure::radial_mid)
+    work += grav1 * x1_centroid_offset(faces, x1v.slice(0, is, ie)) *
+            q.slice(-1, is, ie);
   return work;
 }
 
