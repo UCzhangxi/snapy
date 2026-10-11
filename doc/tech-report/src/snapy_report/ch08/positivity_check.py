@@ -255,7 +255,79 @@ def check_C7():
            f"the donor is the lower cell where the flux is positive and the upper otherwise")
 
 
-for fn in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7):
+# --- C8: where the explicit guarantee stops (_vic.qmd) ------------------------
+def check_C8():
+    """The limiter's guarantee is per stage, for the explicit flux divergence. The implicit
+    solve runs afterwards on the same state and is outside it, which is the gap the clamp covers."""
+    rng = np.random.default_rng(8)
+    eps = np.finfo(np.float64).eps
+    after_explicit, after_implicit, invented = 0., 0., 0.
+    dry = 0
+    for _ in range(2000):
+        u, flux, area, vol, dt = _case(rng)
+        th, _ = theta_of(u, flux, area, vol, dt, eps)
+        u_exp = u + dt * divergence(scale(th, flux), area, vol)
+        after_explicit = min(after_explicit, u_exp.min())
+        # an implicit correction: a redistribution along the column, conservative in the column
+        # total and built without reference to the limiter that ran before it
+        move = rng.normal(0., 1., len(u) - 1) * u_exp[:-1].mean()
+        d = np.zeros_like(u_exp)
+        d[:-1] -= move * dt
+        d[1:] += move * dt * vol[:-1] / vol[1:]
+        u_imp = u_exp + d
+        after_implicit = min(after_implicit, u_imp.min())
+        dry += int((u_imp < 0.).any())
+        clamped = np.maximum(u_imp, 0.)              # the clamp with a record
+        invented = max(invented, float(((clamped - u_imp) * vol).sum()))
+    report("C8", after_explicit >= 0. and after_implicit < 0. and dry > 0 and invented > 0.,
+           "the per-stage guarantee does not reach past the explicit divergence",
+           f"over 2000 columns the limited explicit update never goes negative (worst "
+           f"{after_explicit:.1e}); an implicit correction applied to that same state drives a "
+           f"cell dry in {dry} of them, worst {after_implicit:.1e}. The clamp that covers the gap "
+           f"is not conservative: it invents up to {invented:.1e} of mass in one column, which is "
+           f"why it keeps a record")
+
+
+# --- C9: the dry-mass carry is not symmetric (_drycarry.qmd) ------------------
+def check_C9():
+    """An addition carries the ratio at source entry; a removal carries the ratio the stage
+    would have had with no source at all. The zero-base guard keeps that finite but does not
+    bound it (meshblock.cpp:631-634, 640-642)."""
+    rng = np.random.default_rng(9)
+    n = 200_000
+    rho0, s0 = rng.uniform(0.5, 2., n), rng.uniform(0., 1., n)       # at source entry
+    entry = s0 / rho0
+    # what the stage did without the source, bounded so rho_base stays away from zero: the
+    # unbounded case is the guard's, below, and is kept out of this number
+    d_rho_free = rng.uniform(-.3, .3, n) * rho0
+    d_s_free = rng.uniform(-.3, .3, n) * s0
+    rho_base, s_base = rho0 + d_rho_free, s0 + d_s_free
+    free = np.where(rho_base != 0., s_base / np.where(rho_base != 0., rho_base, 1.), entry)
+    changed = float(np.abs(free - entry).max())                      # transport moved the ratio
+    # the guard: a cell that is empty with the source removed
+    g_entry = np.array([0.25])
+    guarded = np.where(np.array([0.]) != 0., np.array([1.]), g_entry)
+    finite = bool(np.isfinite(guarded).all() and guarded[0] == g_entry[0])
+    # a dry sink: the removal carries the source-free ratio, and nothing bounds the result below
+    src = -rng.uniform(0., 1.5, n) * rho0
+    s_after = s_base + src * free
+    negative = int(np.count_nonzero(s_after < 0.))
+    worst = float(s_after.min())
+    # had the removal used the entry ratio it would have amplified the ratio transport just set
+    s_entry_rule = s_base + src * entry
+    differ = float(np.abs(s_after - s_entry_rule).max())
+    report("C9", finite and changed > 0. and negative > 0 and differ > 0.,
+           "addition and removal are not symmetric, and the guard keeps the ratio finite "
+           "without bounding it",
+           f"over {n} cells transport moves the ratio away from its entry value by up to "
+           f"{changed:.2f}, so the two rules differ by up to {differ:.2f} of scalar: the removal "
+           f"rule carries the source-free ratio, the entry rule would carry the one transport "
+           f"just changed. At a zero source-free density the guard returns the entry ratio and "
+           f"the expression stays finite ({finite}). Nothing bounds the outcome below: under a dry "
+           f"sink {negative} of {n} cells end with a negative scalar, worst {worst:.1e}")
+
+
+for fn in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8, check_C9):
     fn()
-print(f"{7 - len(FAIL)}/7 claims pass")
+print(f"{9 - len(FAIL)}/9 claims pass")
 sys.exit(len(FAIL))

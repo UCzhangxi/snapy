@@ -25,7 +25,12 @@ The test is a margin above the floor rather than equality with it, at
 `hit` ([`meshblock.cpp:1199-1202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1199-L1202)): a minimum density at or below $1.001$ times the density floor
 counts as a hit, and the same for pressure where there is a pressure row. Testing equality with the
 floor would miss a cell that was floored and then nudged by a later operation; the margin catches the
-neighbourhood of the floor instead.
+neighbourhood of the floor instead. `[C7]` nudges a just-floored cell by fifteen relative amounts from
+$10^{-16}$ up to $10^{-3}$: the margin counts all fifteen as hits, equality counts only two, the unnudged
+cell and the single nudge below machine epsilon, so thirteen are hits the margin keeps and equality loses;
+a density $1.002$ times the floor is a hit under neither. `[C4]` covers the marking itself, including that
+it happens only from the interior [check `src/snapy_report/ch08/floors_check.py`, output
+`src/snapy_report/ch08/floors_check.out`].
 
 The ordering around it carries a subtlety the code calls out at
 `reset_limiter_marks` ([`meshblock.cpp:1259-1261`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1259-L1261)): the detector restores primitives in order to look at them, and
