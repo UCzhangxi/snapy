@@ -1,0 +1,105 @@
+## Stage-weighted implicit step: the correction runs with $w_2\Delta t$ under rk3 (`dt_corr`) {#sec-ch07-vic-stage}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+sources: OUTLINE.md 7.8; src/hydro/hydro_forward.cpp; src/hydro/hydro.hpp; src/mesh/meshblock.cpp;
+         pyharp src/integrator/integrator.cpp; tests/test_forcing.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Hands the VIC the step $w_2^{(s)}\Delta t$ of the current Runge-Kutta stage instead of the
+full $\Delta t$, so that the implicit operator matches the increment the stage actually takes.
+**Switch.** None; it applies when the integrator has three stages (`rk3`).
+**Order.** Not changed by the weighting; the correction is a linearised backward Euler.
+**Defining equation.** @eq-ch07-vic-stage.
+:::
+
+A stage of @eq-ch07-rk-stage adds $w_2\Delta t\,\mathcal L$. The VIC solves a linear system whose diagonal holds
+$I/\Delta t$. Weighting the solved increment by $w_2$ afterwards is not the same as solving with $w_2\Delta t$,
+because the operator is not linear in $\Delta t$. So snapy passes $\Delta t_{\mathrm{corr}} = w_2\Delta t$ into
+the solve and leaves the explicit tendency at the full step.
+
+### Derivation
+
+With $\Delta\mathbf U = \Delta t\,\mathcal L$ the explicit increment and $J$ the operator of @eq-ch07-vic-blocks
+without its $I/\Delta t$, the solve of @sec-ch07-vic-sweep returns
+$\delta = (I + \Delta t_{\mathrm{corr}}J)^{-1}\Delta\mathbf U$, and the stage adds $w_2\delta$. With
+$\Delta t_{\mathrm{corr}} = w_2\Delta t$,
+
+$$
+w_2\,(I + w_2\Delta t\,J)^{-1}\,\Delta t\,\mathcal L = (I + w_2\Delta t\,J)^{-1}\,w_2\Delta t\,\mathcal L ,
+$$ {#eq-ch07-vic-stage}
+
+which is one backward-Euler-linearised step of the stage's own length $w_2\Delta t$. The two sides agree to
+$5\times10^{-16}$ in the check [check `src/snapy_report/ch07/vic_stage_check.py`, output `vic_stage_check.out`,
+`[C1]`]. The factors per stage are 1, 1/4, 2/3 for rk3. Every other integrator keeps the full step (`[C2]`).
+
+On a stiff decay $u' = -\lambda u$ handled entirely by the correction, rk3 damps a mode with
+$z = \lambda\Delta t \to \infty$ to $1/12$ per step with the weighting and to $1/3$ without it (`[C3]`). Every
+integrator keeps $|R(z)| \le 1$ on $z\in[10^{-3},10^8]$, and the decay converges at first order (`[C4]`).
+
+In the code, the weighted step of @eq-ch07-vic-stage is `dt_corr` ([`hydro_forward.cpp:929-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L932)).
+
+### Numerical method
+
+See @fig-ch07-vic-stage for the two choices compared.
+
+```{python}
+#| label: fig-ch07-vic-stage
+#| fig-cap: "One-step amplification $|R(z)|$ of rk3 on $u'=-\\lambda u$ when the whole decay is handled by the implicit correction, $z=\\lambda\\Delta t$. Green: the correction runs with $w_2\\Delta t$, as snapy does for rk3; vermillion dashed: with the full $\\Delta t$. Blue dotted: the exact $e^{-z}$. Grey lines mark the stiff limits $1/12$ and $1/3$."
+#| fig-alt: "Two decreasing curves of amplification against z on a log axis, levelling off at 1/12 for the weighted correction and 1/3 for the full-step one, with the exact exponential below both."
+#| echo: false
+from snapy_report.ch07.fig_vic_stage import make_fig
+make_fig()
+```
+
+`MeshBlockImpl::advance_local` publishes the stage index `rk_stage` before each stage ([`meshblock.cpp:603`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L603)). The hydro forward pass then scales
+only the step handed to the correction, by `wght2` ([`hydro_forward.cpp:929-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L932)). If no stage was
+published, a direct caller gets a one-time warning and the full step, through `TORCH_WARN_ONCE`
+([`hydro_forward.cpp:933-943`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L933-L943)). The weighted step goes into `_apply_implicit_correction`
+([`hydro_forward.cpp:968`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L968)). Inside the solve it sets both the $I/\Delta t$ diagonal
+of @eq-ch07-vic-blocks and the right-hand side $\Delta\mathbf U/\Delta t$ of @sec-ch07-vic-sweep. The stage
+combination itself is the integrator's, with `wght2` ([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| weighted step | [`hydro_forward.cpp:929-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L932) | `wght2` | three-stage integrator |
+| fallback warning | [`hydro_forward.cpp:933-943`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L933-L943) | `TORCH_WARN_ONCE` | |
+| call | [`hydro_forward.cpp:968`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L968) | `_apply_implicit_correction` | |
+| stage index | [`hydro/hydro.hpp:211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L211) | `rk_stage` | |
+| stage weights | [`pyharp integrator.cpp:33-85`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L85) | `wght2` | `integration/type` |
+
+: Code map of the stage-weighted implicit step. {#tbl-ch07-vic-stage-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_forcing.cpp` (`test_forcing.release`, CUDA twin), `implicit_gravity_work_holds_under_rk3_stage_weighting` | at every rk3 stage the column's mechanical energy change equals the boundary flux; stage 0 and stage 1 give different momentum, so the weight reaches the correction (face gravity work, see @sec-ch06) | $10^{-9}$ absolute; difference above $10^{-6}$ | round-off; a detection threshold |
+| this section's check, `vic_stage_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the stage-weighted implicit step. {#tbl-ch07-vic-stage-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the weighting of snapy@e894700ff7aee30b52882e5202b16461413780b0 and the stage
+weights of pyharp@4721715855e937c1e8b218e964c0655f46e56e29; deck: a scalar model, the check itself; run:
+`python3 vic_stage_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** Scalar model only; no column run.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+Only rk3 is weighted. rk1, rk2 and rk3s4 run the correction with the full step in every stage, which is the
+operator that the weighting was introduced to replace.
+:::
+
+1. **First order.** The correction is a linearised backward Euler; on the decay the rk3 step with it converges at
+   first order (`[C4]`). That the same holds for the other integrators is a hypothesis; the check does not test it.
+2. **Direct callers.** A caller of `HydroImpl::forward` outside the stage loop gets the full step, with a warning
+   only once per process.

@@ -1,0 +1,100 @@
+## Operator-split pieces at the step boundary: saturation adjustment and kinetics (`thermo.reactions`) {#sec-ch07-split}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.5; src/mesh/meshblock.cpp; examples/run_hydro.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** After the dynamics of a step, applies the phase equilibrium (inside the last stage) and the
+driver's kinetics (after the stages) to the advanced state, each on the result of the one before.
+**Switch.** The saturation adjustment runs when the thermodynamics has reactions; the kinetics when the driver
+builds a kinetics model. Neither has its own key here.
+**Order.** First order in $\Delta t$ (a sequential, or Lie, split).
+**Defining equation.** @eq-ch07-split-lie.
+:::
+
+The dynamics advance the conserved state over the whole step; the phase equilibrium of @sec-ch02 then adjusts the species at fixed density and internal energy, the physical boundaries are refilled so the ghosts
+carry the adjusted composition, and the driver's kinetics integrate the reaction rates over the step on the
+refreshed primitives. Each piece sees the output of the previous one, which makes the step a sequential split.
+The details of the phase solve and the kinetics are @sec-ch10.
+
+### Derivation
+
+Let $\mathcal D_{\Delta t}$ be the dynamics over one step, $\mathcal S$ the saturation adjustment and
+$\mathcal K_{\Delta t}$ the kinetics. One step is
+
+$$
+\mathbf U^{n+1} = \mathcal K_{\Delta t}\,\mathcal S\,\mathcal D_{\Delta t}\,\mathbf U^n .
+$$ {#eq-ch07-split-lie}
+
+For two flows $e^{A\Delta t}$ and $e^{B\Delta t}$ the product differs from $e^{(A+B)\Delta t}$ by
+$\tfrac12[B,A]\Delta t^2$ per step, so the global error is first order unless the operators commute. On two
+non-commuting $2\times2$ operators the fitted order of this split is 0.991, a symmetric (Strang) split would give
+2.000, and commuting operators split exactly [check `src/snapy_report/ch07/split_check.py`, output
+`split_check.out`, `[C1]`–`[C3]`]. The saturation adjustment is a projection onto equilibrium rather than a flow
+over $\Delta t$, so its split error is the error of applying equilibrium at the end of the step instead of
+throughout it; that error is not measured here.
+
+In the code, the $\mathcal S$ of @eq-ch07-split-lie is the last-stage `ThermoY` solve of the block, `pthermo` ([`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816)).
+
+### Numerical method
+
+See @fig-ch07-split-step for the order within a step.
+
+```{python}
+#| label: fig-ch07-split-step
+#| fig-cap: "The pieces of one step in the order they run: the Runge-Kutta stages (sky blue), the saturation adjustment and the physical boundary fill inside the last stage, the driver's kinetics after the stages (green), and the acceptance check (orange). Each piece acts on the result of the one before."
+#| fig-alt: "Five boxes in a row joined by arrows: dynamics, saturation adjustment, physical boundaries, kinetics, check_redo."
+#| echo: false
+from snapy_report.ch07.fig_split_step import make_fig
+make_fig()
+```
+
+1. At the last stage, after the average and the conserved limiter, the block applies the limiter again, forms the
+   internal energy and mass fractions on interior cells and calls the kintera `ThermoY` solve, `pthermo`, with a warm start
+   ([`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816)).
+2. The physical boundaries are filled after it, by `apply_boundaries`, so the wall ghosts carry the adjusted
+   composition ([`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841)).
+3. The example driver refreshes the primitives from the final state with `peos->forward`, evaluates the kinetics
+   rates and Jacobian and advances them with `evolve_implicit` over the full step ([`run_hydro.cpp:171-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L171-L191)).
+4. `check_redo` then decides on the whole step, kinetics included (@sec-ch07-redo).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| saturation adjustment, last stage | [`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816) | `pthermo` | `thermo.reactions` |
+| boundary fill after it | [`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841) | `apply_boundaries` | |
+| kinetics in the driver | [`run_hydro.cpp:171-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L171-L191) | `evolve_implicit` | kinetics block |
+
+: Code map of the step-boundary split. {#tbl-ch07-split-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_wall_saturation.cpp` (`test_wall_saturation.release`) | phase change next to a wall keeps total energy and water | $10^{-12}$ relative | test threshold |
+| `tests/test_check_redo_saturation.py` (`test_check_redo_saturation_python`) | a failed saturation solve rejects the step | logical | contract |
+| this section's check, `split_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
+
+: Tests of the step-boundary split. {#tbl-ch07-split-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the order of the pieces at snapy@e894700ff7aee30b52882e5202b16461413780b0, modelled
+by two linear operators; deck: the check itself; run: `python3 split_check.py`, numpy 2.4.6, double]. ctest cases:
+**pending: pinned ctest run**.
+**Coverage.** CPU for the wall test; the saturation redo test also on CUDA. No test measures the split error.
+:::
+
+### Limits
+
+1. **First order.** The split is first order in $\Delta t$ whatever the order of the Runge-Kutta stages; no
+   symmetric split is offered. Not measured on a moist case.
+2. **Driver kinetics are not in snapy's stage driver.** The kinetics live in the example driver; a driver that
+   omits them, or calls them elsewhere, changes the split.
+3. **Non-convergence.** A phase solve that does not converge within its iteration limit is counted and rejects
+   the step (@sec-ch07-redo); earlier versions were silent (chengcli/snapy#270).

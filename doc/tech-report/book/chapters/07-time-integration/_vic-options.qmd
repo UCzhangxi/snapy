@@ -1,0 +1,107 @@
+## VIC options and activation: `implicit-scheme` 1 or 9, one block in $x_1$ (`ImplicitOptions`) {#sec-ch07-vic-options}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.6; src/implicit/implicit_hydro.cpp; src/implicit/implicit_hydro.hpp; src/hydro/hydro.cpp;
+         src/hydro/hydro_options.cpp; tests/test_implicit_options_type.py; tests/test_hydro_options.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Reads `integration/implicit-scheme` and decides whether a run has a vertically implicit
+correction (VIC), and whether it solves the 3 x 3 or the 5 x 5 column system.
+**Switch.** `integration/implicit-scheme`: 0 or absent (explicit), 1 (`vic-partial`), 9 (`vic-full`);
+`implicit-advection-cfl` (default 1) and `shear-cfl` (default 0), see @sec-ch07-cfl.
+**Order.** Not a discretisation.
+**Defining equation.** @eq-ch07-vic-size.
+:::
+
+The scheme value is a bit field. Bit 0 makes $x_1$ implicit and bit 3 selects the full system; bits 1 and 2 only
+change the time-step bound of @sec-ch07-cfl. Only the values 0, 1 and 9 build. Any other value stops the run when
+the solver object is constructed. A VIC run also needs the whole $x_1$ column on one rank and a constant
+gravity.
+
+### Derivation
+
+There is nothing to derive. With $s$ the scheme value, the block size of the column system is
+
+$$
+N(s) = 3 + 2\,\big(\lfloor s/8 \rfloor \bmod 2\big) ,
+$$ {#eq-ch07-vic-size}
+
+so `vic-partial` solves for $(\rho, \rho u, E)$ and `vic-full` for $(\rho, \rho u, \rho v, \rho w, E)$, with $u$ the
+$x_1$ velocity [check `src/snapy_report/ch07/vic_options_check.py`, output `vic_options_check.out`, `[C1]`]. Here
+$\rho$ is the total density: the species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute).
+
+In the code, @eq-ch07-vic-size is `size` ([`implicit_hydro.hpp:33-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L33-L39)).
+
+### Numerical method
+
+See @fig-ch07-vic-options for the bits.
+
+```{python}
+#| label: fig-ch07-vic-options
+#| fig-cap: "The value of integration/implicit-scheme as four bits. Bit 0 makes $x_1$ implicit; bit 3 selects the full $5\\times5$ system. The values that build are 0 (explicit: no solver object), 1 (vic-partial) and 9 (vic-full); any other value stops with Unsupported implicit scheme (vermillion). Bits 1 and 2 only change the time-step bound."
+#| fig-alt: "Three rows of four bit boxes for the values 0, 1 and 9, with the set bits filled green, and a red note that other values are refused."
+#| echo: false
+from snapy_report.ch07.fig_vic_options import make_fig
+make_fig()
+```
+
+The options come from the `integration` block, which pyharp's integrator also reads, so its keys are checked
+against both readers ([`implicit_hydro.cpp:24-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L24-L69)). A value of 0 returns no options at all from `from_yaml`, so 0 is
+a true explicit spelling that also runs with several blocks in $x_1$ ([`implicit_hydro.cpp:71-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L71-L82)).
+The two bound keys without a scheme are an error, not ignored (`[C3]`). `implicit-advection-cfl` must be finite and
+positive, and `shear-cfl` finite and non-negative (`[C2]`).
+
+`HydroImpl` creates the solver object, `picorr`, only when the options exist ([`hydro/hydro.cpp:115-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L115-L117)). Its `reset`
+calls `type`, which is what refuses an unsupported value ([`implicit_hydro.cpp:107-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L107-L122)). The
+first correction then checks with `is_physical_boundary` that both $x_1$ faces of the block are physical
+boundaries, since the column solve has no cross-rank coupling ([`hydro/hydro.cpp:411-416`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L411-L416)). It also requires a constant gravity, through
+`grav` ([`implicit_hydro.cpp:182-183`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L182-L183)) (`[C4]`).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| read the integration block | [`implicit_hydro.cpp:24-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L24-L69) | `from_yaml` | `implicit-scheme`, `implicit-advection-cfl`, `shear-cfl` |
+| scheme value to options | [`implicit_hydro.cpp:71-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L71-L82) | `from_yaml` | `implicit-scheme` |
+| names and refusal | [`implicit_hydro.cpp:84-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L84-L98) | `type` | |
+| block size | [`implicit_hydro.hpp:33-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L33-L39) | `size` | |
+| defaults | [`implicit_hydro.hpp:42-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L42-L44) | `advection_cfl` | |
+| hydro options entry | [`hydro_options.cpp:35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L35) | `icorr` | |
+| construction | [`hydro/hydro.cpp:115-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L115-L117) | `picorr` | |
+| refusal at construction | [`implicit_hydro.cpp:107-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L107-L122) | `reset` | |
+| one block in $x_1$ | [`hydro/hydro.cpp:411-416`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L411-L416) | `is_physical_boundary` | |
+
+: Code map of the VIC options. {#tbl-ch07-vic-options-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_implicit_options_type.py` (`test_implicit_options_type_python`) | `type()` is `none`, `vic-partial`, `vic-full` for 0, 1, 9; 5 raises; `type` cannot be set | exact | contract |
+| `tests/test_backward_substitution.cpp` (`test_backward_substitution.release`), `parses_implicit_scheme_bits` | 1 gives size 3, 9 gives size 5 | exact | contract |
+| `tests/test_hydro_options.cpp` (`test_hydro_options.release`), `reject_unsupported_implicit_scheme` | a MeshBlock builds with 1 and stops with "Unsupported implicit scheme" for 3 | exact | contract |
+| this section's check, `vic_options_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the VIC options. {#tbl-ch07-vic-options-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the logic of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported on Python
+dicts; deck: the check itself; run: `python3 vic_options_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned
+ctest run**.
+**Coverage.** CPU; the option logic has no device path.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The VIC is $x_1$ only. A run cut into several blocks in $x_1$ cannot use it.
+:::
+
+1. **Bits that do not build.** Bits 1 and 2 are read by the time-step bound, but no value that sets them builds,
+   so a $x_2$ or $x_3$ implicit direction cannot be reached.
+2. **Late nb1 check.** The one-block condition is checked at the first correction, not when the options are read.

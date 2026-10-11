@@ -1,0 +1,114 @@
+## Block Thomas sweep and back substitution: one serial pass up, one down, per column (`ForwardSweep`) {#sec-ch07-vic-sweep}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.9; src/implicit/forward_sweep_impl.h; src/implicit/vic_redistribute_impl.h;
+         src/implicit/vic_solve_failure.h; src/implicit/implicit_dispatch.cpp; src/implicit/implicit_dispatch.cu;
+         src/math/lubksb.h; tests/test_lu_failure.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Solves the block-tridiagonal system of @eq-ch07-vic-blocks for one column: a forward
+elimination from the first layer to the last, then a back substitution.
+**Switch.** As for the assembly; $N=3$ or $N=5$.
+**Order.** A direct solve, exact up to round-off.
+**Defining equation.** @eq-ch07-vic-sweep.
+:::
+
+The right-hand side is the explicit increment of the stage over the step. So the sweep returns the corrected
+increment $\delta = (I+\Delta t\,J)^{-1}\Delta\mathbf U$, which is the explicit one when $\Delta t\to0$. Every
+block it inverts is first factored by `ludcmp` with the pivot guard of @sec-ch07-vic-pivot. A refused block
+marks the whole column as failed.
+
+### Derivation
+
+With $r_i = \Delta\mathbf U_i/\Delta t$ in the solved variables, block Gaussian elimination without pivoting
+between blocks gives, for $i = 0, 1, \ldots, n-1$, with $a_{-1}'$ and $\delta_{-1}$ taken as zero,
+
+$$
+\begin{aligned}
+a_i' &= \big(a_i - b_i a_{i-1}'\big)^{-1} c_i , \\
+\delta_i &= \big(a_i - b_i a_{i-1}'\big)^{-1}\big(r_i - b_i\,\delta_{i-1}\big) ,
+\end{aligned}
+$$ {#eq-ch07-vic-sweep}
+
+and then $\delta_i \leftarrow \delta_i - a_i'\,\delta_{i+1}$ from $i=n-2$ down to 0. On 60 layers the two passes
+match a dense solve to $4\times10^{-16}$ relative for $N=3$ and $N=5$ [check
+`src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out`, `[C1]`]. With the assembled blocks the
+result is $(I+\Delta t\,J)^{-1}\Delta\mathbf U$, and it tends to $\Delta\mathbf U$ as $\Delta t\to0$ (`[C2]`).
+
+The first entry of $r_i$ is the total density increment, dry plus all species, over $\Delta t$. The species are
+not in the system; they follow in @sec-ch07-vic-redistribute.
+
+In the code, @eq-ch07-vic-sweep is `ForwardSweep` ([`forward_sweep_impl.h:25-139`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L25-L139)) followed by `vic_backward_substitute` ([`vic_redistribute_impl.h:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L27-L36)).
+
+### Numerical method
+
+See @fig-ch07-vic-sweep for the two passes.
+
+```{python}
+#| label: fig-ch07-vic-sweep
+#| fig-cap: "The block-tridiagonal matrix of one column (green: the diagonal blocks $a_i$; sky blue: $b_i$, $c_i$) and the two passes that solve it. The forward sweep (orange) runs from the first row to the last and factors each eliminated block with ludcmp, refusing it when a pivot ratio is at most $8N\\epsilon$; the back substitution (blue) runs from the last row to the first."
+#| fig-alt: "A six-by-six block-tridiagonal matrix on the left, and on the right a downward orange arrow with the forward formulas and an upward blue arrow with the back-substitution formula."
+#| echo: false
+from snapy_report.ch07.fig_vic_sweep import make_fig
+make_fig()
+```
+
+`ForwardSweep` builds the right-hand side `rhs` of each layer from the explicit increment, with the density row
+summed over the species ([`forward_sweep_impl.h:35-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L35-L49)). For $N=5$ it factors the eliminated block and
+solves for $a_i'$ and $\delta_i$ together with the multi-column `lubksb`
+([`forward_sweep_impl.h:108-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L108-L120)). For $N=3$ it checks the factorisation with `ludcmp` and
+keeps the explicit inverse ([`forward_sweep_impl.h:121-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L121-L127)). After every layer it checks that $a_i'$ and $\delta_i$ are
+finite. On any failure, `vic_fail_column` fills every $\delta$ of the column with NaN and the sweep returns
+([`vic_solve_failure.h:13-19`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_solve_failure.h#L13-L19)). `vic_backward_substitute` skips a column whose first $\delta$ is not
+finite ([`vic_redistribute_impl.h:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L27-L36)). So a failed column is never partly back-substituted
+(`[C3]`).
+
+The dispatch `vic_solve_cpu` runs both passes per column ([`implicit_dispatch.cpp:133-167`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L133-L167)). Each layer depends on
+every right-hand side below and above it (`[C4]`), so the column is serial; the parallelism is across columns.
+On CUDA the sweep is one thread per column, and the assembly and the final cell update are one thread per cell.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| forward elimination | [`forward_sweep_impl.h:25-139`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L25-L139) | `ForwardSweep` | |
+| right-hand side | [`forward_sweep_impl.h:35-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L35-L49) | `rhs` | |
+| multi-column LU solve | [`lubksb.h:48-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/math/lubksb.h#L48-L71) | `lubksb` | |
+| failed-column sentinel | [`vic_solve_failure.h:13-19`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_solve_failure.h#L13-L19) | `vic_fail_column` | |
+| back substitution | [`vic_redistribute_impl.h:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L27-L36) | `vic_backward_substitute` | |
+| CPU dispatch | [`implicit_dispatch.cpp:133-167`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L133-L167) | `vic_solve_cpu` | |
+
+: Code map of the block Thomas sweep. {#tbl-ch07-vic-sweep-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `current_*` and `legacy_*` cases | for float and double, $N=3$ and 5, on a 2-layer column: identity blocks sweep with finite results; a repeated row, a row repeated up to $4\epsilon$, an infinite entry or an infinite right-hand side in either layer returns false | exact (logical) | contract |
+| this section's check, `vic_sweep_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the block Thomas sweep. {#tbl-ch07-vic-sweep-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the sweep of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported; deck: random
+diagonally dominant columns and a 2-layer assembled column, the check itself; run: `python3 vic_sweep_check.py`,
+numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU and CUDA share the sweep header.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+There is no pivoting between blocks. The sweep relies on the $I/\Delta t$ diagonal and the upwind $|\hat A|$
+to keep the eliminated blocks regular.
+:::
+
+1. **No accuracy test.** No ctest compares the sweep with a dense solve; the ctests check refusal and
+   finiteness only.
+2. **One rank per column.** The commented-out send and receive in the sweep are the trace of a distributed column
+   that is not supported (@sec-ch07-vic-options).

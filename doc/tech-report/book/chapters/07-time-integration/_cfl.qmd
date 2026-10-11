@@ -1,0 +1,142 @@
+## Time-step bound: acoustic, implicit-advective, shear and diffusive (`integration/cfl`) {#sec-ch07-cfl}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+sources: OUTLINE.md 7.3; src/hydro/hydro.cpp; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; src/implicit/implicit_hydro.cpp;
+         sources/gh__PR_BODIES_202-219.md (#218)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Sets the step as the Courant factor times the smallest of the per-direction bounds over all
+cells, ranks and local blocks, halved once per redo.
+**Switch.** `integration/cfl` (pyharp, default 0.9); `integration/implicit-advection-cfl` (default 1, $>0$) and
+`integration/shear-cfl` (default 0, off, $\ge0$), both only with `implicit-scheme`.
+**Order.** Not a discretisation: a stability bound.
+**Defining equation.** @eq-ch07-cfl-dt.
+:::
+
+In an explicit direction the bound is the acoustic Courant condition $\Delta x/(|v|+c_s)$. In the implicit
+$x_1$ direction of the VIC the sound waves are treated implicitly, so only advection limits the step there, at
+an advective Courant number `implicit-advection-cfl` that does not depend on `cfl`. An optional shear bound limits
+the step where a horizontal wind jumps by more than the sound speed across an $x_1$ face, which the implicit
+column cannot see. The diffusion module adds its parabolic bound (@sec-ch09-viscosity). The minimum is reduced
+over all ranks and local blocks, multiplied by `cfl`, and halved for each redo of the step.
+
+*Aliases.* chengcli/snapy#218 introduced the implicit-advective and shear bounds.
+
+### Derivation
+
+Let $C$ be `cfl`, $C_{\mathrm{adv}}$ `implicit-advection-cfl`, $C_{\mathrm{sh}}$ `shear-cfl`, $r$ the redo count
+of the step, $h_a$ the width of a cell in direction $a$ and $c_s$ the sound speed. `HydroImpl::max_time_step`
+returns, over interior cells,
+
+$$
+\begin{aligned}
+\tau_a &= \min_{\mathrm{cells}}\frac{h_a}{|v_a|+c_s} \quad\text{explicit direction},\\
+\tau_1 &= \min_{\mathrm{cells}}\frac{h_1}{|v_1|\,C/C_{\mathrm{adv}}} \quad\text{implicit direction},\\
+\tau_{\mathrm{sh}} &= \min_{\mathrm{faces}}\frac{C_{\mathrm{sh}}}{C}\,\frac{c_f\,h_b}{|v_{b,i}|\,|v_{b,i+1}|} ,
+\end{aligned}
+$$ {#eq-ch07-cfl-bounds}
+
+where the implicit direction is $x_1$, the shear minimum runs over the $x_1$ faces with $|v_{b,i+1}-v_{b,i}|\ge c_f$
+only, $c_f$ is the mean sound speed of the two cells of the face and $b$ a horizontal direction, all in `dt_min`
+([`hydro/hydro.cpp:326-375`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L326-L375)). It also takes the diffusive bound $\tau_\nu$ of @sec-ch09-viscosity, from `pdiffusion`
+([`hydro/hydro.cpp:396-398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L396-L398)). The block and the mesh then form
+
+$$
+\Delta t = 2^{-r}\,C\,\min_{\mathrm{ranks,\ blocks}}\min(\tau_a, \tau_1, \tau_{\mathrm{sh}}, \tau_\nu)
+$$ {#eq-ch07-cfl-dt}
+
+in `MeshBlockImpl::max_time_step` ([`meshblock.cpp:510-529`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L510-L529)) and `MeshImpl::max_time_step`
+([`mesh.cpp:306-329`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L306-L329)). Three consequences follow from @eq-ch07-cfl-bounds and @eq-ch07-cfl-dt, each
+checked against a line-by-line port [check `src/snapy_report/ch07/cfl_check.py`, output `cfl_check.out`]:
+
+1. In an explicit direction the acoustic Courant number $(|v_a|+c_s)\Delta t/h_a$ is $C$ (`[C1]`).
+2. In the implicit $x_1$ direction the factor $C$ cancels: $|v_1|\Delta t/h_1 = C_{\mathrm{adv}}$ whatever $C$ is,
+   so `implicit-advection-cfl` is the advective Courant number itself (`[C2]`).
+3. The shear bound is $\Delta t = C_{\mathrm{sh}}\,c_f h_b/(|v_{b,i}||v_{b,i+1}|)$, again independent of $C$, and
+   applies only on faces where the jump reaches $c_f$ (`[C4]`).
+
+A column with $n_2=n_3=1$ keeps the acoustic bound in $x_1$ even with an implicit scheme (`[C3]`), and each redo halves the step (`[C5]`). Solid cells get $c_s=10^{-8}$ in the `solid` mask, so they never bind
+([`hydro/hydro.cpp:322-324`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L322-L324)).
+
+The acoustic bound is the usual one for a Riemann-flux finite-volume scheme with explicit stages; the
+implicit-advective bound and the shear bound are policies of chengcli/snapy#218, stated there as results only.
+Neither is derived from a stability analysis of the VIC in this draft.
+
+### Numerical method
+
+See @fig-ch07-cfl-bounds for the bounds on one face of a 2-D column.
+
+```{python}
+#| label: fig-ch07-cfl-bounds
+#| fig-cap: "The bounds that set the step on a 2-D column with an implicit $x_1$ direction. Green: the advective bound in $x_1$, with Courant number $C_{\\mathrm{adv}}$; orange: the acoustic bound in $x_2$, $(|v_2|+c_s)\\,\\Delta t/\\Delta x_2 \\leq C$; vermillion: an $x_1$ face where the horizontal wind jumps by at least the face sound speed $c_f$ (in $\\mathrm{m\\,s^{-1}}$), which adds the shear bound. The step is the smallest, halved per redo $r$, over all ranks."
+#| fig-alt: "Six cells with a green double arrow along x1, an orange double arrow along x2 and one vertical face highlighted in vermillion, next to the four formulas of the bounds."
+#| echo: false
+from snapy_report.ch07.fig_cfl_bounds import make_fig
+make_fig()
+```
+
+The bounds are taken over interior cells only, on the primitive state at the start of the step. The global
+minimum is one `allreduce` with `MIN` before the factors are applied, so every rank takes the same step and the
+redo factor of the first local block applies to all blocks of a Mesh.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| per-direction bounds | [`hydro/hydro.cpp:311-398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L311-L398) | `HydroImpl::max_time_step` | |
+| implicit-advective denominator | [`hydro/hydro.cpp:331-339`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L331-L339) | `adv` | `implicit-scheme` |
+| shear bound | [`hydro/hydro.cpp:353-375`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L353-L375) | `shear_cfl` | `shear-cfl` |
+| diffusive bound | [`hydro/hydro.cpp:396-398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L396-L398) | `pdiffusion` | `forcing/diffusion` |
+| block: reduce, `cfl`, redo | [`meshblock.cpp:510-529`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L510-L529) | `current_redo` | `integration/cfl` |
+| mesh: local blocks, reduce | [`mesh.cpp:306-329`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L306-L329) | `current_redo` | |
+| options and checks | [`implicit_hydro.cpp:24-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L24-L69) | `advection_cfl` | |
+
+: Code map of the time-step bound. {#tbl-ch07-cfl-code}
+
+1. `ImplicitOptionsImpl::from_yaml` reads the two keys, requires finite values, $C_{\mathrm{adv}}>0$ and
+   $C_{\mathrm{sh}}\ge0$, and refuses either key without `implicit-scheme` ([`implicit_hydro.cpp:24-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L24-L69)).
+2. `HydroImpl::max_time_step` forms @eq-ch07-cfl-bounds and the diffusive bound ([`hydro/hydro.cpp:311-398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L311-L398)).
+3. `MeshBlockImpl::max_time_step` reduces with `MIN` over ranks and applies @eq-ch07-cfl-dt
+   ([`meshblock.cpp:510-529`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L510-L529)); `MeshImpl::max_time_step` first takes the minimum over local blocks
+   ([`mesh.cpp:306-329`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L306-L329)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_implicit_advection_cfl.py` (`test_implicit_advection_cfl_python`) | implicit $x_1$: $\Delta t = C_{\mathrm{adv}}h_1/|v_1|$ for $C_{\mathrm{adv}}$ 1 and 0.25; at rest the explicit $x_2$ bound; explicit scheme: the acoustic $x_1$ bound; the key without `implicit-scheme` raises | $10^{-12}$ relative | closed form |
+| `tests/test_shear_cfl.py` (`test_shear_cfl_python`) | a $6c_s$ reversal binds at $C_{\mathrm{sh}}c_sh_2/v^2$ for $C_{\mathrm{sh}}$ 0.2 and 0.1; off, uniform wind and a $0.6c_s$ jump leave the $x_2$ bound | $10^{-9}$ relative | closed form |
+| `tests/test_implicit_cfl.cpp` (`test_implicit_cfl.release`) | non-numeric, negative and non-finite values are refused; defaults 1 and 0 | exact | contract |
+| `tests/test_diffusion.cpp` (`test_diffusion.release`), `timestep_uses_largest_diffusivity` | the diffusive bound enters the hydro bound | $10^{-6}$ | see @sec-ch09-viscosity |
+| this section's check, `cfl_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
+
+: Tests of the time-step bound. {#tbl-ch07-cfl-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+line; deck: the check itself; run: `python3 cfl_check.py`, numpy 2.4.6, double]. ctest cases: **pending: pinned
+ctest run**. A data figure of the step against the redo count needs a logged run, **pending**.
+**Coverage.** The two Python tests run on CPU and take `--device cuda`; no multi-rank test of the reduction is
+listed here.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+No sedimentation-velocity bound enters the step: settling is protected only by the positivity limiter
+(@sec-ch08). A one-dimensional column keeps the acoustic bound even with the VIC.
+:::
+
+1. **Implicit $x_2$ and $x_3$ are unreachable.** The bound reads scheme bits 1 and 2 of `scheme` ([`hydro/hydro.cpp:341-351`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L341-L351)),
+   but only schemes 0, 1 and 9 are accepted by `type` ([`implicit_hydro.cpp:84-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L84-L98)).
+2. **The 1-D exception.** A column with $n_2=n_3=1$ keeps the acoustic $x_1$ bound in `denom1` ([`hydro/hydro.cpp:334-337`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L334-L337)), so a 1-D VIC run silently runs at the explicit step
+   (`sources/canoe__tall_column_instability_TECH_REPORT.md` §3f).
+3. **Existing decks changed step.** Introducing the advective bound changed the step of existing scheme 1 and 9
+   decks without a warning (chengcli/snapy#218, Compatibility; `sources/gh__PR_BODIES_202-219.md`).
+4. **No derivation of the implicit bounds.** $C_{\mathrm{adv}}$ and $C_{\mathrm{sh}}$ are policies; their stability
+   margins are not derived or measured here.

@@ -1,0 +1,103 @@
+## VIC column closure: a mirror ghost folded into the end blocks (`Bnd`) {#sec-ch07-vic-closure}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.13; src/implicit/vic_assemble_full_impl.h; src/implicit/vic_assemble_partial_impl.h;
+         src/implicit/implicit_dispatch.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Closes the column system at its bottom and top, and next to solid cells, by treating the
+unknown ghost increment as the mirror of the first interior one.
+**Switch.** None; fixed by the kernel, whatever the boundary condition of the explicit stage.
+**Order.** Not a discretisation.
+**Defining equation.** @eq-ch07-vic-closure.
+:::
+
+The system of @eq-ch07-vic-blocks reaches one cell beyond each end of the column. The VIC takes the increment
+there to be the reflection of its neighbour's. That is a closed wall: no mass, transverse momentum or energy
+crosses it, and the normal momentum keeps the wall pressure.
+
+### Derivation
+
+With $\mathrm{Bnd} = \mathrm{diag}(1,-1,1,1,1)$ (or $\mathrm{diag}(1,-1,1)$ for the partial system), setting
+$\delta_{-1} = \mathrm{Bnd}\,\delta_0$ in the first row and $\delta_n = \mathrm{Bnd}\,\delta_{n-1}$ in the last
+gives
+
+$$
+a_0 \leftarrow a_0 + b_0\,\mathrm{Bnd}, \quad a_{n-1} \leftarrow a_{n-1} + c_{n-1}\,\mathrm{Bnd} .
+$$ {#eq-ch07-vic-closure}
+
+This equals solving with the ghosts kept and eliminated, to $7\times10^{-15}$ relative [check
+`src/snapy_report/ch07/vic_closure_check.py`, output `vic_closure_check.out`, `[C1]`]. When the ghost state is the
+mirror of the edge cell, the Roe state at the wall has zero normal velocity (`[C4]`). The flux Jacobian then
+satisfies $J_g\,\mathrm{Bnd} = -\mathrm{Bnd}\,J_0$, so the linearised wall flux of every row with
+$\mathrm{Bnd} = +1$ cancels. On a moving, layered Cartesian column, the column sums of the mass, transverse
+momentum and energy rows of the closed operator vanish to $2\times10^{-16}$. The normal momentum row keeps an
+order-one wall term (`[C2]`). Without the closure the column loses mass through its ends (`[C3]`).
+
+In the code, @eq-ch07-vic-closure is the closure with `Bnd` ([`vic_assemble_full_impl.h:122-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L122-L126)).
+
+### Numerical method
+
+See @fig-ch07-vic-closure for the bottom end.
+
+```{python}
+#| label: fig-ch07-vic-closure
+#| fig-cap: "The bottom of a column. The ghost increment (purple, dashed) is the mirror $\\mathrm{Bnd}\\,\\delta_0$ of the first cell's, $\\mathrm{Bnd}=\\mathrm{diag}(1,-1,1,1,1)$, so its coupling $b_0\\delta_{-1}$ folds into the diagonal block as in @eq-ch07-vic-closure. The top is the same with $c_{n-1}$."
+#| fig-alt: "A dashed purple ghost cell left of a thick wall line and two interior cells to its right, with an arrow from the first cell to the ghost and the closure formula beside them."
+#| echo: false
+from snapy_report.ch07.fig_vic_closure import make_fig
+make_fig()
+```
+
+The full kernel sets `Bnd` with $-1$ on the normal momentum ([`vic_assemble_full_impl.h:44-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L44-L45)). It
+adds the closure at the first and last cell of the column and next to a solid cell, unless the block is not the
+first or last in $x_1$ or the direction is periodic. The dispatch always passes `periodic` as false
+([`vic_assemble_full_impl.h:122-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L122-L126)). The partial kernel does the same with its 3 x 3 `Bnd`
+([`vic_assemble_partial_impl.h:142-144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L142-L144)). The blocks next to a solid cell use a mirror of the fluid
+cell instead of the solid's state, so the solid acts as a wall from inside the column, through `solid_lower`
+([`vic_assemble_full_impl.h:53-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L53-L56)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| reflection matrix | [`vic_assemble_full_impl.h:44-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L44-L45) | `Bnd` | |
+| closure, full | [`vic_assemble_full_impl.h:122-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L122-L126) | `Bnd` | |
+| closure, partial | [`vic_assemble_partial_impl.h:142-144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L142-L144) | `Bnd` | |
+| mirror at a solid face | [`vic_assemble_full_impl.h:53-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L53-L56) | `solid_lower` | |
+| flags passed | [`implicit_dispatch.cpp:87-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L87-L90) | `periodic` | |
+
+: Code map of the VIC column closure. {#tbl-ch07-vic-closure-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| none dedicated | the closure is exercised by every VIC column test; the gravity column tests of @sec-ch06 check rest states with walls | — | — |
+| this section's check, `vic_closure_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the VIC column closure. {#tbl-ch07-vic-closure-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the closure of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported with zero
+gravity; deck: an 8-layer moving column with mirror ghosts, the check itself; run:
+`python3 vic_closure_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU and CUDA share the headers.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The implicit closure is always a reflecting wall. A column whose explicit boundary is open, or an outflow,
+still has a closed wall in its implicit solve.
+:::
+
+1. **Mismatch with the explicit boundary.** The assembled end blocks use the ghost states the explicit boundary
+   condition filled. Only for a reflecting boundary are those the mirror the closure assumes.
+2. **No periodic $x_1$.** The periodic branch is unreachable, since the dispatch passes false.
+3. **No dedicated test.** No ctest checks the closure on its own.

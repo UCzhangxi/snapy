@@ -1,0 +1,124 @@
+## VIC constituent redistribution: the solved mass change as face transfers, moved donor-upwind (`vic_constituent_column`) {#sec-ch07-vic-redistribute}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.12; src/implicit/vic_redistribute_impl.h; src/implicit/implicit_dispatch.cpp;
+         src/implicit/implicit_hydro.cpp; src/mesh/meshblock.cpp; tests/test_backward_substitution.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Turns the solved change of total density into mass transfers through the faces of the column,
+then moves dry gas, each species and the passive scalars through those faces from the upwind cell, never more
+than the donor holds.
+**Switch.** None; always on with the VIC.
+**Order.** Conservative; donor-upwind, first order in the composition.
+**Defining equation.** @eq-ch07-vic-faces.
+:::
+
+The implicit system knows only the total density (@sec-ch07-vic-sweep). Applying its correction to each species
+in proportion to the cell's own mass fraction would not conserve a species over the column when the mass
+fractions vary with height. It also could not carry a composition contrast. So the correction is converted into
+the unique set of face transfers that produces it, and the constituents ride on those transfers.
+
+### Derivation
+
+Let $\phi_i = (\delta_{i,0} - \Delta\rho^{\mathrm{ex}}_i)V_i$ be the mass the solve adds to cell $i$ beyond the
+explicit increment, with $\delta_{i,0}$ the first entry of the solved increment. Let $m_i = \rho_iV_i$, and let
+$R = \sum_i\phi_i$ be the part with no closed-face representation. The face transfers, positive upward, are
+
+$$
+M_{-1/2} = 0 , \quad M_{i+1/2} = M_{i-1/2} - \Big(\phi_i - R\,\frac{m_i}{\sum_k m_k}\Big) ,
+$$ {#eq-ch07-vic-faces}
+
+and they telescope: $M$ at the top face is zero up to round-off, $10^{-15}$ of the largest transfer in the check
+[check `src/snapy_report/ch07/vic_redist_check.py`, output `vic_redist_check.out`, `[C1]`]. Each constituent
+then moves $M_{i+1/2}$ times the mass fraction of the donor cell. The donor is cell $i$ for $M>0$ and cell $i+1$
+for $M<0$. A transfer is clamped to what the donor holds after its explicit update and the transfers already
+made. Every transfer is taken from one cell and given to the other. So dry gas and each species keep their
+column total to $2\times10^{-16}$ (`[C2]`).
+
+Without a clamp, each cell's total change is $M_{i-1/2}-M_{i+1/2}$, which is the bracket
+of @eq-ch07-vic-faces (`[C3]`). The host measures how far the clamps moved the result from that identity, as the
+"clamp residual". A face that asks for more than the donor holds empties the dry donor to round-off. The species
+keep a margin of 4096 ulp, the dry clamp mark is set, and the residual shows the clamp (`[C4]`, `[C5]`).
+
+In the code, @eq-ch07-vic-faces is the prefix sum into `MASS` ([`vic_redistribute_impl.h:95-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L95-L101)).
+
+### Numerical method
+
+See @fig-ch07-vic-redistribute for one column of the check.
+
+```{python}
+#| label: fig-ch07-vic-redistribute
+#| fig-cap: "One column of the check. Left: the cell mass changes $\\phi_i$ (sky blue) and the face transfers $M_{i-1/2}$ (orange) built from them by @eq-ch07-vic-faces, zero at the bottom and the top. Right: the resulting dry-gas (green) and species (purple, magnified 20 times) changes of each layer, moved donor-upwind."
+#| fig-alt: "Two horizontal bar charts against layer number: on the left cell bars with a zig-zag line of face transfers starting and ending at zero; on the right paired green and purple bars."
+#| echo: false
+from snapy_report.ch07.fig_vic_redist import make_fig
+make_fig()
+```
+
+Pass 1 forms $\phi_i$, $R$ and $\sum m$, through `explicit_total` ([`vic_redistribute_impl.h:82-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L82-L93)).
+Pass 2 is the prefix sum of @eq-ch07-vic-faces into `MASS` ([`vic_redistribute_impl.h:95-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L95-L101)).
+Pass 3a moves the dry gas with the dry fraction of the donor, carrying `dryfrac` upward
+([`vic_redistribute_impl.h:104-132`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L104-L132)). Where it clamps, it sets the mark that becomes the VIC clamp
+cause of @sec-ch07-redo. Pass 3b moves each species, keeping `keep` $= 1 - 4096\epsilon$ of the donor's
+species density ([`vic_redistribute_impl.h:134-160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L134-L160)). `vic_redistribute_cell` then writes the
+final tendencies: density plus the dry increment, the momenta and energy from $\delta$, and the species
+increments ([`vic_redistribute_impl.h:165-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L165-L185)).
+
+The CPU dispatch splits each column at solid cells and redistributes each fluid segment on its own, through
+`vic_constituent_column` ([`implicit_dispatch.cpp:199-214`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L199-L214)). On CUDA the column passes are one
+thread per column and the cell update one thread per cell. The host checks the clamp residual cell by cell into
+`_clamp_residual` ([`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378)). The passive scalars, which are per dry mass,
+move with the clamped dry-gas transfer from their donor cell, through `mass_corr`
+([`meshblock.cpp:663-676`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L663-L676)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| column passes | [`vic_redistribute_impl.h:77-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L77-L161) | `vic_constituent_column` | |
+| face prefix sum | [`vic_redistribute_impl.h:95-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L95-L101) | `MASS` | |
+| dry-gas transfer | [`vic_redistribute_impl.h:104-132`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L104-L132) | `dryfrac` | |
+| species transfer | [`vic_redistribute_impl.h:134-160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L134-L160) | `keep` | |
+| per-cell update | [`vic_redistribute_impl.h:165-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L165-L185) | `vic_redistribute_cell` | |
+| CPU dispatch, solid segments | [`implicit_dispatch.cpp:172-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L172-L219) | `vic_redistribute_cpu` | |
+| clamp residual | [`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378) | `_clamp_residual` | |
+| dry clamp mark | [`implicit_hydro.cpp:379-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L379-L380) | `_dry_clamp_step` | |
+| passive scalars | [`meshblock.cpp:663-676`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L663-L676) | `mass_corr` | |
+
+: Code map of the constituent redistribution. {#tbl-ch07-vic-redistribute-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_backward_substitution.cpp` (`test_backward_substitution.release`), `conserves_constituent_column_tendencies` | column totals of each constituent, the face transfers, non-negative final masses, and cell totals equal to $\delta_{i,0}$ | $10^{-12}$ absolute | round-off on values of order 1 |
+| same file, `dry_only_transport_is_conservative_and_clamped` | a dry-only transfer of 2 is clamped to 0.25, empties the donor and sets the mark | $10^{-12}$; exact for the mark | round-off; contract |
+| same file, `a_drained_species_donor_stays_non_negative`, `a_drained_float_species_donor_stays_non_negative` | a drained species donor keeps at least $4000\epsilon\rho y$ | as stated | the 4096-ulp margin |
+| this section's check, `vic_redist_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
+
+: Tests of the constituent redistribution. {#tbl-ch07-vic-redistribute-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the redistribution of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported;
+deck: a 12-layer column with dry gas and two species, the check itself; run: `python3 vic_redist_check.py`,
+numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU and CUDA share the header.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The constituents move donor-upwind, so a composition contrast is carried at first order and smeared. A clamp
+breaks the link between the solved total and the cell totals; the clamp residual reports it and the dry clamp
+mark asks for a redo.
+:::
+
+1. **Dry gas has no margin.** A drained dry donor can end at $-1$ ulp; the species keep 4096 ulp (`[C4]`).
+2. **Residual share.** $R$ is spread by cell mass, which puts most of it in the dense lower layers.
+3. **Whole column on one rank.** The prefix sum assumes the column starts at a closed bottom on this rank
+   (@sec-ch07-vic-options).

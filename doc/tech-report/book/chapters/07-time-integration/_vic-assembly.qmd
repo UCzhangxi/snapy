@@ -1,0 +1,131 @@
+## VIC block-tridiagonal assembly: the Roe-linearised flux divergence along a column (`vic_assemble_full_impl`) {#sec-ch07-vic-assembly}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.7; src/implicit/flux_decomposition_impl.h; src/implicit/vic_assemble_full_impl.h;
+         src/implicit/vic_assemble_partial_impl.h; src/implicit/implicit_dispatch.cpp; src/hydro/hydro.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** For every cell of a column, builds the three blocks $a_i$, $b_i$, $c_i$ of the implicit
+system: the linearisation of the $x_1$ flux divergence, with Roe upwind dissipation frozen at the current state.
+**Switch.** `integration/implicit-scheme` 1 (3 x 3) or 9 (5 x 5).
+**Order.** A linearisation about the stage state.
+**Defining equation.** @eq-ch07-vic-blocks.
+:::
+
+The VIC replaces the explicit $x_1$ flux divergence by an implicit one. It does not re-solve the Riemann
+problem. It linearises a Roe flux about the current state, holding the dissipation matrix $\lvert\hat A\rvert$ fixed, so the
+correction is one linear block-tridiagonal solve per column. The gravity rows of the operator ($\Phi$ and the
+face work) are part of @sec-ch06 and are not described here.
+
+### Derivation
+
+Write the Roe flux at face $i+\tfrac12$ as
+$\hat F_{i+1/2} = \tfrac12(F_i + F_{i+1}) - \tfrac12\lvert\hat A\rvert_{i+1/2}(\mathbf q_{i+1}-\mathbf q_i)$, with
+$\lvert\hat A\rvert = R\lvert\Lambda\rvert R^{-1}$ at the Roe average of the two cells. The update of cell $i$ with face areas $A_i$,
+$A_{i+1}$ and volume $V_i$ is $\mathbf q_i/\Delta t + (A_{i+1}\hat F_{i+1/2} - A_i\hat F_{i-1/2})/V_i$.
+Differentiating with $\lvert\hat A\rvert$ frozen and writing $J_i = \partial F/\partial\mathbf q$ at cell $i$ gives the three
+blocks of row $i$:
+
+$$
+\begin{aligned}
+a_i &= \frac{1}{2V_i}\Big(A_i\lvert\hat A\rvert_{i-1/2} + A_{i+1}\lvert\hat A\rvert_{i+1/2} + (A_{i+1}-A_i)J_i\Big) + \frac{I}{\Delta t}, \\
+b_i &= -\frac{A_i}{2V_i}\big(\lvert\hat A\rvert_{i-1/2} + J_{i-1}\big), \\
+c_i &= -\frac{A_{i+1}}{2V_i}\big(\lvert\hat A\rvert_{i+1/2} - J_{i+1}\big).
+\end{aligned}
+$$ {#eq-ch07-vic-blocks}
+
+The check builds these from the ported kernels on a spherical shell and compares them with central differences
+of the frozen-$\lvert\hat A\rvert$ residual. They agree to $8\times10^{-9}$ of the block size [check
+`src/snapy_report/ch07/vic_assembly_check.py`, output `vic_assembly_check.out`, `[C3]`]. Three properties carry
+the construction:
+
+1. The coded left eigenvectors invert the right ones (`[C1]`).
+2. $R\Lambda R^{-1}$ with signed eigenvalues is the flux Jacobian at the Roe state, and it has the Roe property
+   $\hat A(\mathbf q_R-\mathbf q_L) = F_R - F_L$ for one $\gamma$ (`[C2]`).
+3. With no transverse velocity the 3 x 3 partial system is the full one restricted to $(\rho,\rho u,E)$. With
+   transverse velocity the partial solve drops the coupling, by $3.7\times10^{-3}$ relative at 50 m/s in the
+   check (`[C4]`).
+
+In the code, @eq-ch07-vic-blocks is the block set-up with `half_inv_vol` $=1/(2V_i)$ ([`vic_assemble_full_impl.h:89-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L89-L99)).
+
+### Numerical method
+
+See @fig-ch07-vic-stencil for the block row.
+
+```{python}
+#| label: fig-ch07-vic-stencil
+#| fig-cap: "The block row of cell $i$. The Roe dissipation matrices $\\lvert\\hat A\\rvert$ sit on the two faces (orange) with the face areas $A_i$, $A_{i+1}$; the flux Jacobians $J$ sit in the three cells (blue). The coefficients $a_i$, $b_i$, $c_i$ combine them as in @eq-ch07-vic-blocks. The gravity block $\\Phi$ belongs to the gravity chapter."
+#| fig-alt: "Three cells in a row with orange faces between them, labelled with the Roe matrices and face areas, and the formulas for b, c and a underneath."
+#| echo: false
+from snapy_report.ch07.fig_vic_stencil import make_fig
+make_fig()
+```
+
+Each face takes its two neighbours' primitives. `RoeAverage` weights by $\sqrt\rho$ and averages the total
+enthalpy ([`flux_decomposition_impl.h:37-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L37-L68)); the caller passes the mean $\gamma$ of the two cells.
+`Eigenvalue` returns $|u-c|$, $|u|$, $|u+c|$, $|u|$, $|u|$ ([`flux_decomposition_impl.h:70-74`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L70-L74)).
+`Eigenvector` writes out the eigenvectors and their inverse by hand
+([`flux_decomposition_impl.h:76-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L76-L103)), and `FluxJacobian` the Euler flux Jacobian in conserved
+variables ([`flux_decomposition_impl.h:105-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L105-L126)). The full kernel forms $\lvert\hat A\rvert$ as `Am` and `Ap`
+at the lower and upper face ([`vic_assemble_full_impl.h:51-87`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L51-L87)) and then the blocks, with `half_inv_vol` $=1/(2V_i)$ ([`vic_assemble_full_impl.h:89-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L89-L99)). The partial kernel copies
+the $(\rho, \rho u, E)$ rows and columns out of the same 5 x 5 matrices into `Am2` and `Ap2`
+([`vic_assemble_partial_impl.h:110-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L110-L120)).
+
+On the CPU the assembly runs the columns in parallel and fills each cell independently. A solid cell gets
+$a=I/\Delta t$, $b=c=0$, and its fluid neighbour sees a mirror of itself instead of the solid's state; both are
+in `vic_assemble_full_cpu` ([`implicit_dispatch.cpp:77-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L77-L131)), as the check confirms (`[C5]`). Before the assembly, the host
+removes the EOS reference energy from the energy tendency and takes $\gamma$ from the EOS, through
+`internal_energy_offset` ([`hydro/hydro.cpp:427-435`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L427-L435)). It also rotates the velocity into the local orthonormal frame, through
+`prim2local1_` ([`implicit_hydro.cpp:226-231`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L226-L231)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| Roe average | [`flux_decomposition_impl.h:37-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L37-L68) | `RoeAverage` | |
+| eigenvalues | [`flux_decomposition_impl.h:70-74`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L70-L74) | `Eigenvalue` | |
+| eigenvectors | [`flux_decomposition_impl.h:76-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L76-L103) | `Eigenvector` | |
+| flux Jacobian | [`flux_decomposition_impl.h:105-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L105-L126) | `FluxJacobian` | |
+| full blocks | [`vic_assemble_full_impl.h:89-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L89-L99) | `half_inv_vol` | `implicit-scheme` 9 |
+| partial blocks | [`vic_assemble_partial_impl.h:110-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L110-L120) | `half_inv_vol` | `implicit-scheme` 1 |
+| column loop, solid cells | [`implicit_dispatch.cpp:77-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L77-L131) | `vic_assemble_full_cpu` | |
+| host: energy offset, $\gamma$ | [`hydro/hydro.cpp:405-446`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L405-L446) | `_apply_implicit_correction` | |
+| host: dispatch | [`implicit_hydro.cpp:335-346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L335-L346) | `vic_assemble_full` | |
+
+: Code map of the VIC assembly. {#tbl-ch07-vic-assembly-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_backward_substitution.cpp` (`test_backward_substitution.release`), `species_relabeling_preserves_mixture_density` | `CopyPrimitives` gives the same face primitives whether 0.4 of the mass is one species or two, and the density it passes is the total density | `EXPECT_DOUBLE_EQ` (4 ulp) | round-off |
+| gravity column tests | rest states of tall and solid-walled columns with the VIC; listed with the gravity terms in @sec-ch06 | — | — |
+| this section's check, `vic_assembly_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
+
+: Tests of the VIC assembly. {#tbl-ch07-vic-assembly-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the kernels of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+line with zero gravity; deck: the check itself; run: `python3 vic_assembly_check.py`, numpy 2.4.6]. ctest cases:
+**pending: pinned ctest run**.
+**Coverage.** CPU kernels; the CUDA assembly shares the same headers.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The operator is a linearisation with $\lvert\hat A\rvert$ frozen. It is not the Jacobian of the explicit Riemann solver
+the stage used, so the implicit and explicit fluxes are not the same function.
+:::
+
+1. **Mean $\gamma$.** The Roe average at a face uses the mean $\gamma$ of the two cells. The Roe property holds
+   only when they are equal (`[C2]` tests one $\gamma$).
+2. **Partial system.** `vic-partial` ignores the transverse momentum coupling, which is exact only when $v=w=0$
+   (`[C4]`).
+3. **No direct test of the blocks.** No ctest compares $a$, $b$, $c$ with a difference quotient. The column tests
+   check rest states only.

@@ -1,0 +1,114 @@
+## VIC rejection and rollback: four guards, a latch and redo cause 32 (`forward_masked`) {#sec-ch07-vic-reject}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 7.11; src/implicit/implicit_hydro.cpp; src/implicit/implicit_hydro.hpp; src/mesh/meshblock.cpp;
+         docs/derivations/290-lu-pivot-tolerance.md; tests/test_lu_failure.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** When any column of a block cannot be solved, or any value around the solve is not finite,
+undoes the correction for the whole block, skips the solve in the remaining stages, and asks for the step to be
+redone.
+**Switch.** None; always on with the VIC.
+**Order.** Not a discretisation.
+**Defining equation.** None; see the list of guards in the Derivation.
+:::
+
+The VIC never applies a partial or nonfinite correction. A failure is turned into a clean "no correction" for
+the stage. It is latched for the rest of the step and becomes cause 32 of the step acceptance
+in @sec-ch07-redo, which restores the step input and halves the step.
+
+### Derivation
+
+There is nothing to derive; the section states the guards and the invariants they keep. `forward_masked` checks,
+in this order:
+
+1. the latch: a failure earlier in the step returns a zero correction without solving;
+2. the inputs: `du`, `w` and $\gamma$ finite in every interior column;
+3. the sentinel: no NaN left in the solution by a refused column (@sec-ch07-vic-sweep);
+4. the results: the corrected `du` and the redistribution buffer finite;
+5. the correction: `du` after minus `du` before finite.
+
+A refusal at guards 2 to 5 restores `du` and `w` from copies taken on entry and returns a zero correction. Both
+copies are bit for bit the inputs [check `src/snapy_report/ch07/vic_reject_check.py`, output
+`vic_reject_check.out`, `[C1]`]. It also sets the latch and logs the rank, column, step, stage and retry. After a
+failure at stage 0 the other two stages of rk3 do not solve (`[C2]`). The latch raises redo cause 32. The reset
+at stage 0 of the retry lets the retry solve again (`[C3]`). One failed column out of four gives a zero
+correction for every column of the block, so no column is partly updated (`[C4]`).
+
+### Numerical method
+
+See @fig-ch07-vic-reject for the guards.
+
+```{python}
+#| label: fig-ch07-vic-reject
+#| fig-cap: "The path through forward_masked. The latch (white) returns a zero correction for the rest of a failed step. The four guards (orange) each lead to the same refusal (vermillion): restore du and w, return a zero correction, set the latch and log the column, which check_redo reads as cause 32. A pass through all of them returns du - du0 (green)."
+#| fig-alt: "A row of seven boxes, latch, input check, solve, sentinel check, redistribution, result check and correction check, with arrows from the four checks down to a single refusal box."
+#| echo: false
+from snapy_report.ch07.fig_vic_reject import make_fig
+make_fig()
+```
+
+The latch is `_solve_failed` ([`implicit_hydro.cpp:175-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L175-L180)). Its accessors are
+`reset_solve_failure` and `solve_failed` ([`implicit_hydro.hpp:96-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L96-L101)). On entry the module copies
+`du` into `_du0` and clones `w` into `w0` ([`implicit_hydro.cpp:195-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L195-L198)). The refusal is the
+lambda `reject` ([`implicit_hydro.cpp:200-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L200-L218)). The guards are `bad_inputs`
+([`implicit_hydro.cpp:222-224`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L222-L224)), `bad_columns` ([`implicit_hydro.cpp:348-351`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L348-L351)),
+`bad_results` ([`implicit_hydro.cpp:473-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L473-L475)) and `bad_correction`
+([`implicit_hydro.cpp:480-481`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L480-L481)). The guards are block-wide reductions. On a GPU each costs a device
+to host transfer of one flag.
+
+The step-acceptance flags read the latch as `solve_failure` ([`meshblock.cpp:858-862`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L858-L862)). Stage 0 of
+every step attempt calls `reset_solve_failure` ([`meshblock.cpp:616-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L616-L619)). A VIC failure is the one
+cause that still restores the step after `max_redo` (@sec-ch07-redo).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| latch | [`implicit_hydro.cpp:175-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L175-L180) | `_solve_failed` | |
+| entry copies | [`implicit_hydro.cpp:195-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L195-L198) | `w0` | |
+| refusal | [`implicit_hydro.cpp:200-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L200-L218) | `reject` | |
+| input guard | [`implicit_hydro.cpp:222-224`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L222-L224) | `bad_inputs` | |
+| sentinel guard | [`implicit_hydro.cpp:348-351`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L348-L351) | `bad_columns` | |
+| result guard | [`implicit_hydro.cpp:473-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L473-L475) | `bad_results` | |
+| correction guard | [`implicit_hydro.cpp:477-481`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L477-L481) | `bad_correction` | |
+| reset at stage 0 | [`meshblock.cpp:616-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L616-L619) | `reset_solve_failure` | |
+| redo flag | [`meshblock.cpp:858-862`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L858-L862) | `solve_failure` | |
+
+: Code map of VIC rejection and rollback. {#tbl-ch07-vic-reject-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `partial_retry_restores_step`, `full_retry_restores_step`, `*_stop_restores_step`, `*_assembly_*` | a refused correction (a NaN $\gamma$, or $\Delta t=0$ in the `*_assembly_*` cases) leaves `du` and the primitives unchanged, and `check_redo` returns 1 (retry) or $-1$ (stop) with `hydro_u` restored to the step input | `torch::equal` (bitwise) | contract |
+| same file, `mesh_terminal_failure_restores_all_blocks` | a two-block Mesh restores both blocks at a terminal failure | `torch::equal` | contract |
+| same file, `finite_near_singular_forward_masked` (and CUDA twins of these cases) | a finite float32 column with a long step ($10^4$) is refused by the pivot guard and sets the latch, leaving `du` and the primitives unchanged | logical; `torch::equal` | contract |
+| this section's check, `vic_reject_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of VIC rejection and rollback. {#tbl-ch07-vic-reject-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the control flow of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported as a
+state machine around the ported sweep; deck: the check itself; run: `python3 vic_reject_check.py`, numpy
+2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU and CUDA (the CUDA twins of the retry cases).
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+A failure discards the work of the whole block for the step, and of every block, since the redo decision is
+global. A column that fails at every step size stops the run after `max_redo` retries.
+:::
+
+1. **Block-wide.** One bad column zeroes the correction of all columns of its block (`[C4]`). This is the price
+   of having no per-column status channel.
+2. **Synchronising guards.** Each guard reads a flag back to the host.
+3. **Not cured by a smaller step.** A float32 column refused for its conditioning may be refused again at every
+   halving (@sec-ch07-vic-pivot).
