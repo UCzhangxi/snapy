@@ -1,0 +1,46 @@
+# Conservation budgets and diagnostics {#sec-ch13}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13
+status: draft; 13.4 (the gravity-work fixer budget) waits for chengcli/snapy#303
+-->
+
+This chapter describes what snapy measures and prints about its own conservation, and which regression tests
+read those numbers. Every `ncycle_out` cycles the driver prints one line. It holds the volume integrals of the
+conserved state (`mass0=`, `masst=`, `ke=`, `ie=` or `energy=`, `pe=`) and a group of run-to-date meters
+(`limcut=`, `thetamin=`, `thetasevere=`, `vicclamp=`, `fixgrav=`). The chapter also covers the gravity-work fixer
+budget, the redo causes and termination status as a diagnostic view, the diagnostic fields an output block can
+request, and the tests that assert conservation to round-off.
+
+The chapter owns the bookkeeping and the printout, not the schemes being measured. The positivity
+limiter belongs to @sec-ch08, the VIC and the step acceptance to @sec-ch07, and the physics of the gravity-work
+fixer to @sec-ch06-fixer.
+The directory `src/diagnostics/` is legacy code from Athena++ and canoe. It is not in the library's source glob,
+`src_files` ([`CMakeLists.txt:35-53`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L35-L53)), so it is not compiled, and nothing in it is described here as live.
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| Cycle-line budget (@sec-ch13-cycle) | `integration/ncycle_out` | pyharp default | — | `test_cycle_diagnostics` |
+| Positivity-limiter meters (@sec-ch13-limiter-meters) | `equation-of-state/limiter` | off | — | `test_cycle_diagnostics` |
+| VIC clamp meter (@sec-ch13-vicclamp) | `integration/implicit-scheme` | off | — | `test_cycle_diagnostics` |
+| Gravity-work fixer budget (@sec-ch13-fixgrav) | `gravity-work-fixer` | on with `cell` | — | `test_gravity_work_fixer_python` |
+| Redo causes and termination status (@sec-ch13-redo-view) | none | on | — | `test_check_redo_floor_python` |
+| Output-field diagnostics (@sec-ch13-output-diag) | `outputs/N/variables` | none | — | `test_user_output` |
+| Mass-conservation regression checks (@sec-ch13-regression) | none | — | — | `test_flux_positivity_python` |
+
+: The schemes of this chapter. The gravity-work fixer budget is a placeholder until chengcli/snapy#303 merges. {#tbl-ch13-schemes}
+
+{{< include 13-diagnostics/_cycle.qmd >}}
+
+{{< include 13-diagnostics/_limiter-meters.qmd >}}
+
+{{< include 13-diagnostics/_vicclamp.qmd >}}
+
+{{< include 13-diagnostics/_fixgrav.qmd >}}
+
+{{< include 13-diagnostics/_redo-view.qmd >}}
+
+{{< include 13-diagnostics/_output-diag.qmd >}}
+
+{{< include 13-diagnostics/_regression.qmd >}}

@@ -1,0 +1,108 @@
+## Mass-conservation regression checks: which test holds which total, to what tolerance (`check_mass`) {#sec-ch13-regression}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13.7; tests/CMakeLists.txt; tests/run_example_mass_check.py; the test files named in the table
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Collects the registered tests that assert a conserved total (mass, a species, energy,
+momentum, $E+\mathrm{PE}$ or a tracer) to round-off, with their tolerances. It also describes the one script that
+checks `mass0=` on the cycle line of a whole example run, which is not registered.
+**Switch.** None; these are tests.
+**Order.** Not a discretisation.
+**Defining equation.** @eq-ch13-mass-drift.
+:::
+
+Each identity a test asserts is derived in the chapter that owns the operator. The positivity limiter
+is @sec-ch08, the moist repairs and the saturation adjustment @sec-ch10, the seams @sec-ch03. This section is the
+index: what is held, by which test, and how tightly.
+
+### Derivation
+
+There is nothing new to derive for the registered tests. The log-based script `run_example_mass_check.py` reads
+every `mass0=` token of a run's log and compares the first sample, $m_0$, with the last, $m_N$:
+
+$$
+\delta = \frac{|m_N - m_0|}{\max(|m_0|, 1)} \le 10^{-8} .
+$$ {#eq-ch13-mass-drift}
+
+Its pattern reads one `mass0=` per cycle line, from the block line and the Mesh line alike, and never `masst=`
+[check `src/snapy_report/ch13/regression_check.py`, output `regression_check.out`, `[C1]`]. Only the end points
+enter, so an excursion of $5\times10^{-6}$ in between passes (`[C2]`). The floor of 1 in the scale makes the test
+absolute below a total mass of 1: a $10^{-6}$ relative drift of a mass of $10^{-3}$ passes, while the same drift of
+a mass of $10^{3}$ fails (`[C3]`).
+
+In the code, @eq-ch13-mass-drift is `check_mass` ([`run_example_mass_check.py:133-144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L133-L144)).
+
+### Numerical method
+
+See @fig-ch13-regression for the tests and the totals they hold.
+
+```{python}
+#| label: fig-ch13-regression
+#| fig-cap: "The conservation tests and the totals each one asserts, with the tolerance in float64, read from the test sources at the pin. Several tests use $10^{-6}$ in float32. The grey row (*) is the log-based mass check, which no CMake rule registers."
+#| fig-alt: "A matrix of twelve tests against six conserved quantities, with filled cells showing the tolerance where a test asserts that quantity."
+#| echo: false
+from snapy_report.ch13.fig_regression_matrix import make_fig
+make_fig()
+```
+
+The registered tests are listed in @tbl-ch13-regression-tests with the tolerance each uses. The float64
+tolerance is $10^{-12}$ almost everywhere. It is a round-off margin; none of the tests derives it. The two cubed-sphere limiter tests use $10^{-13}$. The script, its pattern
+`MASS_PATTERN` ([`run_example_mass_check.py:12`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L12)) and its default `--mass-rtol`
+([`run_example_mass_check.py:29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L29)) exist at the pin, but the CMake test list does not name the file. So no
+ctest checks `mass0=` over a full example run.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| mass0 pattern | [`run_example_mass_check.py:12`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L12) | `MASS_PATTERN` | |
+| default tolerance | [`run_example_mass_check.py:29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L29) | `mass-rtol` | `--mass-rtol` |
+| samples | [`run_example_mass_check.py:128-130`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L128-L130) | `load_masses` | |
+| drift test | [`run_example_mass_check.py:133-144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_example_mass_check.py#L133-L144) | `check_mass` | |
+
+: Code map of the log-based mass check. {#tbl-ch13-regression-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_condensate_conservation.cpp` (`test_condensate_conservation.release`) | the species total through a stoichiometric multi-vapor debit | `allclose`, $10^{-12}$ | round-off |
+| `tests/test_fix_vapor_volume.cpp` (`test_fix_vapor_volume.release`) | the column vapor mass $\sum\rho qV$ through a repair on varying $V$ | $10^{-12}$; $10^{-6}$ float32 | round-off |
+| `tests/test_parentless_cloud.cpp` (`test_parentless_cloud.release`, `_nb1`, `_nb1_mp`, `_nb1_mp_gloo`) | the species mass through a parentless-cloud repair, whatever the decomposition | $10^{-12}$ relative; $10^{-6}$ float32 | round-off |
+| `tests/test_vapor_column_nb1.cpp` (`test_vapor_column_nb1.release`) | the column mass through repairs, whatever nb1 | $10^{-12}$ relative; $10^{-6}$ float32 | round-off |
+| `tests/test_wall_saturation.cpp` (`test_wall_saturation.release`) | energy and water through condensation and evaporation at a wall | $10^{-12}$ relative | round-off |
+| `tests/test_flux_positivity.py` (`test_flux_positivity_python`) | vapor and scalar totals with the limiter on | $10^{-12}$ | round-off |
+| `tests/test_flux_positivity_cubedsphere.py` (`test_flux_positivity_cubedsphere_python`) | every tracer across a cubed-sphere seam | `DRIFT_TOL` $10^{-13}$ | round-off |
+| `tests/test_flux_positivity_cubedsphere_moist.py` (`test_flux_positivity_cubedsphere_moist_python`) | the species across the same seam | `DRIFT_TOL` $10^{-13}$ | round-off |
+| `tests/test_flux_positivity_carry.cpp` (`test_flux_positivity_carry.release`) | the energy and momentum carried by withheld mass, face by face | $10^{-12}$ relative | round-off |
+| `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`) | total mass, vapor mass and $E+\mathrm{PE}$ over ten steps across seams | `DRIFT_TOL` $10^{-12}$ | round-off |
+| `tests/test_tracer_dry_convention.py` (`test_tracer_dry_convention_python`) | a uniform tracer stays uniform under initialisation, the VIC and relaxation | `TOL` $10^{-12}$ | round-off |
+| this section's check, `regression_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
+
+: The conservation regression tests. {#tbl-ch13-regression-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the script of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported; deck:
+synthetic cycle lines in the printed format, the check itself; run: `python3 regression_check.py`, numpy 2.4.6].
+ctest cases: **pending: pinned ctest run**.
+**Coverage.** The table is read from the test sources; the tests were not run here.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+No registered test checks `mass0=` over a full example run. The only such check is a script that no CMake rule
+calls, and it compares only the first and last samples.
+:::
+
+1. **Unit tests, not runs.** The registered tests hold their totals on small decks over a few steps. Long-run
+   conservation of a production deck is not tested.
+2. **Absolute below 1.** The script's floor of 1 makes it absolute for small total masses (`[C3]`).
+3. **Gravity budget.** The $E+\mathrm{PE}$ budget of the gravity-work fixer and its test are part of
+   @sec-ch13-fixgrav, which waits for chengcli/snapy#303.

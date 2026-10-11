@@ -1,0 +1,123 @@
+## Positivity-limiter meters: `limcut`, `thetamin`, `thetasevere` (`_positivity_severe`) {#sec-ch13-limiter-meters}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13.2; src/hydro/hydro_forward.cpp; src/hydro/flux_positivity.cpp; src/hydro/flux_positivity.hpp;
+         src/hydro/hydro.cpp; src/mesh/meshblock.cpp; tests/test_cycle_diagnostics.cpp;
+         sources/gh__PR_BODIES_202-219.md (#217)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Counts, over the whole run, how hard the species flux-positivity limiter of @sec-ch08 had to
+act. It records the smallest limiter factor, the number of severe cuts and the fraction of the offered $x_1$
+species flux that was cut. All three are printed in the run-to-date group of the cycle line (@sec-ch13-cycle).
+**Switch.** `equation-of-state/limiter` (default false), and the run must carry species.
+**Order.** Not a discretisation.
+**Defining equation.** @eq-ch13-limiter-severe.
+:::
+
+The limiter scales each species flux leaving a cell by a factor $\theta \in [0,1]$, so that the cell cannot be
+drained below zero in a stage. The meters turn those factors into three numbers a reader can watch. `thetamin=`
+is the smallest $\theta$ so far. `thetasevere=` counts the (cell, species) entries cut hard enough to matter.
+`limcut=` is the fraction of the offered $x_1$ flux that was cut.
+
+### Derivation
+
+For a species of density $\rho_y$ in cell $i$, with $D_i$ the mass its faces would remove in the stage step
+$\Delta t$, the limiter factor is
+$\theta_i = \min\big(1, (1-4096\epsilon)\,\rho_{y,i}V_i/D_i\big)$ where $D_i > 0$, and 1 elsewhere. The mass held
+back is $(1-\theta_i)D_i$. An entry is severe when
+
+$$
+\theta_i < 0.9 \quad\text{and}\quad (1-\theta_i)\,D_i > n_{\mathrm{ulp}}\,\epsilon\,m_i ,
+$$ {#eq-ch13-limiter-severe}
+
+with $m_i$ the cell's gas mass, dry plus all species, and $n_{\mathrm{ulp}} = 4096$ in float64 or 64 in float32.
+The second condition keeps round-off events out of the count. The thresholds are $9.09\times10^{-13}$ and
+$7.63\times10^{-6}$ of the gas mass [check `src/snapy_report/ch13/limiter_meters_check.py`, output
+`limiter_meters_check.out`, `[C3]`].
+
+On a settling column where $\Delta t\,|v_{\mathrm{sed}}|/\Delta x = 2$ in five draining cells, $\theta$ is
+$1/2$ in those cells. That gives five hits, five severe entries, `thetamin` $1/2$ and `limcut` $1/2$, each to
+$5\times10^{-13}$, the size of the $4096\epsilon$ margin (`[C1]`). An empty cell drained by a $10^{-20}$ face flux
+has $\theta = 0$ and counts as a hit, but not as severe (`[C2]`). When the limiter never cuts, `thetamin` stays at
+its initial 1, `thetasevere` at 0, and `limcut` is not printed (`[C4]`).
+
+In the code, @eq-ch13-limiter-severe is the census into `_positivity_severe`
+([`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669)).
+
+### Numerical method
+
+See @fig-ch13-limiter-meters for the settling column of the check.
+
+```{python}
+#| label: fig-ch13-limiter-meters
+#| fig-cap: "The settling column of the check. Left: the limiter factor $\\theta$ of each cell; the five draining cells have $\\theta=1/2$, below the severe threshold 0.9 (vermillion). Right: the offered $|F|$ of each face (orange) and the part the limiter cut (vermillion); limcut is the sum of the cuts over the sum of the offers, here 1/2."
+#| fig-alt: "Two bar charts: theta per cell, one bar at 1 and five at 0.5 under a dashed line at 0.9; and paired offered and cut flux bars on five faces, the cut bars half the offered ones."
+#| echo: false
+from snapy_report.ch13.fig_limiter_meters import make_fig
+make_fig()
+```
+
+The factor comes from `flux_positivity_theta`, with the margin `margin` of 4096 ulp in every precision
+([`flux_positivity.cpp:61-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L61-L71)). The round-off bound of the severe test is `positivity_roundoff`, from the
+two constants `kPositivityRoundoffUlp` and `kPositivityRoundoffUlpFloat` ([`flux_positivity.hpp:18-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L18-L23)).
+In each stage, `HydroImpl::forward` takes a census of the interior entries before the ghost fill. It adds the
+entries with $\theta<1$ to `_positivity_hits`, the severe ones to `_positivity_severe`, and lowers
+`_positivity_min` ([`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669)). After the fluxes are scaled, it adds the offered
+interior $x_1$ flux magnitude to `_lim_flux` and the cut to `_lim_cut` ([`hydro_forward.cpp:690-705`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L690-L705)).
+
+The five meters are module buffers set up with `register_buffer` at construction: 0 for the counts and sums, 1
+for the minimum ([`hydro/hydro.cpp:187-194`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L187-L194)). The cycle line sums the counts and the two flux totals over
+blocks and ranks, takes the MIN of $\theta$, and prints the ratio only when the offered total is positive, through
+`limcut` ([`meshblock.cpp:1102-1107`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1102-L1107)). The hit count is not printed. It is read by the step acceptance
+(@sec-ch07-redo) through the EOS limiter marks, `limiter_hits` ([`meshblock.cpp:1212-1218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1212-L1218)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| limiter factor | [`flux_positivity.cpp:22-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L22-L72) | `flux_positivity_theta` | |
+| round-off constants | [`flux_positivity.hpp:18-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L18-L23) | `kPositivityRoundoffUlp` | |
+| census | [`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669) | `_positivity_severe` | `equation-of-state/limiter` |
+| cut and offered flux | [`hydro_forward.cpp:690-705`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L690-L705) | `_lim_cut` | |
+| buffers | [`hydro/hydro.cpp:187-194`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L187-L194) | `register_buffer` | |
+| accessors | [`hydro/hydro.hpp:145-151`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L145-L151) | `positivity_min` | |
+| printing | [`meshblock.cpp:1102-1107`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1102-L1107) | `thetasevere` | |
+
+: Code map of the positivity-limiter meters. {#tbl-ch13-limiter-meters-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_cycle_diagnostics.cpp` (`test_cycle_diagnostics.release`), `positivity_meters_read_their_hand_computed_values` | a settling column: `thetamin` 0.5, 5 severe, limcut 0.5 in the buffers and on the printed line | $10^{-9}$ on the buffers, $10^{-5}$ on the line | round-off; printed digits |
+| same file, `positivity_severe_needs_more_than_roundoff_withheld`, `positivity_severe_float32_needs_more_than_roundoff_withheld` | 5 hits; severe only when the withheld mass is above round-off, in float64 and float32 | exact counts; $10^{-9}$ or $10^{-3}$ on $\theta$ | contract; precision |
+| same file, `meter_group_is_marked_run_to_date` | the meter tokens follow the ` run-to-date:` marker | token order | contract |
+| this section's check, `limiter_meters_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the positivity-limiter meters. {#tbl-ch13-limiter-meters-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the census of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy in
+one dimension; deck: a settling column, the check itself; run: `python3 limiter_meters_check.py`, numpy 2.4.6].
+ctest cases: **pending: pinned ctest run**.
+**Coverage.** One-dimensional port; the code sums all three directions for $\theta$ but only $x_1$ for limcut.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+`limcut` measures the $x_1$ flux only. A run whose limiter acts in $x_2$ or $x_3$ shows it in `thetamin` and
+`thetasevere`, not in `limcut`.
+:::
+
+1. **Initial values.** A run whose limiter never cut prints `thetamin=1` and `thetasevere=0`. That reads as "no
+   cut", not as "meter off" (#217 Limits, `sources/gh__PR_BODIES_202-219.md`).
+2. **Run to date.** The meters are never reset during a run, so a single bad step stays in `thetamin` for the
+   rest of the run.
+3. **Scalars.** The passive-scalar module keeps its own hit counter, `_positivity_hits`
+   ([`scalar.cpp:160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L160)), which is not printed.

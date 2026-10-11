@@ -1,0 +1,100 @@
+## VIC clamp meter: how far the availability clamp broke the face telescoping (`vicclamp`) {#sec-ch13-vicclamp}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13.3; src/implicit/implicit_hydro.cpp; src/implicit/implicit_hydro.hpp; src/mesh/meshblock.cpp;
+         tests/test_cycle_diagnostics.cpp; tests/test_lu_failure.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Records the largest per-cell relative break, over the run, between a cell's total constituent
+change after the VIC redistribution and the face transfers $M_{i-1/2} - M_{i+1/2}$ that should produce it.
+**Switch.** Printed whenever an implicit scheme is active (`integration/implicit-scheme` 1 or 9).
+**Order.** Not a discretisation.
+**Defining equation.** @eq-ch13-vicclamp.
+:::
+
+The VIC redistribution of @sec-ch07-vic-redistribute moves each constituent through the faces, but never more than
+the donor holds. Without a clamp, every cell's total change equals its face divergence exactly. The meter reports
+how much the clamps broke that identity: 0 when nothing clamped, and $\sum y$ when every species of a donor was
+starved.
+
+### Derivation
+
+Let $\Delta m_i = \sum_c \Delta\rho_{c,i}V_i$ be the total constituent change of cell $i$ from the redistribution,
+over dry gas and every species. With $M_{i\mp1/2}$ the solved face transfers, the meter is
+
+$$
+r = \max_i \frac{\big|\Delta m_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
+$$ {#eq-ch13-vicclamp}
+
+maximised over the run, with $f$ a floor against empty faces. Without a clamp, $r$ is zero to round-off [check
+`src/snapy_report/ch13/vicclamp_check.py`, output `vicclamp_check.out`, `[C1]`]. If the species of a donor are
+starved, its species transfer is clamped to zero. Only the dry fraction $M(1-\sum y)$ moves, so each cell
+misses $M\sum y$, and $r = \sum y$. That is 0.03 for $y = (0.01, 0.02)$ (`[C2]`). The floor is the smallest
+normal float in float32, where $10^{-300}$ rounds to zero, and $10^{-300}$ in float64 (`[C3]`).
+
+In the code, @eq-ch13-vicclamp is the update of `_clamp_residual` ([`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378)).
+
+### Numerical method
+
+See @fig-ch13-vicclamp for the starved case.
+
+```{python}
+#| label: fig-ch13-vicclamp
+#| fig-cap: "A two-cell column whose donor has its species starved. The solve asks for a transfer $M$ through the face (orange); the dry gas moves $M(1-\\sum y)$ (green), the species nothing (vermillion), so each cell misses $M\\sum y$ and the meter reads $\\sum y$."
+#| fig-alt: "Two stacked cells with an orange face between them and an upward arrow labelled M, and three lines of text giving the dry transfer, the starved species and the residual."
+#| echo: false
+from snapy_report.ch13.fig_vicclamp import make_fig
+make_fig()
+```
+
+After each redistribution, `forward_masked` forms the per-cell residual from the redistribution buffer and
+raises the running maximum `_clamp_residual` ([`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378)). The comment there
+explains why the residual is per cell: a column maximum would hide a binding in a low-flux layer. The meter is
+read through `clamp_residual` ([`implicit_hydro.hpp:88-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L88-L89)). The cycle line takes the MAX over
+blocks into `vic_max` ([`meshblock.cpp:1067-1070`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1067-L1070)), reduces it with MAX across ranks, and prints
+`vicclamp=` when a block has an implicit solver ([`meshblock.cpp:1108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1108)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| residual and running maximum | [`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378) | `_clamp_residual` | `integration/implicit-scheme` |
+| accessor | [`implicit_hydro.hpp:88-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L88-L89) | `clamp_residual` | |
+| block maximum | [`meshblock.cpp:1067-1070`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1067-L1070) | `vic_max` | |
+| rank maximum | [`meshblock.cpp:1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1086) | `vic_max` | |
+| printing | [`meshblock.cpp:1108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1108) | `vicclamp` | |
+
+: Code map of the VIC clamp meter. {#tbl-ch13-vicclamp-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_cycle_diagnostics.cpp` (`test_cycle_diagnostics.release`), `vicclamp_reads_the_clamped_fraction` | below $10^{-12}$ unclamped; 0.03 when the species are starved, in the buffer and on the printed line | $10^{-12}$; $10^{-6}$ on the line | round-off; printed digits |
+| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `float_rest_column_finite_vicclamp`, `double_rest_column_finite_vicclamp` | a column at rest gives a finite residual of exactly 0, in float32 and float64 | exact | the dtype-safe floor |
+| this section's check, `vicclamp_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
+
+: Tests of the VIC clamp meter. {#tbl-ch13-vicclamp-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the residual of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy
+on the port of the redistribution in @sec-ch07-vic-redistribute; deck: a two-cell column, the check itself; run:
+`python3 vicclamp_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU port; the code runs on any device.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The meter is a run maximum, not a per-step value. It says that a clamp bound somewhere at some time, not when or
+where.
+:::
+
+1. **Not a cause.** A large reading does not reject a step. The step acceptance reads the dry-gas clamp mark
+   instead (@sec-ch07-redo).
+2. **Restart.** Like the other meters, it starts again after a restart.

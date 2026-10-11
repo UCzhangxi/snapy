@@ -1,0 +1,129 @@
+## Cycle-line budget: volume integrals of the conserved state, one line per `ncycle_out` cycles (`print_cycle_diagnostics`) {#sec-ch13-cycle}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13.1; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; src/mesh/cycle_diagnostics.hpp;
+         src/coord/coord_utils_impl.h; tests/test_cycle_diagnostics.cpp; tests/run_restart_cycle_limit.py
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Every `ncycle_out` cycles, sums the interior conserved state times the cell volume over all
+local blocks, reduces the sums to the root rank, and prints them on one line with the run-to-date meters.
+**Switch.** `integration/ncycle_out`, read by pyharp's integrator; 0 turns the line off.
+**Order.** Not a discretisation; exact sums up to round-off.
+**Defining equation.** @eq-ch13-cycle-ke.
+:::
+
+The line is the run's own conservation record. `mass0=` is the dry mass, and `masst=` adds every species. `ke=`
+is the kinetic energy and `ie=` (block line) or `energy=` (Mesh line) the total energy $E$. `pe=` is the
+potential energy in a constant $x_1$ gravity. All are read from the conserved state `hydro_u`, never from the
+primitives, which can be one stage stale when the line is printed.
+
+### Derivation
+
+Each token is a volume integral over interior cells. With $\rho_i = \rho_{d,i} + \sum_n \rho_{n,i}$ the total
+density of cell $i$, $m_j$ the covariant momentum components and $V_i$ the cell volume, the two energy integrals
+are
+
+$$
+\mathrm{ke} = \sum_i \frac{m_j m^j}{2\rho_i}\,V_i , \quad
+\mathrm{pe} = \sum_i \rho_i\,(-g_1 x_{1,i})\,V_i ,
+$$ {#eq-ch13-cycle-ke}
+
+where $m^j$ is $m_j$ raised with the metric of the cell. Only the angle $\theta$ between $x_2$ and $x_3$ enters,
+with $c = \cos\theta$, so $m^2 = (m_2 - c\,m_3)/(1-c^2)$ and $m^3 = (m_3 - c\,m_2)/(1-c^2)$. For $c = 0.5$ and
+$(m_2, m_3) = (3, 4)$ the contraction is $13/0.75$ against 25 when the axes are orthogonal [check
+`src/snapy_report/ch13/cycle_check.py`, output `cycle_check.out`, `[C1]`]. Both integrals weigh the total
+density. Moving 0.5 of a density of 2.5 into species changes neither, while dropping it gives 1.25 times the
+kinetic energy (`[C2]`). With $g_1 = -10$ and $\rho = 2.5$, pe is $25\sum_i x_{1,i}V_i$ (`[C3]`).
+
+In the code, @eq-ch13-cycle-ke is the `ke` and `pe` of the block loop ([`meshblock.cpp:1037-1058`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1037-L1058)).
+
+### Numerical method
+
+See @fig-ch13-cycle-line for the tokens and their reductions.
+
+```{python}
+#| label: fig-ch13-cycle-line
+#| fig-cap: "The tokens of one cycle line. The first group (sky blue) are volume integrals of the conserved state at the start of the step; the run-to-date meters (orange) accumulate over the whole run. The last column is the reduction that combines the local blocks and the ranks before the root rank prints: a SUM for the integrals and counts, a MIN for thetamin, a MAX for vicclamp. fixgrav (grey) is the gravity-work fixer total, whose budget waits for chengcli/snapy#303."
+#| fig-alt: "A table-like figure listing ten cycle-line tokens, each with a coloured marker, the sum it prints and its reduction operation."
+#| echo: false
+from snapy_report.ch13.fig_cycle_line import make_fig
+make_fig()
+```
+
+The example driver prints the line at the top of each cycle, after the cycle counter is incremented and the
+step is chosen, so the sums describe the state at the start of the step, through `print_cycle_info`
+([`run_hydro.cpp:161-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L161-L164)). The
+line starts with `cycle=`, `redo=`, `time=` and `dt=`, and it stops there when the state holds no `hydro_u`
+([`meshblock.cpp:1010-1020`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1010-L1020)).
+
+For each local block, `print_cycle_diagnostics` adds the conserved sums, `ke` and `pe` and the meters
+([`meshblock.cpp:1029-1071`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1029-L1071)). The momentum is raised with `coord_vec_raise_` and `cosine_cell_kj`
+before the contraction, and the raise is the closed form above, `coord_vec_raise_impl`
+([`coord_utils_impl.h:9-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L9-L16)). `pe` is
+added only with a constant gravity whose `grav1` is nonzero. Under the `SNAP_GRAVITY_WORK_RADIAL_EXACT` switch it
+logs the corrected potential energy of @sec-ch06-dwork instead.
+
+The block sums are then reduced once to the root rank, with `reduce` ([`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086)):
+SUM for the integrals and the meter totals, MIN for the smallest limiter $\theta$, MAX for the VIC clamp residual.
+Summing four blocks locally and then once more gives the whole-domain sums to $10^{-16}$ (`[C4]`). The printing
+follows: `mass0=` always, `masst=` with species, `ke=`, the energy and `pe=` when they exist, then the meter group
+after the literal ` run-to-date:` ([`meshblock.cpp:1088-1111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1088-L1111)).
+
+A single block prints through `MeshBlockImpl::print_cycle_info` with the label ` ie=` and 13 decimals
+([`meshblock.cpp:1114-1119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1114-L1119)). A Mesh gathers its local blocks first and prints through
+`print_cycle_diagnostics` with ` energy=` and 14 decimals ([`mesh.cpp:409-420`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L409-L420)) (`[C5]`). Both lines come
+from the same function, so the Mesh line carries `ke=`, `pe=` and the meters too.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| declaration | [`cycle_diagnostics.hpp:11-14`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/cycle_diagnostics.hpp#L11-L14) | `print_cycle_diagnostics` | |
+| line head and switch | [`meshblock.cpp:1010-1020`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1010-L1020) | `ncycle_out` | `integration/ncycle_out` |
+| block loop | [`meshblock.cpp:1029-1071`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1029-L1071) | `add` | |
+| metric raise | [`coord_utils_impl.h:9-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L9-L16) | `coord_vec_raise_impl` | |
+| reduction to root | [`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086) | `reduce` | |
+| printing | [`meshblock.cpp:1088-1111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1088-L1111) | `print` | |
+| block line | [`meshblock.cpp:1114-1119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1114-L1119) | `print_cycle_info` | |
+| Mesh line | [`mesh.cpp:409-420`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L409-L420) | `print_cycle_info` | |
+| driver call | [`run_hydro.cpp:161-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L161-L164) | `print_cycle_info` | |
+
+: Code map of the cycle-line budget. {#tbl-ch13-cycle-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_cycle_diagnostics.cpp` (`test_cycle_diagnostics.release`), `logged_ke_scales_with_density`, `logged_ke_reads_the_conserved_state` | ke doubles with the density at fixed velocity, and is read from `hydro_u` alone (4 times when the momentum doubles and the primitives are zeroed) | $10^{-9}$ relative | round-off margin |
+| same file, `logged_ke_sums_the_constituents`, `logged_ke_raises_the_momentum_with_the_metric` | the total density is the denominator (1.25 for dry only); the skew metric gives 13/18.75 of the flat value | $10^{-9}$ relative | round-off margin |
+| same file, `logged_pe_is_the_column_geopotential` | pe is $2.5\cdot10\sum zV$, the same for a mixed state of equal total density | $10^{-9}$ relative | round-off margin |
+| same file, `meter_group_is_marked_run_to_date`, `mesh_aggregates_all_local_blocks_once` | the meters follow the ` run-to-date:` marker; a Mesh prints one line whose sums are those of all its blocks | token order; $10^{-11}$ | contract; round-off |
+| `tests/test_cycle_diagnostics_parallel.cpp` (`test_cycle_diagnostics_parallel.release`, 2 ranks) | two ranks of two blocks each: the line aggregates the extrema found in the second block of the other rank | see the test | contract |
+| `tests/run_restart_cycle_limit.py` (`test_restart_cycle_limit`) | the first resumed cycle line matches the base run in `time`, `dt`, `mass0`, `energy` | $10^{-12}$ absolute | runner constant |
+| this section's check, `cycle_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
+
+: Tests of the cycle-line budget. {#tbl-ch13-cycle-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the sums of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy;
+deck: the check itself; run: `python3 cycle_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU sums; the reductions run over any process group.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The line is a record, not a check: nothing in the run compares two lines. A drift in `mass0=` is visible only to a
+reader or a test that parses the log.
+:::
+
+1. **Solid cells.** The sums run over all interior cells, immersed-solid cells included.
+2. **Restart.** The run-to-date meters live in module buffers that the restart file does not carry, so they start
+   again after a restart (`sources/gh__PR_BODIES_202-219.md`, #217 Limits).
+3. **Start of step.** The line is printed before the step, so the last line of a run does not show the final
+   state.

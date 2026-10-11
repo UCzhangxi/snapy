@@ -1,0 +1,116 @@
+## Output-field diagnostics: `div`, `curl`, `theta_v`, `ic_*`, paths and means on request (`loadDiagOutputData`) {#sec-ch13-output-diag}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md 13.6; src/output/load_diag_output_data.cpp; src/output/output_type.cpp; tests/test_user_output.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** Adds derived fields to an output file when the output block lists their names. The groups are
+thermodynamic fields, the velocity divergence and curl, the last VIC correction, species column paths, and
+horizontal means.
+**Switch.** The `variables` list of an `outputs` block.
+**Order.** The divergence and curl use face values that are plain two-cell means.
+**Defining equation.** @eq-ch13-div-face.
+:::
+
+These fields are not budgets. Nothing in the run reads them back. They are there so that an output file can be
+checked by eye or by a script: a divergence field to look for spurious sources, the VIC correction to see where
+the implicit solve acts, and a column path to follow a species. No potential-energy or budget field is written.
+
+### Derivation
+
+The divergence fields interpolate the cell velocity to faces as the mean of the two neighbouring cells. The first
+entry of the array, which lies in the ghost layer, copies its cell. They then apply the coordinate divergence
+of @sec-ch03. On a Cartesian grid with spacing $\Delta x_1$ this is
+
+$$
+(\nabla\cdot\mathbf v)_i = \frac{v_{1,i+1/2} - v_{1,i-1/2}}{\Delta x_1} , \quad v_{1,i+1/2} = \tfrac12(v_{1,i} + v_{1,i+1}) ,
+$$ {#eq-ch13-div-face}
+
+and the sums for $x_2$ and $x_3$ are similar. A linear field is exact on every face but the first [check
+`src/snapy_report/ch13/output_diag_check.py`, output `output_diag_check.out`, `[C1]`]. The divergence of a uniform
+velocity is zero, and that of $v_1 = 2.5\,x_1$ is 2.5 in the interior (`[C2]`). The virtual potential
+temperature is $\theta_v = \theta\,p/(\rho R_dT)$, which equals $\theta$ for dry air and $\theta\,R/R_d$ otherwise
+(`[C3]`). `path_<species>` is $\sum_i\rho_{y,i}V_i/A_{\mathrm{bottom}}$, the column mass per unit area on a
+Cartesian column (`[C4]`).
+
+In the code, @eq-ch13-div-face is `interp_to_face` ([`load_diag_output_data.cpp:22-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L22-L45)) followed by the
+coordinate `divergence` of the face values ([`load_diag_output_data.cpp:166-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L166-L205)).
+
+### Numerical method
+
+See @fig-ch13-output-diag for the names and the fields they write.
+
+```{python}
+#| label: fig-ch13-output-diag
+#| fig-cap: "The names an output block can list and the diagnostic fields each one writes: thermodynamic fields (green, with a thermo block), the velocity divergence and curl (sky blue), the last VIC correction (orange), and the species paths and horizontal means (purple)."
+#| fig-alt: "A six-row table of output variable names, each with the field names it writes and a short note."
+#| echo: false
+from snapy_report.ch13.fig_output_diag import make_fig
+make_fig()
+```
+
+Every output calls `loadDiagOutputData` after the hydro fields ([`output_type.cpp:190-193`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L190-L193)). The groups
+are as follows.
+
+- **`thermo`.** Temperature, potential temperature, virtual potential temperature, specific entropy and one
+  relative humidity per nucleation reaction, from kintera ([`load_diag_output_data.cpp:54-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L54-L164)).
+- **`diagnostics`, `div`, `div_h`, `curl`.** `div` and the horizontal `div_h` from face velocities in the local
+  frame. `curl` is a vector in 3-D and its third component in 2-D, through `curl`
+  ([`load_diag_output_data.cpp:166-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L166-L217)).
+- **`implicit`.** `ic_dry`, `ic_mom`, `ic_etot` and `ic_<species>`, the last correction the VIC returned, read through
+  `correction` ([`load_diag_output_data.cpp:219-260`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L219-L260)).
+- **`path`.** The species column mass per bottom face area, from `hydro_u` ([`load_diag_output_data.cpp:262-282`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L262-L282)).
+- **`avg`.** Volume-weighted means of the primitives over $x_2$ and $x_3$, summed to the root rank, through `avg_w`
+  ([`load_diag_output_data.cpp:284-336`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L284-L336)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| face mean | [`load_diag_output_data.cpp:22-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L22-L45) | `interp_to_face` | |
+| entry point | [`load_diag_output_data.cpp:47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L47) | `loadDiagOutputData` | `outputs/N/variables` |
+| thermodynamic fields | [`load_diag_output_data.cpp:54-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L54-L164) | `theta_v` | `thermo` |
+| divergence and curl | [`load_diag_output_data.cpp:166-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L166-L217) | `div_h` | `diagnostics`, `div`, `div_h`, `curl` |
+| VIC correction | [`load_diag_output_data.cpp:219-260`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L219-L260) | `ic_etot` | `implicit` |
+| column paths | [`load_diag_output_data.cpp:262-282`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L262-L282) | `path` | `path` |
+| horizontal means | [`load_diag_output_data.cpp:284-336`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L284-L336) | `avg_w` | `avg` |
+| call | [`output_type.cpp:190-193`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L190-L193) | `loadDiagOutputData` | |
+
+: Code map of the output-field diagnostics. {#tbl-ch13-output-diag-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_user_output.cpp` (`test_user_output.release`), `virtual_potential_temperature_uses_dry_gas_constant` | `theta_v` uses $R_d$ of the first species | $10^{-10}$ absolute | round-off |
+| same file, `divergence_of_uniform_cartesian_velocity_is_zero` | `div` and `div_h` vanish for a uniform velocity | see the test | round-off |
+| same file, `cartesian_curl_of_solid_body_rotation` | the curl components of a solid-body rotation | see the test | round-off |
+| same file, `gnomonic_diagnostics_are_finite` | the fields are finite on a gnomonic block | finiteness | contract |
+| this section's check, `output_diag_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of the output-field diagnostics. {#tbl-ch13-output-diag-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy
+on a Cartesian grid; deck: the check itself; run: `python3 output_diag_check.py`, numpy 2.4.6]. ctest cases:
+**pending: pinned ctest run**.
+**Coverage.** Cartesian only; curved and gnomonic grids use the coordinate operators of @sec-ch03.
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+The face values are two-cell means, not the reconstructed states of the dynamics, so `div` is a second-order
+diagnostic of the cell velocities. It is not the divergence the scheme saw.
+:::
+
+1. **No budget field.** No field holds the potential energy, the fixer deposit or any meter; those exist only on
+   the cycle line (@sec-ch13-cycle).
+2. **Last correction only.** The `ic_*` fields hold the correction of the last stage before the output, not a sum
+   over the step.
+3. **Legacy code.** The fields of `src/diagnostics/` are not built (@sec-ch13); only the ones above exist.
