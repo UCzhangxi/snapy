@@ -1,7 +1,7 @@
 ## Restart files: write, bundle, read (`outputs: type: restart`, `--restart`) {#sec-ch14-restart}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: src/output/restart.cpp, src/output/combine_restart.cpp, src/input/read_restart_file.cpp, src/mesh/meshblock.cpp, src/output/output_type.cpp, src/hydro/hydro.hpp, tests/run_restart_*.py, tests/test_user_output.cpp, tests/test_output_barrier.cpp
 status: draft
 -->
@@ -121,7 +121,8 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 | `test_user_output` `OutputScheduleKey` (precise cadences) | two intervals with the same six-decimal text get different precise keys | exact | integer compare |
 | `test_output_barrier` | on return every rank sees the bundled `.restart` file and no `.part` left | exact | file system |
 
-: Tests of restart files; the five single-purpose runners skip with exit 125 when a tool is missing. `test_user_output` and
+: Tests of restart files; the six runners are registered only on non-Apple builds, and the five single-purpose
+ones skip with exit 125 when a tool is missing. `test_user_output` and
 `test_output_barrier` carry the build suffix (`.release`). {#tbl-ch14-restart-tests}
 
 The cycle-limit comparison is `assert_close` with `atol` $10^{-12}$
@@ -135,8 +136,8 @@ for this chapter.
 takes a step: the test checks that the state at $t = 0$ survives a write, a bundle of 2, 4 or 6 parts and a read, in one
 process. It does not compare a resumed run with an uninterrupted one after steps. That comparison is
 `test_restart_cycle_limit`, at two ranks with one block each, to $10^{-12}$ on the printed first resumed cycle.
-The integrator's stop rule is pyharp's `Integrator::stop` (not part of snapy); it was read in the installed pyharp
-2.6.5, not at a pinned sha.
+The integrator's stop rule is pyharp's `IntegratorImpl::stop` (not part of snapy): it stops once the step count
+reaches a non-negative `nlim` ([`pyharp integrator.cpp:89-99`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L89-L99), `stop`), at the pyharp pin of @sec-ch10-redo.
 :::
 
 ### Limits
