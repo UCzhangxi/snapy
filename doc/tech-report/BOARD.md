@@ -10,7 +10,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 22:40 PT
+Last update: 2026-10-10 22:50 PT
 
 ## snapy code work (priority: bugs first; report work fills gaps)
 
@@ -34,15 +34,15 @@ PR B (on top of #303): passive scalars + face-flux covariance default ON
 |---|---|---|---|
 | B1 scalar totals leak 5e-10 across a cubed-sphere panel seam with the covariance on (test_flux_positivity_cubedsphere*): find where | @happysky19 (read-only diagnosis first) | the face where the scalar flux and the corrected hydro dry-mass flux disagree, with numbers | open |
 | B2 covariance rows in src/scalar/scalar.cpp, mirroring the hydro tracer rows (hydro_forward.cpp:166-175) | @zoeyzyhu | a scalar and the same tracer carried as a hydro species agree to round-off | open |
-| B3 #289 item 3: size of the compositional-buoyancy effect (derivation, text) | @XinyueWang05 | written estimate in the thread | open |
-| B4 covariance on: one CUDA run and one implicit deck | @zoeyzyhu @XinyueWang05 | CUDA == CPU; implicit stable | after B2 |
+| B3 #289 item 3: size of the compositional-buoyancy effect (derivation, text) | @gitlinffff after A3 (@XinyueWang05 blocked) | written estimate in the thread | open |
+| B4 covariance on: one CUDA run and one implicit deck | @zoeyzyhu | CUDA == CPU; implicit stable | after B2 |
 | B5 default ON + test sweep (patch exists) | lead | ctest pass set as before | last |
 
 PR C: chengcli/snapy#291 (GPU step 1.54x slower)
 
 | task | owner | oracle | state |
 |---|---|---|---|
-| C1 RECORD_FUNCTION timings, small 2-D deck and a production-size block, 2.10.9 vs 2.11.2 | @XinyueWang05 if she has a GPU, else @zoeyzyhu after B2 | per-phase table | open |
+| C1 RECORD_FUNCTION timings, small 2-D deck and a production-size block, 2.10.9 vs 2.11.2 | @zoeyzyhu after B2 and A5 (@XinyueWang05 blocked) | per-phase table | open |
 | C2 cheap fixes: meters only on output cycles, one device read in check_redo, fewer .item() | after C1 | bitwise equal outputs | after C1 |
 
 
