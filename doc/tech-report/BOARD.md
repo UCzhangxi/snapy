@@ -10,7 +10,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 21:38 PT, tech-report 4ffff9d
+Last update: 2026-10-10 22:05 PT, tech-report 951f1db
 
 ## In progress
 
@@ -29,4 +29,4 @@ Last update: 2026-10-10 21:38 PT, tech-report 4ffff9d
 
 ## In the book
 
-ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder; App B gaps for ch7/9/13 #40), ch14 (#34; 2 #303 placeholders), ch15, ch16 (#39; 3 #303 placeholders), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
+ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder; App B gaps for ch7/9/13 #40), ch14 (#34; 2 #303 placeholders), ch15, ch16 (#39, #42: ch13 Limits folded in, 150 items; 3 #303 placeholders), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
