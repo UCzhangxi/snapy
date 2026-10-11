@@ -1,0 +1,113 @@
+## Environment variables read at run time and build time {#sec-appd-switches}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+sources: OUTLINE.md Appendix D and the ch01 outline entry; pinned code below (every getenv, get_env,
+         os.environ and setenv in src/, python/ and setup.py at the pin)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it lists.** Every environment variable that snapy's library, its Python package or its package build reads
+or sets at the pin: 20 variables in four groups. **Defaults.** Four numerics switches off, the corrected-PE gravity
+work on; launch variables fall back to a single CPU process. **Rule.** The five numerics switches are read once
+per process and cached; nothing checks that ranks agree. **Full treatment.** @sec-ch12.
+:::
+
+This appendix is the index that the physics chapters cite for a run-time switch: one row per variable, with the line
+that reads it at the pin, its default, its effect and the chapters that use it. @sec-ch12 owns the treatment: the
+parsing rules in @sec-ch12-environment, the launch variables in @sec-ch12-layout and the switch combinations in
+@sec-ch12-matrix. Variables that only snapy's tests read are in @sec-ch12-test-environment and are not repeated here.
+
+### Derivation
+
+None: the switches select schemes whose derivations are in the chapters listed in each row.
+
+### Numerical method
+
+The five numerics switches go through `get_env` ([`layout.hpp:38-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L38-L41)), which returns the default only when the
+variable is absent. Each accessor lower-cases the value, compares it with `0`, `false`, `off` and `no`, and keeps
+the result in a function-local static, so the first call fixes the choice for every block of the process. For the
+four switches that default to off, an empty value is also off; for `SNAP_GRAVITY_WORK_RADIAL_EXACT` an empty value
+is on, and the switch acts only where `radial_exact_work` ([`hydro.cpp:253-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L253-L258)) finds face gravity work on a Cartesian
+or spherical-polar grid. `SNAP_WB_REF4` is also on whenever `SNAP_X1_CENTROID_EXACT` is, through
+`x1_centroid_exact_enabled` ([`wb_ref4.cpp:94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L94)).
+
+The launch variables are read each time layout options are constructed, and again for `BACKEND` and `DEVICE` when
+they are read from YAML. The `BACKEND` default comes from `default_backend` ([`layout.cpp:41-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L41-L49)). The three
+communication defaults are written, not read, by `set_default_env` ([`process_group_ucx.cpp:14-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L14-L18)), only when the variable is
+unset and only in a build with UCX; they are listed because they change the process environment that commux sees.
+
+### Code
+
+| symbol | read at | default | effect | cited by |
+|------------------|--------------------|----------------|--------------------------|--------------|
+| `SNAP_X1_CENTROID_EXACT` | [`x1_centroid.cpp:96`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L96) | off (`"0"`) | spherical-polar $r^2$-average $x_1$ cell-to-plain-mean formulas; turns `SNAP_WB_REF4` on as well | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11; full: @sec-ch12-centroid |
+| `SNAP_WB_REF4` | [`wb_ref4.cpp:87`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L87) | off (`"0"`) | fourth-order, cell/face-consistent $x_1$ well-balanced reference | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11, @sec-ch15; full: @sec-ch12-wb-reference |
+| `SNAP_FLUX_COVARIANCE` | [`hydro.cpp:221`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L221) | off (`"0"`) | lateral ($x_2$, $x_3$) face-flux covariance and centroid terms | @sec-ch01, @sec-ch03, @sec-ch04, @sec-ch05, @sec-ch06; full: @sec-ch12-flux-covariance |
+| `SNAP_X1_MASS_COVARIANCE` | [`hydro.cpp:233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L233) | off (`"0"`) | $x_1$ mass-flux covariance (radial velocity mean correction) | @sec-ch04, @sec-ch05, @sec-ch06, @sec-ch11; full: @sec-ch12-mass-covariance |
+| `SNAP_GRAVITY_WORK_RADIAL_EXACT` | [`hydro.cpp:245`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L245) | on (`"1"`) | corrected potential-energy face gravity work; acts only with `gravity-work: face`, nonzero `grav1`, Cartesian or spherical-polar | @sec-ch03, @sec-ch05, @sec-ch06; full: @sec-ch12-radial-exact |
+
+: Numerics switches: read once per process; a value of 0, false, off or no turns a switch off. {#tbl-appd-numerics}
+
+| symbol | read at | default | effect | cited by |
+|------------------|--------------------|----------------|--------------------------|--------------|
+| `BACKEND` | [`layout.cpp:190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L190), [`layout.cpp:237`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L237) | `ucx` in a UCX build off macOS, else `gloo` | process-group backend; the YAML `distribute/backend` key is not read | @sec-ch01, @sec-ch03; full: @sec-ch12-layout |
+| `PROCESS_RANK` | [`layout.cpp:194`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L194) | `RANK`, then 0 | rank of this process | full: @sec-ch12-layout |
+| `PROCESS_WORLD_SIZE` | [`layout.cpp:195-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L195-L196) | `WORLD_SIZE`, then 1 | number of processes | full: @sec-ch12-layout |
+| `WORLD_SIZE` | [`layout.cpp:197`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L197), [`layout.hpp:50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L50), [`exchange.py:17`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/exchange.py#L17) | process world size; 1 in the helpers | global world size | full: @sec-ch12-layout |
+| `RANK` | [`layout.cpp:213`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L213), [`layout.hpp:44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L44), [`exchange.py:18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/exchange.py#L18) | process rank; 0 in the helpers | global rank; rank 0 alone prints log messages | full: @sec-ch12-layout |
+| `LOCAL_RANK` | [`layout.cpp:214`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L214), [`layout.hpp:47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L47), [`exchange.py:28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/exchange.py#L28) | 0; in the Python helper, rank modulo the GPU count | local rank; the Python helper selects the CUDA device with it | full: @sec-ch12-layout |
+| `MASTER_ADDR` | [`layout.cpp:200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L200) | `127.0.0.1` | rendezvous address | full: @sec-ch12-layout |
+| `MASTER_PORT` | [`layout.cpp:201-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L201-L211) | a random port, single process only | rendezvous port; construction fails if it is unset and either world size exceeds 1 | full: @sec-ch12-layout |
+| `DEVICE_ID` | [`layout.cpp:217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L217) | -1 | device index | full: @sec-ch12-layout |
+| `DEVICE` | [`layout.cpp:218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L218), [`layout.cpp:238`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L238) | `cpu` | device type | @sec-ch01; full: @sec-ch12-layout |
+
+: Launch and layout variables, read when layout options are constructed. {#tbl-appd-layout}
+
+| symbol | read at | default | effect | cited by |
+|------------------|--------------------|----------------|--------------------------|--------------|
+| `COMMUX_COALESCE` | [`process_group_ucx.cpp:26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L26) | set to 1 if unset | commux option; the call-site comment: grouped point-to-point operations are flushed after one stream synchronization | full: @sec-ch12-layout |
+| `COMMUX_GROUP` | [`process_group_ucx.cpp:27`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L27) | set to 1 if unset | commux option, set with `COMMUX_COALESCE` under the same comment | full: @sec-ch12-layout |
+| `UCX_TLS` | [`process_group_ucx.cpp:28-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L28-L29) | set to `^cuda_copy,cuda_ipc,gdr_copy` if unset and `DEVICE` is `cpu` | excludes the CUDA copy, IPC and GPUDirect transports | full: @sec-ch12-layout |
+
+: Communication defaults that snapy writes before the UCX process group starts (UCX builds only). {#tbl-appd-ucx}
+
+| symbol | read at | default | effect | cited by |
+|------------------|--------------------|----------------|--------------------------|--------------|
+| `WORKSPACE` | [`setup.py:42`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/setup.py#L42) | the current directory | root of the include and library search paths of `pip install` | full: @sec-ch12-layout |
+| `NC_HOME` | [`setup.py:62-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/setup.py#L62-L63) | unset (adds `None/lib`) | adds `NC_HOME/lib` to the library search path | full: @sec-ch12-layout |
+
+: Package-build variables, read by setup.py during pip install only. {#tbl-appd-build}
+
+### Tests
+
+The seam tests set the numerics switches per ctest entry:
+
+- `SNAP_X1_CENTROID_EXACT=1` ([`CMakeLists.txt:48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L48));
+- `SNAP_GRAVITY_WORK_RADIAL_EXACT` set to 1 and to 0 ([`CMakeLists.txt:50-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L50-L52));
+- `SNAP_WB_REF4=1` ([`CMakeLists.txt:55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L55));
+- `SNAP_X1_MASS_COVARIANCE=1` ([`CMakeLists.txt:60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L60));
+- two-rank centroid, radial-exact and reference arms, `seam_arm_mp` ([`CMakeLists.txt:87-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L87-L90));
+- the balance-column arms, under `SNAP_WB_REF4` and under `SNAP_X1_CENTROID_EXACT` ([`CMakeLists.txt:98-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L98-L103)).
+
+The exchange tests set `BACKEND=gloo`
+([`CMakeLists.txt:151`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L151)) and `BACKEND=ucx` ([`CMakeLists.txt:165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L165)). `SNAP_FLUX_COVARIANCE` has no ctest arm in `tests/CMakeLists.txt`;
+its arms are set inside the Python tests `test_flux_covariance_rows.py`, `test_flux_covariance_seams.py`,
+`test_horizontal_flux_covariance.py` and `test_wb_ref4_order.py` (@sec-ch12-flux-covariance). The registered names
+are in @sec-appc.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+A numerics switch that differs between ranks makes shared faces two-valued, and no code compares the ranks' values.
+A numerics switch changed after the first call has no effect in that process.
+:::
+
+- `distribute/backend` in YAML passes the key check but is never read; only `BACKEND` selects the backend.
+- `LOCAL_RANK` has two defaults: 0 in the C++ layout options, the rank modulo the GPU count in `init_dist`.
+- An unset `NC_HOME` adds the literal path `None/lib` to the package build's library path.
+- The table covers `src/`, `python/` and `setup.py` at the pin; environment variables read by kintera, pyharp,
+  commux, PyTorch or UCX themselves are not listed.
