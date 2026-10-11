@@ -37,7 +37,7 @@ W_SETTLED = 1.0e-10  # m/s, max w at the last step: the column has settled
 ON_OFF = 1.1  # switch on: max w at most this times the switch-off rung's
 
 
-def config(geometry="cartesian", default_work=False):
+def config(geometry="cartesian", cell_work=False):
     rgas = 8.31446261815324
     cfg = {
         "geometry": {"type": "cartesian",
@@ -59,9 +59,9 @@ def config(geometry="cartesian", default_work=False):
                                           "gravity-work-fixer": False}},
     }
 
-    if default_work:
-        # Omit both keys to exercise the default cell work + global fixer.
-        cfg["forcing"]["const-gravity"].pop("gravity-work")
+    if cell_work:
+        # Cell work, with the fixer key omitted: the global fixer is on by default with cell.
+        cfg["forcing"]["const-gravity"]["gravity-work"] = "cell"
         cfg["forcing"]["const-gravity"].pop("gravity-work-fixer")
 
     if geometry == "spherical-polar":
@@ -82,13 +82,13 @@ def config(geometry="cartesian", default_work=False):
     return cfg
 
 
-def run(dt, nstep, device, geometry="cartesian", default_work=False):
+def run(dt, nstep, device, geometry="cartesian", cell_work=False):
 
     import snapy
     from snapy import MeshBlock, MeshBlockOptions, kIDN, kIPR, kIV1
 
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, dir=os.getcwd()) as f:
-        yaml.safe_dump(config(geometry, default_work), f)
+        yaml.safe_dump(config(geometry, cell_work), f)
         tmp = f.name
     try:
         block = MeshBlock(MeshBlockOptions.from_yaml(tmp))
@@ -209,17 +209,17 @@ def main():
                 failures.append((geometry, courant, n, wmax))
         print(json.dumps({"geometry": geometry, "first_failing_courant": first_failure,
                           "tested_courants": args.courants}), flush=True)
-    # Preserve the original Cartesian default-path coverage alongside the
+    # Preserve the Cartesian cell work + global fixer coverage alongside the
     # explicitly face-only, fixer-off ladder.
     for dt in (() if args.ladder else (997.0, 100.0)):
         finite, n, wmax, history, err = run(
-            dt, args.nstep, args.device, default_work=True)
+            dt, args.nstep, args.device, cell_work=True)
         passed = finite and wmax < W_TOL
-        print(json.dumps({"arm": "default-cell-global-fixer", "dt": dt,
+        print(json.dumps({"arm": "cell-global-fixer", "dt": dt,
                           "steps": n, "passed": passed, "max_w": wmax,
                           "balance_error": err, "history": history}), flush=True)
         if not passed:
-            failures.append(("default-cell-global-fixer", dt, n, wmax))
+            failures.append(("cell-global-fixer", dt, n, wmax))
     for failure in failures:
         print("FAIL", failure, flush=True)
     return 1 if failures else 0
