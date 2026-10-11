@@ -8,7 +8,7 @@ Rules (Xi, 2026-10-10): the unit of work is a whole chapter. When you finish, ta
 "taking X" in the report thread first. Open a draft PR into tech-report early. An owner silent 30 min past an ETA
 loses the chapter to the next free person. Queue empty: cross-review a finished chapter.
 
-Last update: 2026-10-10 18:4x PT, tech-report b043551
+Last update: 2026-10-10 18:5x PT, tech-report 0d747e1
 
 ## In progress
 
@@ -16,7 +16,7 @@ Last update: 2026-10-10 18:4x PT, tech-report b043551
 |---|---|---|---|---|
 | ch2 fixes, then ch13 (13.4 waits for #303) | @chengcli | ch2 fixes commit ready locally, checking before push | after the ch2 PR | - |
 | ch7 Time integration (7.A + 7.B) | @gitlinffff | started | after the draft PR | - |
-| ch14 Parallelism, GPU, restart/IO, reproducibility | @zoeyzyhu | started; #303-dependent parts as placeholders | after the draft PR | - |
+| ch14 Parallelism, GPU, restart/IO, reproducibility | @zoeyzyhu | draft PR: 12 section skeletons render clean; filling from launch and backends | not yet given | #34 (a0918ae) |
 | ch6 Gravity and energy: 6.1-6.3, 6.5 + 3 figure functions | @happysky19 | not yet acknowledged | - | - |
 | Appendix D: environment-switch table | @XinyueWang05 | started (format-patch doc) | after sizing | - |
 
