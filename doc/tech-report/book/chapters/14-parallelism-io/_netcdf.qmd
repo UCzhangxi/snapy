@@ -1,0 +1,103 @@
+## NetCDF output: per-block files and the combine (`outputs: type: netcdf`) {#sec-ch14-netcdf}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/output/output_type.hpp, src/output/output_type.cpp, src/output/netcdf.cpp, src/output/combine_netcdf.cpp, src/output/mppnccombine.cpp, tests/test_user_output.cpp, tests/test_output_barrier.cpp, tests/test_netcdf_utils.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: each block writes its part of an output frame to its own NetCDF-4 file. After the last block of a process
+has written, the root process joins all parts into one file with the in-tree `mppnccombine`. **Switch**: YAML
+`outputs: - type: netcdf` with `dt`, `variables`, `combine`, `double_precision`, `include_ghost_zones`,
+`x1_slice`/`x2_slice`/`x3_slice`, `output_sumx1`/`2`/`3`, `cartesian_vector`, `super-resolution`; CMake `NETCDF`.
+**Default**: `combine: true`, `double_precision: false` (NC_FLOAT), interior cells only; CMake `NETCDF=ON`.
+**Requires**: a NetCDF library at build time. **Order**: exact copy, then rounding to float unless
+`double_precision`. **Defining equation**: none.
+:::
+
+Output block $n$ of the card (counting from 0) is stream `out<n>`. Block $r$ writes frame $k$ of that stream to
+`<basename>.block<r>.out<n>.<kkkkk>.nc`. The combined file is `<basename>.out<n>.<kkkkk>.nc`. Every rank returns
+from the write only after the combined file exists.
+
+### Derivation
+
+None: the output copies values and, by default, rounds them to single precision.
+
+### Numerical method
+
+**Options.** `OutputOptionsImpl::from_yaml` accepts only the keys listed above plus `data_format` and `verbose`; it
+rejects a slice and a sum along the same axis and requires `type`
+([`output_type.cpp:64-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L64-L131)). The defaults are where `OutputOptionsImpl` declares each option with `ADD_ARG`
+([`output_type.hpp:64-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.hpp#L64-L90)).
+
+**One block's file.** `NetcdfOutput::write_output_file` does nothing on the final write, so the last frame of a run is
+the last scheduled one (@sec-ch14-schedule). It writes the interior, or with `include_ghost_zones` the interior plus
+$n_g$ ghosts on every axis with more than one cell. It applies slices and sums, then creates the file with
+`nc_create(..., NC_NETCDF4, ...)` ([`netcdf.cpp:37-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L37-L127)). Each block records its
+position in the global block grid. For the cubed sphere the six panels are laid out as a $3 \times 2$ tile: panel $f$
+is shifted by $(f \bmod 3)\,n_{b2}$ in $x_2$ and $\lfloor f/3 \rfloor\,n_{b3}$ in $x_3$, and the global counts become
+$3n_{b2}$ and $2n_{b3}$ (`nb2`, [`netcdf.cpp:160-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L160-L185)). Every variable, the time
+included, is NC_FLOAT unless `double_precision: true`, which makes it NC_DOUBLE
+([`netcdf.cpp:191-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L191-L195)).
+
+**The combine.** `combine_blocks` counts the blocks of the process that have written this frame. Only the last of
+them goes on, so one thread per process enters the collective part (`ready_to_combine`, [`combine_netcdf.cpp:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_netcdf.cpp#L27-L36)).
+That thread waits at a barrier. It then creates a scope guard whose destructor is a second barrier, so no rank
+returns before the root has finished, and a throw on the root still releases the others. On the root it globs
+`<basename>.block*.out<n>.<kkkkk>.nc` and removes any old combined file. One part is renamed; several parts are passed
+to `mppnccombine -r`, which joins them and removes the parts (`ReleaseOnExit`, [`combine_netcdf.cpp:39-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_netcdf.cpp#L39-L135)).
+`mppnccombine` is GFDL's tool for joining decomposed NetCDF files, compiled in as a function
+([`mppnccombine.cpp:94-100`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/mppnccombine.cpp#L94-L100)).
+
+With `combine: false` the per-block files stay. Joining them later needs an external `mppnccombine`;
+`pd-combine` does not join blocks (@sec-ch14-tools).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| option defaults | [`output_type.hpp:64-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.hpp#L64-L90) | `ADD_ARG` | none |
+| options from YAML | [`output_type.cpp:64-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L64-L131) | `OutputOptionsImpl::from_yaml` | `outputs` |
+| stream name | [`output_type.hpp:39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.hpp#L39) | `file_id` | none |
+| one block's file | [`netcdf.cpp:37-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L37-L127) | `NetcdfOutput::write_output_file` | `include_ghost_zones` |
+| cubed-sphere tile | [`netcdf.cpp:160-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L160-L185) | `nb2` | `layout: cubed-sphere` |
+| float or double | [`netcdf.cpp:191-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L191-L195) | `nc_dbl` | `double_precision` |
+| last block of the process | [`combine_netcdf.cpp:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_netcdf.cpp#L27-L36) | `ready_to_combine` | none |
+| barriers and the combine | [`combine_netcdf.cpp:39-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_netcdf.cpp#L39-L135) | `NetcdfOutput::combine_blocks` | `combine` |
+| GFDL combiner | [`mppnccombine.cpp:94-100`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/mppnccombine.cpp#L94-L100) | `mppnccombine` | none |
+
+: Code map of NetCDF output. {#tbl-ch14-netcdf-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_user_output` `OutputPrecision` (double) | values written with `double_precision` read back bit for bit | exact | NC_DOUBLE |
+| `test_user_output` `OutputPrecision` (non-finite) | a non-finite value (an infinity) survives the float output | exact class | IEEE |
+| `test_user_output` `OutputPrecision` (default) | default off; reported by the options printout | exact | string compare |
+| `test_user_output` `OutputSlice.*`, `OutputSelection.*`, `OutputStatistics.*`, `SuperResolution.*` | slices, selections, statistics (@sec-ch14-schedule) and refined output | per case | the test cases |
+| `test_output_barrier` | two ranks, two blocks each: on return every rank opens the combined file, which holds every global cell with its value | exact | file contents |
+| `test_netcdf_utils` | variable names are sanitised to NetCDF rules | exact | string compare |
+
+: Tests of NetCDF output. C++ entries carry the build suffix (`.release`). {#tbl-ch14-netcdf-tests}
+
+The precision cases are the `OutputPrecision` tests in [`test_user_output.cpp:380-574`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L380-L574) (`yaml_double_precision_defaults_off_and_is_reported`,
+`netcdf_float_output_keeps_nonfinite`, `netcdf_double_precision_reads_back_exactly`); the barrier case is
+`combined_output_is_complete_when_every_rank_returns`
+([`test_output_barrier.cpp:23-96`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_output_barrier.cpp#L23-L96)). Pass status at the pin was not run for
+this chapter.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The default float output hides relative changes below about $10^{-7}$. Conservation is read from the
+  double-precision cycle line, not from the files.
+- `include_ghost_zones` carries a FIXME: it "probably doesn't work with grids other than CCC"
+  (`FIXME`, [`netcdf.cpp:72-73`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/netcdf.cpp#L72-L73)).
+- The root globs every `block*` part of the frame in the output directory. Parts left over from an earlier run
+  with more blocks would be joined in. This is read from the code and has not been run.
+- The error path of the scope guard (a throw on the root) is not covered by a test.
+:::

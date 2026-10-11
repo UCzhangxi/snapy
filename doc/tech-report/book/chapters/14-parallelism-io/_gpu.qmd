@@ -1,0 +1,84 @@
+## GPU execution (`CUDA`, `DEVICE`) {#sec-ch14-gpu}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/mesh/meshblock_options.cpp, examples/run_hydro.cpp, src/recon/recon_dispatch.cu, tests/cuda_test_gate.hpp, tests/CMakeLists.txt, tests/test_vic_moist_device.py, chengcli/snapy#291
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: the same code runs on a CUDA device. A block is built on the CPU and moved with `to(device)`, and the
+kernels dispatch to their CUDA implementations. **Switch**: CMake `CUDA=ON`; environment `DEVICE=cuda`,
+`DEVICE_ID`. **Default**: CPU. **Requires**: a CUDA build and a visible device; UCX built with CUDA for multi-GPU
+runs (@sec-ch14-backends). **Order**: same scheme; round-off differs from the CPU. **Defining equation**: none.
+:::
+
+A block's tensors are created on the CPU by its constructor. The driver moves the block (`block->to(device)`) or the
+whole mesh (`mesh->to(device)`) before initialising. The device is `cuda:<DEVICE_ID>`, or `cuda:<LOCAL_RANK>` when
+`DEVICE_ID` is negative (@sec-ch14-launch). Torch operators run on the device. snapy's own kernels (reconstruction,
+equation of state, boundaries and others) have a CPU and a CUDA implementation behind a dispatch stub
+(@sec-ch01-dispatch). Collectives and decisions run on the host (@sec-ch14-collectives), so they read device values back.
+
+### Derivation
+
+None.
+
+### Numerical method
+
+The example driver `run_hydro` picks the device only if `torch::cuda::is_available()` and `DEVICE=cuda`. Otherwise it
+stays on the CPU and prints nothing; "Running on CUDA" is printed only when the device is used
+(`torch::cuda::is_available`, [`run_hydro.cpp:39-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L39-L47)).
+
+The reconstruction kernels launch one CUDA block per line. A line longer than 1024 cells does not fit in one CUDA
+block, so `recon_tile_width` returns a tile width instead. It starts at 256 and halves until the tile, its
+stencil halo and the weights fit in 48 KiB of shared memory; the caller then runs the tiled kernel
+(`recon_tile_width`, [`recon_dispatch.cu:18-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/recon_dispatch.cu#L18-L46)).
+
+A CUDA test of snapy runs only when snapy was built with CUDA *and* torch sees a device.
+`snapy_cuda_test_enabled` returns false in a CPU build even when a GPU is visible
+([`cuda_test_gate.hpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/cuda_test_gate.hpp#L1-L15)).
+
+Each host read-back (`.item()`) of a device value synchronises the device. Per step, they come from the time-step
+MIN, the redo flags, the signal check, the cycle-line meters and the gravity-work fixer. Issue #291 (open) measured
+33 of them per step on a small 2-D moist grid with snapy 2.11.2, against 7 on 2.10.9.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| device string | [`meshblock_options.cpp:274-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L274-L285) | `device_str` | `DEVICE`, `DEVICE_ID` |
+| driver device choice | [`run_hydro.cpp:39-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L39-L47) | `is_available` | `DEVICE=cuda` |
+| tiling of long lines | [`recon_dispatch.cu:18-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/recon_dispatch.cu#L18-L46) | `recon_tile_width` | lines > 1024 |
+| CUDA test gate | [`cuda_test_gate.hpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/cuda_test_gate.hpp#L1-L15) | `snapy_cuda_test_enabled` | `CUDA` build |
+
+: Code map of GPU execution. {#tbl-ch14-gpu-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_weno5_cuda_line` (CUDA builds) | reconstruction on CUDA matches the CPU for lines of 32, 1024, 1025, 1030 and 1280 cells | $10^{-12}$ | round-off of the stencil sums |
+| `test_cubed_sphere_exchange` `subdivided_panel_exchange_matches_one_block_cuda` | on CUDA, $n_{b2} = 2, 4$ give the faces, $\Delta x_2$ and the density after one stage of $n_{b2} = 1$ | bitwise (`torch::equal`) | @sec-ch14-repro |
+| `test_x1_seam_split_*_cuda` (CUDA builds) | the $x_1$ seam arms on CUDA | as the CPU arms | @sec-ch03-x1seams |
+| `*_cuda_python` (CUDA builds) | seven Python tests rerun with `--device cuda`: vapour-fix failure, saturation redo, two flux-positivity cases, fourth-order well-balanced, $x_1$ centroid, radial-exact work | as the CPU runs | same scripts and assertions |
+| `test_vic_moist_device_python` (CUDA builds) | one implicit moist step on CPU and on CUDA agree | $10^{-9}$ max abs. | measured $5.8\times10^{-11}$ on an H100, bound about 17 times that |
+| `test_shallow_splash_ucx_cuda_decomp` (`FULL_TESTS`) | shallow-water splash decompositions on two GPUs over UCX; exits 125 without them | the runner's | `run_shallow_splash_decomp.py` |
+
+: CUDA tests. C++ entries carry the build suffix (`.release`). {#tbl-ch14-gpu-tests}
+
+The CUDA registrations use `snapy_add_python_test` [`tests/CMakeLists.txt:280-314`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L280-L314), with the
+seam arms from `seam_arm` [`tests/CMakeLists.txt:62-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L62-L78). The device tolerance is `DEVICE_TOL`
+([`test_vic_moist_device.py:17-20`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_vic_moist_device.py#L17-L20)). Pass status at the pin was not run
+for this chapter.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Issue #291 (open): on a 178 by 120 moist grid on one A100, a step cost 42.1 ms on 2.11.2 against 27.4 ms on 2.10.9
+  (1.54 times). That is 3005 kernels against 2061 per step, and 33 `.item()` calls against 7. The grid is
+  launch-bound, so the cost follows the kernel count. The numbers are the issue's
+  ([chengcli/snapy#291](https://github.com/chengcli/snapy/issues/291)) and were not re-measured here.
+- A driver that asks for CUDA on a machine without it runs on the CPU silently (`run_hydro`).
+:::

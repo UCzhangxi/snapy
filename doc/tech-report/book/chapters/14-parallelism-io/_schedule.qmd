@@ -1,0 +1,106 @@
+## Output scheduling, statistics and termination (`outputs: dt`) {#sec-ch14-schedule}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/mesh/meshblock.cpp, src/mesh/mesh.cpp, src/output/output_type.cpp, src/utils/signal_handler.cpp, examples/straka.cpp, tests/test_user_output.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $q_i$ the value of a field after accepted step $i$; $w_i$ that step's length;
+$W$ the summed weight since the last write; $\bar q$, $M_2$ the running weighted mean and sum of squared deviations.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: each output fires when the time reaches its next time, which then advances by one interval; selected
+`*_stat` variables write time-weighted means and standard deviations since the previous write. A run ends on its
+time or cycle limit or on a signal, with one final write. **Switch**: output `dt`; `variables` (statistics
+selections); `integration: tlim`, `nlim`. **Default**: `dt: 0` (every cycle). **Requires**: nothing. **Order**: n/a;
+the statistics are exact for the sampled states. **Defining equation**: @eq-ch14-schedule-moments.
+:::
+
+The driver calls `make_outputs` once after initialisation and once after every accepted step. A rejected (redone)
+step writes nothing.
+
+### Derivation
+
+Between two writes the statistics weight each accepted state by the step that produced it, $w_i = t_i - t_{i-1}$.
+They are updated in place by the weighted form of Welford's recurrence. With $W_{i-1} = \sum_{j<i} w_j$:
+
+$$
+\begin{aligned}
+\bar q_i &= \bar q_{i-1} + \frac{w_i}{W_{i-1} + w_i}\,(q_i - \bar q_{i-1}), \\
+M_{2,i} &= M_{2,i-1} + w_i\,(q_i - \bar q_{i-1})(q_i - \bar q_i), \\
+\sigma &= \sqrt{\max(M_2 / W,\ 0)} ,
+\end{aligned}
+$$ {#eq-ch14-schedule-moments}
+
+By induction, $\bar q_i = \sum_{j \le i} w_j q_j / W_i$ and $M_{2,i} = \sum_{j \le i} w_j (q_j - \bar q_i)^2$, the
+weighted mean and the weighted sum of squared deviations; $M_2/W$ is the population variance, with no small-sample
+correction. Each state is weighted by the step that ends at it (a right-endpoint rule in time). @eq-ch14-schedule-moments
+is `update_weighted_moments` and `PrimStatStd` ([`output_type.cpp:282-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L282-L360)).
+
+### Numerical method
+
+**Schedule.** For each output, `make_outputs` first accumulates the statistics. On the final call it writes
+unconditionally. Otherwise, when $t \ge t_\text{next}$, it writes, resets the statistics to the current time,
+advances $t_\text{next}$ by $\Delta t_o$ once, and increments the file number
+(`MeshBlockImpl::make_outputs`, [`meshblock.cpp:985-1002`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L985-L1002)). With $\Delta t_o = 0$, $t_\text{next}$ never moves
+and the output fires every cycle. $t_\text{next}$ advances by one interval per write even when a step jumps past
+several, so an output whose interval is shorter than the step falls behind the run time: it fires on every step
+until it catches up.
+
+**Final write.** NetCDF and PnetCDF outputs skip the final call; the restart output writes `final`
+(@sec-ch14-restart).
+
+**Statistics.** `AccumulateStats` starts the clock at its first call. From then on it
+applies @eq-ch14-schedule-moments to `hydro_w` (and `scalar_r`) with the time since its previous call as the weight. Calls with
+zero elapsed time are skipped. `ResetStats` zeroes the sums at each write ([`output_type.cpp:297-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L297-L345)).
+Before the first accumulated interval the mean is the current state and the deviation zero.
+
+**Termination.** The driver loop runs while pyharp's integrator does not stop. It stops when $n_\text{lim} \ge 0$
+and the cycle count reaches it, or when $t_\text{lim} \ge 0$ and the time reaches it; a redo result of $-1$ breaks
+the loop (`stop`, [`straka.cpp:141-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L141-L165)). The handler catches SIGTERM, SIGINT and SIGALRM
+(the wall-time alarm; `SIGALRM` in [`signal_handler.cpp:40-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L40-L45)). The flags are reduced in
+`check_redo` (@sec-ch14-collectives). `finalize` makes the final write and prints the reason: signal, cycle limit,
+time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl::finalize`, [`meshblock.cpp:1121-1180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1180)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| when an output fires | [`meshblock.cpp:985-1002`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L985-L1002) | `MeshBlockImpl::make_outputs` | `dt` |
+| weighted moments | [`output_type.cpp:282-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L282-L360) | `update_weighted_moments` | `*_stat` |
+| accumulate and reset | [`output_type.cpp:297-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L297-L345) | `AccumulateStats` | `*_stat` |
+| driver loop | [`straka.cpp:141-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L141-L165) | `make_outputs` | `tlim`, `nlim` |
+| caught signals | [`signal_handler.cpp:40-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L40-L45) | `SIGALRM` | none |
+| final write and reason | [`meshblock.cpp:1121-1180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1180) | `MeshBlockImpl::finalize` | none |
+
+: Code map of output scheduling. {#tbl-ch14-schedule-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_user_output` `OutputStatistics` (primitive) | primitive mean and deviation are weighted by elapsed time and restart after a write | the test's own | `test_user_output.cpp` |
+| `test_user_output` `OutputStatistics` (scalar) | the same for scalars | the test's own | `test_user_output.cpp` |
+| `test_user_output` `OutputSelection` (statistics) | statistics are written only when selected | exact | string compare |
+| `test_restart_dt_change`, `test_restart_output_schedule` | schedules across a resume (@sec-ch14-restart) | see there | see there |
+
+: Tests of output scheduling. C++ entries carry the build suffix (`.release`). {#tbl-ch14-schedule-tests}
+
+The statistics cases are the `OutputStatistics` tests in [`test_user_output.cpp:911-998`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L911-L998) (`primitive_statistics_are_time_weighted_and_reset`,
+`scalar_statistics_are_time_weighted_and_reset`; the selection cases are
+`primitive_statistics_are_explicitly_selected` and `scalar_statistics_are_explicitly_selected`). No test checks the final write or the termination reasons of a
+signalled run. Pass status at the pin was not run for this chapter.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Signals are handled only at `check_redo`; a rank that never gets there hangs the others
+  (@sec-ch14-collectives).
+- An output interval shorter than the step makes the output fire every step until $t_\text{next}$ catches up; it
+  does not skip ahead.
+- The statistics sample accepted states only, weighted by the step that ends at them; they are not time averages of
+  the sub-step stages.
+:::
