@@ -70,8 +70,10 @@ is `cuda`; otherwise it is the `DEVICE` value (`device_str`, [`meshblock_options
 `api/pd-run <n> <executable> [args]` is a single-node launcher. It starts $n$ processes and exports, for each, `RANK`
 and `PROCESS_RANK` equal to the loop index, `WORLD_SIZE` and `PROCESS_WORLD_SIZE` equal to $n$, `LOCAL_RANK` equal to
 the index modulo the number of entries of `CUDA_VISIBLE_DEVICES` (default `0,1,2,3`), and `DEVICE_ID` equal to that
-entry. Its own defaults are `BACKEND=ucx` and `DEVICE=cpu`. With no `MASTER_PORT`, it picks a port in
-$[20000, 40000)$ that `ss` does not show as listening (`launch_rank`, [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138)).
+entry. Its own defaults are `BACKEND=ucx` and `DEVICE=cpu` (`launch_rank`, [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138)). With no `MASTER_PORT`, it
+tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` does not show as listening; without
+`ss`, or after 32 busy ports, it takes $20000 + (\mathrm{pid} \bmod 20000)$ with the script's process id, unchecked
+(`choose_master_port`, [`pd-run:39-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L39-L51)).
 
 ### Code
 
@@ -84,6 +86,7 @@ $[20000, 40000)$ that `ss` does not show as listening (`launch_rank`, [`pd-run:1
 | per-block rank and global size | [`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258) | `global_block_rank` | none |
 | device string | [`meshblock_options.cpp:274-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L274-L285) | `device_str` | `DEVICE`, `DEVICE_ID` |
 | launcher | [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138) | `launch_rank` | `BACKEND`, `DEVICE` |
+| launcher port | [`pd-run:39-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L39-L51) | `choose_master_port` | `MASTER_PORT` unset |
 
 : Code map of the launch. {#tbl-ch14-launch-code}
 
