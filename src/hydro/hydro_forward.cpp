@@ -195,6 +195,65 @@ torch::Tensor HydroImpl::_flux_covariance(torch::Tensor const& wl,
   return dflx;
 }
 
+torch::Tensor HydroImpl::scalar_flux_covariance(torch::Tensor const& rl,
+                                                torch::Tensor const& rr,
+                                                int dim) const {
+  // A passive scalar s = rho_dry r is a tracer like the hydro species: its
+  // x2/x3 face flux needs the tracer row of _flux_covariance,
+  // sigma1^2 rho D1[u_n] D1[q] - delta d_1(rho u_n q), with q = s/rho its mass
+  // fraction of the total density. On each side of the face q = r rd, rd the
+  // dry fraction of the hydro state on that side, and the face value is their
+  // mean, as wbar is for a species. Every other factor is the hydro's own,
+  // from the same face states and in the same order, so a scalar and the same
+  // tracer carried as a species get the same row.
+  int k = dim == 2 ? 0 : 1;
+  if (!_cov_wl[k].defined()) return torch::Tensor();
+  auto const& wl = _cov_wl[k];
+  auto const& wr = _cov_wr[k];
+  auto pcoord = pmb->pcoord;
+  int n1 = wl.size(-1);
+  int ny = wl.size(0) - ICY;
+  auto dry_fraction = [&](torch::Tensor const& w) {
+    auto rd = torch::ones_like(w[IDN]);
+    for (int n = 0; n < ny; ++n) rd = rd - w[ICY + n];
+    return rd;
+  };
+  auto q = 0.5 * (rl * dry_fraction(wl) + rr * dry_fraction(wr));
+
+  // the face-normal velocity and the geometry, as in _flux_covariance
+  auto wbar = 0.5 * (wl + wr);
+  if (dim == 2) {
+    pcoord->prim2local2_(wbar);
+  } else {
+    pcoord->prim2local3_(wbar);
+  }
+  auto un = wbar[dim == 2 ? IVY : IVZ];
+  auto x1v = pcoord->x1v.to(un.device(), un.scalar_type());
+  auto s2 = pcoord->face_moment2_x1()
+                .to(un.device(), un.scalar_type())
+                .unsqueeze(0)
+                .unsqueeze(1);
+  auto ds = pcoord->face_centroid_shift_x1()
+                .to(un.device(), un.scalar_type())
+                .unsqueeze(0)
+                .unsqueeze(1);
+  auto rho = wbar[IDN];
+  auto dx1 = (x1v.narrow(0, 2, n1 - 2) - x1v.narrow(0, 0, n1 - 2));
+  auto cell = [&](torch::Tensor const& a) { return a.narrow(-1, 1, n1 - 2); };
+  auto d1 = [&](torch::Tensor const& a) {
+    return (a.narrow(-1, 2, n1 - 2) - a.narrow(-1, 0, n1 - 2)) / dx1;
+  };
+  auto cov = [&](torch::Tensor const& a, torch::Tensor const& b) {
+    return cell(s2) * cell(rho) * d1(a) * d1(b);
+  };
+  auto ctr = [&](torch::Tensor const& f) { return -cell(ds) * d1(f); };
+
+  auto mflx = rho * un;
+  auto dflx = torch::zeros_like(q);
+  dflx.narrow(-1, 1, n1 - 2) = cov(un, q) + ctr(mflx * q);
+  return dflx;
+}
+
 torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                                  Variables const& other) {
   enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };
@@ -202,6 +261,9 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   auto start = std::chrono::high_resolution_clock::now();
 
   auto playout = pmb->get_layout();
+  for (int k = 0; k < 2; ++k) {
+    _cov_wl[k] = _cov_wr[k] = _cov_dry[k] = torch::Tensor();
+  }
 
   //// ------------ (1) Calculate Primitives ------------ ////
   auto const& w = other.at("hydro_w");
@@ -597,6 +659,13 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       auto dcov = flux_covariance()
                       ? _flux_covariance(wlr2[ILT], wlr2[IRT], DIM2)
                       : torch::Tensor();
+      // the passive scalars' rows are built from the same face states
+      // (scalar_flux_covariance), taken before the solver may project them
+      if (dcov.defined()) {
+        _cov_wl[0] = wlr2[ILT].clone();
+        _cov_wr[0] = wlr2[IRT].clone();
+        _cov_dry[0] = dcov[IDN].clone();
+      }
       priemann->forward(wlr2[ILT], wlr2[IRT], DIM2, _flux2);
       if (dcov.defined()) _flux2 += dcov;
       cov2 = dcov.defined();
@@ -620,6 +689,11 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       auto dcov = flux_covariance()
                       ? _flux_covariance(wlr3[ILT], wlr3[IRT], DIM3)
                       : torch::Tensor();
+      if (dcov.defined()) {
+        _cov_wl[1] = wlr3[ILT].clone();
+        _cov_wr[1] = wlr3[IRT].clone();
+        _cov_dry[1] = dcov[IDN].clone();
+      }
       priemann->forward(wlr3[ILT], wlr3[IRT], DIM3, _flux3);
       if (dcov.defined()) _flux3 += dcov;
       cov3 = dcov.defined();
@@ -643,7 +717,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   // of every shared face is identical on both ranks and conservation stays
   // exact. Positivity of the full multi-stage update follows from the SSP
   // structure of the integrators (see flux_positivity.hpp).
-  if (options->eos()->limiter() && ny > 0) {
+  if ((options->eos()->limiter() || cov2 || cov3) && ny > 0) {
     auto uy = u.narrow(0, ICY, ny);
     auto f1 = _flux1.defined() ? _flux1.narrow(0, ICY, ny) : torch::Tensor();
     auto f2 = _flux2.defined() ? _flux2.narrow(0, ICY, ny) : torch::Tensor();
