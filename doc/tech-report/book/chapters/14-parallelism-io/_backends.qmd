@@ -1,0 +1,111 @@
+## Communication backends: Gloo, UCX through commux, an external group (`BACKEND`) {#sec-ch14-backends}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/layout/process_group.hpp, src/layout/process_group.cpp, src/layout/process_group_ucx.cpp, src/layout/distributed.cpp, src/layout/layout.cpp, CMakeLists.txt, tests/CMakeLists.txt, tests/test_gloo_one_tensor.cpp, tests/run_seam_backends.py
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: one `ProcessGroupContext` per process carries every point-to-point message and collective. It is backed by
+Gloo, by UCX through the commux library, or by a `torch.distributed` group created outside snapy. **Switch**:
+environment `BACKEND` (`ucx`, `gloo`, or the name of an external group's backend); CMake `UCX`. **Default**: `ucx`
+on Linux when built with UCX, otherwise `gloo`; always `gloo` on macOS. **Requires**: a `TCPStore` rendezvous
+(@sec-ch14-launch) for more than one process. **Order**: n/a. **Defining equation**: none.
+:::
+
+| capability | Gloo | UCX (commux) | external group |
+|---|---|---|---|
+| CUDA tensors in messages | no: refused | yes, if commux was built with CUDA | no: the non-UCX path refuses them |
+| tensors per send or receive | one | a list | one |
+| coalesced point-to-point groups | no | yes | no |
+| platforms | all; the only one on macOS | Linux builds with `UCX=ON` | any backend name except `ucx` |
+
+: What each backend can carry, read from `ProcessGroupContext::send`, `recv` and `supports_coalescing`.
+{#tbl-ch14-backend-matrix}
+
+There is no NCCL path. `BACKEND=nccl` with no external group stops with "Unsupported BACKEND". An external NCCL group
+is accepted at registration, but its sends go through the non-UCX branch, which refuses CUDA tensors. That
+consequence is read from the code and has not been run.
+
+### Derivation
+
+None: this scheme moves bytes and does not change them.
+
+### Numerical method
+
+`ProcessGroupContext::create` keeps one context per key. For an owned group the key is the backend, the address,
+the port, the process rank, the process count and the local rank. A registered external group (non-UCX backend)
+is also keyed by its pointer. Contexts are cached through weak pointers, so all blocks of a process share one
+(`process_group_key`, [`process_group.cpp:40-91`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L40-L91)).
+
+`_init` does nothing for one process. Otherwise it creates the `TCPStore` (process 0 is its server) and the backend,
+then holds the processes at a barrier ([`process_group.cpp:98-142`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L98-L142)). The
+three backends differ as follows:
+
+1. **Gloo** (`_init_gloo`) registers a `ProcessGroupGloo` with the default device as the CPU backend of a c10d
+   `ProcessGroup` ([`process_group.cpp:236-253`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L236-L253)).
+2. **UCX** (`_init_ucx`) creates a `commux::ProcessGroupUCX` on the same store. It sets `COMMUX_COALESCE=1` and
+   `COMMUX_GROUP=1` unless they are already set, and on CPU also excludes the CUDA transports from `UCX_TLS`
+   ([`process_group_ucx.cpp:22-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L22-L35)). A build without UCX has a stub
+   that throws (`_init_ucx`, [`process_group.cpp:286-291`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L286-L291)).
+3. **External**: `set_process_group` stores a group made elsewhere, for example by `torch.distributed`
+   (`set_process_group`, [`distributed.cpp:14-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/distributed.cpp#L14-L16)). If `BACKEND` is not `ucx` and such a group
+   exists, `_init_external` uses it after checking that its backend name equals `BACKEND`. It does not own the
+   group, so it never shuts it down, and it takes the device index the group is bound to
+   (`_init_external`, [`process_group.cpp:212-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L212-L234)).
+
+`send` and `recv` route to UCX when it exists. Otherwise they require every tensor to be on the CPU and the list to
+hold one tensor; the error for a longer list names the fix (one message per tensor, #240)
+(`ProcessGroupContext::send`, [`process_group.cpp:148-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L148-L182)). The exchange therefore sends one message
+per variable on every backend (@sec-ch14-msgmatch). Collectives (`allreduce`, `reduce`, `barrier`) block until
+done. Coalescing is available only on UCX (`supports_coalescing`, [`process_group.cpp:271-284`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L271-L284)).
+
+The CMake option `UCX` is ON by default on Linux and OFF on macOS; `PNETCDF` follows the same split
+([`CMakeLists.txt:12-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L12-L18)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| platform default | [`layout.cpp:41-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L41-L51) | `default_backend` | `UCX` build |
+| context interface | [`process_group.hpp:29-67`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.hpp#L29-L67) | `ProcessGroupContext` | none |
+| cache | [`process_group.cpp:71-91`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L71-L91) | `create` | none |
+| store, backend, barrier | [`process_group.cpp:98-142`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L98-L142) | `_init` | `BACKEND` |
+| one CPU tensor per message | [`process_group.cpp:148-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L148-L182) | `send` | not UCX |
+| external group | [`process_group.cpp:212-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L212-L234) | `_init_external` | `set_process_group` |
+| Gloo | [`process_group.cpp:236-253`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L236-L253) | `_init_gloo` | `BACKEND=gloo` |
+| coalescing | [`process_group.cpp:271-284`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group.cpp#L271-L284) | `supports_coalescing` | UCX |
+| UCX through commux | [`process_group_ucx.cpp:22-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L22-L35) | `_init_ucx` | `BACKEND=ucx` |
+| registration | [`distributed.cpp:14-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/distributed.cpp#L14-L16) | `set_process_group` | Python `snapy.distributed` |
+| build options | [`CMakeLists.txt:12-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L12-L18) | `UCX` | CMake |
+
+: Code map of the backends. {#tbl-ch14-backends-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_gloo_one_tensor` (macOS builds only) | on two Gloo ranks a one-tensor message arrives; a two-tensor send and receive are refused with "one tensor per message" | exact | `torch::equal`, message text |
+| `test_exchange_ucx` (UCX builds) | `test_exchange` on two UCX ranks with three blocks each; local and remote neighbours both seen | value bounds | payloads identify the sender |
+| `test_exchange_ucx_cuda` (UCX and CUDA builds) | the same exchange with CUDA tensors; exits 125 (skip) without commux CUDA support or GPUs | value bounds | as above |
+| `test_sedimentation_cubed_seam_gloo` (UCX builds) | two Gloo ranks finish with one result line, and it equals the UCX run's line | exact (17 digits) | string compare |
+| `test_parentless_cloud_nb1_mp_gloo` (UCX builds) | the two-rank `test_parentless_cloud_nb1_mp` passes on Gloo | the test's own | `test_parentless_cloud_nb1_mp.cpp` |
+
+: Tests of the backends. C++ entries carry the build suffix (`.release`). {#tbl-ch14-backends-tests}
+
+The registrations use `setup_parallel_test` and `add_test` [`tests/CMakeLists.txt:121-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L121-L185); the one-tensor check is
+`a_message_of_two_tensors_is_refused_with_the_fix`, [`test_gloo_one_tensor.cpp:17-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_gloo_one_tensor.cpp#L17-L41), and the Gloo-versus-UCX compare is
+`main` in [`run_seam_backends.py:38-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_seam_backends.py#L38-L60). Their pass status at the pin was not
+run for this chapter.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- No NCCL path. Multi-GPU exchange needs UCX built with CUDA; Gloo with `DEVICE=cuda` stops at the first send.
+- Linux CI runs UCX by default; Gloo is reached on Linux only by the explicit `_gloo` entries above. The maintainer's
+  position in #237 and #240 is that Gloo is the macOS backend and is not guaranteed elsewhere.
+- `cmake/ucx.cmake` carries site-specific search paths for UCX; they are not part of the method.
+:::

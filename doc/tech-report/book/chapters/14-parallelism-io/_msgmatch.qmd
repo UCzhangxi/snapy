@@ -1,0 +1,126 @@
+## Exchange message matching and in-process copies (`SyncOptions.phyid`) {#sec-ch14-msgmatch}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/layout/layout.hpp, src/layout/layout.cpp, src/layout/cubed_sphere_layout.cpp, tests/test_cubed_sphere_exchange.cpp, tests/test_exchange.cpp
+status: draft
+-->
+
+Local symbols (flagged to the editor): $\phi$ the `phyid` of a sync; $\ell$ a local block index (@eq-ch14-launch-rank);
+$\beta$ a buffer id; $n$ the index of a variable in an exchange; $T$ a message tag; $b$ the blocks per process.
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: how the buffers of one ghost sync (@sec-ch03-exchange) reach their neighbours. A remote neighbour gets one
+tagged message per variable; a neighbour in the same process gets a direct copy after all local blocks have
+arrived. **Switch**: `SyncOptions.phyid` ($0 \le \phi < 64$). **Default**: $\phi = 0$. **Requires**: a process
+group for remote neighbours. **Order**: exact copy. **Defining equation**: @eq-ch14-msgmatch-tag.
+:::
+
+A sync is serialise, launch, finalise. `launch_exchange` first does the in-process copies and then posts the remote
+messages. The remote message of variable $n$ from a block to the buffer $\beta$ of local block $\ell$ in another
+process has the tag of @eq-ch14-msgmatch-tag. Same-process neighbours never use the process group: their buffers are
+copied in memory once all $b$ blocks of the process have reached the same sync.
+
+### Derivation
+
+The tag must identify the receiving block, the buffer and the variable, so that two messages between the same pair
+of processes never match each other's receive. With at most 32 buffer ids, 32 local blocks per $\phi$ and 64 values of
+$\phi$, the base tag fills 16 bits:
+
+$$
+T_0 = 1024\,\phi + 32\,\ell + \beta, \qquad 0 \le T_0 < 65536, \qquad T = T_0 + 65536\,n .
+$$ {#eq-ch14-msgmatch-tag}
+
+Since $T_0 < 65536$, the map $(T_0, n) \mapsto T$ is one to one: $n = \lfloor T / 65536 \rfloor$ and
+$T_0 = T \bmod 65536$. $T_0$ itself is one to one in $(\phi, \ell, \beta)$ as long as $\beta < 32$ and $32\ell + \beta
+< 1024$, that is $\ell < 32$ (27 buffer ids is the largest, on `cubed`). `make_comm_tag` enforces $0 \le T_0 < 65536$,
+which rejects $\phi \ge 64$ or $\phi < 0$ ([`layout.hpp:161-170`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L161-L170)).
+`exchange_each_var` refuses more than 32768 variables, which keeps $T$ below $2^{31}$
+([`layout.cpp:652-666`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L652-L666)). The per-block bound $\ell < 32$ is not checked
+separately. The send tag uses the receiver's $\ell$ and the receiver's buffer id, so the sender computes what the
+receiver posts.
+
+Two other kinds of message share the process group:
+
+1. Block-to-block messages (`send_to_block`, `recv_from_block`), used by the $x_1$ relays of @sec-ch03-x1seams.
+   They add $65536\,(\ell_\text{send}\, b + \ell_\text{recv})$ to a caller tag. With $b \le 16$ (checked) the factor is
+   below 256, so the low 16 bits stay the caller's tag (`send_to_block`, [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877)).
+   The comment above `send_to_block` [`layout.hpp:272-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L272-L280) gives the argument: the hydro relay
+   tags (`0x77xx`) are not values of $T_0$ at $b \le 16$, and the total stays below the gather tags.
+2. `gather_x1` uses $2^{24} + \ell_\text{send}\, b + \ell_\text{recv}$
+   ([`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847)).
+
+### Numerical method
+
+**Remote neighbours.** `exchange_remote` walks the neighbour offsets and skips physical faces and absent neighbours.
+A neighbour that is the block itself (a periodic direction with one block) is copied from the send buffer to the
+opposite receive buffer. A neighbour in another process becomes one operation with the send and receive tags
+of @eq-ch14-msgmatch-tag. All operations of the block are then posted under one process-wide mutex. On UCX they are
+posted inside one coalescing group (`exchange_remote`, [`layout.cpp:548-650`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L548-L650)). With two blocks in a
+periodic direction, the first block walks that direction in reverse order (`dx_sgn = -1`; the code comment says
+"swap the order of first block for periodic condition"). The set of offsets is unchanged, only the posting order.
+The comment gives no reason; one hypothesis, not tested, is that it keeps the two messages to the same neighbour in
+the order that neighbour posts them. The cubed-sphere layout posts its
+remote operations under its own mutex and without a coalescing group
+(`g_cubed_sphere_comm_mutex`, [`cubed_sphere_layout.cpp:1036-1048`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L1036-L1048)).
+
+**Same-process neighbours.** `_prepare_local_exchange` is a rendezvous keyed by the sync signature: process, $b$,
+`dim`, $\phi$, type and the phase and corner flags (`_prepare_local_exchange`, [`layout.cpp:279-387`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L279-L387)).
+Each block increments an arrival count. The last block to arrive copies every same-process buffer pair
+(`_copy_local_exchange_buffers`, [`layout.cpp:419-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L419-L475)) and releases the others.
+A generation counter keeps one sync's release from waking a block that has already entered the next. An exception
+in the copy is re-thrown in every block of the process. On a CUDA device each block records an arrival event on its
+stream; the copying block waits on all of them and records a completion event that the others wait on
+(@sec-ch14-bpp). This rendezvous has no timeout.
+
+**In-process boards.** Messages between blocks of one process that are not a whole sync go through boards guarded by
+the same mutex: the $x_1$ reference anchors (`take_x1_anchor`), per-tag mailboxes (`post_to_local_block`,
+`take_from_local_block`) and the column board of `gather_x1`. The anchor and mailbox waits time out after
+5 minutes with an error that names the cause: local blocks must run concurrently, or from the top of the $x_1$
+column down (`take_x1_anchor`, [`layout.cpp:879-970`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L970)).
+
+**Buffers.** Send and receive buffers are kept per block and reused when the same sync runs again; `test_exchange`
+checks that their data pointers do not change.
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| base tag and its range | [`layout.hpp:161-170`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L161-L170) | `make_comm_tag` | `phyid` |
+| local copies before remote posts | [`layout.cpp:540-546`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L540-L546) | `launch_exchange` | none |
+| rendezvous of local blocks | [`layout.cpp:279-387`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L279-L387) | `_prepare_local_exchange` | `blocks_per_process` |
+| in-memory copies, phase filter | [`layout.cpp:419-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L419-L475) | `_copy_local_exchange_buffers` | none |
+| remote posts, mutex, coalescing | [`layout.cpp:548-650`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L548-L650) | `exchange_remote` | `BACKEND` |
+| one message per variable | [`layout.cpp:652-666`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L652-L666) | `exchange_each_var` | none |
+| block-to-block tags | [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877) | `send_to_block` | none |
+| $x_1$ column gather | [`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847) | `gather_x1` | `nb1` |
+| boards with 5-minute waits | [`layout.cpp:879-970`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L970) | `take_from_local_block` | none |
+| cubed-sphere remote posts | [`cubed_sphere_layout.cpp:1036-1048`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L1036-L1048) | `g_cubed_sphere_comm_mutex` | `layout: cubed-sphere` |
+
+: Code map of message matching. {#tbl-ch14-msgmatch-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_cubed_sphere_exchange` `CommTag.rejects_tags_that_collide_with_the_variable_offset` | `make_comm_tag(3, (0,1,0), 63)` is $63\cdot1024 + 3\cdot32 + 1$; $\phi = 64$ and $\phi = -1$ throw | exact | integer compare |
+| `test_exchange` | after two identical syncs no buffer data pointer has changed; ghosts hold the neighbour's payload; with three blocks per process both a local and a remote neighbour are seen | exact pointers; value bounds | payloads identify the sender |
+
+: Tests of message matching. C++ entries carry the build suffix (`.release`). {#tbl-ch14-msgmatch-tests}
+
+The tag check calls `make_comm_tag` [`test_cubed_sphere_exchange.cpp:152-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L152-L157); the
+pointer and neighbour checks are in `main` of [`test_exchange.cpp:218-319`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L218-L319).
+Their pass status at the pin was not run for this chapter. No test posts two variables between the same two
+processes with tags that would alias if the offset were missing; the argument above is the evidence.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- A caller that steps the local blocks one after another instead of concurrently waits 5 minutes at the first
+  board and then stops; at the sync rendezvous it waits forever. `Mesh` always runs them concurrently
+  (@sec-ch14-bpp).
+- The bound $\ell < 32$ on local blocks for the base tag is implied, not checked; block-to-block messages check
+  $b \le 16$.
+:::

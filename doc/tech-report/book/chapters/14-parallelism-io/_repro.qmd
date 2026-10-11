@@ -1,0 +1,125 @@
+## Reproducibility: what is shown bit for bit and what is not {#sec-ch14-repro}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: tests/test_coordinate.cpp, tests/test_cubed_sphere_exchange.cpp, tests/run_seam_backends.py, tests/run_restart_*.py, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp, tests/run_shallow_xy_decomp.py, src/hydro/hydro_forward.cpp, src/bc/bc_dispatch.cpp, src/eos/eos_dispatch.cpp, examples/run_hydro.cpp, examples/straka.cpp, python/__init__.py
+status: draft; the gravity-work fixer item waits for chengcli/snapy#303
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: an inventory of every reproducibility claim snapy's tests support at the pin, with the configuration each
+covers, and of the known sources of run-to-run or decomposition-to-decomposition differences. **Switch**: none.
+**Default**: n/a. **Requires**: nothing. **Order**: n/a. **Defining equation**: none.
+:::
+
+"Bitwise" below means `torch::equal` or a maximum absolute difference of exactly zero. "Tolerance" means a bound
+that the test asserts. "Untested" means no registered test covers the configuration; reasoning from the code is
+marked as such.
+
+### Derivation
+
+None: this section is an evidence table.
+
+### Numerical method
+
+| claim | evidence (ctest name) | configuration covered | result |
+|---|---|---|---|
+| face coordinates of a decomposed grid equal the undecomposed grid's | `test_coordinate` `blocks_match_the_undecomposed_grid_bitwise` | one process, CPU, $x_2$ split of six cells | bitwise |
+| cubed sphere with $n_{b2} = 1, 2, 4$: same faces, $\Delta x_2$ and density after one stage | `test_cubed_sphere_exchange` `subdivided_panel_exchange_matches_one_block` and `_cuda` | one process, 6, 24 and 96 blocks; CPU and CUDA | bitwise, one stage |
+| Gloo and UCX give the same result | `test_sedimentation_cubed_seam_gloo` | two ranks, CPU, cubed-sphere seam with sedimentation | result line equal to 17 digits |
+| a resumed run continues the uninterrupted one | `test_restart_cycle_limit` | two ranks, one block each, CPU, straka, 120 cycles | $10^{-12}$ abs. on the first resumed cycle line; $10^{-9}$ on the end time |
+| restart write, bundle and read keep the state | `test_restart_multiblock` | one process, 2, 4 and 6 blocks, zero steps | bitwise in float NetCDF |
+| an $x_1$ split matches one block | `test_x1_seam_split` (one process) and `test_x1_seam_split_mp` (two ranks) | CPU; CUDA arms for three switches | $\le 10^{-13}$, not bitwise |
+| shallow-water decompositions agree | `test_shallow_xy_decomp` (`FULL_TESTS`) | one block; four blocks in one process; two ranks of two; four ranks | bitwise (`max_abs == 0`) on NetCDF fields |
+| counters are race-free on CPU | code: `std::atomic` counters | CPU threads | by construction |
+
+: Reproducibility claims and their evidence. C++ entries carry the build suffix (`.release`). {#tbl-ch14-repro-claims}
+
+The rows, with the line that decides each:
+
+1. Coordinates: `blocks_match_the_undecomposed_grid_bitwise`
+   ([`test_coordinate.cpp:892-895`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L892-L895)).
+2. Cubed sphere: `torch::equal` on `x2f`, `dx2f` and the density, in `subdivided_panel_exchange_matches_one_block`
+   ([`test_cubed_sphere_exchange.cpp:161-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L161-L198)). With
+   $n_{b2} = n$ there are $6n^2$ blocks in one process, so the remote path of @sec-ch14-msgmatch is not exercised.
+3. Backends: `ucx != gloo` compares the two result lines as strings, in `main`
+   ([`run_seam_backends.py:38-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_seam_backends.py#L38-L60)).
+4. Restart continuation: `assert_close`, with `atol` $10^{-12}$
+   ([`run_restart_cycle_limit.py:101-105`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_cycle_limit.py#L101-L105)). Only the first resumed
+   cycle line (time, $\Delta t$, mass, energy, as printed) and the end time are compared, not the fields after the
+   resume.
+5. Restart round trip: `compare_netcdf` requires `max_abs` of exactly zero, with `nlim: 0`
+   (`compare_netcdf`, [`run_restart_multiblock.py:26-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_multiblock.py#L26-L82)); see @sec-ch14-restart.
+6. $x_1$ splits: `split_across_two_ranks_matches_one_process` bounds the gaps by $10^{-13}$
+   ([`test_x1_seam_split_mp.cpp:248-298`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split_mp.cpp#L248-L298)).
+7. Shallow water: `compare_pair` raises on any non-zero `max_abs`
+   ([`run_shallow_xy_decomp.py:40-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_shallow_xy_decomp.py#L40-L60)). The registered test runs
+   the runner's default, Gloo on the CPU, where all four cases run; on UCX the mesh4 and proc4 cases need one and four
+   GPUs.
+8. Counters: `num_flips` ([`bc_dispatch.cpp:18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_dispatch.cpp#L18)) and `all_err`
+   ([`eos_dispatch.cpp:82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/eos_dispatch.cpp#L82)) are `std::atomic<int>`.
+
+**Sources of difference.** These are where results can differ between runs or decompositions:
+
+- **Unseeded initial noise.** `run_hydro` adds `0.01 * torch::rand_like` to the velocities with no seed
+  ([`run_hydro.cpp:134-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L134-L135)), so two runs of that example start from
+  different states.
+- **Threads.** The C++ drivers and the Python package set torch to one intra-op thread with `set_num_threads`
+  ([`straka.cpp:111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L111); Python: `set_num_threads` in [`__init__.py:11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L11)), which removes the
+  thread count as a source of reduction-order changes inside snapy. Libraries called through kintera and pyharp
+  manage their own threads.
+- **Seam fluxes between processes.** At a split $x_1$ seam, the flux slab and face pressure are exchanged only with a
+  neighbour in another process; a neighbour in the same process is skipped (`is_local_block`,
+  [`hydro_forward.cpp:439-447`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L439-L447)). The same split therefore takes different
+  code paths in one process and across processes. The $10^{-13}$ bound above covers the difference; bitwise equality
+  is not claimed.
+- **Reductions.** MIN and MAX collectives are order independent (@sec-ch14-collectives).
+
+::: {.callout-note title="Placeholder: waits for chengcli/snapy#303"}
+The gravity-work fixer's SUM over blocks and ranks is the one floating-point sum among the collectives. Whether its
+round-off makes results depend on the decomposition or the backend, and what the tests show about it, is described
+once #303 (the gravity-work change) has merged and the pin moves.
+:::
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| atomic flip count | [`bc_dispatch.cpp:18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_dispatch.cpp#L18) | `num_flips` | none |
+| atomic error count | [`eos_dispatch.cpp:82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/eos_dispatch.cpp#L82) | `all_err` | none |
+| unseeded noise | [`run_hydro.cpp:134-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L134-L135) | `rand_like` | example only |
+| one torch thread (C++) | [`straka.cpp:111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L111) | `set_num_threads` | none |
+| one torch thread (Python) | [`__init__.py:11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L11) | `set_num_threads` | none |
+| seam fluxes only across processes | [`hydro_forward.cpp:439-447`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L439-L447) | `is_local_block` | `nb1` |
+
+: Code behind the sources of difference. {#tbl-ch14-repro-code}
+
+### Tests
+
+The evidence tests are listed in @tbl-ch14-repro-claims. None of them was run at the pin for this chapter.
+
+| configuration | bitwise | tolerance | untested |
+|---|---|---|---|
+| change of $n_{b2}$ on the cubed sphere, one stage | CPU, CUDA (one process) | | several processes; several steps |
+| change of the shallow-water decomposition | CPU, Gloo (`FULL_TESTS`) | | CUDA |
+| $x_1$ split | | $10^{-13}$ (one process; two ranks) | bitwise |
+| Gloo against UCX | | 17 printed digits | fields |
+| resume against uninterrupted | | $10^{-12}$ on the first cycle line | fields after the resume; several blocks per process |
+| restart round trip | float NetCDF, 2/4/6 blocks | | double precision; a change of block count |
+| CPU against CUDA | | $10^{-9}$ (implicit moist step, @sec-ch14-gpu) | the explicit dynamics over many steps |
+
+: Which configurations the tests cover, and how. {#tbl-ch14-repro-matrix}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- No registered test compares the dynamics bitwise across a change of process count over many steps.
+  `test_exchange_decomp` checks ghost values only.
+- The cubed-sphere decomposition evidence is one stage, in one process.
+- Restart continuation is checked on a printed cycle line, not on the fields.
+- Determinism case batteries in downstream repositories are not snapy evidence and are not listed.
+- Bit identity with older builds is not claimed. The cubed-sphere NetCDF axis variables changed by one float ulp
+  when a double rounding was removed (PR #213).
+:::

@@ -1,0 +1,67 @@
+# Parallelism, GPU, restart/IO and reproducibility {#sec-ch14}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md, parallelism, GPU, restart/IO and reproducibility
+status: draft; two placeholders wait for chengcli/snapy#303 (the gravity-work fixer reduction
+in @sec-ch14-collectives and its reproducibility item in @sec-ch14-repro)
+-->
+
+This chapter describes how snapy runs on several processes and devices, how it writes output and restart files, and
+which of its results the tests show to be reproducible. It has three parts. The first covers parallel execution and
+the GPU: how processes are launched and meet, which communication backends carry the messages, how the messages
+of a ghost exchange are matched, how several blocks share a process and its GPU streams, which decisions are
+reduced over all ranks, and what changes on a CUDA device. The second covers output and restart: per-block NetCDF
+files and their combine, PnetCDF, restart files and resume, output scheduling and statistics, and the
+post-processing tools. The third is an inventory of the reproducibility claims and their evidence. What a ghost cell
+contains is the subject of @sec-ch03 (in particular @sec-ch03-exchange); here only how it gets there is
+described. All code is cited at `chengcli/snapy` commit `e894700ff7aee30b52882e5202b16461413780b0`. The schemes are
+listed in @tbl-ch14-schemes.
+
+| scheme | switch | default | order | main test |
+|---|---|---|---|---|
+| launch and rendezvous (@sec-ch14-launch) | env `MASTER_PORT`, `RANK`, ... | one process | n/a | `test_process_group` |
+| communication backends (@sec-ch14-backends) | env `BACKEND` | `ucx` on Linux, `gloo` on macOS | exact copy | `test_sedimentation_cubed_seam_gloo` |
+| exchange message matching (@sec-ch14-msgmatch) | `SyncOptions.phyid` | 0 | exact copy | `test_exchange` |
+| several blocks per process (@sec-ch14-bpp) | `distribute: blocks_per_process` | 1 | n/a | `test_cubed_sphere_exchange` |
+| collectives and global decisions (@sec-ch14-collectives) | none | on with several processes | exact (MIN, MAX) | `test_check_redo_parallel` |
+| GPU execution (@sec-ch14-gpu) | CMake `CUDA`, env `DEVICE` | CPU | round-off | `test_vic_moist_device_python` |
+| NetCDF output and combine (@sec-ch14-netcdf) | `outputs: type: netcdf` | float, combined | exact, then float | `test_output_barrier` |
+| PnetCDF output (@sec-ch14-pnetcdf) | `outputs: type: pnetcdf` | off | float | none |
+| restart files (@sec-ch14-restart) | `outputs: type: restart`, `--restart` | off | exact | `test_restart_cycle_limit` |
+| output scheduling and statistics (@sec-ch14-schedule) | output `dt` | `dt: 0` | exact for the sampled states | `test_user_output` |
+| combine and inspect tools (@sec-ch14-tools) | command line | n/a | n/a | none |
+| reproducibility inventory (@sec-ch14-repro) | none | n/a | n/a | see @tbl-ch14-repro-claims |
+
+: The schemes of this chapter. "exact copy" means the bytes arrive unchanged. Test names omit the `.release` suffix
+of C++ entries. {#tbl-ch14-schemes}
+
+## 14A. Parallel execution and GPU {.unnumbered .unlisted}
+
+{{< include 14-parallelism-io/_launch.qmd >}}
+
+{{< include 14-parallelism-io/_backends.qmd >}}
+
+{{< include 14-parallelism-io/_msgmatch.qmd >}}
+
+{{< include 14-parallelism-io/_bpp.qmd >}}
+
+{{< include 14-parallelism-io/_collectives.qmd >}}
+
+{{< include 14-parallelism-io/_gpu.qmd >}}
+
+## 14B. Output and restart {.unnumbered .unlisted}
+
+{{< include 14-parallelism-io/_netcdf.qmd >}}
+
+{{< include 14-parallelism-io/_pnetcdf.qmd >}}
+
+{{< include 14-parallelism-io/_restart.qmd >}}
+
+{{< include 14-parallelism-io/_schedule.qmd >}}
+
+{{< include 14-parallelism-io/_tools.qmd >}}
+
+## 14C. Reproducibility {.unnumbered .unlisted}
+
+{{< include 14-parallelism-io/_repro.qmd >}}

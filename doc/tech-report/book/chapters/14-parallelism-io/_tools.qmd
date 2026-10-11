@@ -1,0 +1,69 @@
+## Combine and inspect tools (`pd-combine`, `pd-inspect`) {#sec-ch14-tools}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: pyproject.toml, python/api/pd_combine.py, python/api/pd_inspect.py
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: two command-line tools installed with the Python package. `pd-combine` concatenates a run's combined NetCDF
+frames along time and merges output streams; `pd-inspect` lists the tensors in a `.part` or `.restart` file.
+**Switch**: command line. **Default**: n/a. **Requires**: NCO's `ncrcat` and `ncks` on the `PATH` for `pd-combine`.
+**Order**: n/a. **Defining equation**: none.
+:::
+
+Both are entry points of the `snapy` package (`[project.scripts]`,
+[`pyproject.toml:52-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L54)).
+
+### Derivation
+
+None.
+
+### Numerical method
+
+**`pd-combine <ids> [-d dir] [-o name] [--no-remove] [--no-merge]`.** `ParseOutputFields` globs
+`*.out*.<5 digits>.nc` in the directory and splits each name into case, stream and stamp
+(`ParseOutputFields`, [`pd_combine.py:43-59`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L43-L59)). For each case and stream, `CombineTimeseries` runs
+`ncrcat` over the stamps into `<case>.out<n>.nc`, or renames a single stamp. Unless `--no-remove`, it then deletes the
+per-stamp files (`CombineTimeseries`, [`pd_combine.py:6-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L6-L23)). Unless `--no-merge`, `CombineFields`
+appends the listed streams into the first with `ncks -A` and moves the result to `<case>-<name>.nc`
+(`CombineFields`, [`pd_combine.py:26-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L26-L40)). `main` checks that each requested id exists and also
+calls `CombineFITS` for FITS outputs ([`pd_combine.py:82-125`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L82-L125)).
+
+`pd-combine` does not join blocks in space. A per-block file `<basename>.block<r>.out<n>.<kkkkk>.nc` (left by
+`combine: false`) also matches the glob, with case `<basename>.block<r>`, so each block's frames are concatenated in
+time on their own. Joining blocks is done by the run itself (@sec-ch14-netcdf).
+
+**`pd-inspect <paths>`.** For each path, `inspect_path` checks for the bundle magic. For a bundle it prints the
+tensors of every part (name, shape, dtype); otherwise it reads the file as one part
+(`inspect_path`, [`pd_inspect.py:138-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_inspect.py#L138-L150)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| entry points | [`pyproject.toml:52-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L54) | `pd-combine` | none |
+| file discovery | [`pd_combine.py:43-59`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L43-L59) | `ParseOutputFields` | `-d` |
+| time concatenation | [`pd_combine.py:6-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L6-L23) | `CombineTimeseries` | `--no-remove` |
+| stream merge | [`pd_combine.py:26-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L26-L40) | `CombineFields` | `--no-merge`, `-o` |
+| command line | [`pd_combine.py:82-125`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_combine.py#L82-L125) | `main` | `ids` |
+| restart and part inspection | [`pd_inspect.py:138-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/api/pd_inspect.py#L138-L150) | `inspect_path` | none |
+
+: Code map of the tools. {#tbl-ch14-tools-code}
+
+### Tests
+
+No ctest tests either tool on its own. The `FULL_TESTS` decomposition runners call `pd-combine 0 -o main` on each
+case: `run_shallow_splash_decomp.py` skips (exit 125) without it, and `run_shallow_xy_decomp.py` fails without it
+(`pd_combine`, [`run_shallow_xy_decomp.py:93-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_shallow_xy_decomp.py#L93-L95)). `pd-inspect` is used by no test.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `pd-combine` globs every matching `*.out*.nc` in the directory, leftovers included; run it in a clean directory.
+- It needs NCO on the `PATH` and deletes its inputs by default.
+- It does not join per-block files in space.
+:::

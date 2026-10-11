@@ -1,0 +1,130 @@
+## Launch environment and rendezvous (`MASTER_PORT`, `BACKEND`) {#sec-ch14-launch}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/layout/layout.cpp, src/layout/layout.hpp, src/mesh/mesh.cpp, src/mesh/meshblock_options.cpp, api/pd-run, tests/test_process_group.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What**: one operating-system process per rank, started by `torchrun` or `api/pd-run`; the processes meet at a
+c10d `TCPStore` on `MASTER_ADDR:MASTER_PORT`, and each holds `blocks_per_process` blocks. **Switch**: environment
+`RANK`, `WORLD_SIZE`, `PROCESS_RANK`, `PROCESS_WORLD_SIZE`, `LOCAL_RANK`, `MASTER_ADDR`, `MASTER_PORT`, `DEVICE`,
+`DEVICE_ID`, `BACKEND`. **Default**: one process, `MASTER_ADDR=127.0.0.1`, `DEVICE=cpu`, a random port in
+$[29500, 29600]$. **Requires**: `MASTER_PORT` whenever more than one process is implied. **Order**: n/a.
+**Defining equation**: @eq-ch14-launch-rank.
+:::
+
+The launch settings are not read from the YAML card. `LayoutOptionsImpl`'s constructor reads them from the
+environment that `torchrun` (or `pd-run`) sets for each process. The `distribute` block of the card supplies the layout
+and the block counts (@sec-ch03-layouts). A single process with no `MASTER_PORT` picks a random port and never
+opens a store. A run that implies more than one process and has no `MASTER_PORT` stops in the constructor, because
+the ranks could not find one another.
+
+### Derivation
+
+None: this scheme is bookkeeping. The one relation it fixes is the global block rank. A process of rank $p$ holding
+$b$ blocks gives its local block $\ell \in [0, b)$ the rank
+
+$$
+r = p\,b + \ell, \qquad p = \lfloor r/b \rfloor, \qquad \ell = r \bmod b ,
+$$ {#eq-ch14-launch-rank}
+
+and the global block count is the process count times $b$. @eq-ch14-launch-rank is `global_block_rank`,
+`owner_process_rank` and `local_block_index` ([`layout.hpp:83-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L83-L93)).
+
+### Numerical method
+
+The constructor resolves each setting in a fixed order
+(`LayoutOptionsImpl`, [`layout.cpp:189-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L189-L219)):
+
+| setting | read from, in order | default |
+|---|---|---|
+| backend | `BACKEND` | `default_backend()`, @sec-ch14-backends |
+| process rank | `PROCESS_RANK`, then `RANK` | 0 |
+| process count | `PROCESS_WORLD_SIZE`, then `WORLD_SIZE` | 1 |
+| block rank | `RANK`, then the process rank | the process rank |
+| local rank | `LOCAL_RANK` | 0 |
+| store address | `MASTER_ADDR` | `127.0.0.1` |
+| store port | `MASTER_PORT` | random in $[29500, 29600]$ if one process; else an error |
+| device | `DEVICE` | `cpu` |
+| device index | `DEVICE_ID` | $-1$, meaning `LOCAL_RANK` |
+
+: Launch settings and where `LayoutOptionsImpl` reads them. {#tbl-ch14-launch-env}
+
+The block rank and the global size from the environment are provisional. `MeshImpl::reset` overwrites them for each
+local block with @eq-ch14-launch-rank and sets the global size to the process count times `blocks_per_process`
+([`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258)). `blocks_per_process` comes from
+`distribute: blocks_per_process` in the card, default 1 (`MeshOptionsImpl::from_yaml`, [`mesh.cpp:210-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L219)).
+The store is opened only when the process count is above 1 (`use_process_group`,
+[`layout.hpp:206-208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L206-L208)); @sec-ch14-backends describes it.
+
+The device string of a block is `cuda:<DEVICE_ID>`, or `cuda:<LOCAL_RANK>` when `DEVICE_ID` is negative, if `DEVICE`
+is `cuda`; otherwise it is the `DEVICE` value (`device_str`, [`meshblock_options.cpp:274-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L274-L285)).
+
+`api/pd-run <n> <executable> [args]` is a single-node launcher. It starts $n$ processes and exports, for each, `RANK`
+and `PROCESS_RANK` equal to the loop index, `WORLD_SIZE` and `PROCESS_WORLD_SIZE` equal to $n$, `LOCAL_RANK` equal to
+the index modulo the number of entries of `CUDA_VISIBLE_DEVICES` (default `0,1,2,3`), and `DEVICE_ID` equal to that
+entry. Its own defaults are `BACKEND=ucx` and `DEVICE=cpu`. With no `MASTER_PORT`, it picks a port in
+$[20000, 40000)$ that `ss` does not show as listening (`launch_rank`, [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| random single-process port | [`layout.cpp:34-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L34-L39) | `random_master_port` | `MASTER_PORT` unset |
+| environment read, port check | [`layout.cpp:189-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L189-L219) | `LayoutOptionsImpl` | env |
+| rank arithmetic | [`layout.hpp:83-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L83-L93) | `global_block_rank` | `blocks_per_process` |
+| blocks per process from the card | [`mesh.cpp:210-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L219) | `blocks_per_process` | `distribute: blocks_per_process` |
+| per-block rank and global size | [`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258) | `global_block_rank` | none |
+| device string | [`meshblock_options.cpp:274-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L274-L285) | `device_str` | `DEVICE`, `DEVICE_ID` |
+| launcher | [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138) | `launch_rank` | `BACKEND`, `DEVICE` |
+
+: Code map of the launch. {#tbl-ch14-launch-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_process_group` (1) | backend is the platform default, or `BACKEND` when set | exact | string compare |
+| `test_process_group` (2) | `distribute: backend` in the card has no effect | exact | string compare |
+| `test_process_group` (3) | one process, no `MASTER_PORT`: port in $[29500, 29600]$ | exact bounds | `random_master_port` |
+| `test_process_group` (4) | `PROCESS_WORLD_SIZE=2` or `WORLD_SIZE=2` without a port throws | exact | `TORCH_CHECK` |
+| `test_process_group` (5) | a given port and sizes are kept | exact | integer compare |
+| `test_process_group` (6) | one process opens no process group | exact | boolean |
+
+: Tests of the launch settings, all in `test_process_group.release`; the numbered cases are listed below the
+table. {#tbl-ch14-launch-tests}
+
+The cases are gtest cases of `LayoutOptions` and `ProcessGroupContext`
+([`test_process_group.cpp:74-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L192)):
+
+1. `DefaultsToPlatformCommunicationBackend` and `UsesBackendEnvironmentVariable`;
+2. `IgnoresYamlBackend` and `BackendEnvironmentOverridesYamlBackend`;
+3. `RandomizesDefaultMasterPortWhenEnvUnset`;
+4. two cases:
+   - `RequiresMasterPortForMultiProcessWhenEnvUnset`,
+   - `RequiresMasterPortWhenWorldSizeImpliesMultiProcess`;
+5. `UsesProvidedMasterPortForMultiProcess`;
+6. `ProcessGroupContext.SkipsSingleProcessCommunication`.
+
+These are unit tests of the option parsing in one process. They do not start a multi-process rendezvous; the
+two-rank tests of the following sections do, through `torchrun --no-python --nproc-per-node=2`
+(`add_test`, [`macro_setup_parallel_test.cmake:28-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/macros/macro_setup_parallel_test.cmake#L28-L32)). Their pass
+status at the pin was not run for this chapter.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `pd-run` exports `BLOCKS_PER_PROCESS`, but nothing under `src/` reads it. Only `test_exchange` and two test
+  runners read it; a run takes its block count from `distribute: blocks_per_process` in the card.
+- `pd-run` sets `DEVICE_ID` to the entry of `CUDA_VISIBLE_DEVICES` and also exports `CUDA_VISIBLE_DEVICES`
+  unchanged. CUDA numbers the visible devices from 0, so with a list that does not start at 0 (for example `2,3`)
+  `DEVICE_ID=2` names a device the process cannot see. This is read from the script and has not been run.
+- `pd-run` starts every process on the local host; it has no multi-node mode.
+:::
+
+The `BLOCKS_PER_PROCESS` readers are `test_exchange.cpp`, `run_exchange_decomp.py` and `run_exchange_backend.py`
+(`BLOCKS_PER_PROCESS`, [`test_exchange.cpp:218-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L218-L222)).
