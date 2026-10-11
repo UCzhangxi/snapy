@@ -1,0 +1,233 @@
+# Known limits {#sec-ch16}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: the Limits layer of every chapter on tech-report at 010bca05ece095ded16205aef1451f01db75edba; ch13 from
+draft PR #38 at c2d1ea20df5c72aa00efbf60c3bd664f887768f3; OUTLINE.md, known limits
+status: draft
+-->
+
+This chapter collects the Limits layers of the other chapters in one place, grouped by severity. It states no limit that its source section does not state, and where a section and the outline disagree, the section is followed. There are 144 items from 13 chapters, 6 more from the conservation chapter that is not in the book yet, and three placeholders for limits that a pending code change alters.
+
+Each item names the section it comes from and the evidence that section gives: a code location at chengcli/snapy `e894700ff7aee30b52882e5202b16461413780b0` (symbol and `file:lines`), a registered test, an executable check with its check line, or an issue. The links to the code are in the source sections; "stated in the section" marks an item whose section states it from the code without a narrower citation. Two kinds of statement are not repeated here: the remark, made in most Limits layers, that untested switch combinations are listed in the switch coverage matrix (@sec-ch12-matrix), which is one item below, and statements about what an author did or did not run for a draft, which describe the evidence of a chapter, not a limit of the code.
+
+Three classes are used:
+
+- **Wrong results possible** (@sec-ch16-wrong): a configuration the code accepts can produce wrong results, or conservation that does not hold, without an error.
+- **Restricted applicability** (@sec-ch16-restricted): a scheme, switch or path is limited to some configurations, or a combination is untested, so results outside them are not established.
+- **Performance and usability** (@sec-ch16-usability): cost, diagnostics, documentation or defaults that surprise a user, with no effect on the results of a correct configuration.
+
+| chapter | Wrong results possible | Restricted applicability | Performance and usability | total |
+|---|---|---|---|---|
+| @sec-ch01 | 1 | 7 | 3 | 11 |
+| @sec-ch02 | 2 | 7 | 1 | 10 |
+| @sec-ch03 | 5 | 8 | 0 | 13 |
+| @sec-ch04 | 4 | 8 | 6 | 18 |
+| @sec-ch05 | 1 | 7 | 1 | 9 |
+| @sec-ch06 | 1 | 1 | 0 | 2 |
+| @sec-ch07 | 3 | 9 | 3 | 15 |
+| @sec-ch08 | 3 | 8 | 2 | 13 |
+| @sec-ch09 | 5 | 4 | 3 | 12 |
+| @sec-ch10 | 3 | 5 | 3 | 11 |
+| @sec-ch11 | 2 | 5 | 1 | 8 |
+| @sec-ch12 | 0 | 5 | 1 | 6 |
+| @sec-ch14 | 3 | 5 | 8 | 16 |
+| total | 33 | 79 | 32 | 144 |
+
+: Items per chapter and class. {#tbl-ch16-counts}
+
+## Wrong results possible {#sec-ch16-wrong}
+
+Items where a configuration the code accepts can produce wrong results, or conservation that does not hold, without an error.
+
+| limit | source | evidence |
+|-------------------------------------------------------|------------------|---------------------------|
+| A driver-split source applied after a `Mesh` call can leave previously exchanged ghosts stale before the next advance (inferred from call order, not measured). | @sec-ch01-mesh | `forward` (`mesh.cpp:331-365`) |
+| Constant heat capacities are assumed even if the thermo card requests temperature-dependent options. | @sec-ch02-ideal-moist | `_cons2prim` (`ideal_moist.cpp:164-233`) |
+| The temperature Newton iteration warns at its iteration limit and returns the current estimate; this is not the saturation-failure counter, so the step is not rejected. | @sec-ch02-moist-mixture | `_intEng_to_temp` (`kintera thermo_y.cpp:495-517`) |
+| The checks that a block holds more cells than its ghost zone never fire (they read `nx1` before `repartition` sets it), so a block narrower than its ghost zone is not refused. | @sec-ch03-globalgrid | `coordinate.cpp:164-179` |
+| Hypothesis read from the code, not measured: the $m_2$, $m_3$ angular-momentum terms multiply a radial-only factor by the full face area, carrying an extra solid-angle factor; no test checks these terms. | @sec-ch03-sphpolar | `forward` (`spherical_polar.cpp:224-310`) |
+| Corners involving $x_1$ (blocks split in $x_1$ on `cubed`) are never exchanged or synthesised; at an internal $x_1$ seam they keep stale values, which a cross-derivative operator would read. | @sec-ch03-exchange | `fill_corners` (`layout.cpp:710-751`) |
+| `Mesh::exchange_ghost_zones` does not refresh the $x_1$-wall corners (only the block's per-stage sync does), and a user boundary function that breaks the contract writes wrong corners without an error. | @sec-ch03-cornerrefresh | `Mesh` (`mesh.cpp:389-396`); `refresh` (`meshblock.cpp:932-974`) |
+| Selecting `type: cylindrical` runs on unbuilt metric buffers (read from the code; what such a run does is not measured). | @sec-ch03-cylindrical | `Cylindrical` (`coordinate.cpp:599-606`) |
+| The centred polynomials have no limiter: across a discontinuity they oscillate, and only the floors stand between an overshoot and a negative density. | @sec-ch04-cp | `interp_cp3` (`interp_simple.hpp:73-75`) |
+| Three of the six Riemann solvers cannot return a face pressure, which changes the $x_1$ pressure force on curved grids and in the well-balanced path; the only signal is a hard failure if something asks. | @sec-ch04-riemann | `forward` (`riemann_solver.cpp:39-48`) |
+| The Roe solver has no entropy fix: at a sonic point it can admit an expansion shock; no test exercises a transonic rarefaction. | @sec-ch04-roe | `sqrtdl` (`roe_impl.h:39-48`) |
+| `SNAP_X1_MASS_COVARIANCE` is off by default, so every stratified column carries the second-order gap of @eq-ch04-x1masscov-gap; with it on, fewer than three $x_1$ cells fail the run. | @sec-ch04-x1masscov | `x1_mass_covariance` (`hydro_forward.cpp:314-344`) |
+| The $x_2$ and $x_3$ reconstructions have no well-balanced treatment; a column hydrostatic in the continuum but not at the discrete fixed point is not at rest. | @sec-ch05-wbx1 | `_hydro_ref_x1` (`hydro_forward.cpp:288-293`) |
+| Under the corrected-PE face work (`SNAP_GRAVITY_WORK_RADIAL_EXACT`) every $E+\mathrm{PE}_d$ check, `gravity_work_defect()` included, measures the wrong invariant; there is no form on the cubed sphere, `face-wallc` does not get the scheme, and a block with fewer than three $x_1$ cells books nothing beyond the face form. | @sec-ch06-dwork | `corrected_pe_work` (`hydro_forward.cpp:817-822`); check `d_face_work_pe_check.py` `[C7]` |
+| On the `Mesh` path a driver update made after the last stage reaches the ghosts only after the next stage's exchange; a `Mesh` driver with between-step sources is not tested (not measured). | @sec-ch07-exchange | `exchange_ghost_zones` (`meshblock.cpp:545-552`) |
+| Only `rk3` is stage-weighted; `rk1`, `rk2` and `rk3s4` run the correction with the full step in every stage. | @sec-ch07-vic-stage | `dt_corr` (`hydro_forward.cpp:929-932`) |
+| The VIC closes every column as a reflecting wall whatever the explicit $x_1$ boundary; an open or outflow column still has a closed wall in its implicit solve, accepted silently. | @sec-ch07-vic-closure | `Bnd` (`vic_assemble_full_impl.h:122-126`) |
+| The energy and momentum carry of withheld mass runs only where the EOS defines a species enthalpy; with another EOS the limiter withholds mass but the energy is not corrected. | @sec-ch08-carry | `species_enthalpy` (`hydro_forward.cpp:675-677`) |
+| The scalar path keeps a scalar non-negative but does not enforce its upper bound; the code comment states the bound as the intent. | @sec-ch08-scalar | `flux_positivity_theta` (`scalar.cpp:158-162`) |
+| The EOS floors are absolute values in the deck's units: a deck whose densities are legitimately below $10^{-6}$ is floored in every cell, silently. | @sec-ch08-eoslimiter | `density_floor` (`equation_of_state.cpp:65-72`) |
+| A user stage forcing that returns a rate instead of $\Delta t$ times the rate is wrong by a factor $\Delta t$, with no warning; user modules see the stage variables, not the native increment of the same stage. | @sec-ch09-user | `user_stage_forcings` (`meshblock.cpp:689-742`) |
+| `coriolis` `type: 123` in two dimensions drops the $x_3$ momentum row when $n_3 = 1$, so the force does work ($\mathbf m\cdot\Delta\mathbf m \ne 0$). | @sec-ch09-coriolis | check `coriolis_check.py` `[C5]` |
+| Viscosity and conduction work on Cartesian grids only; `kappa_iso` conducts on $T$, so a resting adiabat drifts; there is no species or tracer diffusion. | @sec-ch09-viscosity | check `viscosity_check.py` |
+| Immersed solids are read as fluid by the diffusion module, giving a face heat capacity about 500 times too large; without a `boundary-condition.external` block the one-sided wall rule never fires. | @sec-ch09-wallcoef | `extrapolate_to_wall` (`diffusion.cpp:114-136`) |
+| `top-cool`/`bot-heat` use the boundary cell's width for all `depth` cells, so the delivered power is $F$ only on uniform cells; there is no curved-grid volume correction; under an $x_1$ split a `depth` reaching the next block is truncated. | @sec-ch09-heating | check `heating_check.py` `[C2]` |
+| Past `max_redo` a moist failure terminates with the rejected state in memory; only the VIC cause restores first. | @sec-ch10-redo | check `redo_check.py` `[C3]` |
+| Only the first nucleation reaction producing a condensate sets its parents; the borrowed mass changes phase at fixed $E$, so $T$ moves by the latent heat (size not measured). | @sec-ch10-borrow | check `borrow_check.py` `[C3]` |
+| No conserved limiter runs between the driver's kinetics update and `check_redo`, so negative species from kinetics surface as a limiter repair at the next step (chengcli/snapy#256); the update also covers ghosts without an exchange. | @sec-ch10-kinetics | `run_hydro.cpp:191-193` |
+| A `custom` no-op does not supply missing ghost data yet still passes the physical-face predicate; `solid` on hydro writes literal ones, not a no-slip or thermodynamic wall; null rectification callbacks are not guarded. | @sec-ch11-custom | `custom_inner` (`bc_func.cpp:7-8`) |
+| The public `Mesh::exchange_ghost_zones` only builds sync options and exchanges, so callers cannot assume the block method's $x_1$ refresh; custom callbacks that depend on the full orthogonal shape break the contract. | @sec-ch11-timing | `exchange_ghost_zones` (`meshblock.cpp:545-572`) |
+| `pd-run` sets `DEVICE_ID` to the `CUDA_VISIBLE_DEVICES` entry while exporting that list unchanged, so a list not starting at 0 names a device the process cannot see (read from the script, not run). | @sec-ch14-launch | `launch_rank` (`pd-run:113-138`) |
+| The NetCDF combine globs every `block*` part in the output directory, so parts left from an earlier run with more blocks are joined in (read from the code); `include_ghost_zones` carries a FIXME for non-CCC grids. | @sec-ch14-netcdf | `NetcdfOutput::combine_blocks` (`combine_netcdf.cpp:39-135`); `FIXME` (`netcdf.cpp:72-73`) |
+| A restart must be read with the decomposition that wrote it; a single-part restart file is loaded whole by every block, whatever its rank, with no check (read from the code). | @sec-ch14-restart | `load_pt_from_bundle` (`read_restart_file.cpp:154-234`) |
+
+: Wrong results possible. {#tbl-ch16-wrong}
+
+## Restricted applicability {#sec-ch16-restricted}
+
+Items where a scheme, switch or path is limited to some configurations, or a combination is untested, so results outside them are not established.
+
+| limit | source | evidence |
+|-------------------------------------------------------|------------------|---------------------------|
+| The restart branch returns before the primitive exchange and relies on the ghosts saved in the tensors; no fresh-versus-restart ghost equivalence is measured. | @sec-ch01-initialization | `initialize` (`meshblock.cpp:360-398`) |
+| The stage algebra does not prove positivity after arbitrary user increments, nor accuracy after nonlinear limiting or phase adjustment. | @sec-ch01-stage | check `stage_check.py` |
+| No regression isolates operator-split sources applied between consecutive `MeshBlock::forward` calls; the source comment on a removed seam bias is not measured evidence. | @sec-ch01-block-forward | `exchange_ghost_zones` (`meshblock.cpp:913-929`) |
+| The implicit time step is stage-weighted only for a three-stage integrator; a direct hydro caller with no published stage gets a one-time warning and the full step. | @sec-ch01-hydro | `dt_corr` (`hydro_forward.cpp:929-944`) |
+| The scalar forward divides by the conserved dry density; its behaviour for a zero dry density is not established by the positive-density tests. | @sec-ch01-scalar | `forward` (`scalar.cpp:64-98`) |
+| The MPS entry of the shared device test list is commented out; the reconstruction tiling test does not establish safe long-line execution for other stencil users. | @sec-ch01-dispatch | `DeviceTest` (`device_testing.hpp:33-50`) |
+| `NMASS` > 0 is refused by the species-layout static assertion; degenerate axes cannot supply a multi-cell stencil. | @sec-ch01-layout | `ICY` (`snap.h:34-64`) |
+| Limiter and source operations can change the conserved budgets; the spatial order of the complete stage is not measured. | @sec-ch02-laws | `ICY` (`snap.h:34-55`) |
+| The outline's round-trip example `prim2cons_hydro_ideal_ncloud5` is inside a block comment and is not active evidence; floors make the maps non-invertible. | @sec-ch02-ideal-gas | `test_eos.cpp:209-273` |
+| `use-nasa9-cp` and `use-h2-cp` do not establish a matching phase-equilibrium closure; H2 dissociation is not modelled. | @sec-ch02-moist-mixture | `intEng_nasa` (`kintera eval_uhs.cpp:285-300`) |
+| The shipped ANEOS constructor throws; the wrapper has no moist species, no metric raising/lowering and no `W->A`, and its base heat capacity returns zero. | @sec-ch02-aneos | `cs` (`aneos.cpp:40-45`) |
+| The hydro forcing loop requests `W->T`; only forcings that tolerate an undefined temperature work with shallow water. | @sec-ch02-shallow-water | `sqrt` (`shallow_water.cpp:26-33`) |
+| No moist-mixture `UT->I` versus `W->I` regression exists; the temperature-sweep script selects ideal-moist only. | @sec-ch02-consistency | `_temp2intEng` (`ideal_moist.cpp:293-317`) |
+| The phase-equilibrium energy kernel uses constant heat capacities, so no NASA-9/H2 phase closure is established; negative input concentrations are clamped with a warning and non-positive temperature fails. | @sec-ch02-saturation | `conc` (`kintera equilibrate_uv.h:507-586`) |
+| A mesh generator passed to `reset_coordinates` rebuilds the faces from the block's own bounds, outside the global-slice invariant (no decomposed test). | @sec-ch03-globalgrid | `reset_coordinates` (`coordinate.cpp:326-349`) |
+| With `nx2` = 1 the cell centre `x2v` is the midpoint, not the polar centroid. | @sec-ch03-sphpolar | `polar_centers` (`spherical_polar.cpp:17-28`) |
+| The cubed sphere requires `nx2` = `nx3` and `interp_order` = 2; the corrected-PE face work is not available on it (setup warns once). | @sec-ch03-gnomonic | `TORCH_WARN_ONCE` (`hydro.cpp:82-93`) |
+| `DeviceTest.usrc` and `GnomonicEquiangle.area_vol` assert nothing about the geometry, and the face metrics carry a `TODO(cli):: CHECK` that the projection round trips cannot detect. | @sec-ch03-gnomonic | `area_vol` (`test_coordinate.cpp:123-145`) |
+| Only `cubed` splits $x_1$; the cubed sphere forces $p_z = 1$; the 3-D Morton order and the cubed-sphere corner steps with $p_x > 1$ have no dedicated test. | @sec-ch03-layouts | `build_zorder_coords2` (`connectivity.cpp:28-61`) |
+| On the cubed sphere `is_physical_boundary` is true at panel edges (the `custom` bfunc is installed there), so code asking it on $x_2$/$x_3$ would treat a panel edge as physical (inferred; no current caller affected). | @sec-ch03-physfaces | `is_physical_boundary` (`meshblock_options.cpp:213-234`) |
+| `interp_order` must be 2: the fourth-order branch is unreachable; bitwise decomposition independence is tested for `nb2` = 1, 2, 4 in one process for one stage only. | @sec-ch03-csinterp | `_interp_ghost_LR` (`gnomonic_equiangle.cpp:475-514`); test `test_cubed_sphere_exchange.release` |
+| A tangential velocity crossing a cubed-sphere edge is not tested end to end; only the radial component is. | @sec-ch03-synctype | test `test_cubed_sphere_vertical_velocity_exchange_python` |
+| A uniform state is preserved bitwise only on a Cartesian block; on a curved grid it holds to round-off. | @sec-ch04-divergence | `forward` (`hydro_forward.cpp:198-209`) |
+| The interpolant weights are fixed uniform-mesh rationals; on a stretched $x_1$ grid the nominal order is not attained. | @sec-ch04-framework | `cp5` (`interpolation.cpp:21-36`) |
+| WENO3 is second order at a critical point (measured 2.09); the smoothness floor is an absolute $10^{-6}$ whose effect depends on the deck's units. | @sec-ch04-weno | check `recon_check.py` `[C4]` |
+| The LMARS mean sound speed uses arithmetic means of pressure and density; across a strong jump no source bounds the resulting error. | @sec-ch04-lmars | `ubar` (`lmars_impl.h:34-43`) |
+| Exact contact resolution and consistency of HLLC are not asserted by any test; with moist mixtures one $\gamma$ per side is used and no source bounds the error. | @sec-ch04-hllc | `hllc_impl` (`hllc_impl.h:17-136`) |
+| The radial pressure force depends on whether the Riemann solver returns a face pressure, so a column's balance depends on a key in another section of the deck. | @sec-ch04-sphsrc | `coord_src1_i` (`spherical_polar.cpp:243-244`) |
+| The stored cubed-sphere cell centre is the mid-radius, not the centroid; the exact volume is unconditional, so runs before and after it do not agree bitwise. | @sec-ch04-gnomonic | `cell_volume` (`gnomonic_equiangle.cpp:219-226`) |
+| The flux-covariance zero for an isothermal state holds in Cartesian only; a column with fewer than three $x_1$ cells gets no correction, silently. | @sec-ch04-fluxcov | check `covariance_check.py` |
+| On a stretched $x_1$ grid the reference cell pressure is the log-mean, exact only for isothermal cells: a column is at rest to round-off only after `balance_column`. | @sec-ch05-refkernel | `hydro_ref_x1_scan_impl` (`hydro_ref_x1_impl.h:22-60`) |
+| The wall continuation is in cell index, not physical spacing, so stretched-grid wall faces are outside the second-order argument; with `wb-wall-clamp: false`, `balance_column` cannot be used. | @sec-ch05-wallclamp | `hydro_ref_x1_wall_rop` (`hydro_ref_x1_impl.h:68-72`) |
+| `non-hydrostatic` $n_h = 0$ is not a hydrostatic model: the vertical velocity stays prognostic. | @sec-ch05-hsmode | `rho_grav` (`hydro_forward.cpp:389-397`) |
+| A balanced column moves by a free constant (the header quotes $2.5\times10^{-4}$ and $1.2\times10^{-2}$ of $p$, not re-measured); a spherical-polar column cannot be balanced under `SNAP_X1_CENTROID_EXACT`. | @sec-ch05-balcol | `balance_column` (`balance_column.hpp:103-106`) |
+| `SNAP_WB_REF4` needs `nghost` $\ge 3$ and is read once per process. | @sec-ch05-wbref4 | `wb_ref4_faces` (`wb_ref4.cpp:276-286`) |
+| `SNAP_X1_CENTROID_EXACT` does nothing on cubed-sphere grids; under it `balance_column` balances only a column declared Cartesian. | @sec-ch05-x1cent | `x1_plain_mean_stencils` (`x1_centroid.cpp:104-155`) |
+| The $O(h^2/R)$ remainder on spherical-polar grids is not removed by any switch. | @sec-ch05-oneoverr | check `wbref_check.py` `[C21]` |
+| The VIC gravity-work rows are a linearisation about the stage state. | @sec-ch06-vic | `gravity_work` (`implicit_hydro.cpp:270-277`) |
+| pyharp is not pinned by snapy's build: the property $w_2 \le w_1$ the positivity limiter relies on holds for the four tableaux of pyharp `4721715855e937c1e8b218e964c0655f46e56e29` and must be re-checked against the pyharp a build links. | @sec-ch07-rk | `wght2` (`flux_positivity.hpp:43-46`) |
+| No sedimentation-velocity bound enters the time step (settling is protected only by the positivity limiter), and a one-dimensional column keeps the acoustic bound even with the VIC. | @sec-ch07-cfl | `MeshBlockImpl::max_time_step` (`meshblock.cpp:510-529`) |
+| A redo cures events that a smaller step removes; it cannot cure a bad start state. | @sec-ch07-redo | `MeshImpl::check_redo` (`mesh.cpp:422-452`) |
+| The operator split of the driver kinetics is first order in $\Delta t$ whatever the Runge-Kutta order, and the kinetics live in the example driver, so a driver that omits or moves them changes the split. | @sec-ch07-split | `evolve_implicit` (`run_hydro.cpp:171-191`) |
+| The VIC is $x_1$ only: a run cut into several blocks in $x_1$ cannot use it. | @sec-ch07-vic-options | `is_physical_boundary` (`hydro/hydro.cpp:411-416`) |
+| The VIC operator is a linearisation with $\lvert\hat A\rvert$ frozen, not the Jacobian of the Riemann solver the stage used: the implicit and explicit fluxes are different functions. | @sec-ch07-vic-assembly | `Ap` (`vic_assemble_full_impl.h:51-87`) |
+| The block-tridiagonal sweep does not pivot between blocks; it relies on the $I/\Delta t$ diagonal and the upwind $\lvert\hat A\rvert$. | @sec-ch07-vic-sweep | `ForwardSweep` (`forward_sweep_impl.h:25-139`) |
+| The pivot guard is a safety check, not a condition-number estimate: an accepted block can still be badly conditioned. | @sec-ch07-vic-pivot | `ludcmp` (`ludcmp.h:29-94`) |
+| After the VIC the constituents move donor-upwind (first order, smeared); a clamp breaks the link between the solved total and the cell totals, reported by the clamp residual and a redo mark. | @sec-ch07-vic-redistribute | `vic_redistribute_cell` (`vic_redistribute_impl.h:165-185`) |
+| The tracer flux limiter covers tracers only and only transport within a stage: dry density and pressure have floors and a redo detector, and a source, a later sedimentation flux or the implicit solve can still drive a tracer negative. | @sec-ch08-theta | `flux_positivity_theta` (`flux_positivity.cpp:22-72`) |
+| A cell whose vapour cannot cover the condensate deficit goes vapour-negative; the borrow hands it to the column repair, which may itself fail. | @sec-ch08-borrow | `deficit` (`equation_of_state.cpp:264`) |
+| The tracer face-state clamp applies even when the calling path switches floors off, and the face floors use the same absolute values as the cell floors. | @sec-ch08-reconfloors | `clamp_min_` (`reconstruct.cpp:153-155`) |
+| The face-density fallback substitutes a neighbouring cell's density into a face state; its error when it fires is not measured. | @sec-ch08-wbface | `psf_lo` (`hydro_forward.cpp:357-360`) |
+| The implicit path has no positivity guarantee, only the VIC clamp and the redo detector it feeds. | @sec-ch08-vic | `_dry_clamp_step` (`implicit_hydro.cpp:120-121`) |
+| The round-off margin constants of the limiter are chosen, not derived, and the residue they leave in each cell is not accounted. | @sec-ch08-roundoff | `margin` (`flux_positivity.cpp:63-66`) |
+| A redo repeats the step; a column that floors at every step size keeps flooring until the redo budget ends the run. | @sec-ch08-redo | `hit` (`meshblock.cpp:1199-1202`) |
+| Passive scalars have no positivity guarantee under a dry-mass sink; the guard only keeps the arithmetic finite. | @sec-ch08-drycarry | `carry_dry_source` (`meshblock.cpp:631-634`) |
+| Forcing modules read the solid placeholder state written into $\mathbf W$ by `mark_prim_solid_`; only the diffusion module is measured with solids. | @sec-ch09-framework | `mark_prim_solid_` (`hydro_forward.cpp:217-218`) |
+| Per-cell $x_1$ profiles of the diffusion coefficients are refused when $x_1$ is split or with `dynamic: true`; a table profile is linear between knots; the wall cell keeps the $O(h)$ error of the normal-stress kernel. | @sec-ch09-x1profile | `face_scaled_coefficient` (`diffusion.cpp:168-175`) |
+| The composition relaxation is shown isothermal only for the ideal-moist fixture; moist-mixture or temperature-dependent heat capacities are not tested. | @sec-ch09-relax | test `test_diffusion_moist.release` |
+| Under an $x_1$ split only the block owning the boundary applies the sponge (a taller `width` is cut off); the top and bottom sponges are not mirror images; the drag also damps $v^1$. | @sec-ch09-sponge | check `sponge_check.py` `[C1]` |
+| No decomposed moist test with reflecting walls exists (chengcli/snapy#208); water is conserved to the phase solve's tolerance, not to round-off. | @sec-ch10-satadj | chengcli/snapy#208 |
+| A stale driver state can make every redo attempt fail (chengcli/snapy#263, closed as a driver defect); `examples/uranus.yaml` aborted on an H2S repair in the issue history (#260, not re-measured). | @sec-ch10-redo | chengcli/snapy#263 |
+| The downward fix-vapour branch mixes vapour beyond the deficit over the whole window; a failure below a repaired window leaves that window rewritten; last-bit spacing differences can move results at round-off. | @sec-ch10-fixvapor | check `fixvapor_check.py` `[C7]` |
+| The kinetics are first order in time and operator-split from the dynamics; the split error is not measured. | @sec-ch10-kinetics | `evolve_implicit_cell` (`kintera evolve_implicit_impl.h:66-71`) |
+| `ScalarOptions` has `thermo` and `kinetics` members that are never parsed or used, and a uniform-tracer test cannot detect a wrong donor choice. | @sec-ch10-tracer | test `test_tracer_dry_convention_python` |
+| Mirroring the total state is not a continuation of a stratified equilibrium (the reference-state procedure of @sec-ch11-wb addresses it). | @sec-ch11-reflecting | `reflecting_inner` (`bc_func.cpp:10-34`) |
+| Zero-gradient extrapolation is not a non-reflecting acoustic condition; no reflection fraction is measured for it. | @sec-ch11-extrapolation | `extrapolation_inner` (`bc_func.cpp:52-66`) |
+| The gravity-work fixer is not an open-boundary energy budget: its $x_1$ mass-crossing check can reject an open boundary (the error directs to `gravity-work-fixer: false`); outflow is skipped by the tangential corner refresh; saved backgrounds are fixed initialisation data. | @sec-ch11-outflow | `alpha` (`bc_func.cpp:167-207`) |
+| The per-line optimum of the solid-mask rectification is not globally minimal; masks are static; the stage refill restores hydro but not passive scalars inside solids; implicit $x_1$ decomposition is rejected with solids. | @sec-ch11-solids | `compute_min_flips` (`flip_zero_impl.h:24-198`) |
+| The reference clamp still receives physical-face flags for outflow, and an in-block periodic $x_1$ callback can count as physical there while `is_x1_wall` excludes it; non-uniform-grid wall accuracy is unmeasured. | @sec-ch11-wb | `is_x1_wall` (`hydro.cpp:204-209`) |
+| `SNAP_X1_CENTROID_EXACT` provides no gnomonic measure conversion, and on Cartesian grids it still changes the reference through `SNAP_WB_REF4`; it is not a universal no-op. | @sec-ch12-centroid | `x1_plain_mean_stencils` (`x1_centroid.cpp:104-182`) |
+| Curved-grid centroid terms do not vanish for an isothermal moving state; exact rest needs zero velocity. | @sec-ch12-flux-covariance | `flux_covariance` (`hydro.cpp:217-259`) |
+| The cubed sphere does not receive the corrected face work, and split and unsplit columns need not agree because their one-sided slopes differ. | @sec-ch12-radial-exact | `corrected_pe_work` (`gravity_work_radial.hpp:13-65`) |
+| Switch combinations without evidence: numerical `SNAP_X1_MASS_COVARIANCE` behaviour; `SNAP_X1_CENTROID_EXACT` with face work or radial-exact; centroid-exact with flux covariance; `SNAP_WB_REF4`/centroid-exact on gnomonic grids; `SNAP_WB_REF4` with radial-exact off under face work; flux covariance across MPI ranks; broader simultaneous combinations. Each chapter's untested combinations refer to this matrix. | @sec-ch12-matrix | stated in the section |
+| Individual YAML keys have tests, but the product of YAML values and study switches is not covered. | @sec-ch12-yaml | test `test_yaml_keys.release` |
+| There is no NCCL path: multi-GPU exchange needs UCX built with CUDA, Gloo with `DEVICE=cuda` stops at the first send, and Gloo is guaranteed only on macOS. | @sec-ch14-backends | `ProcessGroupContext::send` (`process_group.cpp:148-182`) |
+| Block-to-block $x_1$ relays need at most 16 blocks per process, PnetCDF needs one, and all blocks of a process use the first block's device. | @sec-ch14-bpp | `BlockWorkerPool` (`mesh.cpp:47-208`) |
+| PnetCDF output is float only, one block per process, and no test covers it on several ranks. | @sec-ch14-pnetcdf | `PNetcdfOutput` (`pnetcdf.cpp:48-58`) |
+| The restart tests vary blocks per process in one process (not the global block count) and launch one or two processes. | @sec-ch14-restart | test `test_restart_multiblock`; test `test_restart_cycle_limit` |
+| No test compares the dynamics bitwise across a change of process count over many steps; the cubed-sphere decomposition evidence is one stage in one process; restart continuation is checked on a printed cycle line. | @sec-ch14-repro | test `test_exchange_decomp`; test `test_restart_cycle_limit` |
+
+: Restricted applicability. {#tbl-ch16-restricted}
+
+## Performance and usability {#sec-ch16-usability}
+
+Items where cost, diagnostics, documentation or defaults that surprise a user, with no effect on the results of a correct configuration.
+
+| limit | source | evidence |
+|-------------------------------------------------------|------------------|---------------------------|
+| The restart writer saves the output counters before `make_outputs` increments them; with the unconditional initial output of `straka`, this is a code-level reason to investigate repeated restart outputs (no overwrite experiment). | @sec-ch01-driver | `make_outputs` (`meshblock.cpp:985-1002`) |
+| The accepted `distribute.backend` key does not set the backend; the layout reads the `BACKEND` environment variable instead. | @sec-ch01-options | `from_yaml` (`meshblock_options.cpp:13-88`) |
+| Python ctests need `SNAPY_TEST_PYTHONPATH` pointing at the package built from the pin, otherwise they exercise an installed package (CMake warns); the import-path check skips with 125 without it. | @sec-ch01-python | `SNAPY_TEST_PYTHONPATH` (`CMakeLists.txt:350-362`) |
+| Temperature-floor positivity and finiteness are not validated in `from_yaml`; the default moist EOS without thermo options fails during reset; ANEOS and shallow water do not satisfy the full moist API. | @sec-ch02-interface | `from_yaml` (`equation_of_state.cpp:33-99`) |
+| The programmatic default of `shock` is true but `from_yaml` writes false: construction from Python and from a deck give different schemes unless the key is set. | @sec-ch04-framework | `shock` (`reconstruct.cpp:99-102`) |
+| A deck that leaves the reconstruction `type` unset gets first-order donor cell, with no warning. | @sec-ch04-dc | `DonorCellInterp` (`interpolation.cpp:11-12`) |
+| Four PLM limiter functions are unreachable, and the slope assumes equal cell widths (on a stretched grid it is not the limited slope of the linear fit). | @sec-ch04-plm | `interp_plm` (`interp_simple.hpp:57-63`) |
+| Selecting `ppm` silently gives a first-order scheme. | @sec-ch04-ppm | `interp_ppm` (`interp_simple.hpp:67-69`) |
+| The YAML default Riemann solver is `roe`, not the `lmars` the shipped decks use: omitting the key changes the scheme. | @sec-ch04-riemann | `from_yaml` (`riemann_solver.cpp:23-31`) |
+| `plume-roe` is a Lax-Friedrichs flux under a name that promises a characteristic solver. | @sec-ch04-shallow | `lax_friedrichs_flux` (`plume_roe.cpp:26-40`) |
+| The legacy isentropic wall fill and wall-face copy are dead code; if revived, the fill would conflict with the well-balanced perturbation ghosts. | @sec-ch05-legacy | `_revise_x1inner_lr` (`hydro.cpp:448-453`) |
+| `max_redo` is not a YAML key (pyharp's `from_yaml` never reads it), so YAML runs keep the default of 5. | @sec-ch07-rk | `IntegratorImpl` (`pyharp integrator.cpp:33-85`) |
+| The time-step bound applies the same `cfl` to every integrator, although `rk3s4` has an SSP coefficient per evaluation of $2/4$ against $1/3$ for `rk3`. | @sec-ch07-rk | `IntegratorImpl::forward` (`pyharp integrator.cpp:101-122`) |
+| A VIC failure discards the work of every block for the step (the redo decision is global), and a column that fails at every step size stops the run after `max_redo` retries. | @sec-ch07-vic-reject | `solve_failed` (`implicit_hydro.hpp:96-101`) |
+| One switch (`limiter`) turns on the EOS limiter, the tracer limiter, the reconstruction floors and the species clamps together; they cannot be selected independently (a recorded design decision). | @sec-ch08-eoslimiter | `reset_limiter_marks` (`equation_of_state.cpp:352-354`) |
+| The vapour column repair throws when a column cannot be repaired (a crash by design), and on a split $x_1$ axis it is a collective gather inside an otherwise local limiter. | @sec-ch08-fixvapor | `repair_column` (`equation_of_state.cpp:274-276`) |
+| Forcing modules that are not restricted to interior cells also write into ghost cells (overwritten by the refill), `plume-forcing` is parsed but never installed, and no ctest runs two boundary modules together. | @sec-ch09-framework | `HydroImpl::forward` (`hydro_forward.cpp:754-765`) |
+| `traditional` acts only on the cubed sphere (parsed and ignored elsewhere, untested); in `xyz`, `omega1` is $\Omega_z$, `omega2` $\Omega_x$, `omega3` $\Omega_y$. | @sec-ch09-coriolis | `traditional` (`coriolis.cpp:109-142`) |
+| `relax-bot-temp` `btemp` defaults to 300 K in the options struct but YAML requires it; `bvx`, `bvy`, `bvz` target $v^1$, $v^2$, $v^3$ ($x_1$ vertical); the velocity drag leaves $E$ untouched, so the removed kinetic energy heats the bottom row. | @sec-ch09-relax | `btemp` (`relax_bot_temp.cpp:80-104`) |
+| The saturation-adjustment warm start is discarded whenever kintera is called with another shape or device in between; the cost is not measured. | @sec-ch10-satadj | `warm_start = true` (`kintera thermo_y.cpp:293-310`) |
+| Serial callers with several $x_1$ blocks wait at the fix-vapour gather (PR #244); the cross-process gather has not run on CUDA. | @sec-ch10-fixvapor | `fix_vapor_impl` (`fix_vapor_impl.h:9-79`) |
+| Casting a block to float32 turns the sedimentation index buffer into floats (PR #258); the MPS path is untested; the default gas constants describe an H2 background. | @sec-ch10-sed | `SedVelImpl::forward` (`sed_vel.cpp:34-71`) |
+| The fixed-temperature boundary names are whitelisted but no built-in registration exists, so they do not provide a thermal boundary; the comment calling outflow zero-gradient is stale. | @sec-ch11-registry | `is_wall_boundary` (`meshblock_options.cpp:218-271`) |
+| Unknown strings silently enable the `SNAP_*` environment switches, and cross-rank consistency of the environment is the launcher's responsibility. | @sec-ch12-environment | check `configuration_check.py` |
+| `pd-run` exports `BLOCKS_PER_PROCESS`, which nothing under `src/` reads; it starts every process on the local host (no multi-node mode). | @sec-ch14-launch | `launch_rank` (`pd-run:113-138`) |
+| A caller that steps the local blocks one by one waits 5 minutes at the first board and stops, or forever at the sync rendezvous; the bound of 32 local blocks for the base tag is implied, not checked. | @sec-ch14-msgmatch | `take_x1_anchor` (`layout.cpp:879-970`); `make_comm_tag` (`layout.hpp:161-170`) |
+| Signals are read only in `check_redo`: a rank that never reaches it hangs the others; every collective blocks on the host, costing a device-to-host copy on GPU. | @sec-ch14-collectives | `CheckSignalFlags` (`signal_handler.cpp:64-86`) |
+| A step on a small 2-D moist grid costs 1.54 times more on 2.11.2 than on 2.10.9 (issue #291, open: 3005 against 2061 kernels, 33 against 7 `.item()` per step; not re-measured); a driver asking for CUDA on a machine without it runs on the CPU silently. | @sec-ch14-gpu | chengcli/snapy#291; `torch::cuda::is_available` (`run_hydro.cpp:39-47`) |
+| The default float output hides relative changes below about $10^{-7}$; conservation is read from the double-precision cycle line. | @sec-ch14-netcdf | `nc_dbl` (`netcdf.cpp:191-195`) |
+| A resumed run rewrites its last outputs, including its source restart file, and the restart index does not advance (chengcli/snapy#277, open); run-to-date meters are not carried across a restart. | @sec-ch14-restart | chengcli/snapy#277; `gravity_work_fix` (`hydro.hpp:186-190`) |
+| An output interval shorter than the step fires every step until the schedule catches up; the statistics sample accepted states only. | @sec-ch14-schedule | `MeshBlockImpl::make_outputs` (`meshblock.cpp:985-1002`) |
+| `pd-combine` globs every `*.out*.nc` in the directory, needs NCO, deletes its inputs by default, and does not join per-block files. | @sec-ch14-tools | `ParseOutputFields` (`pd_combine.py:43-59`) |
+
+: Performance and usability. {#tbl-ch16-usability}
+
+## Conservation budgets and diagnostics (not in the book yet) {#sec-ch16-ch13}
+
+The conservation chapter is on draft PR #38 (head `c2d1ea20df5c72aa00efbf60c3bd664f887768f3`), so its sections cannot be cross-referenced yet; they are named by title. The items join the tables above, with references, when it merges.
+
+| limit | class | section (draft) | evidence |
+|--------------------------------------------------|------------|----------------|----------------------|
+| The `div` output diagnostic uses two-cell face means, not the reconstructed states, so it is not the divergence the scheme saw. | restricted | Output diagnostics | `interp_to_face` (`load_diag_output_data.cpp:22-45`) |
+| No registered test checks `mass0=` over a full example run; the only such check is a script no CMake rule calls, comparing first and last samples. | restricted | Regression of the cycle line | `check_mass` (`run_example_mass_check.py:133-144`) |
+| The cycle line is a record, not a check: a drift in `mass0=` is visible only to a reader or a test that parses the log. | usability | Cycle line | `print_cycle_info` (`run_hydro.cpp:161-164`) |
+| `limcut` measures the $x_1$ flux only; a limiter acting in $x_2$ or $x_3$ shows only in `thetamin` and `thetasevere`. | usability | Limiter meters | `_lim_cut` (`hydro_forward.cpp:690-705`) |
+| The VIC clamp meter is a run maximum: it says that a clamp bound somewhere at some time, not when or where. | usability | VIC clamp meter | `vicclamp` (`meshblock.cpp:1108`) |
+| The log names redo causes but not the cells or rank that raised them; only a VIC refusal prints its column. | usability | Redo causes in the log | `reduce_redo_flags` (`meshblock.cpp:1288-1300`) |
+
+: Limits of the conservation chapter, from draft PR #38. {#tbl-ch16-ch13}
+
+## Waiting for chengcli/snapy#303 {#sec-ch16-pending}
+
+Three groups of limits change with chengcli/snapy#303 (the gravity-work change). Each is one placeholder line until it merges and the pin moves; the source sections listed keep their current text until then.
+
+::: {.callout-note title="Placeholders: these limits change when chengcli/snapy#303 merges"}
+- The default gravity work and its fixer (cell form, face forms, `face-wallc`, the fixer's decomposition-dependent sum and its large-implicit-step refusals): pending #303; current text in @sec-ch06-cell, @sec-ch06-face, @sec-ch06-fixer, @sec-ch06-conserves, @sec-ch14-collectives.
+- $x_1$ seams between blocks (concurrency and 5-minute anchor wait, the 16-block limit, one-sided radial-exact slopes at block edges, seam-flux averaging, the serial anchor relay): pending #303; current text in @sec-ch03-x1seams, @sec-ch04-seam, @sec-ch05-seam.
+- Periodic $x_1$ (no reference relay, each block anchors at its own top; the VIC closes a periodic column as a wall): pending #303; current text in @sec-ch05-seam, @sec-ch07-vic-closure.
+:::
