@@ -53,11 +53,12 @@ PR C: chengcli/snapy#291 (GPU step 1.54x slower)
 | chapter | owner | state | ETA (PT) | PR |
 |---|---|---|---|---|
 | ch2 fixes | @chengcli | commit ready locally, checking before push (Cheng is on #303 first) | after #303 work | - |
+| ch05 1/R figure (fig_oneoverr_remainder) | @gitlinffff | pinned snapy run at e894700; render CI before Ready | - | #46 |
 
 ## Queue (take from the top)
 
-1. ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run). Earlier draft was never delivered; redo it from the chapter text. Take it when your code task is done.
-2. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10, ch14 open)
+1. ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run): @gitlinffff, in progress (see the table above).
+2. Fill the gaps the Appendix B index shows (done: ch7/9/13 #40, ch1/2/4/5 #43 (16 left with stated reasons); ch3/8/11/12 + D rows @happysky19 #41 (ready, needs a reworded commit); ch10/14 #45 (8 left: 2 wait for #303, 6 with stated reasons)). Done.
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
 
