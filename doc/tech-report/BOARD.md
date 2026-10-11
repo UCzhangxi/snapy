@@ -10,19 +10,18 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 21:16 PT, tech-report 1dbada0
+Last update: 2026-10-10 21:28 PT, tech-report 798884d
 
 ## In progress
 
 | chapter | owner | state | ETA (PT) | PR |
 |---|---|---|---|---|
 | ch2 fixes | @chengcli | commit ready locally, checking before push (Cheng is on #303 first) | after #303 work | - |
-| ch16 Known limits (from every chapter's Limits layer; #303 items as placeholders) | @zoeyzyhu | assigned | - | - |
-| ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run) | @XinyueWang05 | drafted (commit 6cc7079, 5 files, 3 patch parts); to apply after ch6 | - | - |
+| ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run) | @XinyueWang05 | drafted (commit 6cc7079); waiting on its delivery (uploads fail; author's choice: fix uploads or push from her fork) | - | - |
 
 ## Queue (take from the top)
 
-1. Fill the gaps the Appendix B index shows: 21 equations without a code tag, 75 rows without a check (by chapter owner)
+1. Fill the gaps the Appendix B index shows (in progress: ch7/9/13 #40, ch3/8/11/12 + D rows @happysky19): 21 equations without a code tag, 75 rows without a check (by chapter owner)
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
 
@@ -30,4 +29,4 @@ Last update: 2026-10-10 21:16 PT, tech-report 1dbada0
 
 ## In the book
 
-ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder), ch14 (#34; 2 #303 placeholders), ch15, Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
+ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder), ch14 (#34; 2 #303 placeholders), ch15, ch16 (#39; 3 #303 placeholders), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
