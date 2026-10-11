@@ -1,0 +1,135 @@
+## Step acceptance and redo: six causes, one collective decision, halving up to `max_redo` (`check_redo`) {#sec-ch07-redo}
+
+<!-- PROVENANCE
+pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+sources: OUTLINE.md 7.4; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; examples/run_hydro.cpp;
+         sources/canoe__POSITIVITY_TECH_REPORT.md §9-10; sources/gh__ISSUE_THREADS_251-294.md (#263)
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**What it does.** After the last stage and any step-end sources, decides whether the step is kept, redone from
+its start at half the step, or the run stops.
+**Switch.** None for the decision; `max_redo` (pyharp, default 5, not a YAML key); the floors
+`equation-of-state/density-floor`, `pressure-floor` feed the first cause.
+**Order.** A policy, not a discretisation.
+**Defining equation.** @eq-ch07-redo-dt.
+:::
+
+A step is rejected when any rank finds one of six causes: a cell at or near a floor, a VIC dry-gas clamp that
+emptied a cell, a limiter patch, a NaN, a saturation solve that failed, or a VIC solve that rejected a column.
+The causes come from @sec-ch08, the phase adjustment and part 7B; this section is the consumer. A rejected step is
+restored to its start, primitive and passive-scalar state included, and retried with the step halved; an
+accepted step resets the halving. After `max_redo` retries the run stops and exits with status 1.
+
+### Derivation
+
+There is nothing to derive; the section states the policy and the invariants it keeps. Let $r$ be the redo count
+of the current step. The driver computes the step from @eq-ch07-cfl-dt, whose factor $2^{-r}$ is the only place
+$r$ enters. For $r = 0, 1, \ldots, r_{\max}$,
+
+$$
+\Delta t_r = 2^{-r}\,\Delta t_0 ,
+$$ {#eq-ch07-redo-dt}
+
+with $\Delta t_0$ the bound of the step and $r_{\max}$ = `max_redo` = 5. A step that never passes is therefore tried
+$r_{\max}+1=6$ times, the last at $\Delta t_0/32$ [check `src/snapy_report/ch07/redo_check.py`, output
+`redo_check.out`, `[C2]`], and an acceptance sets $r=0$ again (`[C3]`). Three invariants hold:
+
+1. **One decision.** Each rank sets six flags, `MAX`-reduces them, and encodes the result as a bit mask with bits
+   1, 2, 4, 8, 16, 32 for floor, clamp, limiter, NaN, saturation and VIC solve; every rank sees the same mask and
+   takes the same branch (`[C1]`).
+2. **Full restore.** A redo copies the step-start state back into `hydro_u`, recomputes `hydro_w` from it, restores
+   the passive scalars, decrements the cycle and drops the gravity-work fix booked during the step.
+3. **Global halving.** $\Delta t_r$ is formed after the `MIN` reduction of @eq-ch07-cfl-dt, so every rank takes the
+   same smaller step.
+
+Past $r_{\max}$ a VIC solve failure (bit 32) still restores the step before the run stops; any other cause stops
+without restoring (`[C4]`).
+
+In the code, @eq-ch07-redo-dt is the factor `current_redo` of the step bound ([`meshblock.cpp:528`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L528)).
+
+### Numerical method
+
+See @fig-ch07-redo-flow for the loop.
+
+```{python}
+#| label: fig-ch07-redo-flow
+#| fig-cap: "The step loop of the example driver. The step $\\Delta t=2^{-r}C\\min\\tau$ (sky blue) is advanced through the stages and the step-end sources; check_redo (orange) then accepts the step and resets $r$ (green), redoes it from the restored state $\\mathbf U^n$ with $r$ increased by one (yellow; grey arc), or stops the run once $r$ exceeds max_redo = 5 (vermillion)."
+#| fig-alt: "A row of four boxes for the step, the stages, the step-end sources and check_redo, branching into accept, redo and stop boxes, with a grey arc from redo back to the first box."
+#| echo: false
+from snapy_report.ch07.fig_redo_flow import make_fig
+make_fig()
+```
+
+The floor test recomputes the primitives from `hydro_u` on a copy, because `hydro_w` is one stage stale after the
+last stage, and compares them with $1.001$ times the floors in a negated form, so a NaN counts as a hit
+([`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204)). A Mesh with several local blocks ORs the flags of its blocks before the single
+reduction and applies the decision to every block; it checks signals first, in `MeshImpl::check_redo` ([`mesh.cpp:422-452`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L452)). The
+example driver calls `check_redo` after the kinetics, so a redo also rolls the kinetics back
+([`run_hydro.cpp:193-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L195)).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| floor test | [`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204) | `floor_hit` | `density-floor`, `pressure-floor` |
+| clamp, limiter, saturation flags | [`meshblock.cpp:1206-1227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1206-L1227) | `limiter_hits` | |
+| decision, restore, stop | [`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276) | `apply_redo` | `max_redo` |
+| local flags | [`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286) | `local_redo_flags` | |
+| collective bit mask | [`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300) | `reduce_redo_flags` | |
+| block entry | [`meshblock.cpp:1302-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1302-L1304) | `check_redo` | |
+| Mesh entry | [`mesh.cpp:422-452`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L452) | `check_redo` | |
+| exit status | [`meshblock.cpp:1121-1140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1140) | `finalize` | |
+| driver use | [`run_hydro.cpp:193-202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L202) | `check_redo` | |
+
+: Code map of step acceptance and redo. {#tbl-ch07-redo-code}
+
+1. After the stages and the kinetics, the driver calls `check_redo` ([`run_hydro.cpp:193-202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L202)).
+2. `local_redo_flags` collects the six local flags ([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286)); `reduce_redo_flags`
+   reduces them with `MAX` and builds the mask ([`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300)).
+3. `apply_redo` logs the causes, increments the count, restores or stops, or on acceptance resets the count
+   ([`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276)).
+4. At the end `finalize` returns 1 when no normal stop reason applies, "Terminating abnormally"
+   ([`meshblock.cpp:1121-1140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1140)).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_check_redo_floor.py` (`test_check_redo_floor_python`) | a floor planted in `hydro_u` only, a NaN with the limiter off, and one floored block of a six-block Mesh: every arm rolls back, restores `hydro_u` and `hydro_w`, and halves the step | exact restore; $10^{-12}$ relative on the halving | contract; round-off |
+| `tests/test_check_redo_parallel.cpp` (`test_check_redo_parallel.release`, 2 ranks) | one decision across ranks; both roll back | exact | contract |
+| `tests/test_check_redo_saturation.py` (`test_check_redo_saturation_python`, CUDA twin) | a saturation failure alone redoes with cause 16; a failure counted between steps is not the step's | logical | contract |
+| `tests/test_forcing.cpp` (`test_forcing.release`), limiter cases | NaN or patch marks redo; a round-off repair does not | logical | see @sec-ch08 |
+| `tests/test_uranus_cycle1_abort.cpp` (`test_uranus_cycle1_abort.release`) | a pressure floor above the initial pressure ends the run with a non-zero exit | exit status | contract |
+| `tests/run_straka_redo.cmake` (`test_straka_redo`) | the Straka case at `cfl` 1.6 redoes steps and still reaches $t=60$ s | exit status | regression |
+| this section's check, `redo_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+
+: Tests of step acceptance and redo. {#tbl-ch07-redo-tests}
+
+::: {.callout-important title="Check"}
+**Evidence.** Check numbers: [sha: the logic of snapy@e894700ff7aee30b52882e5202b16461413780b0 and the `max_redo` default
+of pyharp@4721715855e937c1e8b218e964c0655f46e56e29, ported line for line; deck: the check itself; run:
+`python3 redo_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Coverage.** CPU and CUDA (saturation arm), 2 ranks (parallel test).
+:::
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+`max_redo` cannot be set from YAML. A redo cures events that a smaller step removes; it cannot cure a bad start
+state.
+:::
+
+1. **Gentle events only.** A cell that erupts past the floor test and floors on the next step is not caught
+   (`sources/canoe__POSITIVITY_TECH_REPORT.md` §9).
+2. **Hard aborts.** An unrepairable vapour column stops the run from inside the limiter instead of requesting a
+   redo, and the floor test's conversion can raise it too (same report §9).
+3. **Bad start states.** A species repair of a bad initial state requests a redo that no step can cure
+   (chengcli/snapy#263, `sources/gh__ISSUE_THREADS_251-294.md`).
+4. **Signals.** Only the Mesh path checks signals, with `CheckSignalFlags`; the single-block path does not
+   ([`mesh.cpp:426-429`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L426-L429)).
+5. **No gradual recovery.** An accepted step resets $r$ to 0, so the step after a redo goes straight back to the
+   full bound.
