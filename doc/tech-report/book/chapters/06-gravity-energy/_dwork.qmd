@@ -109,9 +109,10 @@ $$
 
 Now multiply the continuity equation by $\phi$ and integrate over the cell. Use
 $\phi\,\nabla\cdot(\rho\mathbf v) = \nabla\cdot(\phi\rho\mathbf v) - \rho\mathbf v\cdot\nabla\phi$ and the
-divergence theorem. Keep only the $x_1$ faces: on Cartesian and spherical-polar grids the $x_2$, $x_3$ faces lie
-on surfaces of constant $\phi$, so their terms are mass fluxes times one value of $\phi$, which the horizontal
-subsection below treats. Then
+divergence theorem. Keep only the $x_1$ faces: on Cartesian, spherical-polar and (since chengcli/snapy#303)
+gnomonic-equiangle grids the $x_2$, $x_3$ faces join cells of the same $x_1$ level (on the cubed sphere, the same
+radius: `docs/derivations/curved-gravity-work-weight.md@9ad0936779ae001dba65c9eafccaa7c058686c97` §12.6), so their
+terms are mass fluxes times one value of $\phi$, which the horizontal subsection below treats. Then
 
 $$
 \frac{\mathrm{d}}{\mathrm{d}t}\int_{V_i}\rho\phi\,\mathrm{d}V = -\Delta_i[A\phi F] - g_1V_i\langle F\rangle_{V_i} .
@@ -603,7 +604,12 @@ construction in `sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md` §§
 claims of the derivation note and must be dispositioned before this section is approved.
 
 ::: {.callout-important title="Check"}
-The identities above are checked by `d_face_work_pe_check.py`, 11 claims, all passing.
+The identities above are checked by `d_face_work_pe_check.py`, 11 claims, all passing (count:
+`python3 d_face_work_pe_check.py | grep -c '^\[C[0-9]*\] PASS'`). It ports the formulas of
+snapy@e894700ff7aee30b52882e5202b16461413780b0; at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 those formulas are unchanged on Cartesian and
+spherical-polar grids except at internal $x_1$ seams, so its claim C10 and the two-block case of its claim C7 describe the
+one-sided seam slope that chengcli/snapy#303 replaced. The cubed-sphere centroid term is checked by
+`d_cs_centroid_term_check.py`, 2 claims.
 :::
 
 ### Numerical method
@@ -856,9 +862,14 @@ are recorded only in the derivation note, so they must be re-measured at the pin
 
 **Coverage.** CPU: all of the above. CUDA: `test_gravity_work_radial_exact_cuda_python` and the `_cuda` arms of
 `test_x1_seam_split`, registered only with `-DCUDA=ON` and skipped without a device. Several ranks:
-`test_x1_seam_split_mp_radial_exact`, 2 ranks under torchrun. No test runs this scheme with
-`SNAP_FLUX_COVARIANCE`, `SNAP_WB_REF4` or `SNAP_X1_CENTROID_EXACT` on; see the switch coverage matrix,
-`@sec-ch12-matrix`.
+`test_x1_seam_split_mp_radial_exact`, 2 ranks under torchrun. Since chengcli/snapy#303 one entry runs this scheme
+with `SNAP_FLUX_COVARIANCE=1`: `test_pref_local_seam_flux_covariance`
+([`CMakeLists.txt:37-43`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/CMakeLists.txt#L37-L43)), whose Cartesian deck states no `gravity-work` key
+and sets `grav1` to $-9.81$ ([`test_pref_local_seam.cpp:183-185`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_pref_local_seam.cpp#L183-L185)), so the scheme is
+on by default. It asserts that four $x_1$ blocks match one block after 200 steps to $10^{-12}$; it does not check
+$E+P$. No test runs this scheme with `SNAP_WB_REF4` or `SNAP_X1_CENTROID_EXACT` on: their seam arms pass
+`cell` to `split_gap` ([`test_x1_seam_split.cpp:248`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L248) and, for `SNAP_WB_REF4`,
+`split_gap` [`test_x1_seam_split.cpp:286`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L286)); see the switch coverage matrix, `@sec-ch12-matrix`.
 
 ### Limits
 
@@ -903,9 +914,10 @@ every $E+\mathrm{PE}_d$ check — including `gravity_work_defect()` — measures
     `docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0` §11.3, a
     placeholder at the previous pin, is filled at this one, but from runs at shas that are no pin of §3.1, so the
     numbers are **re-run** work before approval; check the note's current head before publication.
-12. **Untested switch combinations.** This scheme with `SNAP_FLUX_COVARIANCE`, `SNAP_WB_REF4`,
-    `SNAP_X1_CENTROID_EXACT` or `SNAP_X1_MASS_COVARIANCE`, and on moist columns with several mass rows, is
-    covered by no ctest entry. The onset numbers above used `SNAP_FLUX_COVARIANCE` and `SNAP_WB_REF4`; the note
+12. **Untested switch combinations.** This scheme with `SNAP_WB_REF4`, `SNAP_X1_CENTROID_EXACT` or
+    `SNAP_X1_MASS_COVARIANCE`, and on moist columns with several mass rows, is covered by no ctest entry; with
+    `SNAP_FLUX_COVARIANCE` only the split-column check `test_pref_local_seam_flux_covariance` covers it (Evidence),
+    and no entry checks $E+P$ there. The onset numbers above used `SNAP_FLUX_COVARIANCE` and `SNAP_WB_REF4`; the note
     names their deck, but no ctest covers the combination. See the switch coverage matrix, `@sec-ch12-matrix`.
 13. **Float32.** $\sigma^2$ is written without cancellation (@eq-ch06-dwork-variance), but the $E+P$ identity has
     been checked only in double precision.

@@ -29,8 +29,8 @@ $\tfrac13(r_+^3 - r_-^3)$ times the same solid angle, and the $x_2$, $x_3$ face 
 sources are built so that a uniform pressure at rest is in exact discrete balance.
 
 The type is on when `geometry.type` is `gnomonic-equiangle`. Unlike spherical-polar, the radial cell centre is the
-midpoint, not the volume centroid. The corrected-PE gravity work of @sec-ch06 has no form here
-(@sec-ch06-dwork). The geometry was set up in the Mathematica notebook
+midpoint, not the volume centroid. At the pin the corrected-PE gravity work of @sec-ch06 had no form here; since
+chengcli/snapy#303 it runs here with a centroid-offset term for that difference (@sec-ch06-dwork). The geometry was set up in the Mathematica notebook
 [`cubed_sphere6.nb`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere6.nb),
 which is symbolic and is not a prose derivation.
 
@@ -200,8 +200,11 @@ twin at the pin. All are single-rank. Their pass status at the pin was not run f
 
 ::: {.callout-warning title="Limits"}
 - `nx2` must equal `nx3`, and `interp_order` must be 2.
-- The corrected-PE face work is not available on this grid; setup warns with
-  `TORCH_WARN_ONCE` ([`hydro.cpp:82-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L82-L93)).
+- At the pin the corrected-PE face work was not available on this grid and setup warned. Since chengcli/snapy#303
+  (main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97) it runs here: the grid maps to the `radial_mid` measure
+  ([`gravity_work_radial.hpp:20-25`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L20-L25)) and the work gains the
+  centroid-offset term, because `x1v` is the midpoint and not the volume centroid (@sec-ch06-dwork). Only grids with
+  no $x_1$ measure (cylindrical) still warn, with `TORCH_WARN_ONCE` ([`hydro.cpp:97-108`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L97-L108)).
 :::
 
 `DeviceTest.usrc` and `GnomonicEquiangle.area_vol` print values and assert nothing about the geometry, as in
