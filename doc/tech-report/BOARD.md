@@ -10,7 +10,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 21:28 PT, tech-report 798884d
+Last update: 2026-10-10 21:38 PT, tech-report 4ffff9d
 
 ## In progress
 
@@ -21,7 +21,7 @@ Last update: 2026-10-10 21:28 PT, tech-report 798884d
 
 ## Queue (take from the top)
 
-1. Fill the gaps the Appendix B index shows (in progress: ch7/9/13 #40, ch3/8/11/12 + D rows @happysky19): 21 equations without a code tag, 75 rows without a check (by chapter owner)
+1. Fill the gaps the Appendix B index shows (ch7/9/13 done in #40; in progress: ch3/8/11/12 + D rows @happysky19; ch1/2/4/5 @gitlinffff after the #303 review; ch10, ch14 open)
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
 
@@ -29,4 +29,4 @@ Last update: 2026-10-10 21:28 PT, tech-report 798884d
 
 ## In the book
 
-ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder), ch14 (#34; 2 #303 placeholders), ch15, ch16 (#39; 3 #303 placeholders), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
+ch1, ch2, ch3, ch4, ch5, ch6 (6.1-6.3, 6.5 and D; 6.6 placeholder), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch13 (#38; 13.4 placeholder; App B gaps for ch7/9/13 #40), ch14 (#34; 2 #303 placeholders), ch15, ch16 (#39; 3 #303 placeholders), Appendix C, Appendix A, Appendix B (#36), Appendix D, Appendix E
