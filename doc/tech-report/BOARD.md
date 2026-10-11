@@ -10,7 +10,7 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 22:0x PT, tech-report 31d34fa
+Last update: 2026-10-10 22:3x PT, tech-report 17a926a
 
 ## In progress
 
@@ -18,14 +18,14 @@ Last update: 2026-10-10 22:0x PT, tech-report 31d34fa
 |---|---|---|---|---|
 | ch2 fixes, then ch13 (13.4 waits for #303) | @chengcli | ch2 fixes commit ready locally, checking before push | after the ch2 PR | - |
 | ch7 Time integration (7.A + 7.B) | @gitlinffff | 7.1-7.3 done, rebased; scoped 7.4-7.13 + ch15 rows | ~8 working h (author estimate, 22:0x) | #35 (0238189) |
-| ch6 Gravity and energy: 6.1-6.3, 6.5 + 3 figure functions (fig_deps, fig_dwork_stencil, fig_dwork_order) | @XinyueWang05 | scoped; writing after Appendix D is applied | ~10-12 working h (author estimate) | - |
-| Appendix B: derivation index | @zoeyzyhu | CI green; adding the one-line statements and a pre-render step that regenerates the index | not yet given | #36 (7f83a98) |
-| Appendix D: environment-switch table | @XinyueWang05 | drafted: 20 switches, 54 citations pass, full-book render clean vs base; patch docs to be applied by the lead | review + ~30 min fixes | patch eda1ea4 |
+| ch6 Gravity and energy: 6.1-6.3, 6.5 + 8 figure functions (incl. fig_deps, fig_dwork_stencil, fig_dwork_order) | @XinyueWang05 | DRAFT COMPLETE (commit 7f736dc, +1417); patch docs 9 of 11 received, then applied via CI render | done | patch 7f736dc |
+| Appendix A: notation (NOTATION.md as a table, with the 2 NOTATION issues from ch6) | @zoeyzyhu | assigned 22:2x | - | - |
+| Appendix D: environment-switch table | @XinyueWang05 | both patch parts received; being applied (render CI first) | review + ~30 min fixes | patch eda1ea4 |
 
 ## Queue (take from the top)
 
-1. Appendix A: notation (NOTATION.md as a table)
-2. ch05: the missing 1/R figure function
+1. ch05: the missing 1/R figure function
+2. Fill the gaps the Appendix B index shows: 21 equations without a code tag, 75 rows without a check (by chapter owner)
 3. ch16 Known limits: last, from every chapter's Limits layer (OUTLINE ch16 lists the starting items)
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
@@ -34,4 +34,4 @@ Last update: 2026-10-10 22:0x PT, tech-report 31d34fa
 
 ## In the book
 
-ch1, ch2, ch3, ch4, ch5, ch6 (scheme D only), ch8, ch9, ch10, ch11, ch12, ch14 (#34; 2 #303 placeholders), ch15, Appendix C, Appendix E
+ch1, ch2, ch3, ch4, ch5, ch6 (scheme D only), ch8, ch9, ch10, ch11, ch12, ch14 (#34; 2 #303 placeholders), ch15, Appendix C, Appendix B (#36), Appendix E
