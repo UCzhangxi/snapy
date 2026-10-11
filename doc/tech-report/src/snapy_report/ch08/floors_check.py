@@ -169,7 +169,46 @@ def check_C5():
            f"{TEMPERATURE_FLOOR:.0f} K, which has no primitive counterpart")
 
 
-for fn in (check_C1, check_C2, check_C3, check_C4, check_C5):
+def check_C6():
+    """_wbface.qmd: the non-positive face pressure falls back to the reference, which is positive."""
+    rng = np.random.default_rng(86)
+    p_ref = rng.uniform(1e2, 1e5, 200_000)          # the reference face pressure, positive by construction
+    at_rest = p_ref + 0.0                           # at rest the perturbation is identically zero
+    fires_at_rest = int(np.count_nonzero(at_rest <= 0.))
+    untouched = int(np.count_nonzero(at_rest.view(np.int64) == p_ref.view(np.int64)))
+    dp = rng.normal(0., 3e4, 200_000)               # a perturbation large enough to cross zero
+    psf = p_ref + dp
+    out = np.where(psf <= 0., p_ref, psf)           # hydro_forward.cpp:357-360
+    fired = int(np.count_nonzero(psf <= 0.))
+    report("C6", fires_at_rest == 0 and untouched == p_ref.size and bool((out > 0.).all()),
+           "the face-pressure fallback cannot fire at rest and is positive whenever it does",
+           f"at rest the face pressure is the reference bit for bit in {untouched} of "
+           f"{p_ref.size} faces and never non-positive, so the well-balanced state is untouched; "
+           f"with a perturbation the fallback fires at {fired} faces and the result is strictly "
+           f"positive at all {out.size}. The density fallback is the adjacent cell's value, chosen "
+           f"from a run rather than from theory, and is not checked here")
+
+
+def check_C7():
+    """_redo.qmd: a margin above the floor, not equality with it."""
+    floored = DENSITY_FLOOR                          # a cell the limiter has just set to the floor
+    nudges = [0.] + [10.0**-k for k in range(16, 2, -1)]
+    nudged = [floored * (1. + d) for d in nudges]
+    margin = [v <= 1.001 * DENSITY_FLOOR for v in nudged]      # meshblock.cpp:1199-1202
+    equal = [v == DENSITY_FLOOR for v in nudged]               # the test the margin replaces
+    lost = [d for d, m, e in zip(nudges, margin, equal) if m and not e]
+    far = 1.002 * DENSITY_FLOOR                      # well above the floor: neither test may fire
+    report("C7", all(margin) and len(lost) > 0 and not any(e for d, e in zip(nudges, equal) if d > 1e-15)
+           and not (far <= 1.001 * DENSITY_FLOOR),
+           "the redo detector tests a margin above the floor, so a nudged cell is still a hit",
+           f"of {len(nudges)} nudges of a just-floored cell the 1.001 margin counts all "
+           f"{sum(margin)} as hits; equality with the floor counts only {sum(equal)}, the "
+           f"unnudged cell and the one nudge below machine epsilon. The {len(lost)} nudges from "
+           f"{min(lost):.0e} to {max(lost):.0e} relative are the hits the margin keeps and "
+           f"equality loses. A density 1.002 times the floor is a hit under neither test")
+
+
+for fn in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7):
     fn()
-print(f"{5 - len(FAIL)}/5 claims pass")
+print(f"{7 - len(FAIL)}/7 claims pass")
 sys.exit(len(FAIL))
