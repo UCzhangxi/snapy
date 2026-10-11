@@ -10,22 +10,21 @@ loses the chapter to the next free person. Queue empty: cross-review a finished 
 Hand-in: when the chapter is done, mark your own PR "Ready for review"; ready PRs whose render CI is green on
 their exact head are merged; drafts are not.
 
-Last update: 2026-10-10 19:59 PT, tech-report 8a7eab9
+Last update: 2026-10-10 20:20 PT, tech-report e3149a6
 
 ## In progress
 
 | chapter | owner | state | ETA (PT) | PR |
 |---|---|---|---|---|
 | ch2 fixes, then ch13 (13.4 waits for #303) | @chengcli | ch2 fixes commit ready locally, checking before push | after the ch2 PR | - |
-| ch7 Time integration (7.A + 7.B) | @gitlinffff | all ch7 checks written and passing (7.4-7.13); writing figures and text | ~8 working h from 19:2x (author estimate) | #35 (0238189) |
 | ch6 Gravity and energy: 6.1-6.3, 6.5 + 8 figure functions (incl. fig_deps, fig_dwork_stencil, fig_dwork_order) | @XinyueWang05 | DRAFT COMPLETE (commit 7f736dc, +1417); all 11 patch docs received; being applied (render CI first) | done | patch 7f736dc |
-| Appendix A: notation (NOTATION.md as a table, with the 2 NOTATION issues from ch6) | @zoeyzyhu | started 19:5x | - | - |
+| ch05: the missing 1/R figure (fig_oneoverr_remainder; needs a pinned snapy run) | @XinyueWang05 | started | - | - |
+| Appendix A: notation (NOTATION.md as a table, with the 2 NOTATION issues from ch6) | @zoeyzyhu | DRAFT COMPLETE (#37); lead's worker lands it after ch6 (pre-workflow base conflicts in _quarto.yml) | done | #37 |
 
 ## Queue (take from the top)
 
-1. ch05: the missing 1/R figure function
-2. Fill the gaps the Appendix B index shows: 21 equations without a code tag, 75 rows without a check (by chapter owner)
-3. ch16 Known limits: last, from every chapter's Limits layer (OUTLINE ch16 lists the starting items)
+1. Fill the gaps the Appendix B index shows: 21 equations without a code tag, 75 rows without a check (by chapter owner)
+2. ch16 Known limits: last, from every chapter's Limits layer (OUTLINE ch16 lists the starting items)
 
 ## Waiting on chengcli/snapy#303 (join the queue when it merges)
 
@@ -33,4 +32,4 @@ Last update: 2026-10-10 19:59 PT, tech-report 8a7eab9
 
 ## In the book
 
-ch1, ch2, ch3, ch4, ch5, ch6 (scheme D only), ch8, ch9, ch10, ch11, ch12, ch14 (#34; 2 #303 placeholders), ch15, Appendix C, Appendix B (#36), Appendix D, Appendix E
+ch1, ch2, ch3, ch4, ch5, ch6 (scheme D only), ch7 (#35), ch8, ch9, ch10, ch11, ch12, ch14 (#34; 2 #303 placeholders), ch15, Appendix C, Appendix B (#36), Appendix D, Appendix E
