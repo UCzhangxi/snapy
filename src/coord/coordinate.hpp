@@ -341,6 +341,24 @@ class CoordinateImpl {
   virtual torch::Tensor forward(torch::Tensor prim, torch::Tensor flux1,
                                 torch::Tensor flux2, torch::Tensor flux3,
                                 torch::Tensor face_pressure1 = torch::Tensor());
+
+  //! SNAP_GEOM_CACHE=1 (perf study, default off): keep the grid-only
+  //! face_area1/2/3() and cell_volume() of this class instead of rebuilding
+  //! them (outer/einsum) on every call
+  static bool geom_cache();
+
+ protected:
+  //! cached geometry and the grid state it was built from
+  struct GeomCache {
+    torch::Tensor value;
+    c10::Device device = c10::kCPU;
+    c10::ScalarType dtype = c10::kDouble;
+    int64_t v1 = -1, v2 = -1, v3 = -1;
+  };
+  mutable GeomCache _area1_cache, _area2_cache, _area3_cache, _vol_cache;
+  //! the cached value of `build()`, rebuilt when dx1f/dx2f/dx3f change
+  torch::Tensor cached_geometry_(GeomCache& c,
+                                 std::function<torch::Tensor()> const& build) const;
 };
 using Coordinate = std::shared_ptr<CoordinateImpl>;
 

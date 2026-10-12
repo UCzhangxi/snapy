@@ -422,21 +422,57 @@ torch::Tensor CoordinateImpl::center_distance3() const {
   return dx3v.unsqueeze(1).unsqueeze(2);
 }
 
+bool CoordinateImpl::geom_cache() {
+  static const bool on = [] {
+    auto v = get_env("SNAP_GEOM_CACHE", "0");
+    return v == "1" || v == "true" || v == "on" || v == "yes";
+  }();
+  return on;
+}
+
+torch::Tensor CoordinateImpl::cached_geometry_(
+    GeomCache& c, std::function<torch::Tensor()> const& build) const {
+  if (!geom_cache()) return build();
+  auto version = [](torch::Tensor const& t) {
+    return t.is_inference() ? int64_t(0) : int64_t(t._version());
+  };
+  int64_t v1 = version(dx1f), v2 = version(dx2f), v3 = version(dx3f);
+  if (!c.value.defined() || c.device != dx1f.device() ||
+      c.dtype != dx1f.scalar_type() || c.v1 != v1 || c.v2 != v2 ||
+      c.v3 != v3) {
+    c.value = build();
+    c.device = dx1f.device();
+    c.dtype = dx1f.scalar_type();
+    c.v1 = v1;
+    c.v2 = v2;
+    c.v3 = v3;
+  }
+  return c.value;
+}
+
 torch::Tensor CoordinateImpl::face_area1() const {
-  return dx3f.outer(dx2f).unsqueeze(2).expand({-1, -1, x1f.size(0)});
+  return cached_geometry_(_area1_cache, [&] {
+    return dx3f.outer(dx2f).unsqueeze(2).expand({-1, -1, x1f.size(0)});
+  });
 }
 
 torch::Tensor CoordinateImpl::face_area2() const {
-  return dx3f.outer(dx1f).unsqueeze(1).expand({-1, x2f.size(0), -1});
+  return cached_geometry_(_area2_cache, [&] {
+    return dx3f.outer(dx1f).unsqueeze(1).expand({-1, x2f.size(0), -1});
+  });
 }
 
 torch::Tensor CoordinateImpl::face_area3() const {
-  return dx2f.outer(dx1f).unsqueeze(0).expand({x3f.size(0), -1, -1});
+  return cached_geometry_(_area3_cache, [&] {
+    return dx2f.outer(dx1f).unsqueeze(0).expand({x3f.size(0), -1, -1});
+  });
 }
 
 torch::Tensor CoordinateImpl::cell_volume() const {
-  return torch::einsum("km,mji->kji",
-                       {dx3f.unsqueeze(1), dx2f.outer(dx1f).unsqueeze(0)});
+  return cached_geometry_(_vol_cache, [&] {
+    return torch::einsum("km,mji->kji",
+                         {dx3f.unsqueeze(1), dx2f.outer(dx1f).unsqueeze(0)});
+  });
 }
 
 torch::Tensor CoordinateImpl::face_moment2_x1() const {
