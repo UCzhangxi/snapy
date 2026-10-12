@@ -102,4 +102,15 @@ void flux_positivity_carry_(
     torch::Tensor const& flux2, torch::Tensor const& flux3,
     Coordinate const& pcoord, torch::Tensor const& fsed1 = torch::Tensor());
 
+//! SNAP_FUSED_CARRY=1 (perf study, default off): read once
+bool fused_positivity_carry();
+
+//! flux_positivity_carry_ then flux_positivity_scale_, one fused pass per
+//! direction (flux_positivity_impl.h); same arguments as the carry
+void flux_positivity_carry_scale_(
+    torch::Tensor const& theta, torch::Tensor const& hspec,
+    torch::Tensor const& vel, torch::Tensor const& flux1,
+    torch::Tensor const& flux2, torch::Tensor const& flux3,
+    Coordinate const& pcoord, torch::Tensor const& fsed1 = torch::Tensor());
+
 }  // namespace snap

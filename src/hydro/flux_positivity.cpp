@@ -1,10 +1,17 @@
 // C/C++
+#include <cstdlib>
 #include <limits>
+#include <string>
+
+// torch
+#include <ATen/Parallel.h>
 
 // snap
 #include <snap/snap.h>
 
 #include "flux_positivity.hpp"
+#include "flux_positivity_dispatch.hpp"
+#include "flux_positivity_impl.h"
 
 namespace snap {
 
@@ -148,4 +155,68 @@ void flux_positivity_carry_(
   carry(flux3, DIM3, pcoord->kl(), pcoord->ku(), torch::Tensor());
 }
 
+bool fused_positivity_carry() {
+  static bool const on = [] {
+    char const* v = std::getenv("SNAP_FUSED_CARRY");
+    std::string s = v ? v : "0";
+    return s == "1" || s == "true" || s == "on" || s == "yes";
+  }();
+  return on;
+}
+
+void flux_positivity_carry_scale_(
+    torch::Tensor const& theta, torch::Tensor const& hspec,
+    torch::Tensor const& vel, torch::Tensor const& flux1,
+    torch::Tensor const& flux2, torch::Tensor const& flux3,
+    Coordinate const& pcoord, torch::Tensor const& fsed1) {
+  enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };
+  auto one = [&](torch::Tensor const& flux, int dim, int lo, int hi,
+                 torch::Tensor const& fsed) {
+    if (!flux.defined()) return;
+    at::native::call_positivity_carry_scale(flux.device().type(), flux, theta,
+                                            hspec, vel, fsed, dim, lo, hi);
+  };
+  one(flux1, DIM1, pcoord->il(), pcoord->iu(), fsed1);
+  one(flux2, DIM2, pcoord->jl(), pcoord->ju(), torch::Tensor());
+  one(flux3, DIM3, pcoord->kl(), pcoord->ku(), torch::Tensor());
+}
+
+static void positivity_carry_scale_cpu(torch::Tensor const& flux,
+                                       torch::Tensor const& theta,
+                                       torch::Tensor const& hspec,
+                                       torch::Tensor const& vel,
+                                       torch::Tensor const& fsed, int dim,
+                                       int lo, int hi) {
+  TORCH_CHECK(flux.is_contiguous(), "fused carry: flux must be contiguous");
+  auto th = theta.contiguous(), hs = hspec.contiguous(), v = vel.contiguous();
+  auto fs = fsed.defined() ? fsed.contiguous() : torch::Tensor();
+  int nc3 = flux.size(1), nc2 = flux.size(2), nc1 = flux.size(3);
+  int64_t ncell = int64_t(nc3) * nc2 * nc1;
+  int ny = th.size(0);
+  int nf = hi + 2 - lo;
+  int64_t dstride = dim == 3 ? 1 : dim == 2 ? nc1 : int64_t(nc1) * nc2;
+  int64_t nface = ncell / flux.size(dim) * nf;
+  AT_DISPATCH_FLOATING_TYPES(flux.scalar_type(), "positivity_carry_scale", [&] {
+    auto* F = flux.data_ptr<scalar_t>();
+    auto const* T = th.data_ptr<scalar_t>();
+    auto const* H = hs.data_ptr<scalar_t>();
+    auto const* V = v.data_ptr<scalar_t>();
+    auto const* S = fs.defined() ? fs.data_ptr<scalar_t>() : nullptr;
+    at::parallel_for(0, nface, 4096, [&](int64_t b, int64_t e) {
+      for (int64_t t = b; t < e; ++t) {
+        int64_t upper = positivity_face_index(t, dim, lo, nf, nc3, nc2, nc1);
+        positivity_carry_scale_face(F, T, H, V, S, ncell, ny, upper, dstride);
+      }
+    });
+  });
+}
+
 }  // namespace snap
+
+namespace at::native {
+
+DEFINE_DISPATCH(call_positivity_carry_scale);
+REGISTER_ALL_CPU_DISPATCH(call_positivity_carry_scale,
+                          &snap::positivity_carry_scale_cpu);
+
+}  // namespace at::native

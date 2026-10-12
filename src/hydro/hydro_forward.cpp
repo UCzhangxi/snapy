@@ -805,11 +805,17 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     auto f1_pre = f1.defined() ? f1.abs() : torch::Tensor();
 
     // the withheld species mass keeps its energy and momentum in the donor
-    if (hspec.defined()) {
-      flux_positivity_carry_(theta, hspec, u.narrow(0, IVX, 3) / w[IDN], _flux1,
-                             _flux2, _flux3, pmb->pcoord, fsed1);
+    if (hspec.defined() && fused_positivity_carry()) {
+      // SNAP_FUSED_CARRY: carry and scale in one pass per direction
+      flux_positivity_carry_scale_(theta, hspec, u.narrow(0, IVX, 3) / w[IDN],
+                                   _flux1, _flux2, _flux3, pmb->pcoord, fsed1);
+    } else {
+      if (hspec.defined()) {
+        flux_positivity_carry_(theta, hspec, u.narrow(0, IVX, 3) / w[IDN],
+                               _flux1, _flux2, _flux3, pmb->pcoord, fsed1);
+      }
+      flux_positivity_scale_(theta, f1, f2, f3, pmb->pcoord);
     }
-    flux_positivity_scale_(theta, f1, f2, f3, pmb->pcoord);
 
     if (f1_pre.defined()) {
       // non-negative while every bfunc keeps the ghost theta in [0,1]
