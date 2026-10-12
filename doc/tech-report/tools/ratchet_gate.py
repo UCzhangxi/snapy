@@ -5,7 +5,8 @@ Four counts per chapter (and for the preface, `book/index.qmd`), compared with t
 `tools/ratchet-baseline.json`:
 
   history     change history in body text: PR/issue numbers and phrases such as "main after", "squash-merged",
-              "the previous pin", "was removed in" (HISTORY_PATTERNS). The body text is the file without HTML
+              "the previous pin", "was removed in" (HISTORY_PATTERNS), matched across line breaks. The body text
+              is the file without HTML
               comments (PROVENANCE), fenced code, `{{< >}}` shortcodes and footnotes, so a source or credit
               footnote may still carry a PR number.
   offpin      a sha of a cited package that is not that package's one pin: snapy's pin is `code_pin.yml`, the
@@ -28,7 +29,8 @@ and it may rise only together with a move of that pin:
 
 OWNERS (`tools/chapter-owners.tsv`): one row per chapter, `chapter owner github`, the single owner of the
 chapter's rewrite (the lock) and the owner its counts are charged to in the per-owner burn-down table that
-`counts` and `check` print. `check` fails when a chapter has no owner or more than one.
+`counts` and `check` print. That table also gives each owner's figures and tables (distinct `fig-`/`tbl-`
+labels in their chapters), which are not ratcheted. `check` fails when a chapter has no owner or more than one.
 
 REVIEW RECORD (`reviews/review-record.tsv`, tab-separated, one line per event, newest last):
 
@@ -72,7 +74,9 @@ RECORD_HEAD = ("file", "kind", "reviewer", "author", "pin", "sha256", "date", "n
 
 # Change history in body text. Built from STYLE.md (sections 1 and 3.2) and the phrases the Q1 re-read and the
 # ch06 rewrite removed. Generic words that also describe physics ("no longer", "used to", "previously", "was
-# removed") count only in their history forms. Matching is case-insensitive; overlapping matches count once.
+# removed") count only in their history forms. Matching is case-insensitive (except "PR") and runs on the body
+# text with every run of whitespace made one space, so a phrase broken across source lines counts; overlapping
+# matches count once.
 HISTORY_PATTERNS = [
     r"\b(?:chengcli|UCzhangxi|zoeyzyhu|happysky19|jihenghu|XinyueWang05|gitlinffff)/[\w.-]+#\d+",  # owner/repo#N
     r"(?<![\w/&#^{])#\d{2,5}\b",                                   # bare #NNN, also as link text [#NNN]
@@ -93,8 +97,16 @@ HISTORY_PATTERNS = [
     r"\bnow fixed\b",
     r"\bused to be\b",
     r"\b(?:was|were|has been|have been) (?:added|introduced|changed|fixed|replaced|removed|moved|renamed|dropped)"
-    r" (?:in|by)\b",
+    r"(?: separately| later| earlier| first)? (?:in|by|into)\b",
     r"\b(?:fixed|landed|merged) in\b",
+    # misses of the second version, found in the book at tech-report f38085bb
+    r"(?-i:\bPRs?\b)",                                             # "the PR head", "the same PR"
+    r"\bcommit \d+\b",                                             # "commit 4 against its base"
+    r"\bnow (?:also )?(?:[a-z]+s|set|use|run|read|call)\b",         # "now passes", "now also runs"
+    r"\bthe old\b",                                                 # "the old off default", "the old flux"
+    r"\b(?:is|was|are|were) superseded\b",
+    r"\b(?:before|after|until) the fix\b",
+    r"\bat the (?:PR )?head\b(?! of)|\bagainst (?:its|the) base\b",  # "passes at the head"
 ]
 _HISTORY = [re.compile(p, re.I) for p in HISTORY_PATTERNS]
 
@@ -172,7 +184,7 @@ def _merged(text: str, spans) -> list[str]:
 
 
 def history_hits(text: str) -> list[str]:
-    body = body_text(text, keep_links=False)
+    body = re.sub(r"\s+", " ", body_text(text, keep_links=False))
     return _merged(body, [(m.start(), m.end()) for rx in _HISTORY for m in rx.finditer(body)])
 
 
@@ -402,7 +414,20 @@ def baseline_raised(root: pathlib.Path, ref: str, baseline: dict) -> list[str]:
     return out
 
 
-def print_table(counts, owners=None) -> None:
+def assets(root: pathlib.Path = ROOT) -> dict[str, dict[str, int]]:
+    """Figures and tables per chapter: distinct `fig-`/`tbl-` labels (`#| label:` or `{#...}`), not in comments.
+
+    Not ratcheted; the per-owner table prints them so an owner's counts read against the size of the work."""
+    out: dict[str, dict[str, int]] = {}
+    for q in sources(root / "book"):
+        text = re.sub(r"<!--.*?-->", "", q.read_text(), flags=re.S)
+        row = out.setdefault(chapter_of(str(q.relative_to(root / "book"))), {"figures": set(), "tables": set()})
+        for key, kind in (("figures", "fig"), ("tables", "tbl")):
+            row[key] |= set(re.findall(r"(?:#\|\s*label:\s*|\{#)(%s-[\w-]+)" % kind, text))
+    return {ch: {k: len(v) for k, v in row.items()} for ch, row in out.items()}
+
+
+def print_table(counts, owners=None, sizes=None) -> None:
     print("| chapter | " + " | ".join(CHECKS) + " |")
     print("|---|" + "---|" * len(CHECKS))
     tot = dict.fromkeys(CHECKS, 0)
@@ -413,7 +438,9 @@ def print_table(counts, owners=None) -> None:
     print("| **total** | " + " | ".join(f"**{tot[k]}**" for k in CHECKS) + " |")
     if owners is None:
         return
+    sizes = sizes or {}
     per: dict[str, dict[str, int]] = {}
+    size: dict[str, dict[str, int]] = {}
     chapters: dict[str, list[str]] = {}
     for ch, c in counts.items():
         who = owners.get(ch, [("(no owner)", "")])[0][0]
@@ -421,12 +448,14 @@ def print_table(counts, owners=None) -> None:
         chapters.setdefault(who, []).append(ch)
         for k in CHECKS:
             row[k] += c[k]
-    print("\n| owner | chapters | " + " | ".join(CHECKS) + " | total |")
-    print("|---|---|" + "---|" * (len(CHECKS) + 1))
+        for k in ("figures", "tables"):
+            size.setdefault(who, {"figures": 0, "tables": 0})[k] += sizes.get(ch, {}).get(k, 0)
+    print("\n| owner | chapters | figures | tables | " + " | ".join(CHECKS) + " | total |")
+    print("|---|---|---|---|" + "---|" * (len(CHECKS) + 1))
     for who in sorted(per, key=lambda w: (-sum(per[w].values()), w)):
         r = per[who]
-        print(f"| {who} | {', '.join(chapters[who])} | " + " | ".join(str(r[k]) for k in CHECKS)
-              + f" | {sum(r.values())} |")
+        print(f"| {who} | {', '.join(chapters[who])} | {size[who]['figures']} | {size[who]['tables']} | "
+              + " | ".join(str(r[k]) for k in CHECKS) + f" | {sum(r.values())} |")
 
 
 def record(root: pathlib.Path, kind: str, file: str, reviewer: str, author: str, note: str) -> int:
@@ -493,7 +522,7 @@ def main(argv=None) -> int:
     counts = count(a.root, verbose=getattr(a, "verbose", False))
     owners, owner_file_problems = read_owners(a.root)
     if a.cmd == "counts":
-        print_table(counts, owners)
+        print_table(counts, owners, assets(a.root))
         return 0
     stored = json.loads(base_path.read_text()) if base_path.exists() else {}
     baseline = stored.get("chapters", {})
@@ -513,7 +542,7 @@ def main(argv=None) -> int:
     if a.base_ref:
         problems += baseline_raised(a.root, a.base_ref, baseline)
     problems += owner_file_problems + owner_problems(counts, owners)
-    print_table(counts, owners)
+    print_table(counts, owners, assets(a.root))
     if problems:
         print("\nratchet gate: FAIL\n  " + "\n  ".join(problems))
         print("  (python3 tools/ratchet_gate.py counts -v lists every instance)")

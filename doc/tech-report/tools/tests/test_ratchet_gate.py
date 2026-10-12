@@ -84,6 +84,18 @@ def check(root, *extra):
     " A run before and after that change does not agree bitwise.",
     " The flag is no longer the default.",
     " See [#303](https://example.org) for the change.",
+    # misses of the second version, found in the book at tech-report f38085bb
+    " Two things changed between the\npins.",                     # a phrase broken across source lines
+    " A lesson from the same PR.",
+    " The body reports, for commit 4, the same digest.",
+    " The scalar flux now passes the face states through the seam.",
+    " The corrected-PE work now also runs on cubed-sphere grids.",
+    " The tests that encoded the old off default set the switch.",
+    " The note's status line is superseded by the gather.",
+    " Five of the cases crashed before the fix.",
+    " The test passes at the head on CPU.",
+    " The digest is compared against its base.",
+    " The implicit part was moved into the VIC operator by a later change.",
 ])
 def test_history_red(tmp_path, text):
     root = make(tmp_path, ch01_extra=text)
@@ -98,6 +110,10 @@ def test_history_red(tmp_path, text):
     " CMake generates the macro interface used to select compiled readers.",
     " A source can make previously exchanged ghosts stale.",
     " The mass that was removed from the cell is booked as heat.",
+    " The provenance is given at the head of the Derivation layer.",
+    " Now consider the second face.",
+    " The variable `pr` is the pressure.",
+    " The column is mixed until the mixture is non-negative.",
 ])
 def test_history_green_for_physics_wording(tmp_path, text):
     root = make(tmp_path, ch01_extra=text)
@@ -322,6 +338,18 @@ def test_owner_lock(tmp_path, capsys):
     assert check(root) == 1                                     # two owners of one chapter
     (root / "tools" / "chapter-owners.tsv").unlink()
     assert check(root) == 1                                     # no owner file
+
+
+def test_owner_table_counts_figures_and_tables(tmp_path, capsys):
+    fig = "\n```{python}\n#| label: fig-ch01-a\nplot()\n```\n\n![B](b.png){#fig-ch01-b}\n"
+    tbl = "\n| a |\n|---|\n| 1 |\n\n: One. {#tbl-ch01-a}\n\n<!-- {#tbl-ch01-hidden} -->\n"
+    root = make(tmp_path, ch01_extra=fig + tbl, ch02_extra="\n\n| b |\n|---|\n| 2 |\n\n: Two. {#tbl-ch02-a}\n")
+    assert rg.assets(root) == {"preface": {"figures": 0, "tables": 0}, "ch01": {"figures": 2, "tables": 1},
+                               "ch02": {"figures": 0, "tables": 1}}
+    assert rg.main(["--root", str(root), "counts"]) == 0
+    out = capsys.readouterr().out
+    assert "| owner | chapters | figures | tables | history | offpin | status | xref | total |" in out
+    assert "| Alice | ch01 | 2 | 1 |" in out and "| Bob | ch02 | 0 | 1 |" in out and "| Ed | preface | 0 | 0 |" in out
 
 
 def test_chapter_of():
