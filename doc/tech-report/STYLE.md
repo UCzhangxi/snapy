@@ -6,8 +6,9 @@ full but section 10 (Quarto markup) does not. A pre-conversion draft may hand-nu
 (`\tag{N.n}`) and its headings and may write code locations as `path:lines@sha`; it may not deviate from any
 other rule. Converting a draft to `book/chapters/NN-slug/_<scheme>.qmd` is a mechanical step with exactly four
 parts: every `\tag{N.n}` becomes a `{#eq-chNN-<scheme>-<what>}` label and every `(N.n)` in prose becomes
-`([-@eq-chNN-<scheme>-<what>])`; every hand-typed heading number is deleted; every `path:lines@sha` becomes the
-link of section 10.6; every Unicode symbol becomes math. The author does the conversion and reruns the review
+`([-@eq-chNN-<scheme>-<what>])`; every hand-typed heading number is deleted; every snapy `path:lines@sha`
+becomes the `{{< code <path> <symbol> >}}` shortcode of section 3.1, resolved at the pin, and a `path:lines@sha`
+in a package with no code pin becomes the link of section 10.6; every Unicode symbol becomes math. The author does the conversion and reruns the review
 checklist of section 9 afterwards. Where this file and a converted chapter disagree, this file wins and the
 chapter is a bug to report.
 
@@ -76,7 +77,8 @@ which RK stage and which part of the step it runs in, explicit vs implicit, orde
 cells, seams) with the evidence for each order.
 
 ### Code
-A table: | what | code link | symbol | switch | (code link as in section 10.6), then a short walk-through in step order. Every
+A table: | what | code link | symbol | switch | (snapy code cited by the shortcode of section 3.1; the link of
+section 10.6 only for a package with no code pin), then a short walk-through in step order. Every
 switch read, every setup check, every warning a user can hit is listed.
 
 ### Tests
@@ -141,9 +143,15 @@ repo: chengcli/snapy
 sha: <the 40-character sha, written only here>
 ```
 
-This guide does not restate that sha, and neither does any other file. Read it from `code_pin.yml`; move it only
-with `python3 tools/code_anchors.py bump <full-sha>`, which refuses to write a new pin until every citation
-resolves there and lists the symbols whose body changed so their claims can be re-read.
+This guide does not restate that sha as the pin, and neither does any other file. Read it from `code_pin.yml`;
+move it only with `python3 tools/code_anchors.py bump <full-sha>`, which refuses to write a new pin until every
+citation resolves there and lists the symbols whose body changed so their claims can be re-read.
+
+**One named exception, and only this one.** The change-history table immediately below writes shas out, including
+the current pin. That table is **provenance, not a citation**: it records what three files said at one past
+commit, which is evidence that cannot be stated without the shas. It is never a source to read the pin from, it
+is not updated when the pin moves, and nothing else in this guide or in any `.qmd` may restate a sha on the same
+excuse. A sha anywhere else in prose is still a defect.
 
 A sha written anywhere else is a copy, and copies go stale. They had. Read at tech-report
 `f38085bb02c2043b7002bfeb85a47601f52cc2d7`, three files stated a snapy pin, and the two prose copies agreed
@@ -219,8 +227,11 @@ commit that introduced it. Two consequences worth stating, because both have bee
 
 - The **PROVENANCE block** at the top of each scheme file: the pin the section was written against, its sources,
   and its status. This is the one place per file that records where the text came from.
-- A **`[source: ...]` or `[sha: ...]` footnote** attached to a specific number or claim. A PR number may appear
-  here — it is a credit and a trail, not narration — alongside the deck and the run.
+- A **`[source: ...]` or `[sha: ...]` footnote** attached to a specific number or claim, **or a markdown
+  footnote definition, `[^label]: ...`**, carrying the same thing. Both forms are provenance and both are
+  legal; the markdown form is the one to use when the note is long enough to interrupt the sentence, e.g.
+  `[^ch07-cfl-src]: Source and credit: the implicit-advective and shear bounds are those of ...`. A PR number
+  may appear in either — it is a credit and a trail, not narration — alongside the deck and the run.
 - `ISSUES.md` and the review record for anything still open.
 
 Measured over `book/chapters/**/*.qmd` at tech-report `f38085bb02c2043b7002bfeb85a47601f52cc2d7`, excluding
@@ -250,8 +261,9 @@ paragraph they touch and does not sweep the rest of the book in a content PR.
   - **a short sha may appear only inside an example that is explicitly labelled as the old or forbidden form**,
     so that a rule can show what it converts away from;
   - planning files are exempt (section 10.2): OUTLINE.md and the sources keep the short-sha notation of
-    section 3.1, and it is converted when the text moves into a `.qmd`. They are never swept for short shas,
-    and a short sha in one of them is not a defect.
+    section 3.1, and it is converted when the text moves into a `.qmd` — to the shortcode for snapy, to the
+    link of section 10.6 for a package with no code pin. They are never swept for short shas, and a short sha
+    in one of them is not a defect.
 
 ## 4. Numbers and evidence
 
@@ -360,8 +372,13 @@ src/snapy_report/figstyle.py                    # shared style: palette, fonts, 
 ### 6.2 Look
 - Size: full width 6.2 in (the PDF text width), half width 3.05 in; height as needed. Vector output (SVG for HTML, PDF for
   the PDF; section 10.4); no raster line drawings.
-- Fonts: matplotlib's DejaVu Sans at 9 pt for labels, 8 pt for ticks and annotations; math in the default mathtext.
-  Do not depend on a TeX installation.
+- Fonts: whatever `snapy_report.figstyle` sets, which is the one figure font stack and is not restated per
+  figure — **serif text with STIX, not sans**: `font.family: serif`, `font.serif: ["STIXGeneral",
+  "DejaVu Serif"]` (DejaVu Serif is the fallback, not the choice) and `mathtext.fontset: stix`, at 9 pt for
+  text and labels and 8 pt for ticks, annotations and legends
+  (`src/snapy_report/figstyle.py:33-43`, with the same values set as package defaults in
+  `src/snapy_report/__init__.py:11-16`). Fonts embed as TrueType, `pdf.fonttype: 42`.
+  Do not depend on a TeX installation: this is matplotlib's own mathtext, not LaTeX.
 - Palette: Okabe-Ito, colour-blind safe, used in this order and with these meanings across the report where
   applicable:
 
@@ -501,8 +518,8 @@ files, so every construct below must work in both. When in doubt, render both an
 - Inline code (identifiers, switches, YAML keys, file names): backticks. Math symbols: `$...$`, never backticks.
 - OUTLINE.md and the sources are planning files and are not rendered. They may use Unicode symbols, and they
   may use the short-sha citation notation `path:lines@<short-sha>` of section 3.1. Text copied from them into a
-  `.qmd` is converted on the way: Unicode to math mode, and every short sha to the full-sha link of section
-  10.6. Because the conversion happens at that point and not before, neither a Unicode symbol nor a short sha in
+  `.qmd` is converted on the way: Unicode to math mode, and every short sha either to the shortcode of
+  section 3.1 when it is snapy, or to the full-sha link of section 10.6 when its package has no code pin. Because the conversion happens at that point and not before, neither a Unicode symbol nor a short sha in
   a planning file is a defect, and these files are never swept for either. NOTATION.md is different: it is rendered,
   as Appendix A. The editor keeps it in the markup of this section (ASCII only, every symbol in `$...$`, pipe
   tables within the column limits of section 10.5) and converts it to `book/chapters/appa-notation.qmd` with the
@@ -513,8 +530,9 @@ files, so every construct below must work in both. When in doubt, render both an
   silently.
 - No raw HTML and no raw LaTeX in prose. The only exception is a `{=latex}` block approved by the editor.
 - Emphasis: `*italic*` for a defined term at first use, `**bold**` only in Summary bullets and table headers.
-- Code locations appear only as links with the short text of section 10.6: long paths do not wrap in the PDF (tested:
-  a full path overflowed the line by 180 pt and, in a table, printed over the next column).
+- Code locations appear only as the shortcode of section 3.1, or — for a package with no code pin — as a link
+  with the short text of section 10.6. A bare path is never written out: long paths do not wrap in the PDF
+  (tested: a full path overflowed the line by 180 pt and, in a table, printed over the next column).
 
 ### 10.3 Equations
 - Display math: `$$ ... $$` on its own lines, followed by a label when the equation is referenced or implemented by
@@ -562,9 +580,11 @@ files, so every construct below must work in both. When in doubt, render both an
   **Status: pending CI.** Whether `\boxed` survives the MathML path has not been tested — there is no Quarto
   on the authors' machines and tech-report has no CI yet. The rule above is the safe default until the first
   CI render settles it; if CI shows `\boxed` renders in both HTML and PDF, the editor may relax this line.
-- Every equation that the code implements is followed, in the sentence after the display block, by its code link
-  (section 10.6): "@eq-ch06-dwork-pe is computed in [`hydro_forward.cpp:761-790`](...)". The link never precedes
-  the equation and never sits in a heading or a bold lead-in; a lead-in names the quantity only.
+- Every equation that the code implements is followed, in the sentence after the display block, by its code
+  citation: "@eq-ch06-dwork-pe is computed in `HydroImpl::forward`
+  ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}})". For a package with no code pin, the link of
+  section 10.6 stands in its place. The citation never precedes the equation and never sits in a heading or a
+  bold lead-in; a lead-in names the quantity only.
 
 ### 10.4 Figures
 - Every figure is a Python code cell, in the scheme's `_<scheme>.qmd`, that calls a function of the `snapy_report`
@@ -597,7 +617,8 @@ files, so every construct below must work in both. When in doubt, render both an
 - Pipe tables with a caption and label on the line after the table: `: Code map of the corrected-PE face work.
   {#tbl-ch06-dwork-code}`.
 - At most 5 columns and short cells: the PDF column is about 6.3 in wide. Put long text in prose after the table.
-  Code links in tables use the short link text of section 10.6.
+  Code in tables is the shortcode of section 3.1; a link, where its package has no code pin, uses the short
+  link text of section 10.6.
 - Numbers in tables use the same significant digits within a column; the evidence tag (section 4) goes in a footnote
   or the caption.
 - The Code and Tests layers each use one table, as in section 2; the column headers there are fixed.
@@ -605,17 +626,35 @@ files, so every construct below must work in both. When in doubt, render both an
 ### 10.6 Code citations and links
 - snapy code is cited by symbol, `{{< code <path> <symbol> >}}`, resolved at the pin of `code_pin.yml`
   (section 3.1; README, "Citing code"). That is the only form for snapy.
-- The link below is the form for a repository with no code pin, and for the passages listed in
-  `reviews/code-anchors-unmapped.tsv` — and nowhere else. Its text is `basename:lines` and its target is the
-  file at a full sha on GitHub:
+- **New and rewritten text may cite snapy only at the pin, and only through the shortcode.** A snapy citation
+  at any other sha is a review failure, whatever form it takes. There is no "full sha is fine" rule for snapy:
+  the pin is the only snapy sha the book may resolve a citation at.
+- **The declared debt.** The book still carries snapy line-number links at two older shas, from before the
+  shortcode conversion. Measured at this head over `book/**/*.qmd`:
+
+  ```bash
+  grep -rhoE 'https://github\.com/chengcli/snapy/blob/(e894700ff7aee30b52882e5202b16461413780b0|9ad0936779ae001dba65c9eafccaa7c058686c97)/[^)]*' book --include='*.qmd' | wc -l   # 563
+  grep -rlE  'https://github\.com/chengcli/snapy/blob/(e894700ff7aee30b52882e5202b16461413780b0|9ad0936779ae001dba65c9eafccaa7c058686c97)/'       book --include='*.qmd' | wc -l   # 99
+  ```
+
+  **563 links across 99 `.qmd` files.** Every one of them is a row in `reviews/code-anchors-unmapped.tsv`
+  (620 rows, 563 of them snapy at those two shas), which is the **register** of this debt.
+
+  The rule on it is a **ratchet: the count may fall and must never rise.** A PR that adds a snapy link at a
+  non-pin sha is rejected even though 563 already exist; a PR that converts some to the shortcode lowers the
+  count and removes their rows from the register. Converting the remaining 99 files is a **separate migration**
+  and is deliberately not done inside a style change.
+- The link below is the form for a repository with **no code pin** (kintera, pyharp, pydisort, commux —
+  section 3.1, "Open slots"), and for the registered passages above — and nowhere else. Its text is
+  `basename:lines` and its target is the file at a full sha on GitHub:
 
   ```markdown
   [`kintera thermo_y.cpp:275-284`](https://github.com/chengcli/kintera/blob/<full-sha>/src/thermo/thermo_y.cpp#L275-L284)
   ```
 
   The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
-  directory (`hydro/hydro.cpp:120-140`). The Code table of a scheme holds the same short links, and its "symbol"
-  column holds the anchor of section 3.1. The pins are defined in section 3.1. The
+  directory (`hydro/hydro.cpp:120-140`). A Code table holds this link form only for a package with no code
+  pin; for snapy it holds the shortcode. Its "symbol" column holds the anchor of section 3.1. The pins are defined in section 3.1. The
   editor's pin-mover script rewrites every URL when the pin moves and re-resolves each range by its anchor
   (section 3.1), and `tools/check_citations.py` checks every link (file, lines and anchor at the sha).
 - A citation is never abbreviated to a bare `:lines`. Every citation, including the second and tenth to the same
@@ -650,7 +689,8 @@ files, so every construct below must work in both. When in doubt, render both an
 ### 10.8 Bibliography
 - Papers: BibTeX in `book/references.bib`, cited as `[@key]` or `@key`. Keys follow `<firstauthor><year><word>`. Only
   the editor merges new entries. Every entry has a DOI or a URL.
-- snapy's own history (PRs, issues, commits) is linked as in section 10.6, not put in the bibliography.
+- snapy's own history (PRs, issues, commits) is linked as in section 10.6 and, per section 3.2, appears only
+  in a PROVENANCE block or a source footnote — never in prose, and never in the bibliography.
 
 ### 10.9 Rendering and the render gate
 - `quarto render doc/tech-report/book --to html` and `--to pdf`. Python for the cells: an environment with numpy,
@@ -708,11 +748,28 @@ Two conditions on how that is enforced:
 **with no code change at all**: `1.3e-17` against a committed `5.0e-17`, `1.79e-15` against `2.20e-15`,
 `1.6e-15` against `2.1e-15`, every claim still inside its threshold. Therefore:
 
-> **A freeze anchor compares a generated number against its stated tolerance. It never byte-compares an output
-> file.** A check that asserts `stdout == committed .out` is asserting the host, not the physics.
+> **Where a reported quantity is pure round-off noise, the number the text quotes is held against its stated
+> tolerance, not against the digits of one host's run.**
 
-Where a reported quantity is pure round-off noise, report it against its threshold ("below $10^{-13}$
-relative") rather than to digits no two machines agree on.
+**What the shipped harness does, and why this rule yields to it.** The harness at the pin *does* byte-compare:
+`src/tests/test_ch06.py:51` is `assert out == script.with_suffix(".out").read_text()`, and
+`src/tests/test_ch02_checks.py:13` and `src/tests/test_ch10_checks.py:13` are
+`assert result.stdout == script.with_suffix('.out').read_text()`. (`src/tests/test_checks.py:12` is different:
+it only asserts the exit status.) That is the code, so it decides:
+
+- **Byte comparison is legal where the harness itself does it.** A committed `.out` is a regression fixture,
+  and the three test modules above are the sanctioned place for it. Nobody is asked to weaken them, and a
+  failing one is a real signal that something moved.
+- **A byte comparison is not evidence for a quoted number.** When such a test fails only in a round-off digit,
+  the finding is about the fixture and the host, not the claim: check the number against its tolerance
+  (section 4), and if it holds, the fixture is stale, not the physics. The three checks above are in exactly
+  that state.
+- **Do not hand-write a byte comparison of rendered output.** Prose, tables, figures and PDF output are never
+  compared byte for byte by a rule in this guide; that was the original intent of this clause and it stands.
+  A figure is checked by re-rendering from its script (section 6), not by diffing bytes.
+
+Report a round-off quantity against its threshold ("below $10^{-13}$ relative") rather than to digits no two
+machines agree on, whatever the fixture stores.
 
 **The pending Tests layers are an explicit to-do under this rule, not a silent gap.** Measured at this head,
 **37** scheme files have a Tests layer containing "pending" and **30** contain "missing evidence". Each is a
