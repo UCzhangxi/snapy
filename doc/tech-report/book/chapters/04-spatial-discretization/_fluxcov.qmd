@@ -2,7 +2,8 @@
 
 <!-- PROVENANCE
 pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.16; docs/derivations/289-covariance-x3-curved.md@e894700ff7aee30b52882e5202b16461413780b0
+sources: OUTLINE.md 4.16; docs/derivations/289-covariance-x3-curved.md@e894700ff7aee30b52882e5202b16461413780b0;
+         chengcli/snapy#307 PR body and the commit message of snapy@ae61e392e8766ba2d25caabc478143102ee74e77 (the #307 squash-merge)
 status: draft
 -->
 
@@ -10,7 +11,10 @@ status: draft
 
 ::: {.callout-note title="At a glance"}
 - A horizontal face flux built from cell values is short by two terms at $O(\Delta x_1^2)$: a covariance and a centroid offset.
-- Switch: `SNAP_FLUX_COVARIANCE`, a build-time flag.
+- Switch: `SNAP_FLUX_COVARIANCE`, an environment variable read once per process. Since chengcli/snapy#307 it is
+  **on by default**; `0`, `false`, `off`, `no` or an empty value turn it off.
+- Since chengcli/snapy#307 a passive scalar carries its own tracer row, the row of a hydro species with the same
+  mass fraction.
 - The covariance term is the $x_1$ second moment times the product of two $x_1$ derivatives.
 - The centroid term vanishes identically in Cartesian and is of relative size $L/r$ on a curved grid.
 - Both are added to the face flux, so they telescope exactly like the flux they correct.
@@ -21,6 +25,11 @@ A finite-volume flux through an $x_2$ or $x_3$ face is the *average over that fa
 solver does not compute that: it computes a flux *from cell values*, which are averages over the cell. The two
 differ, and on a stratified atmosphere they differ at an order that matters, because the $x_1$ direction is the
 one carrying an $O(1)$ background gradient across the face.
+
+Text and rows marked "main after chengcli/snapy#307" were checked against main at
+snapy@ae61e392e8766ba2d25caabc478143102ee74e77 and re-read at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (after
+chengcli/snapy#308); the rest of this section's text was checked at snapy@e894700ff7aee30b52882e5202b16461413780b0.
+Code citations resolve at the pin of `code_pin.yml`.
 
 ### Derivation
 
@@ -75,6 +84,16 @@ gradient, estimated there at about $10^{-3}$ of the energy term. The covariance 
 coordinate is dropped too, because only $x_1$ carries an $O(1)$ background gradient and the horizontal one is
 quadratic in the perturbation.
 
+*Passive scalars (main after chengcli/snapy#307).* A passive scalar $s = \rho_d r$, with $\rho_d$ the dry density
+and $r$ its ratio to it, is a tracer like the hydro species, so its face flux needs the same tracer row,
+$\sigma_1^2\rho\,\partial_1u_n\,\partial_1q - (r_v - r_c)\,\partial_1(\rho u_nq)$, with $q = s/\rho$ its mass fraction of
+the total density. On each side of the face $q = r\,r_d$, $r_d$ being the dry fraction of the hydro state on that side,
+and the face value is the mean of the two sides. Before chengcli/snapy#307 the scalar rode on the dry-mass flux,
+which carries the dry row, minus the sum of the tracer parts, so it got $r$ times the dry row instead of its own
+tracer row. Since then it rides on the mass flux without the dry row and adds its own row, which makes its flux that
+of a hydro species with the same mass fraction [source: commit message of snapy@ae61e392e8766ba2d25caabc478143102ee74e77, first part; code
+below].
+
 ### Numerical method
 
 The correction is `_flux_covariance` at {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}. It builds the arithmetic mean
@@ -92,6 +111,29 @@ shallow-water equation of state returns nothing at `peos` ({{< code src/hydro/hy
 internal energy row to correct. The correction is applied to the $x_2$ and $x_3$ fluxes at
 `dcov` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) and `dcov` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
+*Main after chengcli/snapy#307.* The switch is read once, on unless set to `0`, `false`, `off`, `no` or empty, in
+`get_env` ({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}). When the $x_2$ face rows are built and the block has passive scalars, the stage
+keeps the face states they were built from and the dry-mass row they added, as `_cov_wl` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}); the $x_3$ faces do the
+same (`_cov_wl`, {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Since chengcli/snapy#308 the copies are made only when passive scalars exist
+(`has_scalars`), because only `scalar_flux_covariance` reads them. These face states are the seam-corrected ones of `x1_seam_rows`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), so past an internal $x_1$ seam they hold the neighbour's interior row.
+`scalar_flux_covariance` ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}) builds the scalar's row from them with the operations of
+the species rows: `q` is the mean of $r\,r_d$ over the two sides ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}), and the row is
+`cov(un, q)` plus the centroid part ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}); since chengcli/snapy#308 the centroid part is computed only
+on a grid whose `face_centroid_shift_zero` is false, and on a zero-shift (Cartesian) grid, where it is exactly zero,
+it is skipped (@sec-ch03-facemoments). The scalar module calls it in `lateral`
+({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}): when a row comes back, the scalar's Riemann flux is driven by the mass flux minus
+`flux_covariance_dry` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), and the row is added.
+
+*The $x_1$-split fix (main after chengcli/snapy#307).* The scalar's *own* face states first went in raw. Next to an
+internal $x_1$ seam, the scalar's $x_1$ differences then read this block's ghost-row reconstruction, while the hydro
+rows read the neighbour's interior row. `scalar_flux_covariance` now passes the scalar face states through the
+`seam` lambda, which fills one row with `_x1_ghost_rows` ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}), as `x1_seam_rows`
+does for the hydro states. Unsplit columns, physical $x_1$ walls and covariance-off runs are unchanged
+[source: chengcli/snapy#307 body, commit 2]. On a Cartesian column split into four $x_1$ blocks in one process,
+with a step on the middle seam, this takes the scalar-versus-species difference from $5.885\times10^{-9}$ to
+$1.250\times10^{-15}$, and the scalar's four-block-versus-one difference from $5.885\times10^{-9}$ to 0 (Tests).
+
 ### Code
 
 | what | code link | symbol | switch / condition |
@@ -105,6 +147,12 @@ internal energy row to correct. The correction is applied to the $x_2$ and $x_3$
 | the two closures | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `ctr` | |
 | applied to $x_2$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dcov` | |
 | applied to $x_3$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dcov` | |
+| the switch, on by default (main after chengcli/snapy#307) | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | `get_env` | `SNAP_FLUX_COVARIANCE` |
+| face states and dry row kept for the scalars, $x_2$ (main after #307; only with passive scalars since #308) | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_cov_wl` | switch on |
+| the same, $x_3$ (main after #307) | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_cov_wl` | switch on |
+| the scalar's tracer row (main after #307) | {{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}} | `scalar_flux_covariance` | switch on |
+| the scalar face states past an $x_1$ seam (main after #307) | {{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}} | `_x1_ghost_rows` | internal $x_1$ seam |
+| the scalar flux: mass flux without the dry row, plus its row (main after #307) | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `flux_covariance_dry` | switch on |
 
 : Code map of the horizontal flux covariance. {#tbl-ch04-fluxcov-code}
 
@@ -115,9 +163,64 @@ internal energy row to correct. The correction is applied to the $x_2$ and $x_3$
 | `tests/test_flux_covariance_rows.py` | the per-row correction | per test |
 | `tests/test_flux_covariance_seams.py` | the correction across a seam | per test |
 | `tests/test_horizontal_flux_covariance.py` | the horizontal correction | per test |
+| `test_scalar_flux_covariance_python` (main after #307; CUDA variant registered) | a passive scalar equals the same tracer carried as a hydro species, covariance on and off | $10^{-12}$ relative |
+| `test_scalar_cov_x1_split_python` (main after #307; `SNAP_FLUX_COVARIANCE=1`) | the same on a column split into four $x_1$ blocks in one process; the scalar four blocks vs one; scalar mass drift | $10^{-13}$ |
 | this chapter's check | `[C1]` the identity; `[C2]` the second moment on both grids; `[C3]` the centroid offset; `[C5]` bitwise zero at rest | symbolic, bitwise |
 
 : Tests of the horizontal flux covariance. {#tbl-ch04-fluxcov-tests}
+
+*Main after chengcli/snapy#307.* The tolerances are `TOL`
+({{< code tests/test_scalar_flux_covariance.py >}}) and `TOL` ({{< code tests/test_scalar_cov_x1_split.py >}}), and the two
+tests are registered, `test_scalar_flux_covariance` and `test_scalar_cov_x1_split`, in {{< code tests/CMakeLists.txt >}}. The values below are from the #307 body; they are not re-run
+here [source: chengcli/snapy#307 body; sha: snapy@913d04982522375a8c5fecec85a23b3ad0c3ad0e (PR head, squash-merged as
+snapy@ae61e392e8766ba2d25caabc478143102ee74e77); run: CPU Release, torch 2.10.0, kintera 2.6.2].
+
+`test_scalar_flux_covariance` uses donor-cell reconstruction and 10 RK3 steps and measures
+$\max|s-\rho_n|/\max|\rho_n|$, bound $10^{-12}$:
+
+| case | covariance on | covariance off |
+|---|---|---|
+| Cartesian $x_1$–$x_2$ | $1.049\times10^{-15}$ | $1.166\times10^{-15}$ |
+| one cubed-sphere face block | $1.285\times10^{-15}$ | $9.345\times10^{-16}$ |
+
+: Passive scalar against the same tracer as a hydro species (main after chengcli/snapy#307). {#tbl-ch04-fluxcov-scalar}
+
+With the scalar covariance hunk reverted, so that the scalar rides on the full mass flux again, the same test fails:
+the scalar and the species differ by $5.310\times10^{-7}$ (Cartesian) and $2.136\times10^{-7}$ (gnomonic-equiangle).
+
+`test_scalar_cov_x1_split` runs a Cartesian column with reflecting $x_1$ walls as four $x_1$ blocks in one process
+and as one block (donor cell, LMARS, 10 RK3 steps), and reports for the four-block run (a)
+$\max|s-\rho_n|/\max|\rho_n|$, (b) the scalar, four blocks vs one, and (c) the scalar mass drift, bound $10^{-13}$:
+
+| tree | case | (a) | (b) | (c) |
+|---|---|---|---|---|
+| without the $x_1$-split fix | step on the middle seam | $5.885\times10^{-9}$ | $5.885\times10^{-9}$ | $2.119\times10^{-12}$ |
+| without the $x_1$-split fix | steep profile | $2.905\times10^{-10}$ | $2.905\times10^{-10}$ | $2.097\times10^{-13}$ |
+| #307 head | step on the middle seam | $1.250\times10^{-15}$ | 0 | $8.654\times10^{-16}$ |
+| #307 head | steep profile | $6.907\times10^{-16}$ | 0 | $3.679\times10^{-16}$ |
+| covariance off | both | $\le 1.136\times10^{-15}$ | 0 | $\le 8.654\times10^{-16}$ |
+
+: The scalar row on a column split in $x_1$ (main after chengcli/snapy#307). {#tbl-ch04-fluxcov-x1split}
+
+The hydro side (vapour, density, pressure), four blocks vs one, is bitwise equal in every run. With the default on,
+the tests that encoded the old off default now set `SNAP_FLUX_COVARIANCE=0` in their off arm; no tolerance or
+reference changed. CPU `ctest` passes 118 of 120 at the #307 head against 116 of 118 on main 42e941d, with the same
+two failures on both (`test_python_import_path_python`, and `test_straka`, whose output-combine step fails on that
+machine). No CUDA run of the new scalar tests is reported in the body; that is **missing evidence**.
+
+**Lesson: the pre-B1 panel-seam artefact.** The scalar row was first written on a base without the B1 panel-seam
+fix. There, with the covariance on, the six-panel scalar drift of `test_flux_positivity_cubedsphere.py` was
+$5.0\times10^{-10}$ with the old flux ($r$ times the dry row), $1.4\times10^{-7}$ with the scalar's own, correct row,
+and $2.4\times10^{-15}$ with the dry row removed and no scalar row [source: commit message of snapy@ae61e392e8766ba2d25caabc478143102ee74e77,
+first part, "Open"]. The same message gives the cause: across cubed-sphere panel seams the covariance face rows
+were not single-valued (the B1 leak). The six-panel drift therefore measured the seam as much as the row, and the
+correct row looked like a regression. The row's own oracle is the one-block comparison with the same
+tracer carried as a hydro species, where no panel seam enters (@tbl-ch04-fluxcov-scalar). The seam was fixed
+separately (B1, in chengcli/snapy#303) and has its own covariance-on arm, `test_flux_positivity_cubedsphere_flux_covariance_python`
+({{< code tests/CMakeLists.txt >}}). On the #307 head that test and `test_flux_positivity_cubedsphere` pass with base and
+limited drift $2.420\times10^{-15}$ and $2.403\times10^{-15}$ against $10^{-13}$, a result the body marks as not
+pinned. The rule that follows: when a new face row raises a multi-block conservation error, test the row first
+where no seam enters, and check the seam faces are single-valued, before blaming the row.
 
 ::: {.callout-important title="Check"}
 The check is `src/snapy_report/ch04/covariance_check.py`, output
@@ -130,6 +233,8 @@ The check is `src/snapy_report/ch04/covariance_check.py`, output
 - The exact zero for an isothermal state holds in Cartesian only: the centroid term does not vanish there on a
   curved grid.
 - A column with fewer than three $x_1$ cells gets no correction at all, silently.
+- Since chengcli/snapy#307 the correction is on by default: a deck that does not set `SNAP_FLUX_COVARIANCE=0`
+  runs with it, and with the step 4.C donor limiter on its tracers (@sec-ch08-theta).
 :::
 
 1. **Terms left out on purpose.** The velocity-squared parts and the pressure Hessian are omitted. The comment
@@ -141,3 +246,8 @@ The check is `src/snapy_report/ch04/covariance_check.py`, output
 3. **Order not measured here.** This chapter's check establishes the identity, the coefficients and the exact
    zeros. It does not measure the order of the corrected horizontal flux end to end; the repository's own row
    and seam tests are the evidence for that, and no convergence ladder for it is committed.
+4. **Two scalar paths for one seam rule (main after chengcli/snapy#307).** The scalar's `seam` lambda
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}) duplicates `x1_seam_rows` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}); a shared helper is
+   a follow-up named in the #307 body.
+5. **Solid cells and the scalar row (main after chengcli/snapy#307).** With solid cells the hydro face states
+   pass through the solid forward and the scalar's do not. The #307 body calls this pre-existing and untested.
