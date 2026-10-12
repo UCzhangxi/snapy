@@ -38,7 +38,7 @@ def make_fig():
     ax.axis("off")
     boxes = {}
     for key, (x, y, label) in NODES.items():
-        boxes[key] = ax.text(x, y, label, ha="center", va="center", fontsize=8,
+        boxes[key] = ax.text(x, y, label, ha="center", va="center", fontsize=fs.SMALL_PT,
                              bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor=fs.GREEN))
     fig.canvas.draw()  # the box outlines exist only after a draw; arrows are clipped to them
     for a, b, ls, rad in EDGES:
@@ -49,6 +49,6 @@ def make_fig():
                                     connectionstyle="arc3,rad=%g" % rad,
                                     patchA=boxes[a].get_bbox_patch(), patchB=boxes[b].get_bbox_patch()))
     ax.text(-0.03, 0.06, "solid: is part of\ndashed: hands its dry-air\nincrement to\ndotted: needs",
-            fontsize=7, va="center")
+            fontsize=fs.SMALL_PT, va="center")
     fig.tight_layout()
     return fig
