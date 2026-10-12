@@ -3,14 +3,12 @@
 Analytic; it reads no data.
 """
 import numpy as np
-import matplotlib.pyplot as plt
 
 from snapy_report import figstyle as fs
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.SINGLE, 2.9))
+    fig, ax = fs.new_figure(fs.SINGLE, 2.9)
     a = np.linspace(-np.pi / 4, np.pi / 4, 201)
     xi, eta = np.meshgrid(a, a, indexing="xy")
     X, Y = np.tan(xi), np.tan(eta)

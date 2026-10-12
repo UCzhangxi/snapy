@@ -3,15 +3,13 @@
 Logical relations read from the code the scheme files cite (const_gravity.cpp:28-41, hydro.cpp:56-81 and 116-126,
 hydro_forward.cpp:813-849, implicit_hydro.cpp:266-277); no measured data.
 """
-import matplotlib.pyplot as plt
 
 from snapy_report import figstyle as fs
 from snapy_report.ch06._draw import arrow, bare, label, node
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 2.9))
+    fig, ax = fs.new_figure(fs.DOUBLE, 2.9)
     bare(ax)
     ax.set(xlim=(0, 1), ylim=(0, 1.06))
     cell = node(ax, .12, .80, "cell form\n(gravity-work: cell)")

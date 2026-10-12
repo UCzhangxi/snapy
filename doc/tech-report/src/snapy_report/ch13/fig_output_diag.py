@@ -15,17 +15,16 @@ ROWS = [("thermo", "temp, theta, theta_v, entropy, rh_<product>", "needs a therm
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 3.0))
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.0)
     ax.set_axis_off()
-    ax.text(0.0, 7, "listed name", fontsize=8, weight="bold")
-    ax.text(2.0, 7, "fields written (and a note)", fontsize=8, weight="bold")
+    ax.text(0.0, 7, "listed name", fontsize=fs.SMALL_PT, weight="bold")
+    ax.text(2.0, 7, "fields written (and a note)", fontsize=fs.SMALL_PT, weight="bold")
     for k, (name, fields, note, col) in enumerate(ROWS):
         y = 6 - k
         ax.add_patch(plt.Rectangle((-0.08, y - 0.35), 0.06, 0.7, fc=col, ec="none"))
-        ax.text(0.0, y, name, fontsize=8, family="monospace", va="center")
-        ax.text(2.0, y + 0.17, fields, fontsize=7.5, family="monospace", va="center")
-        ax.text(2.0, y - 0.25, note, fontsize=7, va="center", color=fs.GREY)
+        ax.text(0.0, y, name, fontsize=fs.SMALL_PT, family=fs.MONO, va="center")
+        ax.text(2.0, y + 0.17, fields, fontsize=fs.SMALL_PT, family=fs.MONO, va="center")
+        ax.text(2.0, y - 0.25, note, fontsize=fs.SMALL_PT, va="center", color=fs.GREY)
     ax.set_xlim(-0.1, 8.2)
     ax.set_ylim(0.4, 7.5)
     return fig

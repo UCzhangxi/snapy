@@ -5,7 +5,6 @@ snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (T = 150 K, rho = 0.1, rho_p = 10
 """
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from snapy_report import figstyle as fs
@@ -14,14 +13,13 @@ DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "sed_vse
 
 
 def make_fig():
-    fs.apply()
     a, w4, s4, w6, s6 = np.loadtxt(DATA, delimiter=",", unpack=True)
-    fig, ax = plt.subplots(figsize=(fs.SINGLE, 2.8))
+    fig, ax = fs.new_figure(fs.SINGLE, 2.8)
     ax.loglog(a, -w4, color=fs.GREEN, label=r"$10^4$ Pa, slip-corrected")
     ax.loglog(a, -s4, color=fs.BLUE, ls=":", label="Stokes (both p)")
     ax.loglog(a, -w6, color=fs.GREEN, ls="--", label=r"$10^6$ Pa, slip-corrected")
     ax.axhline(5e3, color=fs.VERMILLION, lw=0.8, ls="-.", label="upper-limit")
     ax.set_xlabel("particle radius $a_n$ [m]")
     ax.set_ylabel(r"$-w_{\mathrm{s},n}$ [m s$^{-1}$]")
-    ax.legend(frameon=False, fontsize=7)
+    ax.legend(frameon=False, fontsize=fs.SMALL_PT)
     return fig

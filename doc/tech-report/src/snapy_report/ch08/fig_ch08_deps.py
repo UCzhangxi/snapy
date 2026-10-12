@@ -4,7 +4,6 @@ Cartoon. Every edge is stated and cited in the section it comes from; this figur
 collects them. It reads no data.
 """
 from snapy_report import figstyle as fs
-import matplotlib.pyplot as plt
 
 NODES = {
     "switch": (0.4, 2.9, "`limiter`\nswitch"),
@@ -30,8 +29,7 @@ STYLE = {"turns on": (fs.GREEN, "--"), "requires": (fs.BLACK, "-"),
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 3.1))
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.1)
     ax.set_axis_off()
     for a, b, kind in EDGES:
         col, ls = STYLE[kind]
@@ -41,7 +39,7 @@ def make_fig():
                     arrowprops=dict(arrowstyle="->", color=col, ls=ls, lw=1.1,
                                     shrinkA=24, shrinkB=24, alpha=0.9))
     for key, (x, y, lab) in NODES.items():
-        ax.text(x, y, lab.replace("`", ""), ha="center", va="center", fontsize=7,
+        ax.text(x, y, lab.replace("`", ""), ha="center", va="center", fontsize=fs.SMALL_PT,
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=fs.BLACK, lw=0.8))
     seen = []
     for kind, (col, ls) in STYLE.items():

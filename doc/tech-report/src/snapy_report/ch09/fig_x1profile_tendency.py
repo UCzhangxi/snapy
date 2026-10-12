@@ -9,7 +9,7 @@ import os
 
 import numpy as np
 
-from snapy_report.ch09._style import BLACK, GREEN, VERMILLION, SINGLE, new_figure
+from snapy_report.figstyle import BLACK, GREEN, SINGLE, VERMILLION, new_figure
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "x1profile_tendency.csv")
 

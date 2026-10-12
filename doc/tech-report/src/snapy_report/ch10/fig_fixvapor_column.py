@@ -5,7 +5,6 @@ src/eos/fix_vapor_impl.h:9-79 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 """
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from snapy_report import figstyle as fs
@@ -14,9 +13,8 @@ DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "fixvapo
 
 
 def make_fig():
-    fs.apply()
     cell, before, after, major = np.loadtxt(DATA, delimiter=",", unpack=True)
-    fig, ax = plt.subplots(figsize=(fs.SINGLE, 3.2))
+    fig, ax = fs.new_figure(fs.SINGLE, 3.2)
     ax.plot(before / major * 1e3, cell, color=fs.VERMILLION, ls="--", marker="x", ms=3, label="before")
     ax.plot(after / major * 1e3, cell, color=fs.GREEN, marker="o", ms=2.5, label="after")
     ax.axvline(0., color=fs.BLACK, lw=0.8)

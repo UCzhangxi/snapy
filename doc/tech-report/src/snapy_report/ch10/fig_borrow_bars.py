@@ -5,7 +5,6 @@ src/eos/equation_of_state.cpp:110-163 and :262-268 at snapy@6fbb39750f62b83df096
 """
 import os
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from snapy_report import figstyle as fs
@@ -14,9 +13,8 @@ DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "borrow_
 
 
 def make_fig():
-    fs.apply()
     before, after = np.loadtxt(DATA, delimiter=",", unpack=True)
-    fig, ax = plt.subplots(figsize=(fs.SINGLE, 2.4))
+    fig, ax = fs.new_figure(fs.SINGLE, 2.4)
     x = np.arange(3)
     ax.bar(x - 0.18, before * 1e4, 0.34, color=fs.SKY, edgecolor=fs.BLACK, label="before")
     ax.bar(x + 0.18, after * 1e4, 0.34, color=fs.GREEN, edgecolor=fs.BLACK, hatch="//", label="after")

@@ -21,21 +21,21 @@ ROWS = [
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 3.0))
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.0)
     ax.set_axis_off()
     n = len(ROWS)
     for k, (tok, integral, op, col) in enumerate(ROWS):
         y = n - k
-        ax.text(0.0, y, tok, fontsize=8, family="monospace", va="center", color=fs.BLACK)
+        ax.text(0.0, y, tok, fontsize=fs.SMALL_PT, family=fs.MONO, va="center", color=fs.BLACK)
         ax.add_patch(plt.Rectangle((1.55, y - 0.35), 0.12, 0.7, fc=col, ec="none"))
-        ax.text(1.8, y, integral, fontsize=8, va="center")
-        ax.text(6.3, y, op, fontsize=8, va="center", ha="right", color=fs.GREEN if op != "global" else fs.GREY)
-    ax.text(0.0, n + 1, "token", fontsize=8, weight="bold")
-    ax.text(1.8, n + 1, "what it sums over interior cells and local blocks", fontsize=8, weight="bold")
-    ax.text(6.3, n + 1, "reduce to root", fontsize=8, weight="bold", ha="right")
+        ax.text(1.8, y, integral, fontsize=fs.SMALL_PT, va="center")
+        ax.text(6.3, y, op, fontsize=fs.SMALL_PT, va="center", ha="right",
+                color=fs.GREEN if op != "global" else fs.GREY)
+    ax.text(0.0, n + 1, "token", fontsize=fs.SMALL_PT, weight="bold")
+    ax.text(1.8, n + 1, "what it sums over interior cells and local blocks", fontsize=fs.SMALL_PT, weight="bold")
+    ax.text(6.3, n + 1, "reduce to root", fontsize=fs.SMALL_PT, weight="bold", ha="right")
     ax.plot([0, 6.3], [5.5, 5.5], color=fs.GREY, lw=0.6, ls="--")
-    ax.text(4.2, 5.55, "run-to-date meters below", fontsize=7, color=fs.GREY, ha="center", va="center",
+    ax.text(4.2, 5.55, "run-to-date meters below", fontsize=fs.SMALL_PT, color=fs.GREY, ha="center", va="center",
             bbox=dict(fc="white", ec="none", pad=1))
     ax.set_xlim(-0.05, 6.35)
     ax.set_ylim(0.4, n + 1.4)

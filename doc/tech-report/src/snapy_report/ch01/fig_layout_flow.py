@@ -1,11 +1,9 @@
 """Storage cartoon at snapy@e894700ff7aee30b52882e5202b16461413780b0; no data."""
-import matplotlib.pyplot as plt
 from snapy_report import figstyle as fs
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 2.2))
+    fig, ax = fs.new_figure(fs.DOUBLE, 2.2)
     for x, label in enumerate([r'$i-1$', r'$i$', r'$i+1$']):
         fs.cell_box(ax, x, 0, ghost=(x == 0))
         fs.cell_value(ax, x+0.5, 0.5)
@@ -18,5 +16,4 @@ def make_fig():
     ax.text(2, 1.12, 'interior cell averages', ha='center')
     ax.set(xlim=(-0.1,3.1), ylim=(-0.45,1.4))
     ax.axis('off')
-    fig.tight_layout()
     return fig

@@ -4,14 +4,12 @@ Positions from src/coord/spherical_polar.cpp:17-21 and src/coord/coordinate.cpp:
 r in [1, 2] so that the three marks separate. A cartoon; it reads no data.
 """
 import numpy as np
-import matplotlib.pyplot as plt
 
 from snapy_report import figstyle as fs
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.SINGLE, 2.8))
+    fig, ax = fs.new_figure(fs.SINGLE, 2.8)
     rm, rp = 1.0, 2.0
     t = np.linspace(np.pi / 2 - 0.35, np.pi / 2 + 0.35, 60)
     for r in (rm, rp):
@@ -26,10 +24,10 @@ def make_fig():
     for r, lab, mk, col, ylab in marks:
         ax.plot(0, r, mk, color=col, mec=fs.BLACK, mew=0.5, ms=6)
         ax.plot([0.05, 0.45], [r, ylab], color=col, lw=0.6)
-        ax.text(0.48, ylab, "%s, r = %.3f" % (lab, r), va="center", fontsize=8)
+        ax.text(0.48, ylab, "%s, r = %.3f" % (lab, r), va="center", fontsize=fs.SMALL_PT)
     ax.annotate("", xy=(0.0, rp + 0.25), xytext=(0.0, rp - 0.1),
                 arrowprops=dict(arrowstyle="->", color=fs.GREEN))
-    ax.text(0.05, rp + 0.12, r"radial source $\langle r^{-1}\rangle$", fontsize=8, color=fs.GREEN)
+    ax.text(0.05, rp + 0.12, r"radial source $\langle r^{-1}\rangle$", fontsize=fs.SMALL_PT, color=fs.GREEN)
     ax.set(xlim=(-0.9, 2.1), ylim=(0.8, 2.45), aspect="equal")
     ax.axis("off")
     return fig

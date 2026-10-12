@@ -8,8 +8,7 @@ with an analytic profile; it reads no data.
 import numpy as np
 from matplotlib.patches import Rectangle
 
-from snapy_report.ch09._style import (BLACK, BLUE, CELL_FILL, GHOST_FILL, GREEN, PURPLE, SKY,
-                                      VERMILLION, SINGLE, new_figure)
+from snapy_report.figstyle import BLACK, BLUE, CELL_FILL, GHOST_FILL, GREEN, PURPLE, SINGLE, SKY, VERMILLION, new_figure
 
 
 def make_fig():

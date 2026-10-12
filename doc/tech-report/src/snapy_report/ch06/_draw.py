@@ -5,7 +5,7 @@ from snapy_report import figstyle as fs
 
 
 def node(ax, x, y, text, edge=fs.GREEN):
-    return ax.text(x, y, text, ha="center", va="center", fontsize=8,
+    return ax.text(x, y, text, ha="center", va="center", fontsize=fs.SMALL_PT,
                    bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor=edge))
 
 
@@ -20,7 +20,7 @@ def arrow(ax, a, b, style="-|>", ls="-", color=fs.BLACK, lw=1.0):
 
 def label(ax, x, y, text, color=fs.BLACK):
     """unboxed text that arrows can still be clipped to (an invisible outline)"""
-    return ax.text(x, y, text, ha="center", va="center", fontsize=8, color=color,
+    return ax.text(x, y, text, ha="center", va="center", fontsize=fs.SMALL_PT, color=color,
                    bbox=dict(boxstyle="round,pad=0.25", facecolor="none", edgecolor="none"))
 
 

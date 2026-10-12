@@ -12,7 +12,8 @@ module:
   * `font`: a font set inline (a `fontsize`, `fontfamily`, `family`, `fontname`, `fontproperties` or `labelsize`
     argument, `size=` in a text call, a legend `prop` with a size or family, `FontProperties(...)`,
     `set_fontsize`/`set_family`/`set_fontfamily`). A value read from `snapy_report.figstyle`
-    (`fontsize=fs.SMALL_PT`, with `fs` bound to that module) is not counted: that is styling through figstyle.
+    (`fontsize=fs.SMALL_PT`, with `fs` bound to that module, or `fontsize=SMALL_PT` after
+    `from snapy_report.figstyle import SMALL_PT`) is not counted: that is styling through figstyle.
 
 `src/snapy_report/figstyle.py` itself is exempt. Counts are summed per chapter (`ch05`, `appe`, ...; `package` for
 files directly in `src/snapy_report/`, `common` for `chapters/common/`) and compared with the committed baseline
@@ -73,7 +74,8 @@ def _dotted(node) -> str:
 class _Scan(ast.NodeVisitor):
     def __init__(self):
         self.hits: list[tuple[int, str, str]] = []
-        self.figstyle_names: set[str] = set()
+        self.figstyle_names: set[str] = set()   # names bound to the module (`fs`)
+        self.figstyle_values: set[str] = set()  # names imported from it (`SMALL_PT`)
 
     # imports -----------------------------------------------------------------------------------------------------
     def _style_module(self, module: str, name: str) -> bool:
@@ -93,8 +95,9 @@ class _Scan(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node):
         module = node.module or ""
-        if module == FIGSTYLE:
-            return  # names taken from figstyle itself
+        if module == FIGSTYLE:  # names taken from figstyle itself
+            self.figstyle_values.update(a.asname or a.name for a in node.names)
+            return
         styled = []
         for a in node.names:
             if module == "snapy_report" and a.name == "figstyle":
@@ -117,6 +120,8 @@ class _Scan(ast.NodeVisitor):
         base = value
         while isinstance(base, ast.Attribute):
             base = base.value
+        if isinstance(base, ast.Name) and base is value:
+            return base.id in self.figstyle_values
         return isinstance(base, ast.Name) and base.id in self.figstyle_names
 
     def visit_Call(self, node):

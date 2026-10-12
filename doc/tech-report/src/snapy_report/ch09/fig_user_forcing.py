@@ -6,12 +6,12 @@ A cartoon; it reads no data.
 """
 from matplotlib.patches import FancyBboxPatch
 
-from snapy_report.ch09._style import BLACK, GREEN, ORANGE, SKY, VERMILLION, DOUBLE, new_figure
+from snapy_report.figstyle import BLACK, DOUBLE, GREEN, ORANGE, SKY, SMALL_PT, VERMILLION, new_figure
 
 
 def box(ax, x, y, w, h, text, fc):
     ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.03", fc=fc, ec=BLACK, lw=0.8))
-    ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=8)
+    ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=SMALL_PT)
 
 
 def arrow(ax, a, b, color=BLACK):
@@ -30,8 +30,8 @@ def make_fig():
     arrow(ax, (2.7, 1.7), (3.3, 1.7))
     arrow(ax, (5.5, 1.9), (6.3, 2.25))
     arrow(ax, (5.5, 1.5), (6.3, 1.1))
-    ax.text(8.1, 0.3, "any other key, or a wrong shape: error", ha="center", fontsize=8,
+    ax.text(8.1, 0.3, "any other key, or a wrong shape: error", ha="center", fontsize=SMALL_PT,
             color=VERMILLION)
-    ax.text(8.1, 3.0, "dry-density part carries the tracers", ha="center", fontsize=8, color=GREEN)
+    ax.text(8.1, 3.0, "dry-density part carries the tracers", ha="center", fontsize=SMALL_PT, color=GREEN)
     arrow(ax, (8.1, 2.9), (8.1, 2.72), GREEN)
     return fig
