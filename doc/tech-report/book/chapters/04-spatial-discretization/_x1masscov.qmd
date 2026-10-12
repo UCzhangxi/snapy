@@ -30,7 +30,7 @@ $$
  = \langle w\rangle + \frac{h^2}{12}\,\frac{\rho' w'}{\rho} + O(h^4).
 $$ {#eq-ch04-x1masscov-gap}
 
-In the code, the second term of @eq-ch04-x1masscov-gap is subtracted from the stored velocity `wx1` ([`hydro_forward.cpp:333-334`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L333-L334)).
+In the code, the second term of @eq-ch04-x1masscov-gap is subtracted from the stored velocity `wx1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 So the quantity the reconstruction is handed is not the cell average of the velocity: in a stratified column,
 where $\rho'$ is $O(1)$, it is the cell average plus a second-order term. Reconstructing it and multiplying by
@@ -65,31 +65,31 @@ from snapy_report.ch04.fig_x1cov_order import make_fig
 make_fig()
 ```
 
-The block is at `x1_mass_covariance` ([`hydro_forward.cpp:314-344`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L344)), inside the $x_1$ sweep and before the Riemann solver
-runs. The two derivatives use the centred helper at `d1_centred` ([`hydro_forward.cpp:40-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L40-L52)), which copies its
+The block is at `x1_mass_covariance` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), inside the $x_1$ sweep and before the Riemann solver
+runs. The two derivatives use the centred helper at `d1_centred` ({{< code src/hydro/hydro_forward.cpp d1_centred >}}), which copies its
 end values rather than extrapolating. The correction itself is the single line at
-`dx1f` ([`hydro_forward.cpp:334`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L334)), and it is applied to the reconstructed velocity, so the solver and
+`dx1f` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and it is applied to the reconstructed velocity, so the solver and
 everything downstream see the corrected value.
 
-The one-sided wall slope is at `one_sided` ([`hydro_forward.cpp:320-332`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L320-L332)), applied only at a boundary that is both
+The one-sided wall slope is at `one_sided` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), applied only at a boundary that is both
 physical and not outflow; an outflow boundary keeps the centred difference, since there is no mirror to
-distrust. The odd mirror of the corrected velocity follows at `narrow` ([`hydro_forward.cpp:335-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L335-L343)).
+distrust. The odd mirror of the corrected velocity follows at `narrow` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
-The three-cell requirement is enforced where the switch is read, at `TORCH_CHECK` ([`hydro.cpp:104-112`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L104-L112)): a block
+The three-cell requirement is enforced where the switch is read, at `TORCH_CHECK` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}): a block
 with fewer than three $x_1$ cells fails with a message naming the switch rather than silently reading a ghost.
-The switch itself is read once per process at `x1_mass_covariance` ([`hydro.cpp:231-239`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L231-L239)).
+The switch itself is read once per process at `x1_mass_covariance` ({{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}}).
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the correction block | [`hydro_forward.cpp:314-344`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L314-L344) | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
-| the centred derivative | [`hydro_forward.cpp:40-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L40-L52) | `d1_centred` | |
-| the correction itself | [`hydro_forward.cpp:334`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L334) | `dx1f` | |
-| one-sided slope at a wall | [`hydro_forward.cpp:320-332`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L320-L332) | `one_sided` | physical, not outflow |
-| odd mirror of the result | [`hydro_forward.cpp:335-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L335-L343) | `flip` | physical, not outflow |
-| the three-cell check | [`hydro.cpp:104-112`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L104-L112) | `TORCH_CHECK` | |
-| the switch, read once | [`hydro.cpp:231-239`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L231-L239) | `x1_mass_covariance` | |
+| the correction block | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
+| the centred derivative | {{< code src/hydro/hydro_forward.cpp d1_centred >}} | `d1_centred` | |
+| the correction itself | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dx1f` | |
+| one-sided slope at a wall | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `one_sided` | physical, not outflow |
+| odd mirror of the result | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flip` | physical, not outflow |
+| the three-cell check | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | |
+| the switch, read once | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `x1_mass_covariance` | |
 
 : Code map of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-code}
 

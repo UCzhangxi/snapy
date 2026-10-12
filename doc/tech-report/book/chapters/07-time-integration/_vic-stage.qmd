@@ -41,7 +41,7 @@ On a stiff decay $u' = -\lambda u$ handled entirely by the correction, rk3 damps
 $z = \lambda\Delta t \to \infty$ to $1/12$ per step with the weighting and to $1/3$ without it (`[C3]`). Every
 integrator keeps $|R(z)| \le 1$ on $z\in[10^{-3},10^8]$, and the decay converges at first order (`[C4]`).
 
-In the code, the weighted step of @eq-ch07-vic-stage is `dt_corr` ([`hydro_forward.cpp:929-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L932)).
+In the code, the weighted step of @eq-ch07-vic-stage is `dt_corr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 ### Numerical method
 
@@ -56,11 +56,11 @@ from snapy_report.ch07.fig_vic_stage import make_fig
 make_fig()
 ```
 
-`MeshBlockImpl::advance_local` publishes the stage index `rk_stage` before each stage ([`meshblock.cpp:603`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L603)). The hydro forward pass then scales
-only the step handed to the correction, by `wght2` ([`hydro_forward.cpp:929-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L932)). If no stage was
+`MeshBlockImpl::advance_local` publishes the stage index `rk_stage` before each stage ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). The hydro forward pass then scales
+only the step handed to the correction, by `wght2` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). If no stage was
 published, a direct caller gets a one-time warning and the full step, through `TORCH_WARN_ONCE`
-([`hydro_forward.cpp:933-943`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L933-L943)). The weighted step goes into `_apply_implicit_correction`
-([`hydro_forward.cpp:968`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L968)). Inside the solve it sets both the $I/\Delta t$ diagonal
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The weighted step goes into `_apply_implicit_correction`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Inside the solve it sets both the $I/\Delta t$ diagonal
 of @eq-ch07-vic-blocks and the right-hand side $\Delta\mathbf U/\Delta t$ of @sec-ch07-vic-sweep. The stage
 combination itself is the integrator's, with `wght2` ([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)).
 
@@ -68,10 +68,10 @@ combination itself is the integrator's, with `wght2` ([`pyharp integrator.cpp:10
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| weighted step | [`hydro_forward.cpp:929-932`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L932) | `wght2` | three-stage integrator |
-| fallback warning | [`hydro_forward.cpp:933-943`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L933-L943) | `TORCH_WARN_ONCE` | |
-| call | [`hydro_forward.cpp:968`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L968) | `_apply_implicit_correction` | |
-| stage index | [`hydro/hydro.hpp:211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L211) | `rk_stage` | |
+| weighted step | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wght2` | three-stage integrator |
+| fallback warning | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `TORCH_WARN_ONCE` | |
+| call | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_apply_implicit_correction` | |
+| stage index | {{< code src/hydro/hydro.hpp HydroImpl::rk_stage >}} | `rk_stage` | |
 | stage weights | [`pyharp integrator.cpp:33-85`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L85) | `wght2` | `integration/type` |
 
 : Code map of the stage-weighted implicit step. {#tbl-ch07-vic-stage-code}

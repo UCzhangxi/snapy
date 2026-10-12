@@ -23,7 +23,7 @@ fallback: it looks along the whole $x_1$ column for mass to move.
 ### Derivation
 
 The scheme is a redistribution, so the thing to establish is what it conserves. It weights by cell
-volume at `cell_volume` ([`equation_of_state.cpp:271-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L271-L272)), which is the point recorded in the code comment
+volume at `cell_volume` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), which is the point recorded in the code comment
 there: a column repair that moved *densities* would not conserve mass on a non-uniform grid, because
 equal densities in unequal cells are unequal masses. Weighting by volume makes the redistribution
 conservative in mass.
@@ -35,25 +35,25 @@ conservation property above is read from the code and its comment; it is not mea
 
 ### Numerical method
 
-The repair is the lambda at `split` ([`equation_of_state.cpp:274-300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L300)). When the $x_1$ axis is split
+The repair is the lambda at `split` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). When the $x_1$ axis is split
 across ranks it gathers the column first, so the repair sees the whole column rather than one block's
 piece of it.
 
 The two callers are deliberately different, and the comment at
-`repair_column` ([`equation_of_state.cpp:274-276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L276)) says why: clouds tolerate a column that cannot be repaired and
-fall back to a clamp at `clamp_min_` ([`equation_of_state.cpp:310`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L310)), while vapour must throw rather than copy
-a bad gathered column back, which is the check at `err` ([`equation_of_state.cpp:296-299`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L296-L299)). A failure
+`repair_column` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) says why: clouds tolerate a column that cannot be repaired and
+fall back to a clamp at `clamp_min_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), while vapour must throw rather than copy
+a bad gathered column back, which is the check at `err` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). A failure
 in the vapour path is therefore a hard stop, not a silent repair.
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| volume weighting, so mass is conserved | [`equation_of_state.cpp:271-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L271-L272) | `vol` | |
-| the two callers differ by design | [`equation_of_state.cpp:274-276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L276) | `repair_column` | |
-| the repair | [`equation_of_state.cpp:274-300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L274-L300) | `repair_column` | vapour negative |
-| vapour must succeed | [`equation_of_state.cpp:296-299`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L296-L299) | `TORCH_CHECK` | `require_success` |
-| clouds clamp instead | [`equation_of_state.cpp:310`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L310) | `clamp_min_` | parentless or unrepairable |
+| volume weighting, so mass is conserved | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `vol` | |
+| the two callers differ by design | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `repair_column` | |
+| the repair | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `repair_column` | vapour negative |
+| vapour must succeed | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `TORCH_CHECK` | `require_success` |
+| clouds clamp instead | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `clamp_min_` | parentless or unrepairable |
 
 : Code map of the vapour column repair. {#tbl-ch08-fixvapor-code}
 

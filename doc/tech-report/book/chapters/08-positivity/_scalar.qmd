@@ -27,7 +27,7 @@ code comment points back to the hydro call site rather than repeating it.
 
 The one thing specific to scalars is the upper bound. A scalar that represents a fraction is bounded
 above by the positivity of its complement, so enforcing non-negativity on the scalar alone is not
-enough to keep it below one. The code comment at `the` ([`scalar.cpp:28-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L28-L32)) records this; the
+enough to keep it below one. The code comment at `the` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}) records this; the
 chapter records it as a stated design intent and does not claim a derivation, because none is committed.
 
 Because the derivation is @sec-ch08-theta's, so is its check: the guarantee `[C1]`, the inactivity away from
@@ -38,9 +38,9 @@ no committed derivation to check.
 
 ### Numerical method
 
-The call is `_flux1` ([`scalar.cpp:158-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L158-L162)), which builds the factors with the same
+The call is `_flux1` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), which builds the factors with the same
 `flux_positivity_theta`, counts the cells it limited, and scales through the synchronised factors. The
-synchronisation is the lambda at `theta_opts` ([`scalar.cpp:140-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L140-L155)): it puts the factors into a variable
+synchronisation is the lambda at `theta_opts` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}): it puts the factors into a variable
 map, exchanges them with interpolation switched off, and applies the physical boundary functions, which
 is exactly the fill the limiter's contract requires.
 
@@ -48,9 +48,9 @@ is exactly the fill the limiter's contract requires.
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the scalar limiter call | [`scalar.cpp:158-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L158-L162) | `flux_positivity_theta` | limiter on |
-| the factor exchange | [`scalar.cpp:140-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L140-L155) | `sync_theta` | |
-| the complement bound, as intent | [`scalar.cpp:28-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L28-L32) | `positivity` | |
+| the scalar limiter call | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `flux_positivity_theta` | limiter on |
+| the factor exchange | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | |
+| the complement bound, as intent | {{< code src/scalar/scalar.cpp ScalarImpl::reset >}} | `positivity` | |
 
 : Code map of the passive-scalar limiter. {#tbl-ch08-scalar-code}
 

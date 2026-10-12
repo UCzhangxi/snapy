@@ -37,7 +37,7 @@ $$
 $$ {#eq-ch09-heating-body}
 
 with $c_v$ the mixture value of the equation of state at the cell's state, in `BodyHeatImpl::forward`
-([`body_heat.cpp:43-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L43-L55)). For a
+({{< code src/forcing/body_heat.cpp BodyHeatImpl::forward >}}). For a
 constant $c_v$ at fixed density this raises $T$ by exactly $\dot T\Delta t$ [check
 `src/snapy_report/ch09/heating_check.py`, output `heating_check.out`, `[C3]`]; a $c_v$ that depends on $T$ makes
 it first order in $\Delta t$.
@@ -50,7 +50,7 @@ $$
 $$ {#eq-ch09-heating-flux}
 
 with $h_{\mathrm b}$ the width of the boundary cell, `dz`, in `TopCoolImpl::forward`
-([`top_cool.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L42-L56)) and `BotHeatImpl::forward` ([`bot_heat.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L42-L56)). The energy delivered to a column of unit horizontal area is
+({{< code src/forcing/top_cool.cpp TopCoolImpl::forward >}}) and `BotHeatImpl::forward` ({{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}}). The energy delivered to a column of unit horizontal area is
 $\sum_i\Delta E_ih_i = \Delta t\,F\,\bar h/h_{\mathrm b}$, with $\bar h$ the mean width of the $d$ cells: exactly $F$
 on uniform cells (`[C1]`), and $F$ times $\bar h/h_{\mathrm b}$ otherwise, 0.872 for cells growing upward by 10 % with
 $d=4$ (`[C2]`). On a spherical-polar grid the cell volume is not $h$ times a fixed area, so the delivered power is
@@ -79,22 +79,22 @@ the boundary fill overwrites. They run in every stage, explicit, in the forcing 
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| options, `pmin` $\le$ `pmax` | [`body_heat.cpp:15-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L15-L30) | `BodyHeatOptionsImpl::from_yaml` | `body-heat` |
-| @eq-ch09-heating-body | [`body_heat.cpp:43-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L43-L55) | `BodyHeatImpl::forward` | |
-| options, `flux` $\le0$ | [`top_cool.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L16-L30) | `TopCoolOptionsImpl::from_yaml` | `top-cool` |
-| @eq-ch09-heating-flux, top | [`top_cool.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L42-L56) | `TopCoolImpl::forward` | |
-| options, `flux` $\ge0$ | [`bot_heat.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L16-L30) | `BotHeatOptionsImpl::from_yaml` | `bot-heat` |
-| @eq-ch09-heating-flux, bottom | [`bot_heat.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L42-L56) | `BotHeatImpl::forward` | |
+| options, `pmin` $\le$ `pmax` | {{< code src/forcing/body_heat.cpp BodyHeatOptionsImpl::from_yaml >}} | `BodyHeatOptionsImpl::from_yaml` | `body-heat` |
+| @eq-ch09-heating-body | {{< code src/forcing/body_heat.cpp BodyHeatImpl::forward >}} | `BodyHeatImpl::forward` | |
+| options, `flux` $\le0$ | {{< code src/forcing/top_cool.cpp TopCoolOptionsImpl::from_yaml >}} | `TopCoolOptionsImpl::from_yaml` | `top-cool` |
+| @eq-ch09-heating-flux, top | {{< code src/forcing/top_cool.cpp TopCoolImpl::forward >}} | `TopCoolImpl::forward` | |
+| options, `flux` $\ge0$ | {{< code src/forcing/bot_heat.cpp BotHeatOptionsImpl::from_yaml >}} | `BotHeatOptionsImpl::from_yaml` | `bot-heat` |
+| @eq-ch09-heating-flux, bottom | {{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}} | `BotHeatImpl::forward` | |
 
 : Code map of the heating modules. {#tbl-ch09-heating-code}
 
-1. Each `from_yaml` checks its keys and signs ([`body_heat.cpp:15-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L15-L30),
-   [`top_cool.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L16-L30), [`bot_heat.cpp:16-30`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L16-L30)).
+1. Each `from_yaml` checks its keys and signs ({{< code src/forcing/body_heat.cpp BodyHeatOptionsImpl::from_yaml >}},
+   {{< code src/forcing/top_cool.cpp TopCoolOptionsImpl::from_yaml >}}, {{< code src/forcing/bot_heat.cpp BotHeatOptionsImpl::from_yaml >}}).
 2. `BodyHeatImpl::forward` masks the interior by the pressure band and adds @eq-ch09-heating-body
-   ([`body_heat.cpp:43-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/body_heat.cpp#L43-L55)).
+   ({{< code src/forcing/body_heat.cpp BodyHeatImpl::forward >}}).
 3. `TopCoolImpl::forward` and `BotHeatImpl::forward` return at once unless the block's upper or lower $x_1$ face is
-   physical, then add @eq-ch09-heating-flux ([`top_cool.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_cool.cpp#L42-L56),
-   [`bot_heat.cpp:42-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_heat.cpp#L42-L56)).
+   physical, then add @eq-ch09-heating-flux ({{< code src/forcing/top_cool.cpp TopCoolImpl::forward >}},
+   {{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}}).
 
 ### Tests
 

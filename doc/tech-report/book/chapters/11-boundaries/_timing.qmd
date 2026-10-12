@@ -18,7 +18,7 @@ Order: exact discrete operation or local derivation below; coupled solver order 
 This is an operator-order contract. Copying neighbour values and applying a physical wall need not commute
 at their overlap: exchange can overwrite a wall corner. Reapplying the wall map to the newly exchanged strip
 restores the same parity relation as on the owned strip, provided the callback uses interior values and is
-idempotent. The registry contract (`BC_FUNCTION`, [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39)) and `refresh` ([`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978)) encode these requirements.
+idempotent. The registry contract (`BC_FUNCTION`, [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39)) and `refresh` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}) encode these requirements.
 C1 includes a two-dimensional corner where exchange overwrites a prior mirror and a restricted second fill
 restores parity. This is an exact discrete ownership check, not a convergence proof.
 
@@ -50,27 +50,27 @@ make_fig()
 
 ### Code
 
-The primitive initialization `exchange` calls are explicit in [`meshblock.cpp:375-396`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L375-L396).
-Auxiliary scalar `sync_theta` exchanges raw data and then applies face functions with scalar type in [`scalar.cpp:140-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L140-L153).
+The primitive initialization `exchange` calls are explicit in {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize >}}.
+Auxiliary scalar `sync_theta` exchanges raw data and then applies face functions with scalar type in {{< code src/scalar/scalar.cpp ScalarImpl::forward >}}.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| init | [`meshblock.cpp:401-431`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L431) | `boundary_reference_w` | See Summary |
-| finalinit | [`meshblock.cpp:454-500`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L454-L500) | `fill_solid_hydro_u` | See Summary |
+| init | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}} | `boundary_reference_w` | See Summary |
+| finalinit | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}} | `fill_solid_hydro_u` | See Summary |
 | advance | [`meshblock.cpp:545-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L572) | `exchange_ghost_zones` | See Summary |
-| refill | [`meshblock.cpp:782-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L782-L842) | `apply_boundaries` | See Summary |
-| mesh | [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365) | `advance_local` | See Summary |
-| exchange | [`meshblock.cpp:913-929`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L929) | `exchange_ghost_zones` | See Summary |
-| corner | [`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978) | `refresh` | See Summary |
-| meshex | [`mesh.cpp:389-395`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L395) | `exchange_ghost_zones` | See Summary |
+| refill | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_boundaries` | See Summary |
+| mesh | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `advance_local` | See Summary |
+| exchange | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | See Summary |
+| corner | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `refresh` | See Summary |
+| meshex | {{< code src/mesh/mesh.cpp MeshImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | See Summary |
 | registry | [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39) | `BC_FUNCTION` | See Summary |
 
 : Implementation sites for timing. {#tbl-ch11-timing-code}
 
-1. Initialize and capture independent references before physical fills. The anchor `boundary_reference_w` is in [`meshblock.cpp:401-431`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L431).
-2. Use the ordering of the selected block or mesh forward API; do not assume their exchange calls occupy the same position. The anchor `advance_local` is in [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365).
-3. After block exchange, refresh x1 wall corners with the conserved/scalar representation and recompute scalar ratios. The anchor `refresh` is in [`meshblock.cpp:951-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L978).
-4. At stage end, fill after enabled saturation adjustment and gravity correction. The anchor `apply_boundaries` is in [`meshblock.cpp:782-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L782-L842).
+1. Initialize and capture independent references before physical fills. The anchor `boundary_reference_w` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}}.
+2. Use the ordering of the selected block or mesh forward API; do not assume their exchange calls occupy the same position. The anchor `advance_local` is in {{< code src/mesh/mesh.cpp MeshImpl::forward >}}.
+3. After block exchange, refresh x1 wall corners with the conserved/scalar representation and recompute scalar ratios. The anchor `refresh` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}.
+4. At stage end, fill after enabled saturation adjustment and gravity correction. The anchor `apply_boundaries` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
 
 ### Tests
 
@@ -92,7 +92,7 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 
 ::: {.callout-warning title="Limits"}
 Only x1 callbacks participate in this refresh; outflow is excluded. The public `Mesh::exchange_ghost_zones`
-method only constructs sync options and calls exchange ([`mesh.cpp:389-395`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L395)), so callers cannot assume it supplies the
+method only constructs sync options and calls exchange ({{< code src/mesh/mesh.cpp MeshImpl::exchange_ghost_zones >}}), so callers cannot assume it supplies the
 block method's refresh. Custom callbacks depending on the full orthogonal shape violate the documented contract.
 
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

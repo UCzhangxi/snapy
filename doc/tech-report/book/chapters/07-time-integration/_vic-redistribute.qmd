@@ -45,7 +45,7 @@ of @eq-ch07-vic-faces (`[C3]`). The host measures how far the clamps moved the r
 "clamp residual". A face that asks for more than the donor holds empties the dry donor to round-off. The species
 keep a margin of 4096 ulp, the dry clamp mark is set, and the residual shows the clamp (`[C4]`, `[C5]`).
 
-In the code, @eq-ch07-vic-faces is the prefix sum into `MASS` ([`vic_redistribute_impl.h:95-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L95-L101)).
+In the code, @eq-ch07-vic-faces is the prefix sum into `MASS` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
 
 ### Numerical method
 
@@ -60,35 +60,35 @@ from snapy_report.ch07.fig_vic_redist import make_fig
 make_fig()
 ```
 
-Pass 1 forms $\phi_i$, $R$ and $\sum m$, through `explicit_total` ([`vic_redistribute_impl.h:82-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L82-L93)).
-Pass 2 is the prefix sum of @eq-ch07-vic-faces into `MASS` ([`vic_redistribute_impl.h:95-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L95-L101)).
+Pass 1 forms $\phi_i$, $R$ and $\sum m$, through `explicit_total` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
+Pass 2 is the prefix sum of @eq-ch07-vic-faces into `MASS` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
 Pass 3a moves the dry gas with the dry fraction of the donor, carrying `dryfrac` upward
-([`vic_redistribute_impl.h:104-132`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L104-L132)). Where it clamps, it sets the mark that becomes the VIC clamp
+({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}). Where it clamps, it sets the mark that becomes the VIC clamp
 cause of @sec-ch07-redo. Pass 3b moves each species, keeping `keep` $= 1 - 4096\epsilon$ of the donor's
-species density ([`vic_redistribute_impl.h:134-160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L134-L160)). `vic_redistribute_cell` then writes the
+species density ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}). `vic_redistribute_cell` then writes the
 final tendencies: density plus the dry increment, the momenta and energy from $\delta$, and the species
-increments ([`vic_redistribute_impl.h:165-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L165-L185)).
+increments ({{< code src/implicit/vic_redistribute_impl.h vic_redistribute_cell >}}).
 
 The CPU dispatch splits each column at solid cells and redistributes each fluid segment on its own, through
-`vic_constituent_column` ([`implicit_dispatch.cpp:199-214`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L199-L214)). On CUDA the column passes are one
+`vic_constituent_column` ({{< code src/implicit/implicit_dispatch.cpp vic_redistribute_cpu >}}). On CUDA the column passes are one
 thread per column and the cell update one thread per cell. The host checks the clamp residual cell by cell into
-`_clamp_residual` ([`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378)). The passive scalars, which are per dry mass,
+`_clamp_residual` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The passive scalars, which are per dry mass,
 move with the clamped dry-gas transfer from their donor cell, through `mass_corr`
-([`meshblock.cpp:663-676`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L663-L676)).
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| column passes | [`vic_redistribute_impl.h:77-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L77-L161) | `vic_constituent_column` | |
-| face prefix sum | [`vic_redistribute_impl.h:95-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L95-L101) | `MASS` | |
-| dry-gas transfer | [`vic_redistribute_impl.h:104-132`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L104-L132) | `dryfrac` | |
-| species transfer | [`vic_redistribute_impl.h:134-160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L134-L160) | `keep` | |
-| per-cell update | [`vic_redistribute_impl.h:165-185`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L165-L185) | `vic_redistribute_cell` | |
-| CPU dispatch, solid segments | [`implicit_dispatch.cpp:172-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L172-L219) | `vic_redistribute_cpu` | |
-| clamp residual | [`implicit_hydro.cpp:358-378`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L358-L378) | `_clamp_residual` | |
-| dry clamp mark | [`implicit_hydro.cpp:379-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L379-L380) | `_dry_clamp_step` | |
-| passive scalars | [`meshblock.cpp:663-676`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L663-L676) | `mass_corr` | |
+| column passes | {{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}} | `vic_constituent_column` | |
+| face prefix sum | {{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}} | `MASS` | |
+| dry-gas transfer | {{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}} | `dryfrac` | |
+| species transfer | {{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}} | `keep` | |
+| per-cell update | {{< code src/implicit/vic_redistribute_impl.h vic_redistribute_cell >}} | `vic_redistribute_cell` | |
+| CPU dispatch, solid segments | {{< code src/implicit/implicit_dispatch.cpp vic_redistribute_cpu >}} | `vic_redistribute_cpu` | |
+| clamp residual | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_clamp_residual` | |
+| dry clamp mark | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_dry_clamp_step` | |
+| passive scalars | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `mass_corr` | |
 
 : Code map of the constituent redistribution. {#tbl-ch07-vic-redistribute-code}
 

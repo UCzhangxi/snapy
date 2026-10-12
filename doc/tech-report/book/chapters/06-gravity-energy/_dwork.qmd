@@ -47,8 +47,8 @@ uniform Cartesian and spherical-polar grids; and $E+P$ conserved to round-off on
 stage, explicit and implicit. It does not make the energy equation fourth order: the fluxes $F_{i\pm1/2}$ keep
 the reconstruction's and the Riemann solver's error.
 
-`gravity-work: face` is the default since chengcli/snapy#303 (`gravity_work`, [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28); struct default
-`gravity_work`, [`forcing.hpp:61`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/forcing.hpp#L61)), so a run that does not state the key, on a Cartesian, spherical-polar or
+`gravity-work: face` is the default since chengcli/snapy#303 (`gravity_work`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}; struct default
+`gravity_work`, {{< code src/forcing/forcing.hpp ConstGravityOptionsImpl::gravity_work >}}), so a run that does not state the key, on a Cartesian, spherical-polar or
 `gnomonic-equiangle` (cubed-sphere) grid, uses this scheme unless it is switched off; a run that states
 `gravity-work: cell` is unaffected. On the cubed sphere `x1v` is the face midpoint, not the volume centroid, and the
 work gains the centroid-offset term of @eq-ch06-dwork-cs. Only on a grid with no $x_1$ measure for the scheme
@@ -152,7 +152,7 @@ $$ {#eq-ch06-dwork-continuity}
 
 with $F_{i\pm1/2}$ the total mass flux density the Riemann solver returns: the dry row plus every mass-carrying
 species row $n = 1..N_y$, after the positivity limiter and sedimentation. That sum is `vertical_mass_flux1`
-([`hydro_forward.cpp:777-780`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L780)), the $F$ every form in this section is handed.
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), the $F$ every form in this section is handed.
 Take $P_i = V_i\bar\rho_i\phi_i$ with
 $\phi_i=\phi(x_{1,i})$ at the volume centroid. Then $\dot P_i = V_i\dot\rho_i\phi_i = -\phi_i\Delta_i[AF]$ and
 @eq-ch06-dwork-booked gives
@@ -166,7 +166,7 @@ $$ {#eq-ch06-dwork-face}
 
 the second form from $\phi_i - \phi_{i\pm1/2} = g_1(x_{1,i\pm1/2}-x_{1,i})$. @eq-ch06-dwork-face is computed as
 `face_gravity_work` in
-[`hydro_forward.cpp:794-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L794-L811)
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}
 (times $\Delta t$). The face form conserves $E+\mathrm{PE}_d$ exactly, by @eq-ch06-dwork-booked.
 
 $\mathrm{PE}_d$ is the exact $\int\rho\phi\,\mathrm{d}V$ of a piecewise-constant density, so it misses the in-cell
@@ -220,7 +220,7 @@ V &= (r^{\mathrm{m}})^2h + \tfrac{h^3}{12}, \\
 $$ {#eq-ch06-dwork-variance}
 
 @eq-ch06-dwork-variance is computed as `x1_variance` in
-[`gravity_work_radial.hpp:34-43`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L34-L43).
+{{< code src/hydro/gravity_work_radial.hpp x1_variance >}}.
 It is the exact variance on the $r^2$ measure about the volume centroid (`x1v` on a spherical-polar grid is that
 centroid). It is written about the midpoint so that nothing cancels at
 $r/h\gg1$: the relative error is $1.7\times10^{-16}$ at $r/h=10^6$ `[C1]`.
@@ -233,7 +233,7 @@ s_i[\bar\rho] = \frac{\mathrm{d}}{\mathrm{d}x_1}\Big|_{x_{1,i}}\ \text{of the qu
 $$ {#eq-ch06-dwork-slope}
 
 @eq-ch06-dwork-slope is computed as `centroid_slope` in
-[`gravity_work_radial.hpp:50-73`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L50-L73).
+{{< code src/hydro/gravity_work_radial.hpp centroid_slope >}}.
 The stencil depends on the cell's place in the block: $\mathcal N_i = \{i-1,i,i+1\}$ inside the block, and
 $\mathcal N_0 = \{0,1,2\}$, $\mathcal N_{n_1-1} = \{n_1-3,n_1-2,n_1-1\}$, one-sided, at the two $x_1$ ends of
 every block. With $\Delta_- = x_{1,i}-x_{1,i-1}$ and $\Delta_+ = x_{1,i+1}-x_{1,i}$ the interior weights are
@@ -282,7 +282,7 @@ V_i\dot\rho_i &= -\Delta_i[AF].
 $$ {#eq-ch06-dwork-d}
 
 @eq-ch06-dwork-d is computed by `corrected_pe_work` in
-[`hydro_forward.cpp:829-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L829-L852),
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}},
 which adds `corrected_pe_work` (`corrected_pe_work_seam` at an $x_1$ seam) of `drho = -dt * vertical_mass_div`, i.e. $\Delta t\,g_1\sigma^2s[\dot\rho]$, to the
 face work. This is the whole scheme. It changes only the energy row: mass and momentum are untouched. At rest
 ($F\equiv0$, so $\dot\rho=0$) it adds exactly zero.
@@ -309,9 +309,9 @@ Here $\sigma_i^2$ is still the variance about $r_c$ (@eq-ch06-dwork-variance), $
 $\phi(x_{1v})$ as the code does, and $s_i$ stays on the `x1v` nodes: $\delta$ varies by $O(h^3/r^2)$ across a
 three-cell stencil, so $\sigma^2s$ moves by $O(h^4/r^2)$, below the $O(h^4)$ of $P$ (same note, §12.3). On Cartesian
 and spherical-polar grids $\delta\equiv0$ and @eq-ch06-dwork-cs is @eq-ch06-dwork-pe and @eq-ch06-dwork-d.
-@eq-ch06-dwork-cs is computed as `x1_centroid_offset` in [`gravity_work_radial.hpp:78-86`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L78-L86), written about the midpoint so that it does
+@eq-ch06-dwork-cs is computed as `x1_centroid_offset` in {{< code src/hydro/gravity_work_radial.hpp x1_centroid_offset >}}, written about the midpoint so that it does
 not cancel at large $r$, and the term $g_1\delta_i\dot\rho_i\Delta t$ is added by `corrected_pe_work` in
-[`gravity_work_radial.hpp:94-104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L94-L104) for the `radial_mid` measure only, so Cartesian and spherical-polar grids evaluate exactly the
+{{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}} for the `radial_mid` measure only, so Cartesian and spherical-polar grids evaluate exactly the
 expressions they did before. The measure is chosen by `x1_measure` in [`gravity_work_radial.hpp:13-25`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L13-L25), one shared helper that
 replaced the four spherical-polar tests of the old pin.
 
@@ -456,7 +456,7 @@ For blocks split in $x_1$ (explicit runs only; an implicit scheme refuses any $x
 centred slope that a single block takes: the explicit work exchanges one row of the stage's density change with the
 $x_1$ neighbour (a ghost $\dot\rho$ cannot be computed locally: it needs the mass flux on the ghost cell's far face,
 which no block computes), and the logged `pe=` reads the ghost density, which the mesh exchanges after every
-stage. Both call `corrected_pe_work_seam` in [`gravity_work_radial.hpp:112-128`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L112-L128). The slope stays one-sided only at physical walls, so
+stage. Both call `corrected_pe_work_seam` in {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work_seam >}}. The slope stays one-sided only at physical walls, so
 $P$ and the work are those of one block on any $x_1$ decomposition, and global $E+P$ is exact. Before
 chengcli/snapy#303 every block took one-sided slopes at its own seams, $P$ was a sum of per-block functionals, and a
 split column differed from an unsplit one. `[C10]`, at the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, measures that old
@@ -470,7 +470,7 @@ $2.2\times10^{-16}$, shows that $E+P$ was exact even then. A periodic $x_1$ colu
 With `implicit-scheme` $\neq 0$, the vertical implicit correction (VIC, the vertical implicit solve) solves each column for a new
 stage increment $\boldsymbol\delta_i$. The explicit increment $\Delta\mathbf U^{(0)}$ is its right-hand side, and
 under rk3 the solve is handed $\Delta t_c = w_2^{(s)}\Delta t$, set as `dt_corr` in
-[`hydro_forward.cpp:929-933`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L933).
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 Row $i$ of the block-tridiagonal system reads
 
 $$
@@ -482,18 +482,18 @@ $$
 $$ {#eq-ch06-dwork-vicrow}
 
 @eq-ch06-dwork-vicrow is assembled from the right-hand side `rhs` in
-[`forward_sweep_impl.h:35-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L35-L49),
+{{< code src/implicit/forward_sweep_impl.h ForwardSweep >}},
 with the block convention of `delta` in
-[`forward_sweep_impl.h:89-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L89-L126).
+{{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}.
 Its unknowns are, in order, the total mass, the normal momentum, the two tangential momenta (full VIC only) and
 the energy. The solved energy is written back from `delta` as the stage's energy increment in
-[`vic_redistribute_impl.h:174-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L174-L179).
+{{< code src/implicit/vic_redistribute_impl.h vic_redistribute_cell >}}.
 With `gravity-work: face` the energy row already contains the face form for the mass the solve moves
 ([UCzhangxi/snapy#283](https://github.com/chengcli/snapy/issues/283); derived in the VIC gravity-work scheme), assembled under
 the `face_work` flag in
-[`vic_assemble_full_impl.h:101-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L101-L120)
+{{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}
 for full VIC and
-[`vic_assemble_partial_impl.h:122-139`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L122-L139)
+{{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}
 for partial VIC.
 
 Booking the scheme only after the solve would treat $g_1\sigma^2s[\Delta\rho_{\mathrm{solve}}]$ explicitly, and
@@ -509,7 +509,7 @@ snapy@f256ab51fa400641360d16ea3611e78eba85ccc5, run sha not recorded; deck:
 `f256ab51fa400641360d16ea3611e78eba85ccc5^` or a mutation of the pinned code that drops the operator coupling.]
 
 The matrix is built by `couple_radial_exact` in
-[`implicit_hydro.cpp:301-333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L301-L333).
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}.
 Let $\mathsf S$ be the slope matrix, $(\mathsf S q)_i = s_i[q] = \sum_l\mathsf S_{il}q_l$; the code builds its
 transpose as `centroid_slope(eye(n1), x1v)`. Inside a block row $i$ of $\mathsf S$ has three entries on the
 tridiagonal. At the two end cells the one-sided slope reads a third cell, which a block-tridiagonal system cannot
@@ -524,7 +524,7 @@ $$
 $$ {#eq-ch06-dwork-lumped}
 
 The third weight is moved onto the neighbour, in the `rx_lo`, `rx_hi` lumping block of
-[`implicit_hydro.cpp:305-318`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L305-L318).
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}.
 Each cell's weights still sum to zero, so $\tilde s$ still annihilates a constant `[C8]`. At the end cells
 $\tilde s$ is not a consistent slope, though:
 $\tilde s_0 = \tfrac{2a+b}{a(a+b)}(\rho_1-\rho_0)$, which is $\tfrac{3}{2h}(\rho_1-\rho_0)$ on a uniform grid
@@ -533,7 +533,7 @@ explicit at the grid scale; the tall-column test is the evidence that this is st
 
 The energy row gains a coupling to the total-mass unknown, and its right side gains the matching term in
 `rx_mass0`, at
-[`implicit_hydro.cpp:326-332`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L326-L332):
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}:
 
 $$
 \begin{aligned}
@@ -547,10 +547,10 @@ $$ {#eq-ch06-dwork-couple}
 
 with $\Delta\rho^{(0)}$ the total-mass part of $\Delta\mathbf U^{(0)}$. On the cubed sphere the diagonal weight `rx_mid` also
 gains $g_1\delta_i$ of @eq-ch06-dwork-cs, in `couple_radial_exact` at
-[`implicit_hydro.cpp:301-320`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/implicit/implicit_hydro.cpp#L301-L320). That term is diagonal, so the matrix holds it exactly, without lumping:
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}. That term is diagonal, so the matrix holds it exactly, without lumping:
 wherever @eq-ch06-dwork-couple to @eq-ch06-dwork-remainder write $g_1\sigma_i^2\tilde s_i[\cdot]$, read
 $g_1(\sigma_i^2\tilde s_i+\delta_i)[\cdot]$ there, and the post-solve `corrected_pe_work` call at
-[`implicit_hydro.cpp:470-472`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/implicit/implicit_hydro.cpp#L470-L472) carries the same $g_1\delta_i$ on the solved change. Only fluid cells get these terms
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} carries the same $g_1\delta_i$ on the solved change. Only fluid cells get these terms
 (`rx_fluid`). Reading the energy row of @eq-ch06-dwork-vicrow with @eq-ch06-dwork-couple:
 
 $$
@@ -559,7 +559,7 @@ $$
 $$ {#eq-ch06-dwork-energyrow}
 
 The energy row of @eq-ch06-dwork-energyrow is the row the entry updates of `couple_radial_exact`
-([`implicit_hydro.cpp:301-333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L301-L333)) leave behind, in fluid cells only.
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}) leave behind, in fluid cells only.
 The solve books the work of the mass it moves, $\delta\rho-\Delta\rho^{(0)}$, implicitly. `[C11]` assembles a toy
 column with exactly these entry updates and right-hand side, solves it in the convention of
 @eq-ch06-dwork-vicrow, and recovers @eq-ch06-dwork-energyrow to $9\times10^{-15}$. Flipping the coupling's sign
@@ -575,7 +575,7 @@ g_1\sigma_i^2\Big(s_i[\Delta\rho_i-\Delta\rho^{(0)}] - \tilde s_i[\delta\rho-\De
 $$ {#eq-ch06-dwork-remainder}
 
 computed from `moved` in
-[`implicit_hydro.cpp:451-470`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L451-L470),
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}},
 so the implicit part books exactly $g_1\sigma^2s[\Delta\rho_i-\Delta\rho^{(0)}]$ in fluid cells, the work of the
 mass actually moved. With the explicit part, the stage total is @eq-ch06-dwork-d for the full $x_1$ density
 change, and $E+P$ closes. Lumping only changes how much of the work the solve sees implicitly, never the total.
@@ -587,9 +587,9 @@ instead of the solved one leaves defects of $4.4\times10^{-7}$ and $2.6\times10^
 and @eq-ch06-dwork-remainder is an identity by construction and is only printed.
 
 In an immersed solid cell the solid rows of the matrix are set by `setIdentity` over $\Delta t_c$ in
-[`implicit_dispatch.cpp:56-62`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L56-L62)
+{{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}}
 and
-[`implicit_dispatch.cpp:112-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L112-L118).
+{{< code src/implicit/implicit_dispatch.cpp vic_assemble_full_cpu >}}.
 The coupling and its right-side term are masked there (`rx_fluid`), and the post-solve remainder is gated to zero
 in the same remainder block, because the slope stencil of a solid cell would read fluid neighbours. A fluid cell
 next to a solid keeps its centred stencil, which then reads the solid's density change, which is zero.
@@ -664,7 +664,7 @@ $2.05\times10^{-3}$, order 1.00, $n_1$ 16 $\to$ 128
 `docs/derivations/optionF_replica.py@e894700ff7aee30b52882e5202b16461413780b0`, printed label §6; base sha
 8cea3ae5a8297c82205c1cb9da03681f2343c0dc, which is not a pin of §3.1; run not recorded, so this is re-run work
 before approval]. The scheme does not use $\mathcal K$: the `curv_flux1` branch in
-[`hydro_forward.cpp:858-879`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L858-L879)
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}
 turns it off when the scheme is active.
 
 On open (non-reflecting) $x_1$ boundaries the same one-sided stencil is used, but there the boundary face's
@@ -673,34 +673,34 @@ is the physical budget. Not separately tested; see the Limits layer.
 
 **Block seams in $x_1$.** At an internal $x_1$ seam the explicit work fills a full-length array with the stage's
 density change, exchanges one row with each $x_1$ neighbour (`_x1_ghost_rows`) and calls `corrected_pe_work_seam`,
-so a seam cell takes the centred slope, in [`hydro_forward.cpp:829-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L829-L852); at a physical wall the slope stays one-sided. The
-seams are found by `x1_neighbors` in [`hydro.cpp:275-280`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L275-L280), which returns $\{-1,-1\}$ on a periodic $x_1$ column, so
+so a seam cell takes the centred slope, in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}; at a physical wall the slope stays one-sided. The
+seams are found by `x1_neighbors` in {{< code src/hydro/hydro.cpp HydroImpl::x1_neighbors >}}, which returns $\{-1,-1\}$ on a periodic $x_1$ column, so
 the internal seams of a periodic column keep the one-sided slope; setup then warns once, in the `TORCH_WARN_ONCE`
-at [`hydro.cpp:83-96`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L83-L96), because $-g_1x_1$ jumps at the periodic face and $P$ is not defined. The logged `pe=` uses the
+at {{< code src/hydro/hydro.cpp HydroImpl::reset >}}, because $-g_1x_1$ jumps at the periodic face and $P$ is not defined. The logged `pe=` uses the
 same helper on the ghost densities, so the booked work and the logged $P$ agree and are those of one block on any
 decomposition. An implicit scheme refuses a block whose $x_1$ faces are not both physical boundaries, in the
-`TORCH_CHECK` at [`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430), so the VIC row and its post-solve term never meet a seam. A gnomonic-equiangle
+`TORCH_CHECK` at {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}, so the VIC row and its post-solve term never meet a seam. A gnomonic-equiangle
 layout holds one block in $x_1$, so there the one-sided slope sits only at the two walls
 (`docs/derivations/curved-gravity-work-weight.md@9ad0936779ae001dba65c9eafccaa7c058686c97` §12.6).
 
 **When it runs in a stage.** Within `HydroImpl::forward` the scheme runs in step (6), external forcing, after the
 $x_1$, $x_2$, $x_3$ fluxes and the tracer positivity limiter, after the flux divergence, and after every forcing
 module, including the const-gravity cell work $\rho v_1g_1\alpha_{\mathrm{nh}}$ in `ConstGravityImpl::forward` at
-[`const_gravity.cpp:46-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L52).
+{{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}}.
 The energy correction booked is $W^{\mathrm{D}}_i\Delta t - W^{\mathrm{cell}}_i\Delta t$: the cell work is
 removed and the face form plus this scheme is put in its place, as `gravity_energy_correction` in
-[`hydro_forward.cpp:890-897`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L897).
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 With $\alpha_{\mathrm{nh}}<1$ the removed cell work includes the hydrostatic-split part of
 `original_gravity_work`, computed at
-[`hydro_forward.cpp:850-857`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L850-L857);
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}};
 that part is not added by a forcing module, so the `rho_grav` block at
-[`hydro_forward.cpp:902-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L902-L906)
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}
 adds it right after the correction is computed. In an explicit run, or `face` with `implicit-scheme` 0, the
 correction is added to `du[IPR]` after the implicit step if any, at
-[`hydro_forward.cpp:979-983`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L979-L983).
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 With `face` and `implicit-scheme` $\neq0$, selected by `face_work_in_operator()`, it is added to `du` *before*
 the solve, at
-[`hydro_forward.cpp:962-967`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L962-L967);
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}};
 the solve then sees, and inverts, the face-form energy including the explicit term, and adds its own implicit
 term.
 
@@ -724,46 +724,46 @@ identifier the cited range contains.
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| read the switch once per process | [`hydro.cpp:256-266`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L256-L266) | `HydroImpl::gravity_work_radial_exact()` | `SNAP_GRAVITY_WORK_RADIAL_EXACT`, default on |
-| where it acts | [`hydro.cpp:268-273`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L268-L273) | `HydroImpl::radial_exact_work()` | `face`, $g_1\ne0$, an $x_1$ measure: cartesian, spherical-polar or gnomonic-equiangle |
-| declaration and invariant note | [`hydro.hpp:172-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L172-L180) | `gravity_work_radial_exact` |  |
-| no-form warning, grid without an $x_1$ measure | [`hydro.cpp:97-108`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L97-L108) | `TORCH_WARN_ONCE` | `face` on e.g. cylindrical |
-| periodic-$x_1$ warning | [`hydro.cpp:83-96`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L83-L96) | `TORCH_WARN_ONCE` | `face`, switch on, periodic $x_1$ |
-| internal $x_1$ seams | [`hydro.cpp:275-280`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L275-L280) | `x1_neighbors` | $\{-1,-1\}$ when periodic |
-| implicit scheme needs one $x_1$ block | [`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430) | `TORCH_CHECK` | `implicit-scheme` $\ne0$ |
-| `gravity-work` key | [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28) | `gravity_work` | `face` (default since chengcli/snapy#303), `cell`, `face-wallc` |
-| fixer forced off for face forms | [`hydro.cpp:63-65`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L63-L65) | `gravity_work_fixer` |  |
-| const-gravity cell work, removed again for face | [`const_gravity.cpp:46-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L52) | `forward` |  |
-| $\sigma^2$, @eq-ch06-dwork-variance | [`gravity_work_radial.hpp:34-43`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L34-L43) | `x1_variance` |  |
-| $s$, @eq-ch06-dwork-slope | [`gravity_work_radial.hpp:50-73`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L50-L73) | `centroid_slope` | zero for $n_1<3$ |
+| read the switch once per process | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}} | `HydroImpl::gravity_work_radial_exact()` | `SNAP_GRAVITY_WORK_RADIAL_EXACT`, default on |
+| where it acts | {{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}} | `HydroImpl::radial_exact_work()` | `face`, $g_1\ne0$, an $x_1$ measure: cartesian, spherical-polar or gnomonic-equiangle |
+| declaration and invariant note | {{< code src/hydro/hydro.hpp HydroImpl >}} | `gravity_work_radial_exact` |  |
+| no-form warning, grid without an $x_1$ measure | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_WARN_ONCE` | `face` on e.g. cylindrical |
+| periodic-$x_1$ warning | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_WARN_ONCE` | `face`, switch on, periodic $x_1$ |
+| internal $x_1$ seams | {{< code src/hydro/hydro.cpp HydroImpl::x1_neighbors >}} | `x1_neighbors` | $\{-1,-1\}$ when periodic |
+| implicit scheme needs one $x_1$ block | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `TORCH_CHECK` | `implicit-scheme` $\ne0$ |
+| `gravity-work` key | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `face` (default since chengcli/snapy#303), `cell`, `face-wallc` |
+| fixer forced off for face forms | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `gravity_work_fixer` |  |
+| const-gravity cell work, removed again for face | {{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}} | `forward` |  |
+| $\sigma^2$, @eq-ch06-dwork-variance | {{< code src/hydro/gravity_work_radial.hpp x1_variance >}} | `x1_variance` |  |
+| $s$, @eq-ch06-dwork-slope | {{< code src/hydro/gravity_work_radial.hpp centroid_slope >}} | `centroid_slope` | zero for $n_1<3$ |
 | $x_1$ measure | [`gravity_work_radial.hpp:13-25`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L13-L25) | `x1_measure` | `plain`, `radial`, `radial_mid`, `none` |
-| $\delta$, @eq-ch06-dwork-cs | [`gravity_work_radial.hpp:78-86`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L78-L86) | `x1_centroid_offset` | `radial_mid` |
-| $g_1\sigma^2s[\cdot]$, plus $g_1\delta$ on `radial_mid` | [`gravity_work_radial.hpp:94-104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L94-L104) | `corrected_pe_work` |  |
-| the same with the neighbour's row at a seam | [`gravity_work_radial.hpp:112-128`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L112-L128) | `corrected_pe_work_seam` | internal $x_1$ seam |
-| the gravity-work block runs | [`hydro_forward.cpp:773-774`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L773-L774) | `disable_flux_x1` | $g_1\ne0$, $x_1$ flux on |
-| total $x_1$ mass flux | [`hydro_forward.cpp:777-780`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L780) | `vertical_mass_flux1` |  |
-| face form, @eq-ch06-dwork-face | [`hydro_forward.cpp:794-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L794-L811) | `face_gravity_work` |  |
-| add the scheme, explicit, @eq-ch06-dwork-d | [`hydro_forward.cpp:829-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L829-L852) | `corrected_pe_work_seam` | `radial_exact_work()` and not `cell` |
-| curvature flux off under the scheme | [`hydro_forward.cpp:858-879`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L858-L879) | `curv_flux1` | `!radial_exact` |
-| face minus cell work | [`hydro_forward.cpp:890-897`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L897) | `gravity_energy_correction` |  |
-| hydrostatic-split part | [`hydro_forward.cpp:902-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L902-L906) | `rho_grav` | $\alpha_{\mathrm{nh}}<1$ |
-| into the operator | [`hydro_forward.cpp:962-967`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L962-L967) | `face_work_in_operator` | `face` and implicit |
-| after the operator | [`hydro_forward.cpp:979-983`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L979-L983) | `du` | explicit path |
-| face work in the operator | [`hydro.cpp:319-323`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L319-L323) | `HydroImpl::face_work_in_operator()` | `face` and `implicit-scheme`$\ne0$ |
-| $\Delta t_c = w_2^{(s)}\Delta t$ | [`hydro_forward.cpp:929-933`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L929-L933) | `dt_corr` | rk3 |
+| $\delta$, @eq-ch06-dwork-cs | {{< code src/hydro/gravity_work_radial.hpp x1_centroid_offset >}} | `x1_centroid_offset` | `radial_mid` |
+| $g_1\sigma^2s[\cdot]$, plus $g_1\delta$ on `radial_mid` | {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}} | `corrected_pe_work` |  |
+| the same with the neighbour's row at a seam | {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work_seam >}} | `corrected_pe_work_seam` | internal $x_1$ seam |
+| the gravity-work block runs | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `disable_flux_x1` | $g_1\ne0$, $x_1$ flux on |
+| total $x_1$ mass flux | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `vertical_mass_flux1` |  |
+| face form, @eq-ch06-dwork-face | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `face_gravity_work` |  |
+| add the scheme, explicit, @eq-ch06-dwork-d | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `corrected_pe_work_seam` | `radial_exact_work()` and not `cell` |
+| curvature flux off under the scheme | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `curv_flux1` | `!radial_exact` |
+| face minus cell work | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gravity_energy_correction` |  |
+| hydrostatic-split part | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `rho_grav` | $\alpha_{\mathrm{nh}}<1$ |
+| into the operator | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `face_work_in_operator` | `face` and implicit |
+| after the operator | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `du` | explicit path |
+| face work in the operator | {{< code src/hydro/hydro.cpp HydroImpl::face_work_in_operator >}} | `HydroImpl::face_work_in_operator()` | `face` and `implicit-scheme`$\ne0$ |
+| $\Delta t_c = w_2^{(s)}\Delta t$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dt_corr` | rk3 |
 | rk3 weights | [`pyharp integrator.cpp:33-61`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L61) | `IntegratorImpl` |  |
-| VIC: keep the explicit increment | [`implicit_hydro.cpp:195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L195) | `_du0` |  |
-| VIC: matrix part, @eq-ch06-dwork-lumped and @eq-ch06-dwork-couple | [`implicit_hydro.cpp:301-333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L301-L333) | `couple_radial_exact` | `radial_exact_work()`, $n_1\ge3$ |
-| VIC: right-hand side | [`forward_sweep_impl.h:35-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L35-L49) | `rhs` |  |
-| VIC: block convention | [`forward_sweep_impl.h:89-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L89-L126) | `rhs` |  |
-| VIC: solved increment written back | [`vic_redistribute_impl.h:174-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L174-L179) | `delta` |  |
-| VIC: face-form rows, full | [`vic_assemble_full_impl.h:101-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L101-L120) | `face_work` |  |
-| VIC: face-form rows, partial | [`vic_assemble_partial_impl.h:122-139`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L122-L139) | `face_work` |  |
-| VIC: remainder @eq-ch06-dwork-remainder, solid gate | [`implicit_hydro.cpp:451-470`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L451-L470) | `moved` |  |
-| VIC: solid rows | [`implicit_dispatch.cpp:56-62`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L56-L62) | `setIdentity` |  |
-| VIC: $g_1\delta$ on the diagonal | [`implicit_hydro.cpp:301-320`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/implicit/implicit_hydro.cpp#L301-L320) | `rx_mid` | `radial_mid` |
-| VIC: remainder call | [`implicit_hydro.cpp:470-472`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/implicit/implicit_hydro.cpp#L470-L472) | `corrected_pe_work` |  |
-| logged $P$ (`pe=`) | [`meshblock.cpp:1050-1059`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1050-L1059) | `corrected_pe_work_seam` | `radial_exact_work()` |
+| VIC: keep the explicit increment | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_du0` |  |
+| VIC: matrix part, @eq-ch06-dwork-lumped and @eq-ch06-dwork-couple | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `couple_radial_exact` | `radial_exact_work()`, $n_1\ge3$ |
+| VIC: right-hand side | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `rhs` |  |
+| VIC: block convention | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `rhs` |  |
+| VIC: solved increment written back | {{< code src/implicit/vic_redistribute_impl.h vic_redistribute_cell >}} | `delta` |  |
+| VIC: face-form rows, full | {{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}} | `face_work` |  |
+| VIC: face-form rows, partial | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `face_work` |  |
+| VIC: remainder @eq-ch06-dwork-remainder, solid gate | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `moved` |  |
+| VIC: solid rows | {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}} | `setIdentity` |  |
+| VIC: $g_1\delta$ on the diagonal | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `rx_mid` | `radial_mid` |
+| VIC: remainder call | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `corrected_pe_work` |  |
+| logged $P$ (`pe=`) | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `corrected_pe_work_seam` | `radial_exact_work()` |
 
 : Code map of the corrected-PE face gravity work. {#tbl-ch06-dwork-code}
 
@@ -771,32 +771,32 @@ identifier the cited range contains.
 
 1. In the `HydroImpl` constructor, `gravity-work` is validated, `gravity_work_fixer` is forced off for face
    forms at
-   [`hydro.cpp:63-65`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L63-L65),
+   {{< code src/hydro/hydro.cpp HydroImpl::reset >}},
    a grid with no form for the scheme warns once in the `TORCH_WARN_ONCE` at
-   [`hydro.cpp:97-108`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L97-L108),
+   {{< code src/hydro/hydro.cpp HydroImpl::reset >}},
    and an implicit scheme with a split $x_1$ is refused by the `TORCH_CHECK` at
-   [`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430).
+   {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}.
 2. Each stage, `HydroImpl::forward` computes the total $x_1$ mass flux after the positivity limiter and
    sedimentation, as `vertical_mass_flux1` at
-   [`hydro_forward.cpp:777-780`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L780).
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 3. It forms $\Delta t\,W^{\mathrm{face}}$ as `face_gravity_work` at
-   [`hydro_forward.cpp:794-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L794-L811).
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 4. If `radial_exact_work()`, it adds `corrected_pe_work` (`corrected_pe_work_seam` at an $x_1$ seam) of `drho = -dt * vertical_mass_div` at
-   [`hydro_forward.cpp:829-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L829-L852)
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}
    and skips the `curv_flux1` term at
-   [`hydro_forward.cpp:858-879`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L858-L879).
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 5. It replaces the cell work by the face form, as `gravity_energy_correction` at
-   [`hydro_forward.cpp:890-897`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L897).
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 6. It adds `gravity_energy_correction` to the energy before the implicit solve at
-   [`hydro_forward.cpp:962-967`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L962-L967)
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}
    or, from the same `gravity_energy_correction`, after it at
-   [`hydro_forward.cpp:979-983`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L979-L983).
+   {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 7. In the VIC, `couple_radial_exact` adds the matrix coupling and right side after the assembly at
-   [`implicit_hydro.cpp:301-333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L301-L333),
+   {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}},
    and the remainder, the `corrected_pe_work` of the `moved` mass, after the redistribution at
-   [`implicit_hydro.cpp:451-470`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L451-L470).
+   {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}.
 8. The cycle diagnostics log $P$ under `radial_exact_work` at
-   [`meshblock.cpp:1050-1059`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1050-L1059),
+   {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}},
    so the logged `ie=` + `pe=` is the conserved $E+P$.
 
 ### Tests
@@ -865,11 +865,11 @@ are recorded only in the derivation note, so they must be re-measured at the pin
 `test_x1_seam_split_mp_radial_exact`, 2 ranks under torchrun. Since chengcli/snapy#303 one entry runs this scheme
 with `SNAP_FLUX_COVARIANCE=1`: `test_pref_local_seam_flux_covariance`
 ([`CMakeLists.txt:37-43`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/CMakeLists.txt#L37-L43)), whose Cartesian deck states no `gravity-work` key
-and sets `grav1` to $-9.81$ ([`test_pref_local_seam.cpp:183-185`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_pref_local_seam.cpp#L183-L185)), so the scheme is
+and sets `grav1` to $-9.81$ ({{< code tests/test_pref_local_seam.cpp kDriftYaml >}}), so the scheme is
 on by default. It asserts that four $x_1$ blocks match one block after 200 steps to $10^{-12}$; it does not check
 $E+P$. No test runs this scheme with `SNAP_WB_REF4` or `SNAP_X1_CENTROID_EXACT` on: their seam arms pass
-`cell` to `split_gap` ([`test_x1_seam_split.cpp:248`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L248) and, for `SNAP_WB_REF4`,
-`split_gap` [`test_x1_seam_split.cpp:286`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L286)); see the switch coverage matrix, `@sec-ch12-matrix`.
+`cell` to `split_gap` ({{< code tests/test_x1_seam_split.cpp centroid_exact_split_matches_one_block >}} and, for `SNAP_WB_REF4`,
+`split_gap` {{< code tests/test_x1_seam_split.cpp wb_ref4_flag_at_the_seam_split_matches_one_block >}}); see the switch coverage matrix, `@sec-ch12-matrix`.
 
 ### Limits
 

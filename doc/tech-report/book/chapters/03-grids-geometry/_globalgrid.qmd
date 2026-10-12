@@ -50,14 +50,14 @@ $$
 x_{a,\,m} = X_{a,\,o_a + m}, \qquad m = 0, \dots, n_a + 2n_g,
 $$ {#eq-ch03-globalgrid-slice}
 
-The slice is `block_faces_` ([`coordinate.cpp:307-324`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L307-L324)). Its offset is the rounded quotient
+The slice is `block_faces_` ({{< code src/coord/coordinate.cpp CoordinateImpl::block_faces_ >}}). Its offset is the rounded quotient
 
 $$
 o_a = \operatorname{round}\!\left(\frac{x^{\mathrm{blk}}_{a,\min} - x^{\min}_a}{\Delta x_a}\right).
 $$ {#eq-ch03-globalgrid-offset}
 
-The offset is `_offset` ([`coordinate.hpp:124-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L124-L128)), called through `ix1`
-([`coordinate.hpp:92-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L92-L95)).
+The offset is `_offset` ({{< code src/coord/coordinate.hpp CoordinateOptionsImpl::_offset >}}), called through `ix1`
+({{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}}).
 
 Two blocks that share global face $g$ read the same entry $X_{a,g+n_g}$, so their face values are equal bit for bit,
 and the same holds between any two decompositions that slice the same $X_a$. The offset ([-@eq-ch03-globalgrid-offset])
@@ -103,16 +103,16 @@ upper bound by adding block widths.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| defaults of the grid options | [`coordinate.hpp:97-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L97-L117) | `global_nx1` | YAML `geometry` |
-| global width | [`coordinate.hpp:76-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L76-L90) | `dx1` | none |
-| block offset | [`coordinate.hpp:124-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L124-L128) | `_offset` | none |
-| YAML card | [`coordinate.cpp:62-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L62-L71) | `from_yaml` | `geometry` |
-| bounds-only card | [`coordinate.cpp:115-123`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L115-L123) | `global_nx1` | `geometry.bounds` |
-| divisibility checks | [`coordinate.cpp:143-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L143-L162) | `nb1` | `distribute` |
-| block bounds | [`coordinate.cpp:235-281`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L235-L281) | `repartition` | `distribute` |
-| axis check | [`coordinate.cpp:186-224`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L186-L224) | `_resolve_axis` | none |
-| face slice | [`coordinate.cpp:283-305`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L283-L305) | `block_faces_` | none |
-| mesh generator | [`coordinate.cpp:326-349`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L326-L349) | `reset_coordinates` | none |
+| defaults of the grid options | {{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}} | `global_nx1` | YAML `geometry` |
+| global width | {{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}} | `dx1` | none |
+| block offset | {{< code src/coord/coordinate.hpp CoordinateOptionsImpl::_offset >}} | `_offset` | none |
+| YAML card | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `from_yaml` | `geometry` |
+| bounds-only card | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `global_nx1` | `geometry.bounds` |
+| divisibility checks | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `nb1` | `distribute` |
+| block bounds | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}} | `repartition` | `distribute` |
+| axis check | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::_resolve_axis >}} | `_resolve_axis` | none |
+| face slice | {{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}} | `block_faces_` | none |
+| mesh generator | {{< code src/coord/coordinate.cpp CoordinateImpl::reset_coordinates >}} | `reset_coordinates` | none |
 
 : Code map of the global grid. {#tbl-ch03-globalgrid-code}
 
@@ -120,22 +120,22 @@ In step order (@tbl-ch03-globalgrid-code):
 
 1. `from_yaml` reads `geometry.type` (default `cartesian`), the bounds (default $[0,1]$ on each axis, with `x2min_pi`
    style keys multiplied by $\pi$) and the cell counts into the global fields
-   ([`coordinate.cpp:62-113`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L62-L113)). Unknown keys are refused by `check_keys`.
+   ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}). Unknown keys are refused by `check_keys`.
 2. A card with `bounds` and no `cells` declares one cell per axis spanning the bounds, and sets the block bounds to
-   the same interval: `global_nx1` is set to 1 ([`coordinate.cpp:115-123`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L115-L123)).
+   the same interval: `global_nx1` is set to 1 ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
 3. Each global count must be divisible by the blocks on its axis; otherwise setup stops with "Number of total x1
    grids must be divisible by the number of mesh blocks in x1 direction" (and the same for x2, x3), checked with
-   `nb1` and its siblings ([`coordinate.cpp:143-162`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L143-L162)).
+   `nb1` and its siblings ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
 4. `nghost` is read (default 1) and `interp_order` (default 2); then `repartition` sets the block's bounds from its
    layout location, with $x_1$ forced to the first block on the cubed sphere, and its counts to
-   $n^{\mathrm{glob}}_a/n_b$ ([`coordinate.cpp:235-281`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L235-L281)).
+   $n^{\mathrm{glob}}_a/n_b$ ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}}).
 5. `resolve_global_grid` runs `_resolve_axis` on each axis: adopt the block when the global count is 0, else
    check inside-ness and the exact cell count ([`coordinate.cpp:186-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L186-L233)). The two refusals a user can hit
    read "block x2 = [...] lies outside the declared global x2 grid" and "... is not exactly n cells of the declared
    global x2 grid".
 6. The constructor calls `block_faces_` per axis with the global bounds and count and the block's count and offset
-   ([`coordinate.cpp:283-305`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L283-L305)); `block_faces_` slices the global `linspace`
-   ([`coordinate.cpp:307-324`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L307-L324)).
+   ({{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}}); `block_faces_` slices the global `linspace`
+   ({{< code src/coord/coordinate.cpp CoordinateImpl::block_faces_ >}}).
 7. Each coordinate type's `reset` then builds widths and centres from these faces (the metric schemes of this
    chapter).
 
@@ -151,29 +151,29 @@ In step order (@tbl-ch03-globalgrid-code):
 : Tests of the global grid. C++ entries carry the build suffix (`.release`). {#tbl-ch03-globalgrid-tests}
 
 The bitwise case is `blocks_match_the_undecomposed_grid_bitwise`
-([`test_coordinate.cpp:892-921`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L892-L921)): a six-cell $x_2$ axis is split into two and three blocks and each block's
+({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}): a six-cell $x_2$ axis is split into two and three blocks and each block's
 interior faces are compared with `torch::equal` against the matching slice of the undecomposed grid. The
 programmatic cases run from `faces_span_the_callers_bounds_on_every_axis` to
 `a_declared_block_must_span_exactly_nx_global_faces` ([`test_coordinate.cpp:755-1030`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L755-L1030)); they cover the
 adopted grid, the bounds-only card, a degenerate axis beside live ones, and the two refusals of step 5. The Python
 setter test checks the resolved counts and the faces of each axis with `NG` ghost layers
 ([`test_local_horizontal_cells.py:28-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_local_horizontal_cells.py#L28-L37)). The gnomonic case is `subdivided_panel_exchange_matches_one_block`
-([`test_cubed_sphere_exchange.cpp:159-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L159-L179)).
+({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}).
 
 All four entries run on CPU; the gnomonic comparison also has a CUDA case in the same binary, which skips without a
 GPU. None runs on more than one rank. No number is quoted from them here: their pass status at the pin was not run
 for this chapter (missing evidence). The code comment that motivated the scheme records that at a cubed sphere with
 64 cells per panel edge and nb2 = 4, 15 of 71 $x_2$ faces were inconsistent between the two blocks sharing them and 26
 differed from the nb2 = 2 grid, each by one unit in the last place, in the comment on the `x2` faces
-([`coordinate.cpp:291-298`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L291-L298)); the deck and run are not recorded (missing evidence).
+({{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}}); the deck and run are not recorded (missing evidence).
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 - A mesh generator passed to `reset_coordinates` rebuilds the faces from the block's own bounds, outside the
-  global-slice invariant ([`coordinate.cpp:326-349`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L326-L349)).
+  global-slice invariant ({{< code src/coord/coordinate.cpp CoordinateImpl::reset_coordinates >}}).
 - The checks "Number of x1 grids must be greater than the ghost zone size" never fire: they run before
-  `repartition` sets the block count, so they read `nx1` at its default of 1 ([`coordinate.cpp:164-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L164-L179)).
+  `repartition` sets the block count, so they read `nx1` at its default of 1 ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
 :::
 
 The mesh-generator path is reached only by code that calls `reset_coordinates`; no test at the pin exercises it with

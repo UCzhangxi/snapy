@@ -37,7 +37,7 @@ $$
 $$ {#eq-ch07-rk-stage}
 
 implemented as `pintg->forward(stage, _hydro_u0, hydro_u, fut_hydro_du)`
-([`meshblock.cpp:754-756`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L754-L756)), whose body is the linear combination of `IntegratorImpl::forward`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), whose body is the linear combination of `IntegratorImpl::forward`
 ([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)). The weights $(w_0,w_1,w_2)$ of each stage are set in the
 `IntegratorImpl` constructor ([`pyharp integrator.cpp:33-85`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L85)):
 
@@ -69,7 +69,7 @@ that a forward-Euler step does not increase for $\Delta t\le\Delta t_{\mathrm{FE
 the scheme for $\Delta t\le C\,\Delta t_{\mathrm{FE}}$, with $C$ the smallest ratio over the stages: 1 for `rk1`,
 `rk2` and `rk3`, and 2 for `rk3s4` (`[C3]`). On $u'=-u$, where forward Euler keeps $u\ge0$ for $\Delta t\le1$,
 `rk3` keeps it up to 1 and `rk3s4` up to 2 (`[C4]`). The argument is the one of
-`sources/canoe__POSITIVITY_TECH_REPORT.md` §3, written out here; $w_2\le w_1$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ([`flux_positivity.hpp:43-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L43-L46)).
+`sources/canoe__POSITIVITY_TECH_REPORT.md` §3, written out here; $w_2\le w_1$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ({{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}}).
 
 *Exact and truncated.* Each stage is exact arithmetic on the three states. The step is first to third order in
 time as above; the spatial error is that of the operator, @sec-ch04.
@@ -87,18 +87,18 @@ from snapy_report.ch07.fig_rk_stages import make_fig
 make_fig()
 ```
 
-One stage of `MeshBlockImpl::advance_local` ([`meshblock.cpp:597-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L597-L842)) runs, in this order:
+One stage of `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}) runs, in this order:
 
-1. publish the stage index for the VIC, `rk_stage` ([`meshblock.cpp:601-603`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L601-L603));
+1. publish the stage index for the VIC, `rk_stage` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
 2. at stage 0, save the step-start state `_hydro_u0` and reset the per-step marks and counters
-   ([`meshblock.cpp:610-626`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L610-L626));
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
 3. the hydro tendency, `phydro->forward`, which includes the forcing loop and the VIC
-   ([`meshblock.cpp:649-650`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L649-L650));
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
 4. the passive-scalar tendency and the user stage forcings (@sec-ch09);
 5. the average @eq-ch07-rk-stage and the conserved-variable limiter, `apply_conserved_limiter_`
-   ([`meshblock.cpp:754-756`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L754-L756)); the scalars get the same average, `_scalar_s0` ([`meshblock.cpp:767-769`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L767-L769));
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); the scalars get the same average, `_scalar_s0` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
 6. refill immersed solids, then at the last stage the phase adjustment and the gravity-work fixer
-   (@sec-ch06), then the physical boundaries, `apply_boundaries` ([`meshblock.cpp:780-841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L780-L841)).
+   (@sec-ch06), then the physical boundaries, `apply_boundaries` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
 Each stage evaluates $\mathcal L$ once, so a step costs one, two, three or four operator evaluations. The
 averages are tensor arithmetic on whole arrays, ghosts included; the ghosts are rewritten by the boundary fill
@@ -113,9 +113,9 @@ and the exchange. Nothing is fused: the dispatch path `call_average3` is comment
 | stage weights | [`pyharp integrator.cpp:33-85`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L85) | `wght2` | `integration/type` |
 | linear combination | [`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122) | `IntegratorImpl::forward` | |
 | `max_redo` default | [`pyharp integrator.hpp:58`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.hpp#L58) | `max_redo` | not in YAML |
-| stage driver | [`meshblock.cpp:597-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L597-L842) | `advance_local` | |
-| stage registers | [`meshblock.hpp:290-291`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.hpp#L290-L291) | `_hydro_u0` | |
-| full-step increment | [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765) | `du` | |
+| stage driver | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `advance_local` | |
+| stage registers | {{< code src/mesh/meshblock.hpp MeshBlockImpl >}} | `_hydro_u0` | |
+| full-step increment | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `du` | |
 
 : Code map of the explicit Runge-Kutta stages. {#tbl-ch07-rk-code}
 

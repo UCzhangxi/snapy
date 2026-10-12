@@ -53,32 +53,32 @@ from snapy_report.ch07.fig_vic_reject import make_fig
 make_fig()
 ```
 
-The latch is `_solve_failed` ([`implicit_hydro.cpp:175-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L175-L180)). Its accessors are
-`reset_solve_failure` and `solve_failed` ([`implicit_hydro.hpp:96-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L96-L101)). On entry the module copies
-`du` into `_du0` and clones `w` into `w0` ([`implicit_hydro.cpp:195-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L195-L198)). The refusal is the
-lambda `reject` ([`implicit_hydro.cpp:200-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L200-L218)). The guards are `bad_inputs`
-([`implicit_hydro.cpp:222-224`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L222-L224)), `bad_columns` ([`implicit_hydro.cpp:348-351`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L348-L351)),
-`bad_results` ([`implicit_hydro.cpp:473-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L473-L475)) and `bad_correction`
-([`implicit_hydro.cpp:480-481`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L480-L481)). The guards are block-wide reductions. On a GPU each costs a device
+The latch is `_solve_failed` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). Its accessors are
+`reset_solve_failure` and `solve_failed` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl >}}). On entry the module copies
+`du` into `_du0` and clones `w` into `w0` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The refusal is the
+lambda `reject` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The guards are `bad_inputs`
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}), `bad_columns` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}),
+`bad_results` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}) and `bad_correction`
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The guards are block-wide reductions. On a GPU each costs a device
 to host transfer of one flag.
 
-The step-acceptance flags read the latch as `solve_failure` ([`meshblock.cpp:858-862`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L858-L862)). Stage 0 of
-every step attempt calls `reset_solve_failure` ([`meshblock.cpp:616-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L616-L619)). A VIC failure is the one
+The step-acceptance flags read the latch as `solve_failure` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). Stage 0 of
+every step attempt calls `reset_solve_failure` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). A VIC failure is the one
 cause that still restores the step after `max_redo` (@sec-ch07-redo).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| latch | [`implicit_hydro.cpp:175-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L175-L180) | `_solve_failed` | |
-| entry copies | [`implicit_hydro.cpp:195-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L195-L198) | `w0` | |
-| refusal | [`implicit_hydro.cpp:200-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L200-L218) | `reject` | |
-| input guard | [`implicit_hydro.cpp:222-224`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L222-L224) | `bad_inputs` | |
-| sentinel guard | [`implicit_hydro.cpp:348-351`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L348-L351) | `bad_columns` | |
-| result guard | [`implicit_hydro.cpp:473-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L473-L475) | `bad_results` | |
-| correction guard | [`implicit_hydro.cpp:477-481`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L477-L481) | `bad_correction` | |
-| reset at stage 0 | [`meshblock.cpp:616-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L616-L619) | `reset_solve_failure` | |
-| redo flag | [`meshblock.cpp:858-862`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L858-L862) | `solve_failure` | |
+| latch | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_solve_failed` | |
+| entry copies | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `w0` | |
+| refusal | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `reject` | |
+| input guard | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `bad_inputs` | |
+| sentinel guard | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `bad_columns` | |
+| result guard | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `bad_results` | |
+| correction guard | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `bad_correction` | |
+| reset at stage 0 | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `reset_solve_failure` | |
+| redo flag | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `solve_failure` | |
 
 : Code map of VIC rejection and rollback. {#tbl-ch07-vic-reject-code}
 

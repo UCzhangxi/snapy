@@ -19,7 +19,7 @@ This is dispatch infrastructure, so there is no differential equation to discret
 when its callback exists. A diffusion wall is a physical face with a recorded reflecting or fixed-temperature name.
 The hydro predicate `is_x1_wall` instead accepts physical x1 faces whose names do not start with `periodic`.
 These are different sets: an outflow face passes the hydro predicate but not the diffusion whitelist.
-This follows directly from `is_wall_boundary` ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271)) and `is_x1_wall` ([`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209)).
+This follows directly from `is_wall_boundary` ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271)) and `is_x1_wall` ({{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}}).
 
 A repeated fill must reproduce the same ghost values from the owned slab. This is an idempotence contract,
 not a guarantee for arbitrary callbacks: the registry comment requires it because a callback also runs on a
@@ -53,16 +53,16 @@ make_fig()
 |---|---|---|---|
 | registry | [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39) | `BC_FUNCTION` | See Summary |
 | context | [`bc.hpp:19-42`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc.hpp#L19-L42) | `BoundaryFuncOptions` | See Summary |
-| yaml | [`meshblock_options.cpp:88-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L88-L127) | `periodic_z` | See Summary |
-| yamlxy | [`meshblock_options.cpp:139-201`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L139-L201) | `periodic_x` | See Summary |
+| yaml | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_z` | See Summary |
+| yamlxy | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_x` | See Summary |
 | classify | [`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271) | `is_wall_boundary` | See Summary |
-| null | [`meshblock.cpp:138-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L138-L166) | `bfuncs` | See Summary |
-| x1wall | [`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209) | `is_x1_wall` | See Summary |
+| null | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `bfuncs` | See Summary |
+| x1wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | See Summary |
 
 : Implementation sites for registry. {#tbl-ch11-registry-code}
 
-1. Validate YAML keys and append `_inner` or `_outer`; reject names absent from the registry. The anchor `periodic_z` is in [`meshblock_options.cpp:88-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L88-L127).
-2. Set layout periodic flags, then null callbacks owned by exchange during construction. The anchor `bfuncs` is in [`meshblock.cpp:138-166`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L138-L166).
+1. Validate YAML keys and append `_inner` or `_outer`; reject names absent from the registry. The anchor `periodic_z` is in {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}.
+2. Set layout periodic flags, then null callbacks owned by exchange during construction. The anchor `bfuncs` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}.
 3. Classify at the consuming operator: unnamed programmatic callbacks warn once and return false for the diffusion wall test. The anchor `is_wall_boundary` is in [`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271).
 
 ### Tests
@@ -87,7 +87,7 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 The fixed-temperature names occur in the whitelist, but no built-in registration is present in the boundary
 implementation inspected here. They do not establish an available thermal BC. The comment calling outflow
 zero-gradient in `is_wall_boundary` is stale relative to the characteristic implementation ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271),
-[`bc_func.cpp:108-133`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L108-L133)). Cubed-sphere custom panel faces require care wherever a physical-face test is used.
+{{< code src/bc/bc_func.cpp radiating >}}). Cubed-sphere custom panel faces require care wherever a physical-face test is used.
 
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.
 :::

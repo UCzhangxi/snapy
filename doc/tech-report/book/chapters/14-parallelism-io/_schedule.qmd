@@ -49,7 +49,7 @@ small-sample correction, while a constant field gives $M_2 = 0$ exactly (`[C3]`)
 **Schedule.** For each output, `make_outputs` first accumulates the statistics. On the final call it writes
 unconditionally. Otherwise, when $t \ge t_\text{next}$, it writes, resets the statistics to the current time,
 advances $t_\text{next}$ by $\Delta t_o$ once, and increments the file number
-(`MeshBlockImpl::make_outputs`, [`meshblock.cpp:985-1002`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L985-L1002)). With $\Delta t_o = 0$, $t_\text{next}$ never moves
+(`MeshBlockImpl::make_outputs`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}}). With $\Delta t_o = 0$, $t_\text{next}$ never moves
 and the output fires every cycle. $t_\text{next}$ advances by one interval per write even when a step jumps past
 several, so an output whose interval is shorter than the step falls behind the run time: it fires on every step
 until it catches up.
@@ -65,21 +65,21 @@ Before the first accumulated interval the mean is the current state and the devi
 **Termination.** The driver loop runs while pyharp's integrator does not stop. It stops when $n_\text{lim} \ge 0$
 and the cycle count reaches it, or when $t_\text{lim} \ge 0$ and the time reaches it
 (`stop`, [`pyharp integrator.cpp:89-99`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L89-L99)); a redo result of $-1$ breaks
-the loop (`stop`, [`straka.cpp:141-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L141-L165)). The handler catches SIGTERM, SIGINT and SIGALRM
-(the wall-time alarm; `SIGALRM` in [`signal_handler.cpp:40-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L40-L45)). The flags are reduced in
+the loop (`stop`, {{< code examples/straka.cpp main >}}). The handler catches SIGTERM, SIGINT and SIGALRM
+(the wall-time alarm; `SIGALRM` in {{< code src/utils/signal_handler.cpp SignalHandler::SignalHandler >}}). The flags are reduced in
 `check_redo` (@sec-ch14-collectives). `finalize` makes the final write and prints the reason: signal, cycle limit,
-time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl::finalize`, [`meshblock.cpp:1121-1180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1180)).
+time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl::finalize`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| when an output fires | [`meshblock.cpp:985-1002`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L985-L1002) | `MeshBlockImpl::make_outputs` | `dt` |
+| when an output fires | {{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}} | `MeshBlockImpl::make_outputs` | `dt` |
 | weighted moments | [`output_type.cpp:282-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L282-L360) | `update_weighted_moments` | `*_stat` |
 | accumulate and reset | [`output_type.cpp:297-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L297-L345) | `AccumulateStats` | `*_stat` |
-| driver loop | [`straka.cpp:141-165`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/straka.cpp#L141-L165) | `make_outputs` | `tlim`, `nlim` |
-| caught signals | [`signal_handler.cpp:40-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/utils/signal_handler.cpp#L40-L45) | `SIGALRM` | none |
-| final write and reason | [`meshblock.cpp:1121-1180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1180) | `MeshBlockImpl::finalize` | none |
+| driver loop | {{< code examples/straka.cpp main >}} | `make_outputs` | `tlim`, `nlim` |
+| caught signals | {{< code src/utils/signal_handler.cpp SignalHandler::SignalHandler >}} | `SIGALRM` | none |
+| final write and reason | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}} | `MeshBlockImpl::finalize` | none |
 
 : Code map of output scheduling. {#tbl-ch14-schedule-code}
 

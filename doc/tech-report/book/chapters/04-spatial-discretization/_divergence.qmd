@@ -77,18 +77,18 @@ from snapy_report.ch04.fig_stage_pipeline import make_fig
 make_fig()
 ```
 
-The stage is `forward` at [`hydro_forward.cpp:198-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L198-L209), which converts the conserved state to
+The stage is `forward` at {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, which converts the conserved state to
 primitive with `peos` and then runs the sweeps in the order of @fig-ch04-divergence-stage. The divergence itself
-is `divergence` at [`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553): it allocates one tendency tensor, adds the $AF$
+is `divergence` at {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}: it allocates one tendency tensor, adds the $AF$
 difference of each defined direction over the interior index range, and divides by the cell volume. A direction
 that is switched off simply has no flux tensor, so the same code covers one, two and three dimensions.
 
 The index convention matters when reading the code. Cells run from the first interior index to the last, and the
-faces of the same direction run one further, so the slices at `face_area1` ([`coordinate.cpp:534-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L534-L538)) read one more
+faces of the same direction run one further, so the slices at `face_area1` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}) read one more
 face than there are cells. The tendency is written on interior cells only; ghost columns never receive one,
 which is why a correction that writes a ghost column is harmless.
 
-The base `forward` at [`coordinate.cpp:585-591`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L585-L591) is the Cartesian case: it discards the primitive
+The base `forward` at {{< code src/coord/coordinate.cpp CoordinateImpl::forward >}} is the Cartesian case: it discards the primitive
 state and the face pressure and returns the divergence alone. Every curved coordinate overrides it and adds its
 source on top of the same divergence.
 
@@ -107,12 +107,12 @@ citation's anchor: it is the identifier the cited range contains.
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the stage operator | [`hydro_forward.cpp:198-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L198-L209) | `forward` | every stage |
-| conserved to primitive | [`hydro_forward.cpp:209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L209) | `peos` | |
-| the divergence | [`coordinate.cpp:509-553`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L509-L553) | `divergence` | |
-| the $x_1$ term | [`coordinate.cpp:534-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L534-L538) | `face_area1` | $x_1$ flux defined |
-| Cartesian: divergence only | [`coordinate.cpp:585-591`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L585-L591) | `forward` | cartesian |
-| per-direction switch | [`hydro_options.cpp:54-56`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L54-L56) | `disable_flux_x1` | YAML, default false |
+| the stage operator | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `forward` | every stage |
+| conserved to primitive | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `peos` | |
+| the divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `divergence` | |
+| the $x_1$ term | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `face_area1` | $x_1$ flux defined |
+| Cartesian: divergence only | {{< code src/coord/coordinate.cpp CoordinateImpl::forward >}} | `forward` | cartesian |
+| per-direction switch | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `disable_flux_x1` | YAML, default false |
 
 : Code map of the finite-volume update. {#tbl-ch04-divergence-code}
 

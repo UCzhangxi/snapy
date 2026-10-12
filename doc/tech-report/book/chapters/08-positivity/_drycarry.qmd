@@ -24,13 +24,13 @@ accepts a negative value.
 
 A forcing that writes a dry-mass tendency has to say what happens to the tracers riding on that mass.
 Addition and removal are not symmetric, and the code comment at
-`carry_dry_source` ([`meshblock.cpp:631-634`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L631-L634)) gives the reason: an addition carries the ratio as it stands at
+`carry_dry_source` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}) gives the reason: an addition carries the ratio as it stands at
 source entry, while a removal carries the ratio the stage would have had with no source at all, so that
 the removal cannot amplify a ratio that transport or the implicit solve has just changed.
 
 Computing that source-free ratio means dividing the source-free scalar by the source-free density, and
 nothing prevents that density from being zero in a cell that is empty with the source removed. The guard
-at `rho_base` ([`meshblock.cpp:640-642`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L640-L642)) substitutes the entry ratio there, which keeps the expression
+at `rho_base` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}) substitutes the entry ratio there, which keeps the expression
 finite.
 
 What the guard does *not* do is bound the result. The repository's own test asserts a finite answer at a
@@ -49,21 +49,21 @@ the $2\times10^5$ cells end with a negative scalar, worst $-1.4$
 
 ### Numerical method
 
-The carry is the lambda at `scalar_r` ([`meshblock.cpp:634-646`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L634-L646)). The source-free density and scalar are
+The carry is the lambda at `scalar_r` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). The source-free density and scalar are
 rebuilt by running the integrator's own stage combination on the tendency with the dry source subtracted
-at `rho_base` ([`meshblock.cpp:637-639`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L637-L639)), so the "source-free" state is the one the integrator would have
+at `rho_base` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), so the "source-free" state is the one the integrator would have
 produced and not a cell-wise approximation of it. The choice between the two ratios is made per cell on
-the sign of the dry source at `carry_r` ([`meshblock.cpp:643-644`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L643-L644)).
+the sign of the dry source at `carry_r` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| why addition and removal differ | [`meshblock.cpp:631-634`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L631-L634) | `carry_dry_source` | |
-| the carry | [`meshblock.cpp:634-646`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L634-L646) | `carry_dry_source` | scalars present, a forcing writes dry mass |
-| the source-free stage state | [`meshblock.cpp:637-639`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L637-L639) | `rho_base` | |
-| the zero-base guard | [`meshblock.cpp:640-642`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L640-L642) | `remove_r` | source-free density zero |
-| addition against removal | [`meshblock.cpp:643-644`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L643-L644) | `carry_r` | |
+| why addition and removal differ | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `carry_dry_source` | |
+| the carry | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `carry_dry_source` | scalars present, a forcing writes dry mass |
+| the source-free stage state | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `rho_base` | |
+| the zero-base guard | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `remove_r` | source-free density zero |
+| addition against removal | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `carry_r` | |
 
 : Code map of the dry-carry guard. {#tbl-ch08-drycarry-code}
 

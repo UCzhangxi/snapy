@@ -44,7 +44,7 @@ q_f = (1+t)\,q_0 - t\,q_1, \qquad t = \frac{h_0}{h_0+h_1},
 $$ {#eq-ch09-wallcoef-extrap}
 
 the same expression at both walls, because the offset to the face and the direction to the second cell change sign
-together. @eq-ch09-wallcoef-extrap is `extrapolate_to_wall` ([`diffusion.cpp:114-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L114-L136)). It is exact for
+together. @eq-ch09-wallcoef-extrap is `extrapolate_to_wall` ({{< code src/forcing/diffusion.cpp extrapolate_to_wall >}}). It is exact for
 a linear $q$ on any widths [check `src/snapy_report/ch09/wallcoef_check.py`, output `wallcoef_check.out`, `[C1]`,
 max error $8.9\times10^{-16}$ over 100 random stretched columns] and so second order for a smooth one. If
 $q_f\le0$ the code returns $q_0$, which also reads no ghost (`[C3]`).
@@ -78,7 +78,7 @@ make_fig()
 
 The extrapolation is applied to the first and last $x_1$ face of a block when that face is a whitelisted wall and
 the block has at least three $x_1$ faces (two interior cells); with fewer the average is kept, in
-`face_coefficient` ([`diffusion.cpp:142-159`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L142-L159)). A seam between two blocks has no boundary function and so is never a wall.
+`face_coefficient` ({{< code src/forcing/diffusion.cpp face_coefficient >}}). A seam between two blocks has no boundary function and so is never a wall.
 The same rule applies to the product of a coefficient and an $x_1$ profile, which is extrapolated as one quantity
 (@sec-ch09-x1profile). It runs wherever the module computes a coefficient, in every stage.
 
@@ -86,22 +86,22 @@ The same rule applies to the product of a coefficient and an $x_1$ profile, whic
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| @eq-ch09-wallcoef-extrap and the fallback | [`diffusion.cpp:114-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L114-L136) | `extrapolate_to_wall` | |
-| average, or wall faces | [`diffusion.cpp:142-159`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L142-L159) | `face_coefficient` | |
-| $x_1$ only | [`diffusion.cpp:496-502`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L496-L502) | `is_wall_boundary` | $x_1$ faces |
-| the whitelist | [`meshblock_options.cpp:243-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L243-L272) | `is_wall_boundary` | boundary names |
-| unnamed function warns | [`meshblock_options.cpp:250-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L250-L258) | `TORCH_WARN_ONCE` | |
-| installed-function test | [`meshblock_options.cpp:229-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L229-L234) | `is_physical_boundary` | |
+| @eq-ch09-wallcoef-extrap and the fallback | {{< code src/forcing/diffusion.cpp extrapolate_to_wall >}} | `extrapolate_to_wall` | |
+| average, or wall faces | {{< code src/forcing/diffusion.cpp face_coefficient >}} | `face_coefficient` | |
+| $x_1$ only | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `is_wall_boundary` | $x_1$ faces |
+| the whitelist | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | boundary names |
+| unnamed function warns | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `TORCH_WARN_ONCE` | |
+| installed-function test | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_physical_boundary >}} | `is_physical_boundary` | |
 
 : Code map of the wall face coefficient. {#tbl-ch09-wallcoef-code}
 
 1. For each active direction `DiffusionImpl::forward` asks `is_wall_boundary` for the lower and upper $x_1$ face
-   only ([`diffusion.cpp:496-502`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L496-L502)).
+   only ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 2. `is_wall_boundary` returns true for an installed function whose recorded name is on the whitelist
-   ([`meshblock_options.cpp:243-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L243-L272)); a function with no recorded name warns once with `TORCH_WARN_ONCE` and returns false
-   ([`meshblock_options.cpp:250-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L250-L258)).
+   ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}}); a function with no recorded name warns once with `TORCH_WARN_ONCE` and returns false
+   ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}}).
 3. `face_coefficient` averages every face and overwrites the wall faces with `extrapolate_to_wall`
-   ([`diffusion.cpp:142-159`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L142-L159), [`diffusion.cpp:114-136`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L114-L136)).
+   ({{< code src/forcing/diffusion.cpp face_coefficient >}}, {{< code src/forcing/diffusion.cpp extrapolate_to_wall >}}).
 
 ### Tests
 
@@ -135,7 +135,7 @@ solids are read as fluid by the diffusion module, with a face heat capacity abou
 :::
 
 1. **Immersed solids (not fixed).** The solid placeholder state, $\rho=10^3$ and $p=10^9$ by default, is written into $\mathbf W$ by `mark_prim_solid_` before the forcings run
-   ([`hydro_forward.cpp:217-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L217-L218)). A fluid face next to a solid
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). A fluid face next to a solid
    then has $\rho c_v$ $500.5$ times the fluid value and a temperature jump of a factor 10 (`[C5]`). The source
    measured $+1.126125\times10^3$ of energy per stage in the two flanking cells of a uniform column
    [`sources/canoe__diffusion_ghost_TECH_REPORT.md` §3; sha
@@ -148,4 +148,4 @@ solids are read as fluid by the diffusion module, with a face heat capacity abou
 4. **Positivity fallback** is element-wise and silent; a wall face can be second order in some columns and first
    order in others. Not observed to fire; not measured.
 5. **Block too short.** With fewer than two interior $x_1$ cells, `nface` $<3$, the average is kept
-   ([`diffusion.cpp:147-148`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L147-L148)).
+   ({{< code src/forcing/diffusion.cpp face_coefficient >}}).

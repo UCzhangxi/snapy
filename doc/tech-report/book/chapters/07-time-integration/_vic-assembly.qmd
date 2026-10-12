@@ -51,7 +51,7 @@ the construction:
    transverse velocity the partial solve drops the coupling, by $3.7\times10^{-3}$ relative at 50 m/s in the
    check (`[C4]`).
 
-In the code, @eq-ch07-vic-blocks is the block set-up with `half_inv_vol` $=1/(2V_i)$ ([`vic_assemble_full_impl.h:89-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L89-L99)).
+In the code, @eq-ch07-vic-blocks is the block set-up with `half_inv_vol` $=1/(2V_i)$ ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}).
 
 ### Numerical method
 
@@ -67,35 +67,35 @@ make_fig()
 ```
 
 Each face takes its two neighbours' primitives. `RoeAverage` weights by $\sqrt\rho$ and averages the total
-enthalpy ([`flux_decomposition_impl.h:37-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L37-L68)); the caller passes the mean $\gamma$ of the two cells.
-`Eigenvalue` returns $|u-c|$, $|u|$, $|u+c|$, $|u|$, $|u|$ ([`flux_decomposition_impl.h:70-74`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L70-L74)).
+enthalpy ({{< code src/implicit/flux_decomposition_impl.h RoeAverage >}}); the caller passes the mean $\gamma$ of the two cells.
+`Eigenvalue` returns $|u-c|$, $|u|$, $|u+c|$, $|u|$, $|u|$ ({{< code src/implicit/flux_decomposition_impl.h Eigenvalue >}}).
 `Eigenvector` writes out the eigenvectors and their inverse by hand
-([`flux_decomposition_impl.h:76-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L76-L103)), and `FluxJacobian` the Euler flux Jacobian in conserved
-variables ([`flux_decomposition_impl.h:105-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L105-L126)). The full kernel forms $\lvert\hat A\rvert$ as `Am` and `Ap`
-at the lower and upper face ([`vic_assemble_full_impl.h:51-87`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L51-L87)) and then the blocks, with `half_inv_vol` $=1/(2V_i)$ ([`vic_assemble_full_impl.h:89-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L89-L99)). The partial kernel copies
+({{< code src/implicit/flux_decomposition_impl.h Eigenvector >}}), and `FluxJacobian` the Euler flux Jacobian in conserved
+variables ({{< code src/implicit/flux_decomposition_impl.h FluxJacobian >}}). The full kernel forms $\lvert\hat A\rvert$ as `Am` and `Ap`
+at the lower and upper face ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}) and then the blocks, with `half_inv_vol` $=1/(2V_i)$ ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}). The partial kernel copies
 the $(\rho, \rho u, E)$ rows and columns out of the same 5 x 5 matrices into `Am2` and `Ap2`
-([`vic_assemble_partial_impl.h:110-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L110-L120)).
+({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}).
 
 On the CPU the assembly runs the columns in parallel and fills each cell independently. A solid cell gets
 $a=I/\Delta t$, $b=c=0$, and its fluid neighbour sees a mirror of itself instead of the solid's state; both are
-in `vic_assemble_full_cpu` ([`implicit_dispatch.cpp:77-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L77-L131)), as the check confirms (`[C5]`). Before the assembly, the host
+in `vic_assemble_full_cpu` ({{< code src/implicit/implicit_dispatch.cpp vic_assemble_full_cpu >}}), as the check confirms (`[C5]`). Before the assembly, the host
 removes the EOS reference energy from the energy tendency and takes $\gamma$ from the EOS, through
-`internal_energy_offset` ([`hydro/hydro.cpp:427-435`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L427-L435)). It also rotates the velocity into the local orthonormal frame, through
-`prim2local1_` ([`implicit_hydro.cpp:226-231`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L226-L231)).
+`internal_energy_offset` ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}). It also rotates the velocity into the local orthonormal frame, through
+`prim2local1_` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| Roe average | [`flux_decomposition_impl.h:37-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L37-L68) | `RoeAverage` | |
-| eigenvalues | [`flux_decomposition_impl.h:70-74`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L70-L74) | `Eigenvalue` | |
-| eigenvectors | [`flux_decomposition_impl.h:76-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L76-L103) | `Eigenvector` | |
-| flux Jacobian | [`flux_decomposition_impl.h:105-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/flux_decomposition_impl.h#L105-L126) | `FluxJacobian` | |
-| full blocks | [`vic_assemble_full_impl.h:89-99`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_full_impl.h#L89-L99) | `half_inv_vol` | `implicit-scheme` 9 |
-| partial blocks | [`vic_assemble_partial_impl.h:110-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_assemble_partial_impl.h#L110-L120) | `half_inv_vol` | `implicit-scheme` 1 |
-| column loop, solid cells | [`implicit_dispatch.cpp:77-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L77-L131) | `vic_assemble_full_cpu` | |
-| host: energy offset, $\gamma$ | [`hydro/hydro.cpp:405-446`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L405-L446) | `_apply_implicit_correction` | |
-| host: dispatch | [`implicit_hydro.cpp:335-346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L335-L346) | `vic_assemble_full` | |
+| Roe average | {{< code src/implicit/flux_decomposition_impl.h RoeAverage >}} | `RoeAverage` | |
+| eigenvalues | {{< code src/implicit/flux_decomposition_impl.h Eigenvalue >}} | `Eigenvalue` | |
+| eigenvectors | {{< code src/implicit/flux_decomposition_impl.h Eigenvector >}} | `Eigenvector` | |
+| flux Jacobian | {{< code src/implicit/flux_decomposition_impl.h FluxJacobian >}} | `FluxJacobian` | |
+| full blocks | {{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}} | `half_inv_vol` | `implicit-scheme` 9 |
+| partial blocks | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `half_inv_vol` | `implicit-scheme` 1 |
+| column loop, solid cells | {{< code src/implicit/implicit_dispatch.cpp vic_assemble_full_cpu >}} | `vic_assemble_full_cpu` | |
+| host: energy offset, $\gamma$ | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `_apply_implicit_correction` | |
+| host: dispatch | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `vic_assemble_full` | |
 
 : Code map of the VIC assembly. {#tbl-ch07-vic-assembly-code}
 

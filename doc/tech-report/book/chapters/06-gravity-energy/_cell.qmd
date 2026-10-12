@@ -25,7 +25,7 @@ every stage. The $x_1$ part is scaled by the non-hydrostatic factor $\alpha_{\ma
 $x_1$ gravity, $(1-\alpha_{\mathrm{nh}})$, is applied through the hydrostatic pressure correction of
 @sec-ch05. With `gravity-work: cell` the energy term stays as it is: the work is booked in the cell where the
 force acts. That is the simplest choice, and it was the default until chengcli/snapy#303 made `face` the default
-([`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28)); it is accurate cell by cell; its cost is that it
+({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}); it is accurate cell by cell; its cost is that it
 does not conserve total energy plus potential energy, because the work of the mass crossing a face is booked in
 the two neighbouring cells at their own centroids, not where the mass crosses. The gravity-work fixer repairs the
 integral of that defect once per step.
@@ -50,11 +50,11 @@ where $\rho^{\mathrm{hs}}_i$ is the hydrostatic-correction density `rho_grav` of
 $W^{\mathrm{face}}[\cdot]$ is the face form @eq-ch06-dwork-face evaluated on the flux in brackets, $F$ is the total
 $x_1$ mass flux after the positivity limiter and sedimentation and $F^{\mathrm{ref}}$ is the flux the Riemann
 solver returned. The first term is added in `ConstGravityImpl::forward` from `grav1`
-([`const_gravity.cpp:48-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L48-L52))
+({{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}})
 and, for $\alpha_{\mathrm{nh}}<1$, by the hydrostatic correction; the second is booked as `gravity_energy_correction`
-([`hydro_forward.cpp:858-859`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L858-L859)),
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 the face work of the flux minus `bflux1`
-([`hydro_forward.cpp:784-788`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L784-L788)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 When neither the limiter nor sedimentation changed the flux, $F=F^{\mathrm{ref}}$ and the cell work is all there
 is (check line `[C2]`).
 
@@ -79,7 +79,7 @@ formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line
 
 The forcing runs inside the stage, with the other forcings, on the primitive state of the stage start, and its
 increment is scaled by $\Delta t$ like every other term, in the loop over `forcings`
-([`hydro_forward.cpp:764`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L764)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 Everything is a cell average; the body force and its work are pointwise in each cell, with no stencil, so walls,
 seams and ghosts play no part. The face part of @eq-ch06-cell-work reads the two $x_1$ faces of the cell and is
 computed after the $x_1$ flux is final, that is after the positivity limiter and sedimentation. With an implicit
@@ -99,25 +99,25 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| keys and defaults | [`const_gravity.cpp:12-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L12-L44) | `from_yaml` | `const-gravity` |
-| body force and cell work | [`const_gravity.cpp:46-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L65) | `forward` | `grav1` |
-| cell mode flag | [`hydro_forward.cpp:225-231`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L225-L231) | `gw_cell` | `gravity-work` |
-| Riemann flux kept | [`hydro_forward.cpp:405-408`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L405-L408) | `bflux1` | `gravity-work` |
-| face work of $F-F^{\mathrm{ref}}$ | [`hydro_forward.cpp:784-788`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L784-L788) | `vertical_mass_flux1` | `gravity-work` |
-| hydrostatic part | [`hydro_forward.cpp:850-857`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L850-L857) | `original_gravity_work` | `non-hydrostatic` |
-| setup checks | [`hydro.cpp:55-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L55-L68) | `gravity_work` | `gravity-work` |
+| keys and defaults | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `from_yaml` | `const-gravity` |
+| body force and cell work | {{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}} | `forward` | `grav1` |
+| cell mode flag | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gw_cell` | `gravity-work` |
+| Riemann flux kept | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `bflux1` | `gravity-work` |
+| face work of $F-F^{\mathrm{ref}}$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `vertical_mass_flux1` | `gravity-work` |
+| hydrostatic part | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `original_gravity_work` | `non-hydrostatic` |
+| setup checks | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `gravity_work` | `gravity-work` |
 
 : Code map of the constant gravity and the cell form. {#tbl-ch06-cell-code}
 
 1. In `from_yaml`, read `grav1`..`grav3` (default 0), `non-hydrostatic` (default 1, refused outside $[0,1]$) and
-   the work mode `gravity_work` ([`const_gravity.cpp:22-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L22-L34); default `cell` at this pin, `face` at
-   snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, `gravity_work` at [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28)).
+   the work mode `gravity_work` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}; default `cell` at this pin, `face` at
+   snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, `gravity_work` at {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}).
 2. Default `gravity-work-fixer` to true with `cell`, and refuse it with a face form when $g_1\neq0$, in
-   `gravity_work_fixer` ([`const_gravity.cpp:35-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L35-L41)).
+   `gravity_work_fixer` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}).
 3. In `forward`, add the body force and the cell work, the $x_1$ part scaled by `non_hydrostatic`
-   ([`const_gravity.cpp:48-62`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L48-L62)).
-4. Keep the Riemann mass flux as `bflux1` ([`hydro_forward.cpp:405-408`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L405-L408)).
-5. Book the face work of the rest as `gravity_energy_correction` ([`hydro_forward.cpp:858-859`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L858-L859)).
+   ({{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}}).
+4. Keep the Riemann mass flux as `bflux1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+5. Book the face work of the rest as `gravity_energy_correction` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 The messages a user can hit are "forcing/const-gravity/gravity-work must be cell, face-wallc or face" and
 "forcing/const-gravity/gravity-work-fixer needs gravity-work: cell".
@@ -133,8 +133,8 @@ The messages a user can hit are "forcing/const-gravity/gravity-work must be cell
 
 The arm "cell, fixer false" of `test_gravity_work_fixer` requires the $E+\mathrm{PE}_d$ drift to exceed 100 times
 `TOL` $=10^{-12}$, so the defect @eq-ch06-cell-defect is shown to be real and the fixer load-bearing
-([`test_gravity_work_fixer.py:203-206`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_gravity_work_fixer.py#L203-L206)). `vertical_gravity_work_uses_continuity_mass_flux` checks the
-total-energy change against the boundary flux to $10^{-9}$ ([`test_forcing.cpp:870-918`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L870-L918)).
+({{< code tests/test_gravity_work_fixer.py main >}}). `vertical_gravity_work_uses_continuity_mass_flux` checks the
+total-energy change against the boundary flux to $10^{-9}$ ({{< code tests/test_forcing.cpp forcing.vertical_gravity_work_uses_continuity_mass_flux >}}).
 Both are registered with the corrected-PE switch off and run on CPU. Measured values at the pin are **missing
 evidence**.
 

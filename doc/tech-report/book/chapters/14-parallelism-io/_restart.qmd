@@ -21,7 +21,7 @@ equation**: @eq-ch14-restart-next.
 :::
 
 The state is saved, not the history. Run-to-date meters (the gravity-work fix total, the positivity meters) start
-again from zero after a resume (`gravity_work_fix`, [`hydro.hpp:186-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L186-L190)).
+again from zero after a resume (`gravity_work_fix`, {{< code src/hydro/hydro.hpp HydroImpl >}}).
 
 ### Derivation
 
@@ -41,7 +41,7 @@ $$ {#eq-ch14-restart-next}
 The first case catches an interval that shrank between the runs (issue #272): a saved time more than one new
 interval ahead would delay the output, or, for an output disabled with a far-future time, keep it from ever firing.
 An output that is new in the resumed card joins the grid of multiples of its interval at or below $t_r$, so it fires at
-the first output check. Both are in `_init_from_restart` (`next_time`, [`meshblock.cpp:1376-1398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1376-L1398)).
+the first output check. Both are in `_init_from_restart` (`next_time`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}).
 A port of the rule confirms the clamp of a shrunk interval and of a far-future time, and that a time within one
 interval or an interval $\Delta t_o \le 0$ keeps the saved time [check `src/snapy_report/ch14/restart_check.py`,
 output `restart_check.out`, `[C1]`]. A new output starts on the grid of multiples of $\Delta t_o$ at or below $t_r$
@@ -49,12 +49,12 @@ and fires at the first check (`[C2]`), and a clamped output writes every $\Delta
 
 ### Numerical method
 
-**Write.** `RestartOutput` forces `combine` on ([`restart.cpp:18-22`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/restart.cpp#L18-L22)).
+**Write.** `RestartOutput` forces `combine` on ({{< code src/output/restart.cpp RestartOutput::RestartOutput >}}).
 `write_output_file` copies every defined tensor of the block's variable map to the CPU, ghosts included. It drops
 `scalar_r` when `scalar_s` and `hydro_u` are both present, because the primitive scalar is rebuilt on read. It adds
 `last_time`, `last_cycle`, and per output its `file_number`, `next_time` and two keys (below). The result is saved with
 `kintera::save_tensors` to `<basename>.block<r>.<kkkkk>.part`, or `.final.part` on the final write
-(`RestartOutput::write_output_file`, [`restart.cpp:24-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/restart.cpp#L24-L95)). Unlike NetCDF, the restart output also writes on the final
+(`RestartOutput::write_output_file`, {{< code src/output/restart.cpp RestartOutput::write_output_file >}}). Unlike NetCDF, the restart output also writes on the final
 call.
 
 **Keys.** An output's key is a 64-bit FNV-1a hash of its type, its interval and its variable list. The legacy key
@@ -68,17 +68,17 @@ mirror-barrier pattern as NetCDF (@sec-ch14-netcdf). On the root it globs the pa
 to `<basename>.<kkkkk>.restart`. Several parts are written by `make_restart_bundle` as a text header and the
 concatenated payloads, and the parts are deleted ([`combine_restart.cpp:35-174`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_restart.cpp#L35-L174)).
 The header is the magic line `SNAPY_RESTART_BUNDLE_V1`, the part count, one `name<TAB>size` line per part, and an
-empty line (`kRestartBundleMagic`, [`combine_restart.cpp:18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_restart.cpp#L18)).
+empty line (`kRestartBundleMagic`, {{< code src/output/combine_restart.cpp kRestartBundleMagic >}}).
 
 **Read.** The driver passes the file to `Mesh::initialize`, and each block calls `_init_from_restart`. A relative
 path that does not exist is looked up in the output directory. `load_restart` checks for the magic line. In a bundle,
 it extracts the part whose name holds `block<r>` for this block's rank, through a temporary file. A file without the
 magic is loaded whole (`load_pt_from_bundle`, [`read_restart_file.cpp:154-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/read_restart_file.cpp#L154-L234)). The block then
 requires `hydro_u`, `last_time`, `last_cycle`, `file_number` and `next_time`, and resumes at the saved cycle and time
-([`meshblock.cpp:1306-1333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1306-L1333)).
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}).
 
 **Schedules.** Saved slots are matched to the current outputs in three passes
-(`claimed`, [`meshblock.cpp:1335-1375`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1335-L1375)):
+(`claimed`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}):
 
 1. An output whose key equals the key saved in its own position keeps that slot.
 2. Each output still unmatched takes the first unclaimed slot with its key.
@@ -87,23 +87,23 @@ requires `hydro_u`, `last_time`, `last_cycle`, `file_number` and `next_time`, an
 Precise keys are used when `output_key` holds $2N$ entries, legacy keys otherwise. The file number always follows the
 position, because the file name is `out<n>`; the next time follows the matched slot and
 then @eq-ch14-restart-next. Finally the tensors move to the block's device, and `scalar_r` is rebuilt from `scalar_s` and
-`hydro_u` ([`meshblock.cpp:1400-1420`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1400-L1420)).
+`hydro_u` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| always combined | [`restart.cpp:18-22`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/restart.cpp#L18-L22) | `RestartOutput` | `type: restart` |
-| state, time, schedules, keys | [`restart.cpp:24-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/restart.cpp#L24-L95) | `RestartOutput::write_output_file` | none |
+| always combined | {{< code src/output/restart.cpp RestartOutput::RestartOutput >}} | `RestartOutput` | `type: restart` |
+| state, time, schedules, keys | {{< code src/output/restart.cpp RestartOutput::write_output_file >}} | `RestartOutput::write_output_file` | none |
 | legacy and precise keys | [`output_type.cpp:16-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L16-L43) | `schedule_key_v2` | none |
-| bundle magic | [`combine_restart.cpp:18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_restart.cpp#L18) | `kRestartBundleMagic` | none |
+| bundle magic | {{< code src/output/combine_restart.cpp kRestartBundleMagic >}} | `kRestartBundleMagic` | none |
 | bundle and barriers | [`combine_restart.cpp:35-174`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_restart.cpp#L35-L174) | `make_restart_bundle` | none |
 | read one block's entry | [`read_restart_file.cpp:154-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/read_restart_file.cpp#L154-L234) | `load_restart` | `--restart` |
-| required fields, cycle, time | [`meshblock.cpp:1306-1333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1306-L1333) | `_init_from_restart` | none |
-| schedule matching | [`meshblock.cpp:1335-1375`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1335-L1375) | `claimed` | none |
-| next-time rule | [`meshblock.cpp:1376-1398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1376-L1398) | `next_time` | `dt` |
-| device move, scalar rebuild | [`meshblock.cpp:1400-1420`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1400-L1420) | `rebuild_scalar_r` | none |
-| meters not carried | [`hydro.hpp:186-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L186-L190) | `gravity_work_fix` | none |
+| required fields, cycle, time | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `_init_from_restart` | none |
+| schedule matching | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `claimed` | none |
+| next-time rule | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `next_time` | `dt` |
+| device move, scalar rebuild | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `rebuild_scalar_r` | none |
+| meters not carried | {{< code src/hydro/hydro.hpp HydroImpl >}} | `gravity_work_fix` | none |
 
 : Code map of restart files. {#tbl-ch14-restart-code}
 
@@ -126,7 +126,7 @@ ones skip with exit 125 when a tool is missing. `test_user_output` and
 `test_output_barrier` carry the build suffix (`.release`). {#tbl-ch14-restart-tests}
 
 The cycle-limit comparison is `assert_close` with `atol` $10^{-12}$
-([`run_restart_cycle_limit.py:101-105`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_cycle_limit.py#L101-L105)). The multiblock runner sets
+({{< code tests/run_restart_cycle_limit.py assert_close >}}). The multiblock runner sets
 `tlim: 0` and `nlim: 0` and compares with `compare_netcdf`
 ([`run_restart_multiblock.py:26-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_multiblock.py#L26-L82)). Pass status at the pin was not run
 for this chapter.

@@ -31,7 +31,7 @@ holds for any update made before the call, including host-side operator-split so
 With exchange-after, it holds for updates made inside the stages; a host-side update made after the last stage
 and before the next step is seen by the neighbours only after the next stage's exchange. The comment at
 `MeshBlockImpl::forward` gives the reason for exchange-before: on the cubed sphere, a one-signed seam bias from
-condensation applied between calls ([`meshblock.cpp:545-552`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L552)).
+condensation applied between calls ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}).
 
 A two-block periodic model with a first-order upwind stage shows the difference. With no update between steps,
 both orders give the single-domain result bit for bit [check `src/snapy_report/ch07/exchange_check.py`, output
@@ -53,11 +53,11 @@ make_fig()
 ```
 
 1. `MeshBlockImpl::forward` calls `exchange_ghost_zones` and then `advance_local`
-   ([`meshblock.cpp:545-552`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L552)). The example driver calls `forward` once per stage and applies kinetics after the last stage
-   ([`run_hydro.cpp:161-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L161-L191)).
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}). The example driver calls `forward` once per stage and applies kinetics after the last stage
+   ({{< code examples/run_hydro.cpp main >}}).
 2. `MeshImpl::forward` with one block calls `advance_local` and then `exchange_ghost_zones`; with several it runs
    `advance_local` for every block, applies the gravity-work fixer of @sec-ch06 across the blocks at the last
-   stage, and then exchanges every block ([`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365)).
+   stage, and then exchanges every block ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}).
 
 The exchange itself (what is filled, in which order, and across which seams) is in @sec-ch03; the physical
 boundary fill at the end of each stage is in the boundary-conditions chapter.
@@ -66,9 +66,9 @@ boundary fill at the end of each stage is in the boundary-conditions chapter.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| exchange, then stage | [`meshblock.cpp:545-552`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L552) | `exchange_ghost_zones` | MeshBlock API |
-| stage, then exchange | [`mesh.cpp:331-365`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L365) | `exchange_ghost_zones` | Mesh API |
-| example driver loop | [`run_hydro.cpp:161-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L161-L200) | `forward` | |
+| exchange, then stage | {{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}} | `exchange_ghost_zones` | MeshBlock API |
+| stage, then exchange | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `exchange_ghost_zones` | Mesh API |
+| example driver loop | {{< code examples/run_hydro.cpp main >}} | `forward` | |
 
 : Code map of the exchange placement. {#tbl-ch07-exchange-code}
 
@@ -94,5 +94,5 @@ model only.
 1. **The two drivers differ for host-side sources between steps.** On the Mesh path a driver update made after
    the last stage reaches the ghosts only after the next stage's exchange. The example kinetics driver uses the
    MeshBlock path; a Mesh driver with between-step sources is not tested. Not measured.
-2. **The comment on the MeshBlock path**, above `exchange_ghost_zones` ([`meshblock.cpp:546-550`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L546-L550)),
+2. **The comment on the MeshBlock path**, above `exchange_ghost_zones` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}),
    describes only that path.

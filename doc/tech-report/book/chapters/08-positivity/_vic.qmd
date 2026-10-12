@@ -35,23 +35,23 @@ which is why it is a clamp with a record rather than a conservative operation
 
 ### Numerical method
 
-The buffer is registered at `_dry_clamp_step` ([`implicit_hydro.cpp:120-121`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L120-L121)) and updated at
-[`implicit_hydro.cpp:379-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L379-L380), where it takes the running maximum of the clamp applied in
+The buffer is registered at `_dry_clamp_step` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::reset >}}) and updated at
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}, where it takes the running maximum of the clamp applied in
 this step rather than a count. Storing a magnitude rather than a flag is what lets the redo detector
 distinguish a round-off clamp from a real one.
 
-It is read through the accessor at `dry_clamp_step` ([`implicit_hydro.hpp:92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L92)) and cleared between steps at
-`reset_dry_clamp_step` ([`implicit_hydro.hpp:93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L93)), so the value a redo decision sees belongs to the step being
+It is read through the accessor at `dry_clamp_step` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::dry_clamp_step >}}) and cleared between steps at
+`reset_dry_clamp_step` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::reset_dry_clamp_step >}}), so the value a redo decision sees belongs to the step being
 judged.
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the buffer | [`implicit_hydro.cpp:120-121`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L120-L121) | `_dry_clamp_step` | implicit scheme on |
-| the running maximum | [`implicit_hydro.cpp:379-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L379-L380) | `_mass_corr` | |
-| the accessor | [`implicit_hydro.hpp:92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L92) | `dry_clamp_step` | |
-| cleared between steps | [`implicit_hydro.hpp:93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L93) | `reset_dry_clamp_step` | |
+| the buffer | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::reset >}} | `_dry_clamp_step` | implicit scheme on |
+| the running maximum | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_mass_corr` | |
+| the accessor | {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::dry_clamp_step >}} | `dry_clamp_step` | |
+| cleared between steps | {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::reset_dry_clamp_step >}} | `reset_dry_clamp_step` | |
 
 : Code map of the implicit dry-channel clamp. {#tbl-ch08-vic-code}
 

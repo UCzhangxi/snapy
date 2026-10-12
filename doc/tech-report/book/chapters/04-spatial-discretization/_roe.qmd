@@ -22,17 +22,17 @@ their strength times their speed, which is where the upwinding comes from.
 
 ### Derivation
 
-The averaging is the square-root weighting, at `sqrtdl` ([`roe_impl.h:39-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L39-L48)): each quantity is weighted by
+The averaging is the square-root weighting, at `sqrtdl` ({{< code src/riemann/roe_impl.h roe_impl >}}): each quantity is weighted by
 the square root of its density so that the linearised system reproduces the jump exactly. The sound speed
-follows from the averaged enthalpy and velocity at `cs_sq` ([`roe_impl.h:117-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L117-L118)), with a floor applied
+follows from the averaged enthalpy and velocity at `cs_sq` ({{< code src/riemann/roe_impl.h roe_impl >}}), with a floor applied
 through `roe_max` so that a non-positive argument cannot reach the square root.
 
-The three wave strengths at `alpha_m` ([`roe_impl.h:137-140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L137-L140)) are the familiar ones: two acoustic strengths
+The three wave strengths at `alpha_m` ({{< code src/riemann/roe_impl.h roe_impl >}}) are the familiar ones: two acoustic strengths
 carrying the velocity jump against the pressure jump over the squared sound speed, and the two tangential
 momentum strengths riding on the entropy wave.
 
 The species rows are the part specific to snapy. Each gets its own entropy-wave strength at
-`alpha_n` ([`roe_impl.h:155-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L155-L161)), built as the jump in that species' partial density minus the pressure
+`alpha_n` ({{< code src/riemann/roe_impl.h roe_impl >}}), built as the jump in that species' partial density minus the pressure
 jump times the species' share. That construction is what keeps a species from being generated at a contact,
 and no source in the repository derives it; it is recorded here from the code.
 
@@ -46,26 +46,26 @@ rows and the ideal-moist $\gamma$ are not part of the port.
 
 The body is [`roe_impl.h:24-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L24-L217). It assembles the centred flux, then subtracts half the sum of
 each wave's absolute speed times its strength times its right eigenvector, with the mass and species rows at
-`alpha_n` ([`roe_impl.h:149-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L149-L161)).
+`alpha_n` ({{< code src/riemann/roe_impl.h roe_impl >}}).
 
-The absolute speeds at `spd_0` ([`roe_impl.h:127-129`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L127-L129)) are taken directly, with no entropy fix. At a sonic
+The absolute speeds at `spd_0` ({{< code src/riemann/roe_impl.h roe_impl >}}) are taken directly, with no entropy fix. At a sonic
 point one of the three speeds passes through zero and its dissipation vanishes with it, which is the classical
 condition under which a Roe solver can admit an expansion shock. Nothing in the code detects that case.
 
-The face pressure is written at `face_pressure` ([`roe_impl.h:119-124`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L119-L124)).
+The face pressure is written at `face_pressure` ({{< code src/riemann/roe_impl.h roe_impl >}}).
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
 | the solver body | [`roe_impl.h:24-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L24-L217) | `roe_impl` | `type: roe`, the YAML default |
-| square-root averaging | [`roe_impl.h:39-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L39-L48) | `sqrtdl` | |
-| sound speed with a floor | [`roe_impl.h:117-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L117-L118) | `cs_sq` | |
-| face pressure written out | [`roe_impl.h:119-124`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L119-L124) | `face_pressure` | caller asked |
-| wave speeds, no entropy fix | [`roe_impl.h:127-129`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L127-L129) | `spd_0` | |
-| acoustic and shear strengths | [`roe_impl.h:137-140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L137-L140) | `alpha_m` | |
-| per-species entropy strengths | [`roe_impl.h:155-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/roe_impl.h#L155-L161) | `alpha_n` | tracers present |
-| registration | [`riemann_solver.cpp:56-57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.cpp#L56-L57) | `RoeSolver` | |
+| square-root averaging | {{< code src/riemann/roe_impl.h roe_impl >}} | `sqrtdl` | |
+| sound speed with a floor | {{< code src/riemann/roe_impl.h roe_impl >}} | `cs_sq` | |
+| face pressure written out | {{< code src/riemann/roe_impl.h roe_impl >}} | `face_pressure` | caller asked |
+| wave speeds, no entropy fix | {{< code src/riemann/roe_impl.h roe_impl >}} | `spd_0` | |
+| acoustic and shear strengths | {{< code src/riemann/roe_impl.h roe_impl >}} | `alpha_m` | |
+| per-species entropy strengths | {{< code src/riemann/roe_impl.h roe_impl >}} | `alpha_n` | tracers present |
+| registration | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}} | `RoeSolver` | |
 
 : Code map of the Roe solver. {#tbl-ch04-roe-code}
 

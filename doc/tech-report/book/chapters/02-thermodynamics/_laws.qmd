@@ -43,7 +43,7 @@ $$
 \Delta\mathbf U^{\mathrm{flux}}_i=-\frac{\Delta t}{V_i}\Delta_i[A\mathbf F_1]
 $$ {#eq-ch02-laws-increment}
 
-@eq-ch02-laws-increment is implemented by `du` in [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765).
+@eq-ch02-laws-increment is implemented by `du` in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 
 Summing $V_i\Delta\mathbf U^{\mathrm{flux}}_i$ cancels each shared interior face, leaving boundary fluxes.
 This cancellation is exact algebra when both neighbours use the same flux; accuracy of that flux is separate.
@@ -52,7 +52,7 @@ The check `laws_check.py` verifies only the telescoping identity.
 Phase adjustment changes interior composition after transport. A wall ghost copied before adjustment retains
 old composition; reconstruction then sees a jump not present in the adjusted interior. Copying afterward makes
 the reflected thermodynamic state equal again. Evidence for the ordering is the final `apply_boundaries`
-call in [`meshblock.cpp:795-841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L841) and the
+call in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} and the
 `test_wall_saturation` source cited in the Tests layer; neither is a runtime result from this draft.
 
 ### Numerical method
@@ -60,7 +60,7 @@ call in [`meshblock.cpp:795-841`](https://github.com/chengcli/snapy/blob/e894700
 The hydro operator reconstructs cell states at faces, limits fluxes, forms divergence, applies native forcings,
 and performs VIC if present. User stage callbacks run after the hydro return, before RK averaging.
 The averaged state is limited, solids are refilled, the last stage adjusts saturation, the applicable gravity
-fixer runs, and physical boundaries are filled. [`meshblock.cpp:754-841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L754-L841) documents `apply_boundaries` at the end.
+fixer runs, and physical boundaries are filled. {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} documents `apply_boundaries` at the end.
 EOS conversions themselves have no spatial stencil. Ghost exchange and seam flux agreement belong to @sec-ch03 and the planned time-integration chapter.
 
 ```{python}
@@ -76,10 +76,10 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| flux and native sources | [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765) | `du` | `none` |
-| implicit step | [`hydro_forward.cpp:915-943`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L915-L943) | `dt_corr` | `none` |
-| callbacks | [`meshblock.cpp:731-756`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L756) | `pintg` | `none` |
-| last stage | [`meshblock.cpp:795-841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L841) | `apply_boundaries` | `none` |
+| flux and native sources | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `du` | `none` |
+| implicit step | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dt_corr` | `none` |
+| callbacks | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `pintg` | `none` |
+| last stage | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_boundaries` | `none` |
 | row layout | [`snap.h:34-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L55) | `ICY` | `none` |
 
 : Code map. {#tbl-ch02-laws-code}
@@ -87,10 +87,10 @@ make_fig()
 
 Read the implementation in this order:
 
-1. Flux and native sources: `du` in [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765).
-2. Implicit step: `dt_corr` in [`hydro_forward.cpp:915-943`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L915-L943).
-3. Callbacks: `pintg` in [`meshblock.cpp:731-756`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L756).
-4. Last stage: `apply_boundaries` in [`meshblock.cpp:795-841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L841).
+1. Flux and native sources: `du` in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+2. Implicit step: `dt_corr` in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+3. Callbacks: `pintg` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
+4. Last stage: `apply_boundaries` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
 5. Row layout: `ICY` in [`snap.h:34-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L55).
 
 ### Tests

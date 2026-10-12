@@ -38,8 +38,8 @@ temperature is $\theta_v = \theta\,p/(\rho R_dT)$, which equals $\theta$ for dry
 (`[C3]`). `path_<species>` is $\sum_i\rho_{y,i}V_i/A_{\mathrm{bottom}}$, the column mass per unit area on a
 Cartesian column (`[C4]`).
 
-In the code, @eq-ch13-div-face is `interp_to_face` ([`load_diag_output_data.cpp:22-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L22-L45)) followed by the
-coordinate `divergence` of the face values ([`load_diag_output_data.cpp:166-205`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L166-L205)).
+In the code, @eq-ch13-div-face is `interp_to_face` ({{< code src/output/load_diag_output_data.cpp interp_to_face >}}) followed by the
+coordinate `divergence` of the face values ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
 
 ### Numerical method
 
@@ -54,32 +54,32 @@ from snapy_report.ch13.fig_output_diag import make_fig
 make_fig()
 ```
 
-Every output calls `loadDiagOutputData` after the hydro fields ([`output_type.cpp:190-193`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L190-L193)). The groups
+Every output calls `loadDiagOutputData` after the hydro fields ({{< code src/output/output_type.cpp OutputType::LoadOutputData >}}). The groups
 are as follows.
 
 - **`thermo`.** Temperature, potential temperature, virtual potential temperature, specific entropy and one
-  relative humidity per nucleation reaction, from kintera ([`load_diag_output_data.cpp:54-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L54-L164)).
+  relative humidity per nucleation reaction, from kintera ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
 - **`diagnostics`, `div`, `div_h`, `curl`.** `div` and the horizontal `div_h` from face velocities in the local
   frame. `curl` is a vector in 3-D and its third component in 2-D, through `curl`
-  ([`load_diag_output_data.cpp:166-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L166-L217)).
+  ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
 - **`implicit`.** `ic_dry`, `ic_mom`, `ic_etot` and `ic_<species>`, the last correction the VIC returned, read through
-  `correction` ([`load_diag_output_data.cpp:219-260`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L219-L260)).
-- **`path`.** The species column mass per bottom face area, from `hydro_u` ([`load_diag_output_data.cpp:262-282`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L262-L282)).
+  `correction` ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
+- **`path`.** The species column mass per bottom face area, from `hydro_u` ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
 - **`avg`.** Volume-weighted means of the primitives over $x_2$ and $x_3$, summed to the root rank, through `avg_w`
-  ([`load_diag_output_data.cpp:284-336`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L284-L336)).
+  ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| face mean | [`load_diag_output_data.cpp:22-45`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L22-L45) | `interp_to_face` | |
-| entry point | [`load_diag_output_data.cpp:47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L47) | `loadDiagOutputData` | `outputs/N/variables` |
-| thermodynamic fields | [`load_diag_output_data.cpp:54-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L54-L164) | `theta_v` | `thermo` |
-| divergence and curl | [`load_diag_output_data.cpp:166-217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L166-L217) | `div_h` | `diagnostics`, `div`, `div_h`, `curl` |
-| VIC correction | [`load_diag_output_data.cpp:219-260`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L219-L260) | `ic_etot` | `implicit` |
-| column paths | [`load_diag_output_data.cpp:262-282`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L262-L282) | `path` | `path` |
-| horizontal means | [`load_diag_output_data.cpp:284-336`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/load_diag_output_data.cpp#L284-L336) | `avg_w` | `avg` |
-| call | [`output_type.cpp:190-193`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L190-L193) | `loadDiagOutputData` | |
+| face mean | {{< code src/output/load_diag_output_data.cpp interp_to_face >}} | `interp_to_face` | |
+| entry point | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} | `loadDiagOutputData` | `outputs/N/variables` |
+| thermodynamic fields | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} | `theta_v` | `thermo` |
+| divergence and curl | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} | `div_h` | `diagnostics`, `div`, `div_h`, `curl` |
+| VIC correction | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} | `ic_etot` | `implicit` |
+| column paths | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} | `path` | `path` |
+| horizontal means | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} | `avg_w` | `avg` |
+| call | {{< code src/output/output_type.cpp OutputType::LoadOutputData >}} | `loadDiagOutputData` | |
 
 : Code map of the output-field diagnostics. {#tbl-ch13-output-diag-code}
 

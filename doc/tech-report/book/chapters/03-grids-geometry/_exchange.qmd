@@ -39,7 +39,7 @@ $$ {#eq-ch03-exchange-corner}
 
 that is, the mean of the left strip's value in the same $x_2$ column at the row next to the corner and the bottom
 strip's value in the same $x_3$ row at the column next to the corner. @eq-ch03-exchange-corner and its three mirror
-images are `fill_corners` ([`layout.cpp:710-751`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L710-L751)). It reproduces a constant field; for a field with a
+images are `fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}). It reproduces a constant field; for a field with a
 gradient it is a first-order fill, because both terms are read up to $n_g$ cells away from the corner cell. Check
 line `[C15]` evaluates @eq-ch03-exchange-corner on every corner ghost of an $n_g = 3$ block: a constant field is
 reproduced to exactly zero, and on $q = \alpha + \beta x_2 + \gamma x_3$ the error halves at each refinement
@@ -71,26 +71,26 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| buffer id of an offset | [`layout.hpp:32-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L32-L35) | `get_buffer_id` | none |
-| sync options and defaults | [`layout.hpp:134-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L134-L157) | `SyncOptions` | none |
-| pack | [`layout.cpp:477-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L477-L538) | `serialize` | `skip_corner` |
-| unpack | [`layout.cpp:668-708`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L668-L708) | `deserialize` | none |
-| corners | [`layout.cpp:710-751`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L710-L751) | `fill_corners` | `skip_corner` |
-| wait, unpack, corners | [`layout.cpp:753-775`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L753-L775) | `finalize` | none |
+| buffer id of an offset | {{< code src/layout/layout.hpp get_buffer_id >}} | `get_buffer_id` | none |
+| sync options and defaults | {{< code src/layout/layout.hpp SyncOptions >}} | `SyncOptions` | none |
+| pack | {{< code src/layout/layout.cpp LayoutImpl::serialize >}} | `serialize` | `skip_corner` |
+| unpack | {{< code src/layout/layout.cpp LayoutImpl::deserialize >}} | `deserialize` | none |
+| corners | {{< code src/layout/layout.cpp LayoutImpl::fill_corners >}} | `fill_corners` | `skip_corner` |
+| wait, unpack, corners | {{< code src/layout/layout.cpp LayoutImpl::finalize >}} | `finalize` | none |
 | one sync, or two phases | [`meshblock.cpp:554-595`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L595) | `exchange` | `interpolate` |
-| per-stage sync | [`meshblock.cpp:913-930`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L930) | `exchange_ghost_zones` | none |
+| per-stage sync | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | none |
 
 : Code map of the generic exchange. {#tbl-ch03-exchange-code}
 
 In step order (@tbl-ch03-exchange-code):
 
 1. `exchange_ghost_zones` syncs `hydro_u` as conserved with interpolation on, then `scalar_s` as scalar
-   ([`meshblock.cpp:913-930`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L930)).
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
 2. `exchange` takes the two-phase branch on a subdivided cubed sphere, otherwise calls `_exchange_once`, which is
    `begin_exchange`, `launch_exchange`, `finalize_exchange` ([`meshblock.cpp:554-595`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L595)).
 3. `serialize` copies each interior slab into the cached send buffer of its `get_buffer_id`
-   ([`layout.cpp:477-538`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L477-L538)).
-4. `finalize` waits on the messages, calls `deserialize` and then `fill_corners` ([`layout.cpp:753-775`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L753-L775)).
+   ({{< code src/layout/layout.cpp LayoutImpl::serialize >}}).
+4. `finalize` waits on the messages, calls `deserialize` and then `fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::finalize >}}).
 
 ### Tests
 
@@ -105,8 +105,8 @@ In step order (@tbl-ch03-exchange-code):
 The slab check, in `test_mesh_exchange.py`, is the final `torch.all` comparison ([`test_mesh_exchange.py:20-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L20-L50)).
 The radial-velocity check sets `ABS_TOL` and `REL_TOL` ([`test_cubed_sphere_vertical_velocity_exchange.py:7-9`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L7-L9))
 and compares the worst ghost error against them with `ideal_match`
-([`test_cubed_sphere_vertical_velocity_exchange.py:95-110`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L95-L110)). The two-rank case uses `ghosts_match_expected`
-([`test_exchange.cpp:135-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L135-L180)). The Python tests run on CPU in one process; `test_exchange.release` runs on two
+({{< code tests/test_cubed_sphere_vertical_velocity_exchange.py main >}}). The two-rank case uses `ghosts_match_expected`
+({{< code tests/test_exchange.cpp ghosts_match_expected >}}). The Python tests run on CPU in one process; `test_exchange.release` runs on two
 ranks with gloo. Their pass status at the pin was not run for this chapter (missing evidence). No test checks the
 synthesised corners.
 

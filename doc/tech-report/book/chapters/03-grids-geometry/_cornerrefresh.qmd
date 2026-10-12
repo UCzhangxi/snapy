@@ -28,7 +28,7 @@ There is nothing to derive; it is a consistency rule. For each installed $x_1$ b
 tangential direction with more than one cell, the bfunc is called on the first and last $g = \min(n_g, n/2)$ cells of
 that direction, unless that tangential face is itself physical and not periodic, in which case its own bfunc already
 wrote the corner. The rule relies on the contract stated with the `BC_FUNCTION` macro: a face function called again on
-a tangential slab must not depend on the slab's size and must give the same ghosts ([`bc_func.hpp:28-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L28-L35)).
+a tangential slab must not depend on the slab's size and must give the same ghosts ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}).
 Outflow is excluded because its background must match the whole block and it needs primitives.
 
 Check line `[C19]` enumerates the rule. Over 35 $(n_g, n)$ pairs the two end slabs of width
@@ -56,17 +56,17 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| refresh after the exchange | [`meshblock.cpp:932-974`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L932-L974) | `refresh` | none |
-| contract of a boundary function | [`bc_func.hpp:28-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L28-L35) | `BC_FUNCTION` | none |
+| refresh after the exchange | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `refresh` | none |
+| contract of a boundary function | {{< code src/bc/bc_func.hpp BC_FUNCTION >}} | `BC_FUNCTION` | none |
 
 : Code map of the corner refresh. {#tbl-ch03-cornerrefresh-code}
 
 In step order (@tbl-ch03-cornerrefresh-code):
 
-1. `physical` is true for an installed, non-periodic tangential face ([`meshblock.cpp:945-950`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L945-L950)).
+1. `physical` is true for an installed, non-periodic tangential face ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
 2. `refresh` loops over the two $x_1$ faces, skips a missing or `is_outflow` function and an $x_1$ axis of one cell,
-   and calls the function on each tangential slab whose face is not `physical` ([`meshblock.cpp:951-971`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L951-L971)).
-3. It runs for `hydro_u` and `scalar_s` with their types ([`meshblock.cpp:972-973`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L972-L973) for `refresh`).
+   and calls the function on each tangential slab whose face is not `physical` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
+3. It runs for `hydro_u` and `scalar_s` with their types ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} for `refresh`).
 
 ### Tests
 
@@ -90,6 +90,6 @@ skips without a GPU. One process. Their pass status at the pin was not run for t
 - Only $x_1$ walls are refreshed; $x_2$-$x_3$ corners are synthesised (@sec-ch03-exchange).
 :::
 
-The `Mesh`-level sync is a plain exchange ([`mesh.cpp:389-396`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L396) for `exchange_ghost_zones`). A user boundary
+The `Mesh`-level sync is a plain exchange ({{< code src/mesh/mesh.cpp MeshImpl::exchange_ghost_zones >}} for `exchange_ghost_zones`). A user boundary
 function that breaks the contract would write wrong corners without an error (read from the code; not measured). The
 switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.

@@ -43,9 +43,9 @@ $$
 $$ {#eq-ch10-borrow-split}
 
 for every $m\in\mathcal P_c$. @eq-ch10-borrow-split is applied to the `deficit` in `apply_conserved_limiter_`
-([`equation_of_state.cpp:262-268`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L262-L268), `deficit`),
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `deficit`),
 with the shares normalised once, at construction, in `cache_cloud_parents_`
-([`equation_of_state.cpp:155-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L155-L161), `parent_mass`).
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `parent_mass`).
 
 The shares sum to one, so the parents lose exactly $-\min(\rho_c,0)$ and the condensate gains it: the cell's total
 density is unchanged (check line `[C1]`). Elements are conserved too. For $A+B\to AB$ the molar mass of the
@@ -84,17 +84,17 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| parent cache | [`equation_of_state.cpp:110-163`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L110-L163) | `cache_cloud_parents_` | |
-| dry slot never a parent | [`equation_of_state.cpp:142-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L142-L145) | `vapor_it` | |
-| first producing reaction | [`equation_of_state.cpp:138-153`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L138-L153) | `break` | |
-| borrow and clamp | [`equation_of_state.cpp:262-268`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L262-L268), `deficit` | `deficit` | `limiter` |
+| parent cache | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}} | `cache_cloud_parents_` | |
+| dry slot never a parent | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}} | `vapor_it` | |
+| first producing reaction | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}} | `break` | |
+| borrow and clamp | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `deficit` | `deficit` | `limiter` |
 
 : Code map of the parent-vapour borrow. {#tbl-ch10-borrow-code}
 
-1. At construction, take the thermo's own names and molar masses ([`equation_of_state.cpp:128-130`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L128-L130), `populate_thermo`).
-2. Refuse a thermo whose tables disagree in length ([`equation_of_state.cpp:131-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L131-L135), `TORCH_CHECK`).
-3. Record the parents and their mass shares ([`equation_of_state.cpp:137-161`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L137-L161), `cloud_parent_cache_`).
-4. In each limiter call, skip parentless clouds and borrow for the rest ([`equation_of_state.cpp:253-269`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L253-L269), `parentless`).
+1. At construction, take the thermo's own names and molar masses ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `populate_thermo`).
+2. Refuse a thermo whose tables disagree in length ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `TORCH_CHECK`).
+3. Record the parents and their mass shares ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `cloud_parent_cache_`).
+4. In each limiter call, skip parentless clouds and borrow for the rest ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `parentless`).
 
 The only setup check is the table-length refusal of step 2, "[EquationOfState] thermo carries ... species names".
 
@@ -111,11 +111,11 @@ The only setup check is the table-length refusal of step 2, "[EquationOfState] t
 
 `test_condensate_conservation` keeps the total mass to $10^{-12}$ and checks the NH3 and H2S debits against their
 molar-mass shares to $10^{-6}$, with the condensate exactly zero after
-([`test_condensate_conservation.cpp:47-53`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_condensate_conservation.cpp#L47-L53), `allclose`).
+({{< code tests/test_condensate_conservation.cpp DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass >}}, `allclose`).
 The $10^{-6}$ of the share comparison is looser than the arithmetic; the source gives no reason for it, and
 `borrow_check.py` `[C1]` shows the shares themselves are exact to round-off. The two-card test uses $10^{-10}$ in
 float64 and $10^{-4}$ in float32
-([`test_two_cards_species.cpp:78-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_two_cards_species.cpp#L78-L90), `tol`).
+({{< code tests/test_two_cards_species.cpp expect_card_a_parents >}}, `tol`).
 All four run on CPU, and on CUDA where the device fixture is compiled; none is multi-rank. Measured results at the
 pin are **missing evidence** (the verification catalogue's entry for this chapter).
 

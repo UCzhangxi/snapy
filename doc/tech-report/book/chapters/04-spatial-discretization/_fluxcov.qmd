@@ -32,7 +32,7 @@ $$
  + \frac{h^2}{12}\,f'g' + O(h^4),
 $$ {#eq-ch04-fluxcov-identity}
 
-In the code, the $h^2/12\,f'g'$ term of @eq-ch04-fluxcov-identity is the lambda `cov`, $\sigma_1^2\rho\,a_1b_1$ with $\sigma_1^2$ the second moment ([`hydro_forward.cpp:153-156`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L153-L156)).
+In the code, the $h^2/12\,f'g'$ term of @eq-ch04-fluxcov-identity is the lambda `cov`, $\sigma_1^2\rho\,a_1b_1$ with $\sigma_1^2$ the second moment ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
 where the averages are over a cell of width $h$ in $x_1$. The check expands both sides and finds the $h^0$ and
 $h^2$ parts cancel identically, leaving a remainder whose leading coefficient it prints. A product of averages
@@ -61,7 +61,7 @@ the face-normal velocity or its $x_1$ difference, both exactly zero at rest, so 
 exact zero tendency bitwise. The covariance term is also zero for an isothermal state; the centroid term is
 not, so that second exact zero holds in Cartesian only.
 
-The rows are not all alike, and the code comment at `sigma1` ([`hydro_forward.cpp:132-147`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L132-L147)) sets out the
+The rows are not all alike, and the code comment at `sigma1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}) sets out the
 breakdown that the all-rows treatment rests on. Because cell values are density-weighted, the total mass flux
 is linear in the stored state and has no covariance at all; a tracer row carries the covariance of its own
 mass fraction with the velocity; the dry mass row carries minus the sum of the tracer parts; the energy row
@@ -77,34 +77,34 @@ quadratic in the perturbation.
 
 ### Numerical method
 
-The correction is `_flux_covariance` at [`hydro_forward.cpp:54-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L150). It builds the arithmetic mean
+The correction is `_flux_covariance` at {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}. It builds the arithmetic mean
 of the two face states, forms the enthalpy density from the equation of state's own call so that every
 species' energy offset is included, and projects the mean state into the face-local frame on its own copy at
-`prim2local2_` ([`hydro_forward.cpp:106-111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L106-L111)) rather than relying on whether the solver projected in place.
+`prim2local2_` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}) rather than relying on whether the solver projected in place.
 
-The moments come from the coordinate at `face_moment2_x1` ([`hydro_forward.cpp:113-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L113-L128)): the second moment and the
+The moments come from the coordinate at `face_moment2_x1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}): the second moment and the
 centroid shift are both coordinate methods, so the same code is correct on every grid. The per-row assembly
-uses two small closures, a covariance and a centroid rule, at `cov` ([`hydro_forward.cpp:149-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L149-L158)).
+uses two small closures, a covariance and a centroid rule, at `cov` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
 Two guards sit at the top. A column with fewer than three cells returns nothing at
-`n1` ([`hydro_forward.cpp:88-92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L88-L92)), because a centred $x_1$ difference needs both neighbours; and the
-shallow-water equation of state returns nothing at `peos` ([`hydro_forward.cpp:93-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L93-L94)), because it has no
+`n1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}), because a centred $x_1$ difference needs both neighbours; and the
+shallow-water equation of state returns nothing at `peos` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}), because it has no
 internal energy row to correct. The correction is applied to the $x_2$ and $x_3$ fluxes at
-`dcov` ([`hydro_forward.cpp:599-600`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L599-L600)) and `dcov` ([`hydro_forward.cpp:622-623`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L622-L623)).
+`dcov` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) and `dcov` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the correction | [`hydro_forward.cpp:54-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L54-L150) | `_flux_covariance` | `SNAP_FLUX_COVARIANCE` |
-| the two-term statement | [`hydro_forward.cpp:57-86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L57-L86) | `sigma1` | |
-| guards | [`hydro_forward.cpp:88-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L88-L94) | `n1` | $n_1 < 3$, shallow water |
-| face-local projection | [`hydro_forward.cpp:106-111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L106-L111) | `prim2local2_` | |
-| moments from the coordinate | [`hydro_forward.cpp:113-128`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L113-L128) | `face_moment2_x1` | |
-| the per-row breakdown | [`hydro_forward.cpp:132-147`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L132-L147) | `sigma1` | |
-| the two closures | [`hydro_forward.cpp:149-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L149-L158) | `ctr` | |
-| applied to $x_2$ | [`hydro_forward.cpp:599-600`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L599-L600) | `dcov` | |
-| applied to $x_3$ | [`hydro_forward.cpp:622-623`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L622-L623) | `dcov` | |
+| the correction | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `_flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| the two-term statement | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `sigma1` | |
+| guards | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `n1` | $n_1 < 3$, shallow water |
+| face-local projection | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `prim2local2_` | |
+| moments from the coordinate | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `face_moment2_x1` | |
+| the per-row breakdown | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `sigma1` | |
+| the two closures | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `ctr` | |
+| applied to $x_2$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dcov` | |
+| applied to $x_3$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dcov` | |
 
 : Code map of the horizontal flux covariance. {#tbl-ch04-fluxcov-code}
 

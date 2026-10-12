@@ -55,9 +55,9 @@ at $k\Delta x_1=\pi$ (`[C3]`), so $Fq=q+O(\Delta x_1^4)$ and the two-cell mode i
 the binomial's, so ghost depth and seam exchange are unchanged. With $p_{\mathrm{ref}}=\overline p+c+O(\Delta x_1^6)$
 (@sec-ch05-refkernel) the cell reference is $\overline\rho+cR+O(\Delta x_1^4)$, and the smooth $cR$ is carried
 consistently by the face value below. @eq-ch05-wbref4-dref is built in `wb_ref4_stencils` as the filter row `F`
-([`wb_ref4.cpp:120-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L120-L158))
+({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
 and applied in `wb_ref4_cells` as `fr`
-([`wb_ref4.cpp:263-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L263-L272)).
+({{< code src/hydro/wb_ref4.cpp wb_ref4_cells >}}).
 
 At a clamped wall the two values past the wall are cubic extrapolations of the four owned cells nearest it,
 $r_0..r_3$ counted from the wall:
@@ -88,9 +88,9 @@ interior, $(25,-23,13,-3)/12$ at the wall face and $(3,13,-5,1)/12$ at the next 
 point profiles on any grid, so $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
 mid-column offset $3.2\times10^{-12}$ to $2.8\times10^{-16}$ relative from $n_1$ = 32 to 256, fitted order 4.68, against
 order 2.00 for the kernel). @eq-ch05-wbref4-face is built as the weights `awt`
-([`wb_ref4.cpp:195-221`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L195-L221))
+({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
 and applied by `wb_ref4_faces`
-([`wb_ref4.cpp:276-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L276-L286)).
+({{< code src/hydro/wb_ref4.cpp wb_ref4_faces >}}).
 
 #### Non-uniform cell pressure
 
@@ -103,7 +103,7 @@ p_{\mathrm{ref},i} = \frac{1}{\Delta x_{1,i}}\int_{x_{1,i-1/2}}^{x_{1,i+1/2}}\ti
 $$ {#eq-ch05-wbref4-pnu}
 
 with nodes $\xi_q=0,\pm\sqrt{3/5}$ and weights $w_q=8/9,5/9$, the non-uniform branch of `wb_ref4_stencils` with the Gauss weights `gw`
-([`wb_ref4.cpp:165-193`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L165-L193)).
+({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}}).
 A value outside the cell's two face pressures keeps the log-mean. This moves the discrete fixed point of a non-uniform
 column by $O(\Delta x_1^2)$, so `balance_column` iterates against it (@sec-ch05-balcol). On a uniform grid the
 six-face $p_{\mathrm{ref}}$ is kept.
@@ -167,28 +167,28 @@ work off and on with everything else fixed, not derived.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| the switch, implied by the centroid switch | [`wb_ref4.cpp:83-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L83-L95) | `wb_ref4_enabled` | `SNAP_WB_REF4` |
+| the switch, implied by the centroid switch | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `wb_ref4_enabled` | `SNAP_WB_REF4` |
 | margin and resolution threshold | [`wb_ref4.cpp:20-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L20-L25) | `kMaxLogDrop` | |
-| stencils and weights | [`wb_ref4.cpp:97-231`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L97-L231) | `wb_ref4_stencils` | |
-| cell part and flag | [`wb_ref4.cpp:233-274`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L233-L274) | `wb_ref4_cells` | |
-| face part | [`wb_ref4.cpp:276-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L276-L286) | `wb_ref4_faces` | |
-| ghost-depth check | [`hydro.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L94-L103) | `wb_ref4_enabled` | $n_g\ge3$ |
-| calls around the seam exchange | [`hydro.cpp:565-575`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L565-L575) | `wb_ref4_cells` | |
-| face part after the exchange | [`hydro.cpp:642-645`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L642-L645) | `wb_ref4_faces` | |
-| `balance_column` follows it | [`balance_column.cpp:70-79`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L70-L79) | `wb_ref4_enabled` | non-uniform only |
+| stencils and weights | {{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}} | `wb_ref4_stencils` | |
+| cell part and flag | {{< code src/hydro/wb_ref4.cpp wb_ref4_cells >}} | `wb_ref4_cells` | |
+| face part | {{< code src/hydro/wb_ref4.cpp wb_ref4_faces >}} | `wb_ref4_faces` | |
+| ghost-depth check | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `wb_ref4_enabled` | $n_g\ge3$ |
+| calls around the seam exchange | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `wb_ref4_cells` | |
+| face part after the exchange | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `wb_ref4_faces` | |
+| `balance_column` follows it | {{< code src/hydro/balance_column.cpp balance_column >}} | `wb_ref4_enabled` | non-uniform only |
 
 : Code map of `SNAP_WB_REF4`. {#tbl-ch05-wbref4-code}
 
 1. `wb_ref4_enabled` reads the environment once; values other than empty, `0`, `false`, `off`, `no` turn it on, and
    `SNAP_X1_CENTROID_EXACT` turns it on too
-   ([`wb_ref4.cpp:83-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L83-L95)).
+   ({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}).
 2. At setup, with gravity on, $n_g<3$ fails the `TORCH_CHECK` that names `wb_ref4_enabled`
-   ([`hydro.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L94-L103)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
 3. In `_hydro_ref_x1` the stencils are built once per block and `wb_ref4_cells` replaces $\rho_{\mathrm{ref}}$ (and on a
    non-uniform grid $p_{\mathrm{ref}}$) and returns the resolution flag
-   ([`hydro.cpp:565-575`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L565-L575)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 4. After the seam exchange `wb_ref4_faces` replaces $\rho_{\mathrm{sf}}$
-   ([`hydro.cpp:642-645`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L642-L645)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 
 The only user-facing error is the ghost-depth check of step 2.
 

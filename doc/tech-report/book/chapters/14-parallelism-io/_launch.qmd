@@ -33,7 +33,7 @@ r = p\,b + \ell, \qquad p = \lfloor r/b \rfloor, \qquad \ell = r \bmod b ,
 $$ {#eq-ch14-launch-rank}
 
 and the global block count is the process count times $b$. @eq-ch14-launch-rank is `global_block_rank`,
-`owner_process_rank` and `local_block_index` ([`layout.hpp:83-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L83-L93)).
+`owner_process_rank` and `local_block_index` ({{< code src/layout/layout.hpp LayoutOptionsImpl >}}).
 A port of the three functions confirms the round trip $r \to (p, \ell) \to r$ for $b = 1, \dots, 16$ [check
 `src/snapy_report/ch14/launch_check.py`, output `launch_check.out`, `[C1]`], that the $P\,b$ pairs fill
 $0, \dots, P\,b - 1$ with no gap or repeat (`[C2]`), and that $b < 1$ acts as $b = 1$ (`[C3]`).
@@ -41,7 +41,7 @@ $0, \dots, P\,b - 1$ with no gap or repeat (`[C2]`), and that $b < 1$ acts as $b
 ### Numerical method
 
 The constructor resolves each setting in a fixed order
-(`LayoutOptionsImpl`, [`layout.cpp:189-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L189-L219)):
+(`LayoutOptionsImpl`, {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}):
 
 | setting | read from, in order | default |
 |---|---|---|
@@ -59,13 +59,13 @@ The constructor resolves each setting in a fixed order
 
 The block rank and the global size from the environment are provisional. `MeshImpl::reset` overwrites them for each
 local block with @eq-ch14-launch-rank and sets the global size to the process count times `blocks_per_process`
-([`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258)). `blocks_per_process` comes from
-`distribute: blocks_per_process` in the card, default 1 (`MeshOptionsImpl::from_yaml`, [`mesh.cpp:210-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L219)).
+({{< code src/mesh/mesh.cpp MeshImpl::reset >}}). `blocks_per_process` comes from
+`distribute: blocks_per_process` in the card, default 1 (`MeshOptionsImpl::from_yaml`, {{< code src/mesh/mesh.cpp MeshOptionsImpl::from_yaml >}}).
 The store is opened only when the process count is above 1 (`use_process_group`,
-[`layout.hpp:206-208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L206-L208)); @sec-ch14-backends describes it.
+{{< code src/layout/layout.hpp LayoutImpl::use_process_group >}}); @sec-ch14-backends describes it.
 
 The device string of a block is `cuda:<DEVICE_ID>`, or `cuda:<LOCAL_RANK>` when `DEVICE_ID` is negative, if `DEVICE`
-is `cuda`; otherwise it is the `DEVICE` value (`device_str`, [`meshblock_options.cpp:274-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L274-L285)).
+is `cuda`; otherwise it is the `DEVICE` value (`device_str`, {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::device_str >}}).
 
 `api/pd-run <n> <executable> [args]` is a single-node launcher. It starts $n$ processes and exports, for each, `RANK`
 and `PROCESS_RANK` equal to the loop index, `WORLD_SIZE` and `PROCESS_WORLD_SIZE` equal to $n$, `LOCAL_RANK` equal to
@@ -79,12 +79,12 @@ tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` do
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| random single-process port | [`layout.cpp:34-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L34-L39) | `random_master_port` | `MASTER_PORT` unset |
-| environment read, port check | [`layout.cpp:189-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L189-L219) | `LayoutOptionsImpl` | env |
-| rank arithmetic | [`layout.hpp:83-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L83-L93) | `global_block_rank` | `blocks_per_process` |
-| blocks per process from the card | [`mesh.cpp:210-219`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L219) | `blocks_per_process` | `distribute: blocks_per_process` |
-| per-block rank and global size | [`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258) | `global_block_rank` | none |
-| device string | [`meshblock_options.cpp:274-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L274-L285) | `device_str` | `DEVICE`, `DEVICE_ID` |
+| random single-process port | {{< code src/layout/layout.cpp random_master_port >}} | `random_master_port` | `MASTER_PORT` unset |
+| environment read, port check | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | `LayoutOptionsImpl` | env |
+| rank arithmetic | {{< code src/layout/layout.hpp LayoutOptionsImpl >}} | `global_block_rank` | `blocks_per_process` |
+| blocks per process from the card | {{< code src/mesh/mesh.cpp MeshOptionsImpl::from_yaml >}} | `blocks_per_process` | `distribute: blocks_per_process` |
+| per-block rank and global size | {{< code src/mesh/mesh.cpp MeshImpl::reset >}} | `global_block_rank` | none |
+| device string | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::device_str >}} | `device_str` | `DEVICE`, `DEVICE_ID` |
 | launcher | [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138) | `launch_rank` | `BACKEND`, `DEVICE` |
 | launcher port | [`pd-run:39-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L39-L51) | `choose_master_port` | `MASTER_PORT` unset |
 
@@ -134,4 +134,4 @@ status at the pin was not run for this chapter.
 :::
 
 The `BLOCKS_PER_PROCESS` readers are `test_exchange.cpp`, `run_exchange_decomp.py` and `run_exchange_backend.py`
-(`BLOCKS_PER_PROCESS`, [`test_exchange.cpp:218-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L218-L222)).
+(`BLOCKS_PER_PROCESS`, {{< code tests/test_exchange.cpp main >}}).

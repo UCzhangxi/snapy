@@ -50,42 +50,42 @@ a block to redo its step.
 
 ### Numerical method
 
-The conserved pass is `cons` ([`equation_of_state.cpp:192-235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L192-L235)) and runs in a fixed order: NaNs are
-zeroed and marked at [`equation_of_state.cpp:201-203`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L201-L203), the dry density is clamped at
-[`equation_of_state.cpp:209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L209), and the energy is clamped at
-[`equation_of_state.cpp:226-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L226-L234) to the kinetic energy plus the internal energy of the
+The conserved pass is `cons` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) and runs in a fixed order: NaNs are
+zeroed and marked at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, the dry density is clamped at
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, and the energy is clamped at
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} to the kinetic energy plus the internal energy of the
 temperature floor. The kinetic energy there is built from the momentum raised with the cell's own
 metric, so the floor is correct on a curved grid and not only in Cartesian.
 
-The primitive pass is `prim` ([`equation_of_state.cpp:325-350`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L325-L350)): NaNs, the density floor at
-[`equation_of_state.cpp:333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L333), the species clamp at [`equation_of_state.cpp:346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L346) and
-the pressure floor at [`equation_of_state.cpp:349`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L349).
+The primitive pass is `prim` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}): NaNs, the density floor at
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}, the species clamp at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} and
+the pressure floor at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}.
 
-The floor values are YAML keys with defaults at `density_floor` ([`equation_of_state.cpp:65-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L65-L72)): a density
+The floor values are YAML keys with defaults at `density_floor` ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}): a density
 floor of $10^{-6}$, a pressure floor of $10^{-3}$ and a temperature floor of $20$ K. They are absolute
 numbers in the deck's own units, not fractions of anything, so whether they are conservative or
 catastrophic depends on the scaling of the problem.
 
 The marks are a two-element device-side boolean buffer, reset at
-`reset_limiter_marks` ([`equation_of_state.cpp:352-354`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L352-L354)) and read by the redo detector of @sec-ch08-redo. Entry one
-is the NaN mark and entry zero the patch mark, set at `limiter_marks_` ([`equation_of_state.cpp:235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L235)) by
+`reset_limiter_marks` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::reset_limiter_marks >}}) and read by the redo detector of @sec-ch08-redo. Entry one
+is the NaN mark and entry zero the patch mark, set at `limiter_marks_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) by
 comparing the density and energy rows against a copy taken before the floors.
 
 ### Code
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the conserved pass | [`equation_of_state.cpp:192-235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L192-L235) | `apply_conserved_limiter_` | `limiter: true` |
-| NaN to zero, marked | [`equation_of_state.cpp:201-203`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L201-L203) | `masked_fill_` | |
-| the dry density floor | [`equation_of_state.cpp:209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L209) | `density_floor` | |
-| the energy floor | [`equation_of_state.cpp:226-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L226-L234) | `min_ie` | an energy row exists |
-| the patch mark | [`equation_of_state.cpp:235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L235) | `limiter_marks_` | interior only |
-| the primitive pass | [`equation_of_state.cpp:325-350`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L325-L350) | `apply_primitive_limiter_` | `limiter: true` |
-| its density floor | [`equation_of_state.cpp:333`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L333) | `density_floor` | |
-| its species clamp | [`equation_of_state.cpp:346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L346) | `clamp_min_` | species present |
-| its pressure floor | [`equation_of_state.cpp:349`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L349) | `pressure_floor` | |
-| the floor defaults | [`equation_of_state.cpp:65-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L65-L72) | `density_floor` | YAML |
-| the mark buffer | [`equation_of_state.cpp:352-354`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L352-L354) | `reset_limiter_marks` | |
+| the conserved pass | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `apply_conserved_limiter_` | `limiter: true` |
+| NaN to zero, marked | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `masked_fill_` | |
+| the dry density floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `density_floor` | |
+| the energy floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `min_ie` | an energy row exists |
+| the patch mark | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `limiter_marks_` | interior only |
+| the primitive pass | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `apply_primitive_limiter_` | `limiter: true` |
+| its density floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `density_floor` | |
+| its species clamp | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `clamp_min_` | species present |
+| its pressure floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `pressure_floor` | |
+| the floor defaults | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `density_floor` | YAML |
+| the mark buffer | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::reset_limiter_marks >}} | `reset_limiter_marks` | |
 
 : Code map of the equation-of-state limiter. {#tbl-ch08-eoslimiter-code}
 

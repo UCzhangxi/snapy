@@ -16,7 +16,7 @@ curvature flux of NOTATION section 3. Tracked in ISSUES.md.
 **What it does.** Books the $x_1$ gravity work as the flux difference of potential energy across a cell's
 faces, so that $E+\mathrm{PE}_d$ is conserved exactly. **Switch.** `gravity-work: face` (or `face-wallc`, which
 keeps the cell work in the two $x_1$ wall cells); `face` is the default on main since chengcli/snapy#303
-(`gravity_work`, [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28)),
+(`gravity_work`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}),
 and was off at the pin of this section. **Turns off.** The gravity-work fixer.
 **Order.** Second order; fourth in the interior with the cp3/cp5/weno5 curvature flux, first in the wall cells.
 **Defining equation.** @eq-ch06-dwork-face.
@@ -48,9 +48,9 @@ $$ {#eq-ch06-face-energy}
 
 with $\mathcal K=0$ on every physical $x_1$ face and only for cp3, cp5 and weno5 reconstructions in $x_1$.
 @eq-ch06-face-energy is booked as `gravity_energy_correction`
-([`hydro_forward.cpp:891`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L891)),
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 with the curvature term from `curv_flux1`
-([`hydro_forward.cpp:828-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L828-L849)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 The face form conserves $E+\mathrm{PE}_d$ exactly on a closed column (`cellface_check.py` `[C1]`, to
 $3.9\times10^{-15}$ relative on Cartesian and spherical-polar columns). $\mathcal K$ does not change that: it is a
@@ -95,24 +95,24 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| mass and potential fluxes | [`hydro_forward.cpp:777-807`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L807) | `potential_flux1` | `gravity-work` |
-| face work | [`hydro_forward.cpp:809-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L809-L811) | `face_gravity_work` | `gravity-work` |
-| curvature flux | [`hydro_forward.cpp:828-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L828-L849) | `curv_flux1` | `reconstruct` |
-| face minus cell, wall cells | [`hydro_forward.cpp:890-898`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L898) | `gravity_energy_correction` | `face-wallc` |
-| x1 wall test | [`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209) | `is_x1_wall` | |
-| implicit warning | [`hydro.cpp:116-126`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L116-L126) | `face_work_in_operator` | `implicit-scheme` |
+| mass and potential fluxes | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `potential_flux1` | `gravity-work` |
+| face work | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `face_gravity_work` | `gravity-work` |
+| curvature flux | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `curv_flux1` | `reconstruct` |
+| face minus cell, wall cells | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gravity_energy_correction` | `face-wallc` |
+| x1 wall test | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | |
+| implicit warning | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `face_work_in_operator` | `implicit-scheme` |
 
 : Code map of the face form. {#tbl-ch06-face-code}
 
 1. Sum the total $x_1$ mass flux over the dry and species rows as `vertical_mass_flux1`
-   ([`hydro_forward.cpp:777-780`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L777-L780)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 2. Form the face and cell potentials and the two divergences in `potential_flux_div`
-   ([`hydro_forward.cpp:794-807`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L794-L807)).
-3. Book the face work as `face_gravity_work` ([`hydro_forward.cpp:809-811`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L809-L811)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+3. Book the face work as `face_gravity_work` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. Subtract the curvature flux for cp3, cp5 and weno5, zeroed at physical faces, as `curv_flux1`
-   ([`hydro_forward.cpp:828-849`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L828-L849)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 5. Replace the cell work, keeping it in the wall cells under `face-wallc`, as `gravity_energy_correction`
-   ([`hydro_forward.cpp:890-898`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L890-L898)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 A user can hit the setup warning "gravity-work: face-wallc with an implicit scheme: the face work sits outside the
 implicit operator" (also for `face` with `implicit-scheme: 0`).
@@ -130,7 +130,7 @@ implicit operator" (also for `face` with `implicit-scheme: 0`).
 
 `vertical_gravity_work_removes_the_curvature_excess` sets a quadratic $m$ on six cells. It requires the off-wall
 excess to equal $\Delta t\,\tfrac{h^2}{12}\cdot2\cdot0.04\cdot0.03$ for cp3 and five-point reconstructions
-and zero otherwise, to $10^{-9}$ absolute, as `expected` ([`test_forcing.cpp:1097-1104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L1097-L1104)). The
+and zero otherwise, to $10^{-9}$ absolute, as `expected` ({{< code tests/test_forcing.cpp vertical_gravity_work_removes_the_curvature_excess >}}). The
 plain face form is tested with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` set in the registration
 ([`CMakeLists.txt:266-277`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L266-L277)). The curvature test also has a CUDA case.
 Measured values at the pin are **missing evidence**.

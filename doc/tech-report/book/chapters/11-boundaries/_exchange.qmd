@@ -23,7 +23,7 @@ $$
 q^{\mathrm{corner}}=\tfrac12(q^{\mathrm{edge1}}+q^{\mathrm{edge2}}).
 $$ {#eq-ch11-exchange-corner}
 
-`fill_corners` ([`layout.cpp:710-740`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L710-L740)) implements @eq-ch11-exchange-corner by broadcasting adjacent strips. The weights
+`fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}) implements @eq-ch11-exchange-corner by broadcasting adjacent strips. The weights
 sum to one, so constants are preserved exactly in real arithmetic; this does not prove a two-dimensional
 interpolation order. C4 checks this constant-preservation identity and records why nonconstant edge values
 need not reconstruct the corner value.
@@ -54,20 +54,20 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| sync | [`layout.hpp:149-154`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L149-L154) | `skip_corner` | See Summary |
+| sync | {{< code src/layout/layout.hpp SyncOptions >}} | `skip_corner` | See Summary |
 | advance | [`meshblock.cpp:545-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L572) | `exchange_ghost_zones` | See Summary |
-| panel | [`cubed_sphere_layout.cpp:922-956`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L922-L956) | `interp_ghost` | See Summary |
-| interp | [`gnomonic_equiangle.cpp:245-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L245-L264) | `interp_ghost` | See Summary |
-| average | [`layout.cpp:710-740`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L710-L740) | `fill_corners` | See Summary |
-| raw | [`hydro_forward.cpp:673-680`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L673-L680) | `interpolate` | See Summary |
+| panel | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}} | `interp_ghost` | See Summary |
+| interp | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::interp_ghost >}} | `interp_ghost` | See Summary |
+| average | {{< code src/layout/layout.cpp LayoutImpl::fill_corners >}} | `fill_corners` | See Summary |
+| raw | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interpolate` | See Summary |
 | wrap | [`slab_layout.cpp:41-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L41-L70) | `periodic_x` | See Summary |
 
 : Implementation sites for exchange. {#tbl-ch11-exchange-code}
 
-1. Read sync flags; defaults do not interpolate and do skip corners. The anchor `skip_corner` is in [`layout.hpp:149-154`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L149-L154).
+1. Read sync flags; defaults do not interpolate and do skip corners. The anchor `skip_corner` is in {{< code src/layout/layout.hpp SyncOptions >}}.
 2. For the subdivided interpolated panel path, finish intra-panel exchange before packing cross-panel donors. The anchor `exchange_ghost_zones` is in [`meshblock.cpp:545-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L572).
-3. Deserialize, interpolate when selected, transform vector components, and fill synthetic corners when requested. The anchor `interp_ghost` is in [`cubed_sphere_layout.cpp:922-956`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L922-L956).
-4. Keep raw scalar donor-factor exchange separate from interpolated hydro exchange. The anchor `interpolate` is in [`hydro_forward.cpp:673-680`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L673-L680).
+3. Deserialize, interpolate when selected, transform vector components, and fill synthetic corners when requested. The anchor `interp_ghost` is in {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}.
+4. Keep raw scalar donor-factor exchange separate from interpolated hydro exchange. The anchor `interpolate` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 
 ### Tests
 
@@ -90,7 +90,7 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ::: {.callout-warning title="Limits"}
 The corner average is not the panel-edge interpolation formula. CPU/CUDA equality assertions in the panel
 suite do not establish multi-process coverage. The vertical-velocity exchange suite checks its own
-`ideal_match` criterion ([`test_cubed_sphere_vertical_velocity_exchange.py:81-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L81-L109)); no result is claimed without a run. Broader seam flux and positivity
+`ideal_match` criterion ({{< code tests/test_cubed_sphere_vertical_velocity_exchange.py main >}}); no result is claimed without a run. Broader seam flux and positivity
 coverage belongs to the geometry and switch-matrix chapters.
 
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.

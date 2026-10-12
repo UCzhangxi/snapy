@@ -36,9 +36,9 @@ $$ {#eq-ch14-msgmatch-tag}
 Since $T_0 < 65536$, the map $(T_0, n) \mapsto T$ is one to one: $n = \lfloor T / 65536 \rfloor$ and
 $T_0 = T \bmod 65536$. $T_0$ itself is one to one in $(\phi, \ell, \beta)$ as long as $\beta < 32$ and $32\ell + \beta
 < 1024$, that is $\ell < 32$ (27 buffer ids is the largest, on `cubed`). `make_comm_tag` enforces $0 \le T_0 < 65536$,
-which rejects $\phi \ge 64$ or $\phi < 0$ ([`layout.hpp:161-170`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L161-L170)).
+which rejects $\phi \ge 64$ or $\phi < 0$ ({{< code src/layout/layout.hpp make_comm_tag >}}).
 `exchange_each_var` refuses more than 32768 variables, which keeps $T$ below $2^{31}$
-([`layout.cpp:652-666`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L652-L666)). The per-block bound $\ell < 32$ is not checked
+({{< code src/layout/layout.cpp exchange_each_var >}}). The per-block bound $\ell < 32$ is not checked
 separately. The send tag uses the receiver's $\ell$ and the receiver's buffer id, so the sender computes what the
 receiver posts. A port of `make_comm_tag` confirms that the 55296 base tags of $\phi < 64$, $\ell < 32$ and the 27
 buffer ids are distinct and that $\phi = -1$ and $\phi = 64$ are refused [check `src/snapy_report/ch14/msgmatch_check.py`,
@@ -50,10 +50,10 @@ Two other kinds of message share the process group:
 1. Block-to-block messages (`send_to_block`, `recv_from_block`), used by the $x_1$ relays of @sec-ch03-x1seams.
    They add $65536\,(\ell_\text{send}\, b + \ell_\text{recv})$ to a caller tag. With $b \le 16$ (checked) the factor is
    below 256, so the low 16 bits stay the caller's tag (`send_to_block`, [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877)).
-   The comment above `send_to_block` [`layout.hpp:272-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L272-L280) gives the argument: the hydro relay
+   The comment above `send_to_block` {{< code src/layout/layout.hpp LayoutImpl::send_to_block >}} gives the argument: the hydro relay
    tags (`0x77xx`) are not values of $T_0$ at $b \le 16$, and the total stays below the gather tags.
 2. `gather_x1` uses $2^{24} + \ell_\text{send}\, b + \ell_\text{recv}$
-   ([`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847)).
+   ({{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}}).
 
 The check confirms the comment's argument for the seven relay tags in use, `0x7715` to `0x7724`: none is a base tag at
 $\ell < 16$, and folded they keep their low 16 bits and stay below $2^{24}$ (`[C4]`). Exchange tags stay below the
@@ -65,20 +65,20 @@ $\ell < 16$, and folded they keep their low 16 bits and stay below $2^{24}$ (`[C
 A neighbour that is the block itself (a periodic direction with one block) is copied from the send buffer to the
 opposite receive buffer. A neighbour in another process becomes one operation with the send and receive tags
 of @eq-ch14-msgmatch-tag. All operations of the block are then posted under one process-wide mutex. On UCX they are
-posted inside one coalescing group (`exchange_remote`, [`layout.cpp:548-650`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L548-L650)). With two blocks in a
+posted inside one coalescing group (`exchange_remote`, {{< code src/layout/layout.cpp LayoutImpl::exchange_remote >}}). With two blocks in a
 periodic direction, the first block walks that direction in reverse order (`dx_sgn = -1`; the code comment says
 "swap the order of first block for periodic condition"). The set of offsets is unchanged, only the posting order.
 The comment gives no reason; one hypothesis, not tested, is that it keeps the two messages to the same neighbour in
 the order that neighbour posts them. The cubed-sphere layout posts its
 remote operations under its own mutex and without a coalescing group
-(`g_cubed_sphere_comm_mutex`, [`cubed_sphere_layout.cpp:1036-1048`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L1036-L1048)).
+(`g_cubed_sphere_comm_mutex`, {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::exchange_remote >}}).
 
 **Same-process neighbours.** `_prepare_local_exchange` is a rendezvous keyed by the sync signature: process, $b$,
 `dim`, $\phi$, type, the phase, corner and interpolation flags, the layout type and the device
-(`make_local_exchange_key`, [`layout.cpp:152-167`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L152-L167);
-`_prepare_local_exchange`, [`layout.cpp:279-387`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L279-L387)).
+(`make_local_exchange_key`, {{< code src/layout/layout.cpp make_local_exchange_key >}};
+`_prepare_local_exchange`, {{< code src/layout/layout.cpp LayoutImpl::_prepare_local_exchange >}}).
 Each block increments an arrival count. The last block to arrive copies every same-process buffer pair
-(`_copy_local_exchange_buffers`, [`layout.cpp:419-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L419-L475)) and releases the others.
+(`_copy_local_exchange_buffers`, {{< code src/layout/layout.cpp LayoutImpl::_copy_local_exchange_buffers >}}) and releases the others.
 A generation counter keeps one sync's release from waking a block that has already entered the next. An exception
 in the copy is re-thrown in every block of the process. On a CUDA device each block records an arrival event on its
 stream; the copying block waits on all of them and records a completion event that the others wait on
@@ -97,16 +97,16 @@ checks that their data pointers do not change.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| base tag and its range | [`layout.hpp:161-170`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L161-L170) | `make_comm_tag` | `phyid` |
-| local copies before remote posts | [`layout.cpp:540-546`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L540-L546) | `launch_exchange` | none |
-| rendezvous of local blocks | [`layout.cpp:279-387`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L279-L387) | `_prepare_local_exchange` | `blocks_per_process` |
-| in-memory copies, phase filter | [`layout.cpp:419-475`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L419-L475) | `_copy_local_exchange_buffers` | none |
-| remote posts, mutex, coalescing | [`layout.cpp:548-650`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L548-L650) | `exchange_remote` | `BACKEND` |
-| one message per variable | [`layout.cpp:652-666`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L652-L666) | `exchange_each_var` | none |
+| base tag and its range | {{< code src/layout/layout.hpp make_comm_tag >}} | `make_comm_tag` | `phyid` |
+| local copies before remote posts | {{< code src/layout/layout.cpp LayoutImpl::launch_exchange >}} | `launch_exchange` | none |
+| rendezvous of local blocks | {{< code src/layout/layout.cpp LayoutImpl::_prepare_local_exchange >}} | `_prepare_local_exchange` | `blocks_per_process` |
+| in-memory copies, phase filter | {{< code src/layout/layout.cpp LayoutImpl::_copy_local_exchange_buffers >}} | `_copy_local_exchange_buffers` | none |
+| remote posts, mutex, coalescing | {{< code src/layout/layout.cpp LayoutImpl::exchange_remote >}} | `exchange_remote` | `BACKEND` |
+| one message per variable | {{< code src/layout/layout.cpp exchange_each_var >}} | `exchange_each_var` | none |
 | block-to-block tags | [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877) | `send_to_block` | none |
-| $x_1$ column gather | [`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847) | `gather_x1` | `nb1` |
+| $x_1$ column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | `nb1` |
 | boards with 5-minute waits | [`layout.cpp:879-970`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L970) | `take_from_local_block` | none |
-| cubed-sphere remote posts | [`cubed_sphere_layout.cpp:1036-1048`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L1036-L1048) | `g_cubed_sphere_comm_mutex` | `layout: cubed-sphere` |
+| cubed-sphere remote posts | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::exchange_remote >}} | `g_cubed_sphere_comm_mutex` | `layout: cubed-sphere` |
 
 : Code map of message matching. {#tbl-ch14-msgmatch-code}
 
@@ -120,8 +120,8 @@ checks that their data pointers do not change.
 
 : Tests of message matching. C++ entries carry the build suffix (`.release`). {#tbl-ch14-msgmatch-tests}
 
-The tag check calls `make_comm_tag` [`test_cubed_sphere_exchange.cpp:152-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L152-L157); the
-pointer and neighbour checks are in `main` of [`test_exchange.cpp:218-319`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L218-L319).
+The tag check calls `make_comm_tag` {{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}; the
+pointer and neighbour checks are in `main` of {{< code tests/test_exchange.cpp main >}}.
 Their pass status at the pin was not run for this chapter. No test posts two variables between the same two
 processes with tags that would alias if the offset were missing; the argument above is the evidence.
 

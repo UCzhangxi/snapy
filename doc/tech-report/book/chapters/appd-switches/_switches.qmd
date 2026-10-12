@@ -27,57 +27,57 @@ None: the switches select schemes whose derivations are in the chapters listed i
 
 ### Numerical method
 
-The five numerics switches go through `get_env` ([`layout.hpp:38-41`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L38-L41)), which returns the default only when the
+The five numerics switches go through `get_env` ({{< code src/layout/layout.hpp get_env >}}), which returns the default only when the
 variable is absent. Each accessor lower-cases the value, compares it with `0`, `false`, `off` and `no`, and keeps
 the result in a function-local static, so the first call fixes the choice for every block of the process. For the
 four switches that default to off, an empty value is also off; for `SNAP_GRAVITY_WORK_RADIAL_EXACT` an empty value
-is on, and the switch acts only where `radial_exact_work` ([`hydro.cpp:253-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L253-L258)) finds face gravity work on a Cartesian
+is on, and the switch acts only where `radial_exact_work` ({{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}}) finds face gravity work on a Cartesian
 or spherical-polar grid. `SNAP_WB_REF4` is also on whenever `SNAP_X1_CENTROID_EXACT` is, through
-`x1_centroid_exact_enabled` ([`wb_ref4.cpp:94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L94)).
+`x1_centroid_exact_enabled` ({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}).
 
 The launch variables are read each time layout options are constructed, and again for `BACKEND` and `DEVICE` when
-they are read from YAML. The `BACKEND` default comes from `default_backend` ([`layout.cpp:41-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L41-L49)). The three
-communication defaults are written, not read, by `set_default_env` ([`process_group_ucx.cpp:14-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L14-L18)), only when the variable is
+they are read from YAML. The `BACKEND` default comes from `default_backend` ({{< code src/layout/layout.cpp default_backend >}}). The three
+communication defaults are written, not read, by `set_default_env` ({{< code src/layout/process_group_ucx.cpp set_default_env >}}), only when the variable is
 unset and only in a build with UCX; they are listed because they change the process environment that commux sees.
 
 ### Code
 
 | symbol | read at | default | effect | cited by |
 |------------------|--------------------|----------------|--------------------------|--------------|
-| `SNAP_X1_CENTROID_EXACT` | [`x1_centroid.cpp:96`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L96) | off (`"0"`) | spherical-polar $r^2$-average $x_1$ cell-to-plain-mean formulas; turns `SNAP_WB_REF4` on as well | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11; full: @sec-ch12-centroid |
-| `SNAP_WB_REF4` | [`wb_ref4.cpp:87`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L87) | off (`"0"`) | fourth-order, cell/face-consistent $x_1$ well-balanced reference | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11, @sec-ch15; full: @sec-ch12-wb-reference |
-| `SNAP_FLUX_COVARIANCE` | [`hydro.cpp:221`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L221) | off (`"0"`) | lateral ($x_2$, $x_3$) face-flux covariance and centroid terms | @sec-ch01, @sec-ch03, @sec-ch04, @sec-ch05, @sec-ch06; full: @sec-ch12-flux-covariance |
-| `SNAP_X1_MASS_COVARIANCE` | [`hydro.cpp:233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L233) | off (`"0"`) | $x_1$ mass-flux covariance (radial velocity mean correction) | @sec-ch04, @sec-ch05, @sec-ch06, @sec-ch11; full: @sec-ch12-mass-covariance |
-| `SNAP_GRAVITY_WORK_RADIAL_EXACT` | [`hydro.cpp:245`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L245) | on (`"1"`) | corrected potential-energy face gravity work; acts only with `gravity-work: face`, nonzero `grav1`, Cartesian or spherical-polar | @sec-ch03, @sec-ch05, @sec-ch06; full: @sec-ch12-radial-exact |
+| `SNAP_X1_CENTROID_EXACT` | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | off (`"0"`) | spherical-polar $r^2$-average $x_1$ cell-to-plain-mean formulas; turns `SNAP_WB_REF4` on as well | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11; full: @sec-ch12-centroid |
+| `SNAP_WB_REF4` | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | off (`"0"`) | fourth-order, cell/face-consistent $x_1$ well-balanced reference | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11, @sec-ch15; full: @sec-ch12-wb-reference |
+| `SNAP_FLUX_COVARIANCE` | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | off (`"0"`) | lateral ($x_2$, $x_3$) face-flux covariance and centroid terms | @sec-ch01, @sec-ch03, @sec-ch04, @sec-ch05, @sec-ch06; full: @sec-ch12-flux-covariance |
+| `SNAP_X1_MASS_COVARIANCE` | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | off (`"0"`) | $x_1$ mass-flux covariance (radial velocity mean correction) | @sec-ch04, @sec-ch05, @sec-ch06, @sec-ch11; full: @sec-ch12-mass-covariance |
+| `SNAP_GRAVITY_WORK_RADIAL_EXACT` | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}} | on (`"1"`) | corrected potential-energy face gravity work; acts only with `gravity-work: face`, nonzero `grav1`, Cartesian or spherical-polar | @sec-ch03, @sec-ch05, @sec-ch06; full: @sec-ch12-radial-exact |
 
 : Numerics switches: read once per process; a value of 0, false, off or no turns a switch off. {#tbl-appd-numerics}
 
 | symbol | read at | default | effect | cited by |
 |------------------|--------------------|----------------|--------------------------|--------------|
-| `BACKEND` | [`layout.cpp:190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L190), [`layout.cpp:237`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L237) | `ucx` in a UCX build off macOS, else `gloo` | process-group backend; the YAML `distribute/backend` key is not read | @sec-ch01, @sec-ch03; full: @sec-ch12-layout |
-| `PROCESS_RANK` | [`layout.cpp:194`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L194) | `RANK`, then 0 | rank of this process | full: @sec-ch12-layout |
-| `PROCESS_WORLD_SIZE` | [`layout.cpp:195-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L195-L196) | `WORLD_SIZE`, then 1 | number of processes | full: @sec-ch12-layout |
-| `WORLD_SIZE` | [`layout.cpp:197`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L197), [`layout.hpp:50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L50), [`exchange.py:17`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/exchange.py#L17) | process world size; 1 in the helpers | global world size | full: @sec-ch12-layout |
-| `RANK` | [`layout.cpp:213`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L213), [`layout.hpp:44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L44), [`exchange.py:18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/exchange.py#L18) | process rank; 0 in the helpers | global rank; rank 0 alone prints log messages | full: @sec-ch12-layout |
-| `LOCAL_RANK` | [`layout.cpp:214`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L214), [`layout.hpp:47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L47), [`exchange.py:28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/exchange.py#L28) | 0; in the Python helper, rank modulo the GPU count | local rank; the Python helper selects the CUDA device with it | full: @sec-ch12-layout |
-| `MASTER_ADDR` | [`layout.cpp:200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L200) | `127.0.0.1` | rendezvous address | full: @sec-ch12-layout |
-| `MASTER_PORT` | [`layout.cpp:201-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L201-L211) | a random port, single process only | rendezvous port; construction fails if it is unset and either world size exceeds 1 | full: @sec-ch12-layout |
-| `DEVICE_ID` | [`layout.cpp:217`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L217) | -1 | device index | full: @sec-ch12-layout |
-| `DEVICE` | [`layout.cpp:218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L218), [`layout.cpp:238`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L238) | `cpu` | device type | @sec-ch01; full: @sec-ch12-layout |
+| `BACKEND` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}, {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `ucx` in a UCX build off macOS, else `gloo` | process-group backend; the YAML `distribute/backend` key is not read | @sec-ch01, @sec-ch03; full: @sec-ch12-layout |
+| `PROCESS_RANK` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | `RANK`, then 0 | rank of this process | full: @sec-ch12-layout |
+| `PROCESS_WORLD_SIZE` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | `WORLD_SIZE`, then 1 | number of processes | full: @sec-ch12-layout |
+| `WORLD_SIZE` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}, {{< code src/layout/layout.hpp get_world_size >}}, {{< code python/exchange.py init_dist >}} | process world size; 1 in the helpers | global world size | full: @sec-ch12-layout |
+| `RANK` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}, {{< code src/layout/layout.hpp get_rank >}}, {{< code python/exchange.py init_dist >}} | process rank; 0 in the helpers | global rank; rank 0 alone prints log messages | full: @sec-ch12-layout |
+| `LOCAL_RANK` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}, {{< code src/layout/layout.hpp get_local_rank >}}, {{< code python/exchange.py init_dist >}} | 0; in the Python helper, rank modulo the GPU count | local rank; the Python helper selects the CUDA device with it | full: @sec-ch12-layout |
+| `MASTER_ADDR` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | `127.0.0.1` | rendezvous address | full: @sec-ch12-layout |
+| `MASTER_PORT` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | a random port, single process only | rendezvous port; construction fails if it is unset and either world size exceeds 1 | full: @sec-ch12-layout |
+| `DEVICE_ID` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | -1 | device index | full: @sec-ch12-layout |
+| `DEVICE` | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}, {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `cpu` | device type | @sec-ch01; full: @sec-ch12-layout |
 
 : Launch and layout variables, read when layout options are constructed. {#tbl-appd-layout}
 
 | symbol | read at | default | effect | cited by |
 |------------------|--------------------|----------------|--------------------------|--------------|
-| `COMMUX_COALESCE` | [`process_group_ucx.cpp:26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L26) | set to 1 if unset | commux option; the call-site comment: grouped point-to-point operations are flushed after one stream synchronization | full: @sec-ch12-layout |
-| `COMMUX_GROUP` | [`process_group_ucx.cpp:27`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L27) | set to 1 if unset | commux option, set with `COMMUX_COALESCE` under the same comment | full: @sec-ch12-layout |
-| `UCX_TLS` | [`process_group_ucx.cpp:28-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L28-L29) | set to `^cuda_copy,cuda_ipc,gdr_copy` if unset and `DEVICE` is `cpu` | excludes the CUDA copy, IPC and GPUDirect transports | full: @sec-ch12-layout |
+| `COMMUX_COALESCE` | {{< code src/layout/process_group_ucx.cpp ProcessGroupContext::_init_ucx >}} | set to 1 if unset | commux option; the call-site comment: grouped point-to-point operations are flushed after one stream synchronization | full: @sec-ch12-layout |
+| `COMMUX_GROUP` | {{< code src/layout/process_group_ucx.cpp ProcessGroupContext::_init_ucx >}} | set to 1 if unset | commux option, set with `COMMUX_COALESCE` under the same comment | full: @sec-ch12-layout |
+| `UCX_TLS` | {{< code src/layout/process_group_ucx.cpp ProcessGroupContext::_init_ucx >}} | set to `^cuda_copy,cuda_ipc,gdr_copy` if unset and `DEVICE` is `cpu` | excludes the CUDA copy, IPC and GPUDirect transports | full: @sec-ch12-layout |
 
 : Communication defaults that snapy writes before the UCX process group starts (UCX builds only). {#tbl-appd-ucx}
 
 | symbol | read at | default | effect | cited by |
 |------------------|--------------------|----------------|--------------------------|--------------|
-| `WORKSPACE` | [`setup.py:42`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/setup.py#L42) | the current directory | root of the include and library search paths of `pip install` | full: @sec-ch12-layout |
+| `WORKSPACE` | {{< code setup.py current_dir >}} | the current directory | root of the include and library search paths of `pip install` | full: @sec-ch12-layout |
 | `NC_HOME` | [`setup.py:62-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/setup.py#L62-L63) | unset (adds `None/lib`) | adds `NC_HOME/lib` to the library search path | full: @sec-ch12-layout |
 
 : Package-build variables, read by setup.py during pip install only. {#tbl-appd-build}

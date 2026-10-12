@@ -67,12 +67,12 @@ plus the pending total, so after an accepted step it is the run's sum $-\sum_n\m
 since the start of the run or the last restart.
 
 In the code, @eq-ch13-fixgrav-d is the stage defect `gwfix_stage`
-([`hydro_forward.cpp:890-908`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L890-L908)), the wall mass `_gwfix_wall`
-([`hydro_forward.cpp:910-918`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L910-L918)), the implicit part `epe`
-([`hydro_forward.cpp:978-999`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L978-L999)) and the stage weight `cw`
-([`hydro_forward.cpp:1015-1026`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L1015-L1026)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), the wall mass `_gwfix_wall`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), the implicit part `epe`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) and the stage weight `cw`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 @eq-ch13-fixgrav-bound is the check of `apply_gravity_work_fixer` against `bound`
-([`meshblock.cpp:897-905`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L897-L905)). The budget algebra (stage weights,
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}). The budget algebra (stage weights,
 the deposit summing to $-\mathcal D$, the bound in float64 and float32) is checked in @sec-ch06-fixer by
 `src/snapy_report/ch06/fixer_check.py`; this section adds no check of its own.
 
@@ -83,7 +83,7 @@ the deposit summing to $-\mathcal D$, the bound in float64 and float32) is check
 1. **Stage 0 reset.** At the first stage of every step, including a redone one, `advance_local` zeroes the defect
    and the wall mass and commits the previous step's pending deposit, since reaching a new step means the previous
    one was accepted
-   (`gravity_work_defect`, [`meshblock.cpp:613-615`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L613-L615)).
+   (`gravity_work_defect`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 2. **Each stage.** `HydroImpl::forward` forms `gwfix_stage` as a sum over the block's interior cells, adds the
    implicit solve's change of $E+\mathrm{PE}_d$, and adds `cw` times the result to `_gwfix_d`; it adds the
    unweighted wall-face mass to `_gwfix_wall`. Both buffers are float64 whatever the state's dtype.
@@ -91,58 +91,58 @@ the deposit summing to $-\mathcal D$, the bound in float64 and float32) is check
    `_gwfix_d`, the fluid mass $\sum_i\rho_iV_i$ (dry plus species, solid cells zeroed), `_gwfix_wall`, the mass of
    the interior cells next to the block's $x_1$ walls, and 1 if the block's limiter patched a cell or found a NaN or
    its implicit solve failed, else 0
-   (`gravity_work_fixer_sums`, [`meshblock.cpp:844-868`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L844-L868)). The mass is summed in the
+   (`gravity_work_fixer_sums`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). The mass is summed in the
    state's dtype and then converted.
 4. **Reduction.** With one block per process the block calls one allreduce SUM on its own
-   (`gravity_work_fixer_sums`, [`meshblock.cpp:832-839`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L832-L839)); with several
+   (`gravity_work_fixer_sums`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); with several
    local blocks `MeshImpl::forward` defers that, adds the blocks' vectors and makes one allreduce for the process
-   (`gravity_work_fixer_sums`, [`mesh.cpp:341-363`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/mesh.cpp#L341-L363)). The order of these
+   (`gravity_work_fixer_sums`, {{< code src/mesh/mesh.cpp MeshImpl::forward >}}). The order of these
    sums is @sec-ch14-collectives.
 5. **Skip.** If the summed redo flag is positive or any of the five sums is not finite, every block zeroes its
    buffers and returns without a deposit, so the redo check decides the step as it would with the fixer off
-   (`isfinite`, [`meshblock.cpp:881-887`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L881-L887)).
+   (`isfinite`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
 6. **Refuse or deposit.** Otherwise @eq-ch13-fixgrav-bound is checked with `TORCH_CHECK`, which stops the run; on
    success `efix` $=-\mathcal D/M$ (J kg$^{-1}$) is added per unit mass to the interior energy and $-\mathcal D$ to the
-   pending total (`efix`, [`meshblock.cpp:906-910`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L906-L910)).
+   pending total (`efix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
    The physical ghosts are refilled after the deposit.
 7. **Accept or redo.** `check_redo` drops the pending deposit when it redoes the step
-   (`drop_gravity_work_fix`, [`meshblock.cpp:1253-1254`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1253-L1254)) and commits it
+   (`drop_gravity_work_fix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}) and commits it
    when it accepts
-   (`commit_gravity_work_fix`, [`meshblock.cpp:1276-1278`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1276-L1278)).
+   (`commit_gravity_work_fix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}).
 8. **Print.** Every block adds the same global $-\mathcal D$, so the cycle line reads the root block's total without
    a further reduction, and prints it only while the fixer is on
-   (`fixgrav`, [`meshblock.cpp:1113-1114`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1113-L1114)).
+   (`fixgrav`, {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
 The fixer is "on" in this sense when `HydroImpl::gravity_work_fixer` holds: $g_1\neq0$, `gravity-work: cell` and
 the key true
-(`gravity_work_fixer`, [`hydro.cpp:226-230`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L226-L230)). With the default `face` form the YAML
+(`gravity_work_fixer`, {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_fixer >}}). With the default `face` form the YAML
 default of the key is false
-(`gravity_work_fixer`, [`const_gravity.cpp:35-41`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L35-L41)), and a value set
+(`gravity_work_fixer`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}), and a value set
 from Python is overwritten to false at setup
-(`gravity_work_fixer`, [`hydro.cpp:62-81`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L62-L81)). No buffer is filled, no
+(`gravity_work_fixer`, {{< code src/hydro/hydro.cpp HydroImpl::reset >}}). No buffer is filled, no
 reduction is made, and the cycle line carries no `fixgrav=` token.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| default form `face` | [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28) | `gravity_work` | `gravity-work` |
-| fixer default and refusal with `face` | [`const_gravity.cpp:35-41`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L35-L41) | `gravity_work_fixer` | `gravity-work-fixer` |
-| setup refusals | [`hydro.cpp:62-81`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L62-L81) | `gravity_work_fixer` | `gravity-work-fixer` |
-| when the fixer is on | [`hydro.cpp:226-230`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L226-L230) | `gravity_work_fixer` | |
-| the four buffers | [`hydro.cpp:210-216`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L210-L216) | `_gwfix_d` | |
-| defect, total, pending, wall accessors | [`hydro.hpp:184-202`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.hpp#L184-L202) | `gravity_work_fix` | |
-| stage defect | [`hydro_forward.cpp:890-908`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L890-L908) | `gwfix_stage` | |
-| wall-face mass | [`hydro_forward.cpp:910-918`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L910-L918) | `_gwfix_wall` | |
-| implicit part | [`hydro_forward.cpp:978-999`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L978-L999) | `epe` | `implicit-scheme` |
-| stage weight | [`hydro_forward.cpp:1015-1026`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L1015-L1026) | `cw` | |
-| stage-0 reset | [`meshblock.cpp:613-615`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L613-L615) | `gravity_work_defect` | |
-| one block's reduction | [`meshblock.cpp:832-839`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L832-L839) | `gravity_work_fixer_sums` | |
-| the five sums | [`meshblock.cpp:844-868`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L844-L868) | `gravity_work_fixer_sums` | |
-| skip, bound, deposit | [`meshblock.cpp:870-911`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L870-L911) | `apply_gravity_work_fixer` | |
-| several local blocks | [`mesh.cpp:341-363`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/mesh.cpp#L341-L363) | `gravity_work_fixer_sums` | |
-| printing | [`meshblock.cpp:1113-1114`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1113-L1114) | `fixgrav` | |
-| drop on redo, commit on accept | [`meshblock.cpp:1253-1278`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1253-L1278) | `commit_gravity_work_fix` | |
+| default form `face` | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `gravity-work` |
+| fixer default and refusal with `face` | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work_fixer` | `gravity-work-fixer` |
+| setup refusals | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `gravity_work_fixer` | `gravity-work-fixer` |
+| when the fixer is on | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_fixer >}} | `gravity_work_fixer` | |
+| the four buffers | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `_gwfix_d` | |
+| defect, total, pending, wall accessors | {{< code src/hydro/hydro.hpp HydroImpl >}} | `gravity_work_fix` | |
+| stage defect | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gwfix_stage` | |
+| wall-face mass | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_gwfix_wall` | |
+| implicit part | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `epe` | `implicit-scheme` |
+| stage weight | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | |
+| stage-0 reset | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `gravity_work_defect` | |
+| one block's reduction | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `gravity_work_fixer_sums` | |
+| the five sums | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `gravity_work_fixer_sums` | |
+| skip, bound, deposit | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `apply_gravity_work_fixer` | |
+| several local blocks | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `gravity_work_fixer_sums` | |
+| printing | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `fixgrav` | |
+| drop on redo, commit on accept | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `commit_gravity_work_fix` | |
 
 : Code map of the gravity-work fixer budget at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97. {#tbl-ch13-fixgrav-code}
 
@@ -168,7 +168,7 @@ $g_2$, $g_3$ and periodic-$x_1$ refusals of @sec-ch06-fixer.
 `test_gravity_work_fixer` drives one `MeshBlock` in one process, so it exercises the single-block reduction path;
 it reports `fixgrav` from the buffers `hydro.gwfix_total` and `hydro.gwfix_pending` but asserts nothing about its
 value. Since #303 every arm states `gravity-work: cell` in its `const-gravity` block
-(`const-gravity`, [`test_gravity_work_fixer.py:59-60`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_fixer.py#L59-L60)).
+(`const-gravity`, {{< code tests/test_gravity_work_fixer.py config >}}).
 ctest runs it on CPU with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`. The six-panel arm of `test_flux_covariance_seams` is
 the only test whose fixer runs through the several-local-blocks path of `MeshImpl::forward`.
 

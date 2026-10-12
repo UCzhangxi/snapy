@@ -39,7 +39,7 @@ non-commuting $2\times2$ operators the fitted order of this split is 0.991, a sy
 over $\Delta t$, so its split error is the error of applying equilibrium at the end of the step instead of
 throughout it; that error is not measured here.
 
-In the code, the $\mathcal S$ of @eq-ch07-split-lie is the last-stage `ThermoY` solve of the block, `pthermo` ([`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816)).
+In the code, the $\mathcal S$ of @eq-ch07-split-lie is the last-stage `ThermoY` solve of the block, `pthermo` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
 ### Numerical method
 
@@ -56,20 +56,20 @@ make_fig()
 
 1. At the last stage, after the average and the conserved limiter, the block applies the limiter again, forms the
    internal energy and mass fractions on interior cells and calls the kintera `ThermoY` solve, `pthermo`, with a warm start
-   ([`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816)).
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 2. The physical boundaries are filled after it, by `apply_boundaries`, so the wall ghosts carry the adjusted
-   composition ([`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841)).
+   composition ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 3. The example driver refreshes the primitives from the final state with `peos->forward`, evaluates the kinetics
-   rates and Jacobian and advances them with `evolve_implicit` over the full step ([`run_hydro.cpp:171-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L171-L191)).
+   rates and Jacobian and advances them with `evolve_implicit` over the full step ({{< code examples/run_hydro.cpp main >}}).
 4. `check_redo` then decides on the whole step, kinetics included (@sec-ch07-redo).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| saturation adjustment, last stage | [`meshblock.cpp:795-816`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L795-L816) | `pthermo` | `thermo.reactions` |
-| boundary fill after it | [`meshblock.cpp:841`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L841) | `apply_boundaries` | |
-| kinetics in the driver | [`run_hydro.cpp:171-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L171-L191) | `evolve_implicit` | kinetics block |
+| saturation adjustment, last stage | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `pthermo` | `thermo.reactions` |
+| boundary fill after it | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_boundaries` | |
+| kinetics in the driver | {{< code examples/run_hydro.cpp main >}} | `evolve_implicit` | kinetics block |
 
 : Code map of the step-boundary split. {#tbl-ch07-split-code}
 

@@ -26,7 +26,7 @@ covered by @sec-ch11.
 
 There is nothing to derive; the scheme is a rule, stated here in full. On the `slab` and `cubed` layouts a face loses
 its bfunc when the block has a neighbouring block across it or when its axis is periodic; this is the reset of the
-internal `bfuncs` at construction ([`meshblock.cpp:137-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L137-L179)). Afterwards a face is physical exactly when a
+internal `bfuncs` at construction ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}). Afterwards a face is physical exactly when a
 bfunc is installed on it, which is all that `is_physical_boundary` tests
 ([`meshblock_options.cpp:213-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L213-L234)). For a multi-axis offset the first non-zero component in the order $x_3$,
 $x_2$, $x_1$ names the face, as `face_of` does in the same lines. On the cubed sphere no bfunc is removed.
@@ -59,13 +59,13 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| names to bfuncs, default `reflecting` | [`meshblock_options.cpp:98-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L98-L137) | `bfuncs` | `boundary-condition` |
-| internal faces lose their bfunc | [`meshblock.cpp:137-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L137-L179) | `bfuncs` | `distribute` |
+| names to bfuncs, default `reflecting` | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `bfuncs` | `boundary-condition` |
+| internal faces lose their bfunc | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `bfuncs` | `distribute` |
 | face of an offset; physical predicate | [`meshblock_options.cpp:213-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L213-L234) | `is_physical_boundary` | none |
-| wall whitelist | [`meshblock_options.cpp:243-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L243-L272) | `is_wall_boundary` | none |
+| wall whitelist | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | none |
 | the no-op panel-edge bfunc | [`bc_func.cpp:7-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L7-L8) | `custom_inner` | `custom` |
-| $x_1$ wall | [`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209) | `is_x1_wall` | none |
-| exchange skips physical faces | [`layout.cpp:496-510`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L496-L510) | `is_physical_boundary` | none |
+| $x_1$ wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | none |
+| exchange skips physical faces | {{< code src/layout/layout.cpp LayoutImpl::serialize >}} | `is_physical_boundary` | none |
 
 : Code map of physical and internal faces. {#tbl-ch03-physfaces-code}
 
@@ -73,9 +73,9 @@ In step order (@tbl-ch03-physfaces-code):
 
 1. For each live axis the two names are read (default `reflecting`), suffixed `_inner` or `_outer` and looked up;
    an unknown name stops setup with "Boundary function ... is not defined", from the lookup into `bfuncs`
-   ([`meshblock_options.cpp:98-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L98-L137)).
+   ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}).
 2. On `slab` and `cubed`, the constructor removes the `bfuncs` of internal and periodic faces
-   ([`meshblock.cpp:137-179`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L137-L179)); on `cubed-sphere` it removes none.
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}); on `cubed-sphere` it removes none.
 3. Every consumer then asks `is_physical_boundary`, `is_wall_boundary` or `is_x1_wall`.
 
 ### Tests

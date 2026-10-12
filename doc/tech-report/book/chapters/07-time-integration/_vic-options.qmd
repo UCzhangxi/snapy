@@ -35,7 +35,7 @@ so `vic-partial` solves for $(\rho, \rho u, E)$ and `vic-full` for $(\rho, \rho 
 $x_1$ velocity [check `src/snapy_report/ch07/vic_options_check.py`, output `vic_options_check.out`, `[C1]`]. Here
 $\rho$ is the total density: the species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute).
 
-In the code, @eq-ch07-vic-size is `size` ([`implicit_hydro.hpp:33-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L33-L39)).
+In the code, @eq-ch07-vic-size is `size` ({{< code src/implicit/implicit_hydro.hpp ImplicitOptionsImpl::size >}}).
 
 ### Numerical method
 
@@ -51,30 +51,30 @@ make_fig()
 ```
 
 The options come from the `integration` block, which pyharp's integrator also reads, so its keys are checked
-against both readers ([`implicit_hydro.cpp:24-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L24-L69)). A value of 0 returns no options at all from `from_yaml`, so 0 is
-a true explicit spelling that also runs with several blocks in $x_1$ ([`implicit_hydro.cpp:71-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L71-L82)).
+against both readers ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). A value of 0 returns no options at all from `from_yaml`, so 0 is
+a true explicit spelling that also runs with several blocks in $x_1$ ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}}).
 The two bound keys without a scheme are an error, not ignored (`[C3]`). `implicit-advection-cfl` must be finite and
 positive, and `shear-cfl` finite and non-negative (`[C2]`).
 
-`HydroImpl` creates the solver object, `picorr`, only when the options exist ([`hydro/hydro.cpp:115-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L115-L117)). Its `reset`
-calls `type`, which is what refuses an unsupported value ([`implicit_hydro.cpp:107-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L107-L122)). The
+`HydroImpl` creates the solver object, `picorr`, only when the options exist ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}). Its `reset`
+calls `type`, which is what refuses an unsupported value ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::reset >}}). The
 first correction then checks with `is_physical_boundary` that both $x_1$ faces of the block are physical
-boundaries, since the column solve has no cross-rank coupling ([`hydro/hydro.cpp:411-416`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L411-L416)). It also requires a constant gravity, through
-`grav` ([`implicit_hydro.cpp:182-183`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L182-L183)) (`[C4]`).
+boundaries, since the column solve has no cross-rank coupling ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}). It also requires a constant gravity, through
+`grav` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}) (`[C4]`).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| read the integration block | [`implicit_hydro.cpp:24-69`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L24-L69) | `from_yaml` | `implicit-scheme`, `implicit-advection-cfl`, `shear-cfl` |
-| scheme value to options | [`implicit_hydro.cpp:71-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L71-L82) | `from_yaml` | `implicit-scheme` |
-| names and refusal | [`implicit_hydro.cpp:84-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L84-L98) | `type` | |
-| block size | [`implicit_hydro.hpp:33-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L33-L39) | `size` | |
-| defaults | [`implicit_hydro.hpp:42-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.hpp#L42-L44) | `advection_cfl` | |
-| hydro options entry | [`hydro_options.cpp:35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L35) | `icorr` | |
-| construction | [`hydro/hydro.cpp:115-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L115-L117) | `picorr` | |
-| refusal at construction | [`implicit_hydro.cpp:107-122`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L107-L122) | `reset` | |
-| one block in $x_1$ | [`hydro/hydro.cpp:411-416`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L411-L416) | `is_physical_boundary` | |
+| read the integration block | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}} | `from_yaml` | `implicit-scheme`, `implicit-advection-cfl`, `shear-cfl` |
+| scheme value to options | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | `implicit-scheme` |
+| names and refusal | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::type >}} | `type` | |
+| block size | {{< code src/implicit/implicit_hydro.hpp ImplicitOptionsImpl::size >}} | `size` | |
+| defaults | {{< code src/implicit/implicit_hydro.hpp ImplicitOptionsImpl >}} | `advection_cfl` | |
+| hydro options entry | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `icorr` | |
+| construction | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `picorr` | |
+| refusal at construction | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::reset >}} | `reset` | |
+| one block in $x_1$ | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `is_physical_boundary` | |
 
 : Code map of the VIC options. {#tbl-ch07-vic-options-code}
 

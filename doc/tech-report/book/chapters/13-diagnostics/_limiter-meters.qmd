@@ -47,7 +47,7 @@ has $\theta = 0$ and counts as a hit, but not as severe (`[C2]`). When the limit
 its initial 1, `thetasevere` at 0, and `limcut` is not printed (`[C4]`).
 
 In the code, @eq-ch13-limiter-severe is the census into `_positivity_severe`
-([`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 ### Numerical method
 
@@ -63,30 +63,30 @@ make_fig()
 ```
 
 The factor comes from `flux_positivity_theta`, with the margin `margin` of 4096 ulp in every precision
-([`flux_positivity.cpp:61-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L61-L71)). The round-off bound of the severe test is `positivity_roundoff`, from the
+({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}). The round-off bound of the severe test is `positivity_roundoff`, from the
 two constants `kPositivityRoundoffUlp` and `kPositivityRoundoffUlpFloat` ([`flux_positivity.hpp:18-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L18-L23)).
 In each stage, `HydroImpl::forward` takes a census of the interior entries before the ghost fill. It adds the
 entries with $\theta<1$ to `_positivity_hits`, the severe ones to `_positivity_severe`, and lowers
-`_positivity_min` ([`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669)). After the fluxes are scaled, it adds the offered
-interior $x_1$ flux magnitude to `_lim_flux` and the cut to `_lim_cut` ([`hydro_forward.cpp:690-705`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L690-L705)).
+`_positivity_min` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). After the fluxes are scaled, it adds the offered
+interior $x_1$ flux magnitude to `_lim_flux` and the cut to `_lim_cut` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 The five meters are module buffers set up with `register_buffer` at construction: 0 for the counts and sums, 1
-for the minimum ([`hydro/hydro.cpp:187-194`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L187-L194)). The cycle line sums the counts and the two flux totals over
+for the minimum ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}). The cycle line sums the counts and the two flux totals over
 blocks and ranks, takes the MIN of $\theta$, and prints the ratio only when the offered total is positive, through
-`limcut` ([`meshblock.cpp:1102-1107`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1102-L1107)). The hit count is not printed. It is read by the step acceptance
-(@sec-ch07-redo) through the EOS limiter marks, `limiter_hits` ([`meshblock.cpp:1212-1218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1212-L1218)).
+`limcut` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}). The hit count is not printed. It is read by the step acceptance
+(@sec-ch07-redo) through the EOS limiter marks, `limiter_hits` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::limiter_hits >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| limiter factor | [`flux_positivity.cpp:22-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L22-L72) | `flux_positivity_theta` | |
+| limiter factor | {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}} | `flux_positivity_theta` | |
 | round-off constants | [`flux_positivity.hpp:18-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L18-L23) | `kPositivityRoundoffUlp` | |
-| census | [`hydro_forward.cpp:656-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L656-L669) | `_positivity_severe` | `equation-of-state/limiter` |
-| cut and offered flux | [`hydro_forward.cpp:690-705`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L690-L705) | `_lim_cut` | |
-| buffers | [`hydro/hydro.cpp:187-194`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L187-L194) | `register_buffer` | |
-| accessors | [`hydro/hydro.hpp:145-151`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L145-L151) | `positivity_min` | |
-| printing | [`meshblock.cpp:1102-1107`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1102-L1107) | `thetasevere` | |
+| census | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_positivity_severe` | `equation-of-state/limiter` |
+| cut and offered flux | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_lim_cut` | |
+| buffers | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `register_buffer` | |
+| accessors | {{< code src/hydro/hydro.hpp HydroImpl >}} | `positivity_min` | |
+| printing | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `thetasevere` | |
 
 : Code map of the positivity-limiter meters. {#tbl-ch13-limiter-meters-code}
 
@@ -120,4 +120,4 @@ ctest cases: **pending: pinned ctest run**.
 2. **Run to date.** The meters are never reset during a run, so a single bad step stays in `thetamin` for the
    rest of the run.
 3. **Scalars.** The passive-scalar module keeps its own hit counter, `_positivity_hits`
-   ([`scalar.cpp:160`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L160)), which is not printed.
+   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), which is not printed.

@@ -43,7 +43,7 @@ result is $(I+\Delta t\,J)^{-1}\Delta\mathbf U$, and it tends to $\Delta\mathbf 
 The first entry of $r_i$ is the total density increment, dry plus all species, over $\Delta t$. The species are
 not in the system; they follow in @sec-ch07-vic-redistribute.
 
-In the code, @eq-ch07-vic-sweep is `ForwardSweep` ([`forward_sweep_impl.h:25-139`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L25-L139)) followed by `vic_backward_substitute` ([`vic_redistribute_impl.h:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L27-L36)).
+In the code, @eq-ch07-vic-sweep is `ForwardSweep` ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}) followed by `vic_backward_substitute` ({{< code src/implicit/vic_redistribute_impl.h vic_backward_substitute >}}).
 
 ### Numerical method
 
@@ -59,16 +59,16 @@ make_fig()
 ```
 
 `ForwardSweep` builds the right-hand side `rhs` of each layer from the explicit increment, with the density row
-summed over the species ([`forward_sweep_impl.h:35-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L35-L49)). For $N=5$ it factors the eliminated block and
+summed over the species ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=5$ it factors the eliminated block and
 solves for $a_i'$ and $\delta_i$ together with the multi-column `lubksb`
-([`forward_sweep_impl.h:108-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L108-L120)). For $N=3$ it checks the factorisation with `ludcmp` and
-keeps the explicit inverse ([`forward_sweep_impl.h:121-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L121-L127)). After every layer it checks that $a_i'$ and $\delta_i$ are
+({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=3$ it checks the factorisation with `ludcmp` and
+keeps the explicit inverse ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). After every layer it checks that $a_i'$ and $\delta_i$ are
 finite. On any failure, `vic_fail_column` fills every $\delta$ of the column with NaN and the sweep returns
-([`vic_solve_failure.h:13-19`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_solve_failure.h#L13-L19)). `vic_backward_substitute` skips a column whose first $\delta$ is not
-finite ([`vic_redistribute_impl.h:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L27-L36)). So a failed column is never partly back-substituted
+({{< code src/implicit/vic_solve_failure.h vic_fail_column >}}). `vic_backward_substitute` skips a column whose first $\delta$ is not
+finite ({{< code src/implicit/vic_redistribute_impl.h vic_backward_substitute >}}). So a failed column is never partly back-substituted
 (`[C3]`).
 
-The dispatch `vic_solve_cpu` runs both passes per column ([`implicit_dispatch.cpp:133-167`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L133-L167)). Each layer depends on
+The dispatch `vic_solve_cpu` runs both passes per column ({{< code src/implicit/implicit_dispatch.cpp vic_solve_cpu >}}). Each layer depends on
 every right-hand side below and above it (`[C4]`), so the column is serial; the parallelism is across columns.
 On CUDA the sweep is one thread per column, and the assembly and the final cell update are one thread per cell.
 
@@ -76,12 +76,12 @@ On CUDA the sweep is one thread per column, and the assembly and the final cell 
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| forward elimination | [`forward_sweep_impl.h:25-139`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L25-L139) | `ForwardSweep` | |
-| right-hand side | [`forward_sweep_impl.h:35-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/forward_sweep_impl.h#L35-L49) | `rhs` | |
-| multi-column LU solve | [`lubksb.h:48-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/math/lubksb.h#L48-L71) | `lubksb` | |
-| failed-column sentinel | [`vic_solve_failure.h:13-19`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_solve_failure.h#L13-L19) | `vic_fail_column` | |
-| back substitution | [`vic_redistribute_impl.h:27-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/vic_redistribute_impl.h#L27-L36) | `vic_backward_substitute` | |
-| CPU dispatch | [`implicit_dispatch.cpp:133-167`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_dispatch.cpp#L133-L167) | `vic_solve_cpu` | |
+| forward elimination | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `ForwardSweep` | |
+| right-hand side | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `rhs` | |
+| multi-column LU solve | {{< code src/math/lubksb.h lubksb overload=2 >}} | `lubksb` | |
+| failed-column sentinel | {{< code src/implicit/vic_solve_failure.h vic_fail_column >}} | `vic_fail_column` | |
+| back substitution | {{< code src/implicit/vic_redistribute_impl.h vic_backward_substitute >}} | `vic_backward_substitute` | |
+| CPU dispatch | {{< code src/implicit/implicit_dispatch.cpp vic_solve_cpu >}} | `vic_solve_cpu` | |
 
 : Code map of the block Thomas sweep. {#tbl-ch07-vic-sweep-code}
 

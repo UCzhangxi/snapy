@@ -64,9 +64,9 @@ $$ {#eq-ch05-wbx1-split}
 
 with $\mathcal R^{L,R}$ the left and right face values of the configured $x_1$ reconstruction. The subtraction
 in @eq-ch05-wbx1-split is done by `_hydro_ref_x1` and the two in-place updates that follow it
-([`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293)),
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 and the restore by `psf_lo` added back to both states
-([`hydro_forward.cpp:357-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L363)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 Suppose now that $p'_i=c$ in every cell, for one constant $c$, and $v_1=0$. Every reconstruction of snapy returns a
 constant exactly, so $p^{L}=p^{R}=p_{\mathrm{sf}}+c$ at every face, the two states agree, and the Riemann solver
@@ -129,14 +129,14 @@ $p'_i-c$, which is what `balance_column` removes.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| the gate | [`hydro_forward.cpp:262-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L262-L263) | `wb_x1` | $g_1\neq0$, not shallow water |
-| reference and subtraction | [`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293) | `_hydro_ref_x1` | |
-| even-parity ghosts | [`hydro_forward.cpp:300-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L300-L312) | `is_outflow` | physical, non-outflow walls |
-| reconstruction without floors | [`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348) | `precon1` | |
-| pressure restore and fallback | [`hydro_forward.cpp:357-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L360) | `psf_lo` | |
-| density restore and fallback | [`hydro_forward.cpp:362-377`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L377) | `rho_below` | |
-| species clamp that stays | [`reconstruct.cpp:150-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L150-L155) | `clamp_min_` | EOS limiter |
-| the non-WB $x_1$ path | [`hydro_forward.cpp:378-384`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L378-L384) | `_revise_x1inner_lr` | shallow water, $g_1=0$ |
+| the gate | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wb_x1` | $g_1\neq0$, not shallow water |
+| reference and subtraction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_hydro_ref_x1` | |
+| even-parity ghosts | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `is_outflow` | physical, non-outflow walls |
+| reconstruction without floors | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `precon1` | |
+| pressure restore and fallback | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `psf_lo` | |
+| density restore and fallback | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `rho_below` | |
+| species clamp that stays | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `clamp_min_` | EOS limiter |
+| the non-WB $x_1$ path | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_revise_x1inner_lr` | shallow water, $g_1=0$ |
 
 : Code map of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-code}
 
@@ -144,21 +144,21 @@ In the $x_1$ block of `HydroImpl::forward`, in step order (code indices `is`, `i
 cell, $i_s$ and $i_u$):
 
 1. `wb_x1` is set from the gravity, the number of state rows and the EOS type
-   ([`hydro_forward.cpp:262-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L262-L263)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 2. Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the input `wx1` becomes the plain-mean view
    of @sec-ch05-x1cent; otherwise `wx1` is the state itself.
 3. `_hydro_ref_x1` returns $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{sf}}$ and $\rho_{\mathrm{ref}}$, and the
    two rows of `wx1` are replaced by the perturbations
-   ([`hydro_forward.cpp:288-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L288-L293)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. The even-parity ghosts are written where `is_outflow` is false at a physical wall
-   ([`hydro_forward.cpp:300-312`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L300-L312)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 5. Under `SNAP_X1_MASS_COVARIANCE` the velocity row is corrected before the reconstruction (@sec-ch04).
 6. `precon1` reconstructs with `floor=false`
-   ([`hydro_forward.cpp:346-348`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L346-L348)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 7. The rows of `wx1` are restored, `psf_lo` is added to both pressure states with its fallback
-   ([`hydro_forward.cpp:357-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L357-L360)),
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
    and the density states get `dsf` with the `rho_below` and own-cell fallbacks
-   ([`hydro_forward.cpp:362-377`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L362-L377)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 No switch is read here and no warning is issued; the setup checks of the reference are in @sec-ch05-refkernel
 and @sec-ch05-wbref4.
@@ -194,7 +194,7 @@ but not at the discrete fixed point @eq-ch05-wbx1-rest is not at rest.
 :::
 
 1. **No horizontal treatment.** The $x_2$ and $x_3$ sweeps reconstruct the full state
-   (`precon23` [`hydro_forward.cpp:549-551`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L549-L551));
+   (`precon23` {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}});
    on a curved grid a stratified column is therefore balanced in $x_1$ only.
 2. **Floors off for the perturbation, but not for species.** The species clamp at zero still applies under the EOS
    limiter (table above). Not measured as a source of imbalance.

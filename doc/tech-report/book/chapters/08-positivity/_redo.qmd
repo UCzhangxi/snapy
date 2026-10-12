@@ -22,7 +22,7 @@ positivity failure path.
 ### Derivation
 
 The test is a margin above the floor rather than equality with it, at
-`hit` ([`meshblock.cpp:1199-1202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1199-L1202)): a minimum density at or below $1.001$ times the density floor
+`hit` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}): a minimum density at or below $1.001$ times the density floor
 counts as a hit, and the same for pressure where there is a pressure row. Testing equality with the
 floor would miss a cell that was floored and then nudged by a later operation; the margin catches the
 neighbourhood of the floor instead. `[C7]` nudges a just-floored cell by fifteen relative amounts from
@@ -33,16 +33,16 @@ it happens only from the interior [check `src/snapy_report/ch08/floors_check.py`
 `src/snapy_report/ch08/floors_check.out`].
 
 The ordering around it carries a subtlety the code calls out at
-`reset_limiter_marks` ([`meshblock.cpp:1259-1261`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1259-L1261)): the detector restores primitives in order to look at them, and
+`reset_limiter_marks` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}): the detector restores primitives in order to look at them, and
 that restore itself runs a conversion which can trip the limiter and set a mark. The marks are therefore
 reset so that the detector's own work is not mistaken for a repair of the step being judged.
 
 ### Numerical method
 
-The detector is `hydro_u` ([`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204)). The marks are read through
-`limiter_hits` ([`meshblock.cpp:1211-1218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1211-L1218)), which returns the pair set by the limiter passes of
+The detector is `hydro_u` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}). The marks are read through
+`limiter_hits` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::limiter_hits >}}), which returns the pair set by the limiter passes of
 @sec-ch08-eoslimiter, and the implicit clamp of @sec-ch08-vic is read through its own accessor at
-`vic_dry_clamp_hit` ([`meshblock.cpp:1206-1208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1206-L1208)). The redo decision combines them at
+`vic_dry_clamp_hit` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::vic_dry_clamp_hit >}}). The redo decision combines them at
 [`meshblock.cpp:1276-1281`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1276-L1281), where the floor test is run first and the marks are read
 afterwards, in that order, for the reason above.
 
@@ -50,11 +50,11 @@ afterwards, in that order, for the reason above.
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the detector | [`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204) | `floor_hit` | |
-| the margin above the floor | [`meshblock.cpp:1199-1202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1199-L1202) | `density_floor` | |
-| the implicit clamp accessor | [`meshblock.cpp:1206-1208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1206-L1208) | `dry_clamp_step` | implicit on |
-| reading the limiter marks | [`meshblock.cpp:1211-1218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1211-L1218) | `limiter_marks` | |
-| resetting around the restore | [`meshblock.cpp:1259-1261`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1259-L1261) | `reset_limiter_marks` | |
+| the detector | {{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}} | `floor_hit` | |
+| the margin above the floor | {{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}} | `density_floor` | |
+| the implicit clamp accessor | {{< code src/mesh/meshblock.cpp MeshBlockImpl::vic_dry_clamp_hit >}} | `dry_clamp_step` | implicit on |
+| reading the limiter marks | {{< code src/mesh/meshblock.cpp MeshBlockImpl::limiter_hits >}} | `limiter_marks` | |
+| resetting around the restore | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `reset_limiter_marks` | |
 | the decision | [`meshblock.cpp:1276-1281`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1276-L1281) | `floor_hit` | |
 
 : Code map of the floor detector. {#tbl-ch08-redo-code}

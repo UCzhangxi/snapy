@@ -44,7 +44,7 @@ w_{\mathrm{s},n} = \frac{2\beta_n\,a_n^2\,g_1\,(\rho_{\mathrm{p},n}-\rho)}{9\,\m
 $$ {#eq-ch10-sed-stokes}
 
 clamped to $\pm$`upper-limit`. @eq-ch10-sed-stokes is computed in `SedVelImpl::forward` as `stokes`
-([`sed_vel.cpp:60-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_vel.cpp#L60-L70)).
+({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}).
 The viscosity is the Chapman-Enskog value for a Lennard-Jones gas,
 
 $$
@@ -54,18 +54,18 @@ $$ {#eq-ch10-sed-viscosity}
 with molecular mass $m$,
 diameter $d$ and well depth $\epsilon$ from the YAML defaults of an $\mathrm{H_2}$ background, and the mean free path
 is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m)}$
-([`sed_vel.cpp:45-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_vel.cpp#L45-L58), `eta`).
+({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}, `eta`).
 `sed_check.py` confirms the sign convention ($g_1<0$ and a dense particle settle, `[C1]`), the two limits of
 $\beta_n$ (1 in the continuum, $1.656\,\mathrm{Kn}$ in the free-molecular limit, `[C2]`), that $\mu$ depends on $T$
 only (`[C3]`), and the clamp and the prescribed velocity (`[C4]`).
 
 The flux through the face below cell $i$ takes its donor from cell $i$ when $w_{\mathrm s,n}<0$ and from cell $i-1$
 when $w_{\mathrm s,n}>0$; faces at or beyond a physical $x_1$ wall carry nothing
-([`sed_hydro_dispatch.hpp:12-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro_dispatch.hpp#L12-L24), `sedimentation_upwind`).
+({{< code src/sedimentation/sed_hydro_dispatch.hpp sedimentation_upwind >}}, `sedimentation_upwind`).
 The donor carries $\rho_nw_{\mathrm s,n}$ of mass, $\mathbf v\,\rho_nw_{\mathrm s,n}$ of momentum and
 $\rho_nw_{\mathrm s,n}\big(u^{\star}_n+c_{v,n}T+\tfrac12\lvert\mathbf v\rvert^2\big)$ of energy: the condensate's own
 internal energy plus kinetic energy, with no $R_nT$ share, because a condensate does no pressure work
-([`sed_hydro_impl.h:84-92`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro_impl.h#L84-L92), `species_energy`).
+({{< code src/sedimentation/sed_hydro_impl.h sedimentation_donor_impl >}}, `species_energy`).
 With both walls sealed the column's condensate mass changes only by what the advective flux does (`[C5]`).
 
 ::: {.callout-important title="Check"}
@@ -78,10 +78,10 @@ constant, ported line for line; deck: the check itself; run: `python3 sed_check.
 
 The flux is added to `flux1` after the $x_1$ Riemann solve, and its condensate part is saved as `fsed1` so the
 positivity limiter can carry the right energy and momentum with it
-([`hydro_forward.cpp:418-422`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L418-L422), `fsed1`).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, `fsed1`).
 With the ideal-moist EOS and contiguous tensors a fused CPU or CUDA kernel computes velocity and flux in one pass;
 otherwise a tensor path does the same in separate operations
-([`sed_hydro.cpp:68-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro.cpp#L68-L88), `SedHydroImpl::forward`). MPS has its own kernel behind the
+({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}, `SedHydroImpl::forward`). MPS has its own kernel behind the
 same dispatch stub (`sedimentation_flux_mps`, [`sed_hydro_dispatch.cpp:222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro_dispatch.cpp#L222)).
 The wall bounds are set only where the block face is a physical boundary, so seams between blocks stay open.
 @fig-ch10-sed-donor shows a column; @fig-ch10-sed-vsed the velocity.
@@ -108,20 +108,20 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| YAML keys | [`sed_options.cpp:47-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_options.cpp#L47-L50) | `check_keys` | `sedimentation` |
-| terminal velocity | [`sed_vel.cpp:34-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_vel.cpp#L34-L71) | `SedVelImpl::forward` | `const-vsed` |
-| gravity required | [`sed_hydro.cpp:54-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro.cpp#L54-L58) | `SedHydroImpl::reset` | `const-gravity` |
-| face kernel | [`sed_hydro_impl.h:100-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro_impl.h#L100-L127) | `sedimentation_flux_impl` | |
-| call site | [`hydro_forward.cpp:418-422`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L418-L422) | `fsed1` | |
+| YAML keys | {{< code src/sedimentation/sed_options.cpp SedVelOptionsImpl::from_yaml >}} | `check_keys` | `sedimentation` |
+| terminal velocity | {{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}} | `SedVelImpl::forward` | `const-vsed` |
+| gravity required | {{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::reset >}} | `SedHydroImpl::reset` | `const-gravity` |
+| face kernel | {{< code src/sedimentation/sed_hydro_impl.h sedimentation_flux_impl >}} | `sedimentation_flux_impl` | |
+| call site | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `fsed1` | |
 
 : Code map of sedimentation. {#tbl-ch10-sed-code}
 
-1. Parse the block and require cloud species ([`sed_options.cpp:17-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_options.cpp#L17-L35), `from_yaml`).
-2. Read the gas constants and the clamp, with their defaults ([`sed_options.cpp:120-123`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_options.cpp#L120-L123), `upper_limit`).
-3. Refuse a card without constant gravity ([`sed_hydro.cpp:54-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro.cpp#L54-L58), `grav`).
-4. Skip when $g_1=0$ or nothing settles, seal physical walls ([`sed_hydro.cpp:73-83`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro.cpp#L73-L83), `is_physical_boundary`).
-5. Choose the fused or the tensor path ([`sed_hydro.cpp:85-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro.cpp#L85-L88), `sedimentation_flux_tensor`).
-6. Add to `flux1` and save the condensate part ([`hydro_forward.cpp:418-422`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L418-L422), `psed`).
+1. Parse the block and require cloud species ({{< code src/sedimentation/sed_options.cpp SedHydroOptionsImpl::from_yaml >}}, `from_yaml`).
+2. Read the gas constants and the clamp, with their defaults ({{< code src/sedimentation/sed_options.cpp SedVelOptionsImpl::from_yaml >}}, `upper_limit`).
+3. Refuse a card without constant gravity ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::reset >}}, `grav`).
+4. Skip when $g_1=0$ or nothing settles, seal physical walls ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}, `is_physical_boundary`).
+5. Choose the fused or the tensor path ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}, `sedimentation_flux_tensor`).
+6. Add to `flux1` and save the condensate part ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, `psed`).
 
 Setup messages: "[SedHydro] sedimentation reads grav1; set forcing/const-gravity", "Missing sedimentation particles
 in the clouds.", "Sedimentation radius must be positive." and "Sedimentation density must be positive."
@@ -138,12 +138,12 @@ in the clouds.", "Sedimentation radius must be positive." and "Sedimentation den
 : Tests of sedimentation; assertions read from the test sources at the pin, not run. {#tbl-ch10-sed-tests}
 
 The fused kernel must equal the tensor path to $10^{-10}$ relative and settle (negative flux) inside the column
-([`test_forcing.cpp:1407-1425`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing.cpp#L1407-L1425), `fused_sedimentation_matches_tensor_path`).
+({{< code tests/test_forcing.cpp forcing.fused_sedimentation_matches_tensor_path >}}, `fused_sedimentation_matches_tensor_path`).
 A rising cloud must be taken from the cell below, mass and energy fluxes to $10^{-9}$ relative, on CPU and CUDA
-([`test_sedimentation_guards.cpp:80-83`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_sedimentation_guards.cpp#L80-L83), `EXPECT_NEAR`).
+({{< code tests/test_sedimentation_guards.cpp expect_rising_cloud_taken_from_below >}}, `EXPECT_NEAR`).
 On two ranks of a cubed sphere, the condensate mass is conserved to $10^{-12}$ relative and two seam sums are pinned
 to $10^{-7}$ and $5\times10^{-3}$ absolute
-([`test_sedimentation_cubed_seam.cpp:113-117`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_sedimentation_cubed_seam.cpp#L113-L117), `conserved`);
+({{< code tests/test_sedimentation_cubed_seam.cpp main >}}, `conserved`);
 the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX result. Measured results at the pin are
 **missing evidence** (the verification catalogue's entry for this chapter).
 

@@ -48,9 +48,9 @@ in @eq-ch05-seam-relay are the same physical face, and @eq-ch05-refkernel-scan a
 $g\overline\rho_i\Delta x_{1,i}$ in the same order as a single block would, the face pressures of the split column
 equal those of one block up to the round-off of the different summation boundaries. @eq-ch05-seam-relay is
 `take_x1_anchor` in the block below
-([`hydro.cpp:525-533`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L525-L533))
+({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}})
 and `pass_x1_anchor` in the block above
-([`hydro.cpp:577-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L577-L579)).
+({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 
 The cell pressure of a cell near the seam reads six faces, two beyond the cell on each side, so its value in the
 block that owns it differs from the value the neighbour computes for the same cell in its ghost rows: the
@@ -59,7 +59,7 @@ of $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$ with the owner's interior rows m
 for every cell. Then $p'$ and $\rho'$ agree cell by cell across the seam, the reconstruction of each side reads the
 same data in the stencil across the seam, and the seam-face states agree. The exchange is in `_hydro_ref_x1`, with
 tags `kWbGhostUpTag` and `kWbGhostDnTag`
-([`hydro.cpp:593-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L593-L640)).
+({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 
 *Exact and truncated.* Nothing is truncated: the split reference equals the one-block reference except for the
 summation order of the relayed scan. Where the face density of @sec-ch05-wbref4 is used, its cell part runs before
@@ -94,30 +94,30 @@ Two related seam mechanisms belong to other sections: the single-valued seam flu
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| split test and anchor receive | [`hydro.cpp:525-533`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L525-L533) | `x1_split` | $p_z>1$, not periodic |
-| anchor pass | [`hydro.cpp:577-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L577-L579) | `pass_x1_anchor` | |
-| ghost-row exchange | [`hydro.cpp:593-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L593-L640) | `kWbGhostUpTag` | |
-| receive, remote or local | [`layout.cpp:879-905`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L905) | `take_x1_anchor` | |
-| send, remote or local | [`layout.cpp:907-922`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L907-L922) | `pass_x1_anchor` | |
-| the scan reading the anchor | [`hydro_ref_x1_impl.h:30-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L30-L38) | `anchor` | |
+| split test and anchor receive | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `x1_split` | $p_z>1$, not periodic |
+| anchor pass | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `pass_x1_anchor` | |
+| ghost-row exchange | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `kWbGhostUpTag` | |
+| receive, remote or local | {{< code src/layout/layout.cpp LayoutImpl::take_x1_anchor >}} | `take_x1_anchor` | |
+| send, remote or local | {{< code src/layout/layout.cpp LayoutImpl::pass_x1_anchor >}} | `pass_x1_anchor` | |
+| the scan reading the anchor | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}} | `anchor` | |
 
 : Code map of reference continuity across $x_1$ seams. {#tbl-ch05-seam-code}
 
 1. `_hydro_ref_x1` sets `x1_split` from the layout and, if set, receives the anchor from the block above with
    `take_x1_anchor`; with no block above the anchor is empty and the kernel builds its own
-   ([`hydro.cpp:525-533`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L525-L533)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 2. The kernel scans from the received `anchor`
-   ([`hydro_ref_x1_impl.h:30-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L30-L38));
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}});
    the cell part of @sec-ch05-wbref4 follows.
 3. The block's bottom-face pressure goes to the block below with `pass_x1_anchor`
-   ([`hydro.cpp:577-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L577-L579)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 4. The interior rows go up and down with `kWbGhostUpTag` and `kWbGhostDnTag`, and the received rows overwrite the
    ghost rows
-   ([`hydro.cpp:593-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L593-L640)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 5. The face part of @sec-ch05-wbref4 runs last.
 
 A local anchor that does not arrive within five minutes raises the error of `take_x1_anchor`
-([`layout.cpp:879-905`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L905)),
+({{< code src/layout/layout.cpp LayoutImpl::take_x1_anchor >}}),
 the only error a user can hit here.
 
 ### Tests

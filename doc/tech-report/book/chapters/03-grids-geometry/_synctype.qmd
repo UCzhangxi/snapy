@@ -42,7 +42,7 @@ $$ {#eq-ch03-synctype-matrix}
 
 with $\mathsf G$ the lowering of @eq-ch03-gnomonic-lower acting on $(v_2, v_3)$ and $\mathsf R$ the panel-to-spherical
 rotation (local notation). For a primitive strip $\mathsf G$ is left out. The matrix is built column by column by
-transforming the three unit vectors, in `cs_velocity_transform_matrix` ([`cubed_sphere_utils.cpp:259-298`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L259-L298)).
+transforming the three unit vectors, in `cs_velocity_transform_matrix` ({{< code src/coord/cubed_sphere_utils.cpp cs_velocity_transform_matrix >}}).
 Each factor is exact; the composition is a change of basis and loses nothing but round-off. Check line `[C14]`
 builds $\mathsf G$ from the gnomonic angle at four ghost positions and $\mathsf R$ at four rotation angles and
 forms both matrices of @eq-ch03-synctype-matrix: the round trip
@@ -84,24 +84,24 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| stage sync, scalar rebuild | [`meshblock.cpp:913-978`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L913-L978) | `set_scalar_primitive` | none |
-| initial sync | [`meshblock.cpp:382-394`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L382-L394) | `kPrimitive` | none |
-| initial sync under `Mesh` | [`meshblock.cpp:434-449`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L434-L449) | `initialize_under_mesh` | none |
-| `Mesh`-level sync | [`mesh.cpp:389-396`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L389-L396) | `exchange_ghost_zones` | `type` |
-| matrix with raise or lower | [`cubed_sphere_utils.cpp:259-298`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L259-L298) | `cs_velocity_transform_matrix` | `type` |
-| cached matrix, one radial plane | [`cubed_sphere_layout.cpp:122-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L122-L152) | `_velocity_transform` | `type` |
-| pack rotation | [`cubed_sphere_layout.cpp:736-753`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L736-L753) | `kConserved` | `type` |
-| unpack rotation | [`cubed_sphere_layout.cpp:939-956`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L939-L956) | `kPrimitive` | `type` |
+| stage sync, scalar rebuild | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `set_scalar_primitive` | none |
+| initial sync | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize >}} | `kPrimitive` | none |
+| initial sync under `Mesh` | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_under_mesh >}} | `initialize_under_mesh` | none |
+| `Mesh`-level sync | {{< code src/mesh/mesh.cpp MeshImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | `type` |
+| matrix with raise or lower | {{< code src/coord/cubed_sphere_utils.cpp cs_velocity_transform_matrix >}} | `cs_velocity_transform_matrix` | `type` |
+| cached matrix, one radial plane | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_velocity_transform >}} | `_velocity_transform` | `type` |
+| pack rotation | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::serialize >}} | `kConserved` | `type` |
+| unpack rotation | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}} | `kPrimitive` | `type` |
 
 : Code map of the sync types. {#tbl-ch03-synctype-code}
 
 In step order (@tbl-ch03-synctype-code):
 
 1. The caller picks the type in `SyncOptions`; `_velocity_transform` passes the cosine to the matrix only for
-   `kConserved` ([`cubed_sphere_layout.cpp:122-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L122-L152)).
+   `kConserved` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_velocity_transform >}}).
 2. `serialize` applies `cs_apply_velocity_transform_` to the velocity rows of a conserved or primitive strip
-   ([`cubed_sphere_layout.cpp:736-753`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L736-L753)); `deserialize` applies the inverse matrix with
-   `cs_apply_velocity_transform_` ([`cubed_sphere_layout.cpp:939-956`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L939-L956)).
+   ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::serialize >}}); `deserialize` applies the inverse matrix with
+   `cs_apply_velocity_transform_` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}).
 
 ### Tests
 
@@ -112,7 +112,7 @@ In step order (@tbl-ch03-synctype-code):
 
 : Tests of the sync types. C++ entries carry the build suffix (`.release`). {#tbl-ch03-synctype-tests}
 
-The matrix case is `cached_cubed_sphere_velocity_matrices_match_direct` ([`test_coordinate.cpp:307-354`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L307-L354)); it
+The matrix case is `cached_cubed_sphere_velocity_matrices_match_direct` ({{< code tests/test_coordinate.cpp DeviceTest.cached_cubed_sphere_velocity_matrices_match_direct >}}); it
 runs on CPU and CUDA in float32 and float64 through `DeviceTest`. Their pass status at the pin was not run for this
 chapter (missing evidence).
 
