@@ -15,22 +15,26 @@ because the operator is not linear in $\Delta t$. So snapy passes $\Delta t_{\ma
 the solve and leaves the explicit tendency at the full step.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Hands the VIC the step $w_2^{(s)}\Delta t$ of the current Runge-Kutta stage instead of the
-full $\Delta t$, so that the implicit operator matches the increment the stage actually takes.
-
-**Switch.** None; it applies when the integrator has three stages (`rk3`).
-
-**Order.** Not changed by the weighting; the correction is a linearised backward Euler.
-
-**Defining equation.** @eq-ch07-vic-stage.
+**Purpose.** Hands the VIC the step $\Delta t_c = w_2^{(s)}\Delta t$ of the current Runge-Kutta stage instead of the
+full $\Delta t$, so that the implicit operator matches the increment the stage actually takes; @eq-ch07-vic-stage.
+**Data.** In: $\Delta\mathbf U^{(0)}$ and the stage weight. Out: the solved increment $\boldsymbol\delta$.
+**Placement.** Every stage with a VIC, after the explicit increment.
+**Activation.** None; it applies when the integrator has three stages (`rk3`).
+**Guarantee / limits.** The order is not changed by the weighting; the correction is a linearised backward Euler.
+**Evidence.** `test_forcing.release` (CUDA twin) and `vic_stage_check.py`; the ctests were not run at the pin.
 :::
+
+A stage of @eq-ch07-rk-stage adds $w_2\Delta t\,\mathcal L$. The VIC solves a linear system whose diagonal holds
+$I/\Delta t$. Weighting the solved increment by $w_2$ afterwards is not the same as solving with $w_2\Delta t$,
+because the operator is not linear in $\Delta t$. So snapy passes $\Delta t_c = w_2\Delta t$ into
+the solve and leaves the explicit tendency at the full step.
 
 ### Derivation
 
-With $\Delta\mathbf U = \Delta t\,\mathcal L$ the explicit increment and $J$ the operator of @eq-ch07-vic-blocks
+With $\Delta\mathbf U^{(0)} = \Delta t\,\mathcal L$ the explicit increment and $J$ the operator of @eq-ch07-vic-blocks
 without its $I/\Delta t$, the solve of @sec-ch07-vic-sweep returns
-$\delta = (I + \Delta t_{\mathrm{corr}}J)^{-1}\Delta\mathbf U$, and the stage adds $w_2\delta$. With
-$\Delta t_{\mathrm{corr}} = w_2\Delta t$,
+$\boldsymbol\delta = (I + \Delta t_cJ)^{-1}\Delta\mathbf U^{(0)}$, and the stage adds $w_2\boldsymbol\delta$. With
+$\Delta t_c = w_2\Delta t$,
 
 $$
 w_2\,(I + w_2\Delta t\,J)^{-1}\,\Delta t\,\mathcal L = (I + w_2\Delta t\,J)^{-1}\,w_2\Delta t\,\mathcal L ,
@@ -64,7 +68,7 @@ only the step handed to the correction, by `wght2` ({{< code src/hydro/hydro_for
 published, a direct caller gets a one-time warning and the full step, through `TORCH_WARN_ONCE`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The weighted step goes into `_apply_implicit_correction`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Inside the solve it sets both the $I/\Delta t$ diagonal
-of @eq-ch07-vic-blocks and the right-hand side $\Delta\mathbf U/\Delta t$ of @sec-ch07-vic-sweep. The stage
+of @eq-ch07-vic-blocks and the right-hand side $\Delta\mathbf U^{(0)}/\Delta t$ of @sec-ch07-vic-sweep. The stage
 combination itself is the integrator's, with `wght2` ([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)).
 
 ### Code

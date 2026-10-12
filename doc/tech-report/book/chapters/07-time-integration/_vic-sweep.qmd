@@ -16,32 +16,37 @@ block it inverts is first factored by `ludcmp` with the pivot guard of @sec-ch07
 marks the whole column as failed.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Solves the block-tridiagonal system of @eq-ch07-vic-blocks for one column: a forward
-elimination from the first layer to the last, then a back substitution.
-
-**Switch.** As for the assembly; $N=3$ or $N=5$.
-
-**Order.** A direct solve, exact up to round-off.
-
-**Defining equation.** @eq-ch07-vic-sweep.
+**Purpose.** Solves the block-tridiagonal system of @eq-ch07-vic-blocks for one column: a forward elimination from the
+first layer to the last, then a back substitution; @eq-ch07-vic-sweep.
+**Data.** In: the blocks and the right-hand side $\Delta\mathbf U^{(0)}/\Delta t$ of the column. Out: $\boldsymbol\delta$
+for every layer, or NaN for a failed column.
+**Placement.** Every stage with a VIC, after the assembly.
+**Activation.** As for the assembly; $N=3$ or $N=5$.
+**Guarantee / limits.** A direct solve, exact up to round-off; no pivoting between blocks.
+**Evidence.** `test_lu_failure.release` and `vic_sweep_check.py`; the ctests were not run at the pin.
 :::
+
+The right-hand side is the explicit increment of the stage over the step. So the sweep returns the corrected
+increment $\boldsymbol\delta = (I+\Delta t\,J)^{-1}\Delta\mathbf U^{(0)}$, which is the explicit one when $\Delta t\to0$. Every
+block it inverts is first factored by `ludcmp` with the pivot guard of @sec-ch07-vic-pivot. A refused block
+marks the whole column as failed.
 
 ### Derivation
 
-With $r_i = \Delta\mathbf U_i/\Delta t$ in the solved variables, block Gaussian elimination without pivoting
-between blocks gives, for $i = 0, 1, \ldots, n-1$, with $a_{-1}'$ and $\delta_{-1}$ taken as zero,
+With $r_i = \Delta\mathbf U^{(0)}_i/\Delta t$ in the solved variables, block Gaussian elimination without pivoting
+between blocks gives, for $i = 0, 1, \ldots, n-1$, with $a_{-1}'$ and $\boldsymbol\delta_{-1}$ taken as zero,
 
 $$
 \begin{aligned}
 a_i' &= \big(a_i - b_i a_{i-1}'\big)^{-1} c_i , \\
-\delta_i &= \big(a_i - b_i a_{i-1}'\big)^{-1}\big(r_i - b_i\,\delta_{i-1}\big) ,
+\boldsymbol\delta_i &= \big(a_i - b_i a_{i-1}'\big)^{-1}\big(r_i - b_i\,\boldsymbol\delta_{i-1}\big) ,
 \end{aligned}
 $$ {#eq-ch07-vic-sweep}
 
-and then $\delta_i \leftarrow \delta_i - a_i'\,\delta_{i+1}$ from $i=n-2$ down to 0. On 60 layers the two passes
+and then $\boldsymbol\delta_i \leftarrow \boldsymbol\delta_i - a_i'\,\boldsymbol\delta_{i+1}$ from $i=n-2$ down to 0. On 60 layers the two passes
 match a dense solve to $4\times10^{-16}$ relative for $N=3$ and $N=5$ [check
 `src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out`, `[C1]`]. With the assembled blocks the
-result is $(I+\Delta t\,J)^{-1}\Delta\mathbf U$, and it tends to $\Delta\mathbf U$ as $\Delta t\to0$ (`[C2]`).
+result is $(I+\Delta t\,J)^{-1}\Delta\mathbf U^{(0)}$, and it tends to $\Delta\mathbf U^{(0)}$ as $\Delta t\to0$ (`[C2]`).
 
 The first entry of $r_i$ is the total density increment, dry plus all species, over $\Delta t$. The species are
 not in the system; they follow in @sec-ch07-vic-redistribute.
@@ -63,11 +68,11 @@ make_fig()
 
 `ForwardSweep` builds the right-hand side `rhs` of each layer from the explicit increment, with the density row
 summed over the species ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=5$ it factors the eliminated block and
-solves for $a_i'$ and $\delta_i$ together with the multi-column `lubksb`
+solves for $a_i'$ and $\boldsymbol\delta_i$ together with the multi-column `lubksb`
 ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=3$ it checks the factorisation with `ludcmp` and
-keeps the explicit inverse ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). After every layer it checks that $a_i'$ and $\delta_i$ are
-finite. On any failure, `vic_fail_column` fills every $\delta$ of the column with NaN and the sweep returns
-({{< code src/implicit/vic_solve_failure.h vic_fail_column >}}). `vic_backward_substitute` skips a column whose first $\delta$ is not
+keeps the explicit inverse ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). After every layer it checks that $a_i'$ and $\boldsymbol\delta_i$ are
+finite. On any failure, `vic_fail_column` fills every $\boldsymbol\delta$ of the column with NaN and the sweep returns
+({{< code src/implicit/vic_solve_failure.h vic_fail_column >}}). `vic_backward_substitute` skips a column whose first $\boldsymbol\delta$ is not
 finite ({{< code src/implicit/vic_redistribute_impl.h vic_backward_substitute >}}). So a failed column is never partly back-substituted
 (`[C3]`).
 

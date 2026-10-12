@@ -14,16 +14,23 @@ refreshed primitives. Each piece sees the output of the previous one, which make
 The details of the phase solve and the kinetics are @sec-ch10.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** After the dynamics of a step, applies the phase equilibrium (inside the last stage) and the
-driver's kinetics (after the stages) to the advanced state, each on the result of the one before.
-
-**Switch.** The saturation adjustment runs when the thermodynamics has reactions; the kinetics when the driver
+**Purpose.** After the dynamics of a step, applies the phase equilibrium (inside the last stage) and the driver's
+kinetics (after the stages) to the advanced state, each on the result of the one before; @eq-ch07-split-lie.
+**Data.** In: the conserved state after the dynamics. Out: the species rows, at fixed density and internal energy
+density for the phase equilibrium.
+**Placement.** The phase equilibrium in the last stage, before the boundary fill; the kinetics after the stages,
+before `check_redo`.
+**Activation.** The saturation adjustment runs when the thermodynamics has reactions; the kinetics when the driver
 builds a kinetics model. Neither has its own key here.
-
-**Order.** First order in $\Delta t$ (a sequential, or Lie, split).
-
-**Defining equation.** @eq-ch07-split-lie.
+**Guarantee / limits.** First order in $\Delta t$ (a sequential, or Lie, split).
+**Evidence.** `test_wall_saturation.release` ($10^{-12}$ relative), `test_check_redo_saturation_python` and
+`split_check.py`; the ctests were not run at the pin.
 :::
+
+The dynamics advance the conserved state over the whole step; the phase equilibrium of @sec-ch02 then adjusts the species at fixed density and internal energy density, the physical boundaries are refilled so the ghosts
+carry the adjusted composition, and the driver's kinetics integrate the reaction rates over the step on the
+refreshed primitives. Each piece sees the output of the previous one, which makes the step a sequential split.
+The details of the phase solve and the kinetics are @sec-ch10.
 
 ### Derivation
 
@@ -58,7 +65,7 @@ make_fig()
 ```
 
 1. At the last stage, after the average and the conserved limiter, the block applies the limiter again, forms the
-   internal energy and mass fractions on interior cells and calls the kintera `ThermoY` solve, `pthermo`, with a warm start
+   internal energy density and mass fractions on interior cells and calls the kintera `ThermoY` solve, `pthermo`, with a warm start
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 2. The physical boundaries are filled after it, by `apply_boundaries`, so the wall ghosts carry the adjusted
    composition ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).

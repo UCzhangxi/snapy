@@ -15,14 +15,15 @@ correction is one linear block-tridiagonal solve per column. The gravity rows of
 face work) are part of @sec-ch06 and are not described here.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** For every cell of a column, builds the three blocks $a_i$, $b_i$, $c_i$ of the implicit
-system: the linearisation of the $x_1$ flux divergence, with Roe upwind dissipation frozen at the current state.
-
-**Switch.** `integration/implicit-scheme` 1 (3 x 3) or 9 (5 x 5).
-
-**Order.** A linearisation about the stage state.
-
-**Defining equation.** @eq-ch07-vic-blocks.
+**Purpose.** For every cell of a column, builds the three blocks $a_i$, $b_i$, $c_i$ of the implicit system: the
+linearisation of the $x_1$ flux divergence, with Roe upwind dissipation frozen at the current state;
+@eq-ch07-vic-blocks.
+**Data.** In: the stage primitives of the column. Out: the $N\times N$ blocks of every layer.
+**Placement.** Every stage with a VIC, after the explicit increment and before the sweep.
+**Activation.** `integration/implicit-scheme` 1 (3 x 3) or 9 (5 x 5).
+**Guarantee / limits.** A linearisation about the stage state; `vic-partial` is exact only when $v_2=v_3=0$.
+**Evidence.** `test_backward_substitution.release` and `vic_assembly_check.py`; no ctest compares the blocks with a
+difference quotient; the ctests were not run at the pin.
 :::
 
 ### Derivation
@@ -50,7 +51,7 @@ the construction:
 1. The coded left eigenvectors invert the right ones (`[C1]`).
 2. $R\Lambda R^{-1}$ with signed eigenvalues is the flux Jacobian at the Roe state, and it has the Roe property
    $\hat A(\mathbf q_R-\mathbf q_L) = F_R - F_L$ for one $\gamma$ (`[C2]`).
-3. With no transverse velocity the 3 x 3 partial system is the full one restricted to $(\rho,\rho u,E)$. With
+3. With no transverse velocity the 3 x 3 partial system is the full one restricted to $(\rho,\rho v_1,E)$. With
    transverse velocity the partial solve drops the coupling, by $3.7\times10^{-3}$ relative at 50 m/s in the
    check (`[C4]`).
 
@@ -71,12 +72,12 @@ make_fig()
 
 Each face takes its two neighbours' primitives. `RoeAverage` weights by $\sqrt\rho$ and averages the total
 enthalpy ({{< code src/implicit/flux_decomposition_impl.h RoeAverage >}}); the caller passes the mean $\gamma$ of the two cells.
-`Eigenvalue` returns $|u-c|$, $|u|$, $|u+c|$, $|u|$, $|u|$ ({{< code src/implicit/flux_decomposition_impl.h Eigenvalue >}}).
+`Eigenvalue` returns $|v_1-c_s|$, $|v_1|$, $|v_1+c_s|$, $|v_1|$, $|v_1|$ ({{< code src/implicit/flux_decomposition_impl.h Eigenvalue >}}).
 `Eigenvector` writes out the eigenvectors and their inverse by hand
 ({{< code src/implicit/flux_decomposition_impl.h Eigenvector >}}), and `FluxJacobian` the Euler flux Jacobian in conserved
 variables ({{< code src/implicit/flux_decomposition_impl.h FluxJacobian >}}). The full kernel forms $\lvert\hat A\rvert$ as `Am` and `Ap`
 at the lower and upper face ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}) and then the blocks, with `half_inv_vol` $=1/(2V_i)$ ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}). The partial kernel copies
-the $(\rho, \rho u, E)$ rows and columns out of the same 5 x 5 matrices into `Am2` and `Ap2`
+the $(\rho, \rho v_1, E)$ rows and columns out of the same 5 x 5 matrices into `Am2` and `Ap2`
 ({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}).
 
 On the CPU the assembly runs the columns in parallel and fills each cell independently. A solid cell gets
@@ -129,7 +130,7 @@ the stage used, so the implicit and explicit fluxes are not the same function.
 
 1. **Mean $\gamma$.** The Roe average at a face uses the mean $\gamma$ of the two cells. The Roe property holds
    only when they are equal (`[C2]` tests one $\gamma$).
-2. **Partial system.** `vic-partial` ignores the transverse momentum coupling, which is exact only when $v=w=0$
+2. **Partial system.** `vic-partial` ignores the transverse momentum coupling, which is exact only when $v_2=v_3=0$
    (`[C4]`).
 3. **No direct test of the blocks.** No ctest compares $a$, $b$, $c$ with a difference quotient. The column tests
    check rest states only.

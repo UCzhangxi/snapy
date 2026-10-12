@@ -15,15 +15,15 @@ fractions vary with height. It also could not carry a composition contrast. So t
 the unique set of face transfers that produces it, and the constituents ride on those transfers.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Turns the solved change of total density into mass transfers through the faces of the column,
-then moves dry gas, each species and the passive scalars through those faces from the upwind cell, never more
-than the donor holds.
-
-**Switch.** None; always on with the VIC.
-
-**Order.** Conservative; donor-upwind, first order in the composition.
-
-**Defining equation.** @eq-ch07-vic-faces.
+**Purpose.** Turns the solved change of total density into mass transfers through the faces of the column, then moves
+dry gas, each species and the passive scalars through those faces from the upwind cell, never more than the donor
+holds; @eq-ch07-vic-faces.
+**Data.** In: the solved increment and the column's masses. Out: the final tendencies of density, species and
+scalars.
+**Placement.** Every stage with a VIC, after the sweep.
+**Activation.** None; always on with the VIC.
+**Guarantee / limits.** Conservative; donor-upwind, first order in the composition.
+**Evidence.** `test_backward_substitution.release` and `vic_redist_check.py`; the ctests were not run at the pin.
 :::
 
 ### Derivation
@@ -67,9 +67,9 @@ Pass 1 forms $\phi_i$, $R$ and $\sum m$, through `explicit_total` ({{< code src/
 Pass 2 is the prefix sum of @eq-ch07-vic-faces into `MASS` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
 Pass 3a moves the dry gas with the dry fraction of the donor, carrying `dryfrac` upward
 ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}). Where it clamps, it sets the mark that becomes the VIC clamp
-cause of @sec-ch07-redo. Pass 3b moves each species, keeping `keep` $= 1 - 4096\epsilon$ of the donor's
+cause of @sec-ch07-redo. Pass 3b moves each species, keeping `keep` $= 1 - 4096\epsilon_{\mathrm m}$ of the donor's
 species density ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}). `vic_redistribute_cell` then writes the
-final tendencies: density plus the dry increment, the momenta and energy from $\delta$, and the species
+final tendencies: density plus the dry increment, the momenta and energy from $\boldsymbol\delta$, and the species
 increments ({{< code src/implicit/vic_redistribute_impl.h vic_redistribute_cell >}}).
 
 The CPU dispatch splits each column at solid cells and redistributes each fluid segment on its own, through
