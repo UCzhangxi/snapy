@@ -2,7 +2,7 @@
 
 What is checked: Coriolis123Impl::forward (:50-66), CoriolisXYZImpl::reset (:84-108) and the
 orthogonal-grid branch of CoriolisXYZImpl::forward (:183-189) of src/forcing/coriolis.cpp at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line. Claims C1-C5. The
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line. Claims C1-C5. The
 cubed-sphere branch calls the coordinate transforms of chapter 3 and is checked by the ctest
 cases, not here.
 

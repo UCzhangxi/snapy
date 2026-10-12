@@ -1,10 +1,10 @@
 ## x1 profiles of the diffusion coefficients and the mean-of-products face coefficient (`nu_scale_x1`, `kappa_scale_x1`) {#sec-ch09-x1profile}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 9.6; docs/derivations/diffusion-face-coefficient.md@e894700ff7aee30b52882e5202b16461413780b0;
-         docs/derivations/diffusion_face_coefficient.py@e894700ff7aee30b52882e5202b16461413780b0;
-         the gravity-work round's team notes in sources/team-notes/
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 9.6; src/forcing/diffusion.cpp, docs/derivations/diffusion-face-coefficient.md,
+         docs/derivations/diffusion_face_coefficient.py, tests/test_diffusion_x1_scale.cpp,
+         tests/test_diffusion_x1_scale.py at the pin
 status: draft
 -->
 
@@ -25,23 +25,20 @@ the $x_1$ face coefficient as the mean of the two cells' products.
 
 Convection decks often want a dynamic viscosity or conductivity that is constant in height over a strongly
 stratified column. In the kinematic form the module multiplies by the face density, so such a deck sets $\nu$ and
-an $x_1$ profile $\varsigma(x_1)\propto1/\rho_0(x_1)$ whose product with $\rho$ is constant. (The report writes the
-profile $\varsigma$, because $s$ is the centroid slope of NOTATION.md; see the local-symbol note.) That balance holds
-on the faces only if the face coefficient is the mean of the cells' products, $\tfrac12(\varsigma_{i-1}q_{i-1} + \varsigma_iq_i)$, and not the product of the means: the latter adds a second-order, always positive excess that
-makes a conductive or viscous equilibrium generate a tendency, largest at the top of the column.
+an $x_1$ profile $\varsigma(x_1)\propto1/\rho_{\mathrm{ref}}(x_1)$ whose product with $\rho$ is constant. (The
+report writes the profile $\varsigma$, because $s$ is the centroid slope of NOTATION.md; see the local-symbol
+note.) That balance holds on the faces only if the face coefficient is the mean of the cells' products,
+$\tfrac12(\varsigma_{i-1}q_{i-1} + \varsigma_iq_i)$, and not the product of the means: the latter adds a
+second-order, always positive excess that makes a conductive or viscous equilibrium generate a tendency, largest at
+the top of the column.
 
 A profile is given either as a table of knots in $x_1$, linear between knots and held beyond them, or, from
 Python, as one value per $x_1$ cell centre of a block, ghosts included. It is frozen when the block is built.
 
-*Aliases.* "K" in the gravity-work round's review notes (`sources/team-notes/`); the commit
-snapy@cbef588c1264dce86fea537f19479a4646e6b575, "Take the x1 diffusion face
-coefficient as the mean of the cells' products".
-
-
 ### Derivation
 
-The derivation is `docs/derivations/diffusion-face-coefficient.md@e894700ff7aee30b52882e5202b16461413780b0` §1,
-rewritten here in the report's notation and checked against the code.
+The derivation is {{< code docs/derivations/diffusion-face-coefficient.md >}} §1, rewritten here in the report's
+notation and checked against the code.
 
 On the $x_1$ face $i-\tfrac12$ between cells $i-1$ and $i$ the coefficient is a product $c=\varsigma q$ of the
 profile and a cell field, $q=\rho$ for viscosity or $q=\rho c_v$ for conduction. The two candidate face values are
@@ -54,10 +51,10 @@ c^{\mathrm{PM}}_{i-1/2} &= \tfrac12(\varsigma_{i-1}+\varsigma_i)\cdot\tfrac12(q_
 \end{aligned}
 $$ {#eq-ch09-x1profile-mp}
 
-The second line is an identity [check `src/snapy_report/ch09/x1profile_check.py`, output `x1profile_check.out`,
-`[C1]`]. The code uses $c^{\mathrm{MP}}$ on $x_1$ faces: `face_scaled_coefficient` multiplies the cell field by the
-profile and hands the product to `face_coefficient` ({{< code src/forcing/diffusion.cpp face_scaled_coefficient >}}), which also extrapolates
-the product at a wall (@sec-ch09-wallcoef).
+The second line is an identity (`[C1]`).[^x1p-c] The code uses $c^{\mathrm{MP}}$ on $x_1$ faces:
+`face_scaled_coefficient` multiplies the cell field by the profile and hands the product to `face_coefficient`
+({{< code src/forcing/diffusion.cpp face_scaled_coefficient >}}), which also extrapolates the product at a wall
+(@sec-ch09-wallcoef).
 
 *A constant product.* Let $\varsigma q = C$ in every cell. Then $c^{\mathrm{MP}} = C$ on every face, while
 
@@ -69,26 +66,30 @@ For a linear temperature, whose exact flux $F_0$ is uniform, the tendency of cel
 $-(F_0/h)(e_{i+1/2}-e_{i-1/2})$ with $e$ the bracketed excess, $O(h^2)$ in the interior. In the cell next to a wall
 one face is the extrapolated product, which is exact, so the tendency there is $O(h)$. The port reproduces both:
 $c^{\mathrm{MP}}$ gives $|\dot E|<10^{-12}F_0/h$ at $n_1$ = 16 to 128, and $c^{\mathrm{PM}}$ converges at orders
-1.40, 1.66, 1.81 in the interior and 0.71, 0.84, 0.92 over all cells (the maximum sits in a wall cell)
+1.40, 1.66, 1.81 in the interior and 0.71, 0.84, 0.92 over all cells, where the maximum sits in a wall cell
 (`[C2]`).
 
 *A smooth product.* $c^{\mathrm{MP}}$ is the trapezoidal average of $c$ across the face and differs from
-$c(x_{1,i-1/2})$ by $O(h^2)$; $c^{\mathrm{PM}}$ differs from it by $\tfrac14\varsigma'q'h^2$. Both give a
-second-order face flux (`[C3]`: orders 1.98 and 1.98 from $n_1$ = 128 to 256). The two forms differ only where a
-balance should be exact.
+$c(x_{1,i-1/2})$ by $O(h^2)$; $c^{\mathrm{PM}}$ differs from it by $\tfrac14\varsigma'q'h^2$, with the prime the
+$x_1$ derivative. Both give a second-order face flux (`[C3]`: orders 1.98 and 1.98 from $n_1$ = 128 to 256). The
+two forms differ only where a balance should be exact.
 
-*$x_2$ and $x_3$ faces.* Both cells of such a face share one $x_1$, so the two cells' $\varsigma$ are equal and the two forms
-are equal in exact arithmetic, but not bit for bit (`[C5]`: relative difference $2.1\times10^{-16}$). The code keeps the product of means there, `face_average` times `scale`
-({{< code src/forcing/diffusion.cpp face_scaled_coefficient >}}), so a run without an $x_1$ split is unchanged
-bit for bit by the change.
+*$x_2$ and $x_3$ faces.* Both cells of such a face share one $x_1$, so the two cells' $\varsigma$ are equal and the
+two forms are equal in exact arithmetic, but not bit for bit (`[C5]`: relative difference $2.1\times10^{-16}$). The
+code keeps the product of means there, `face_average` times `scale`
+({{< code src/forcing/diffusion.cpp face_scaled_coefficient >}}).
 
 *The table.* `profile_from_table` evaluates a table of knots $(x^{\mathrm{k}}_\ell, \varsigma_\ell)$ at the cell
 centres: linear between knots, the end value beyond the ends, the knot value exactly at a knot
-({{< code src/forcing/diffusion.cpp profile_from_table >}}; `[C4]`). Because it is a function of $x_1$, every block of an $x_1$ split
-computes the same values for the same cells.
+({{< code src/forcing/diffusion.cpp profile_from_table >}}; `[C4]`). Because it is a function of $x_1$, every block
+of an $x_1$ split computes the same values for the same cells.
 
 *Exact and truncated.* Exact: zero tendency for a constant product, and decomposition invariance of the table.
 Truncated: the face flux at $O(h^2)$.
+
+[^x1p-c]: `python3 src/snapy_report/ch09/x1profile_check.py`, output `x1profile_check.out`, lines `[C1]`–`[C5]`;
+    a numpy port of `face_scaled_coefficient`, `face_coefficient` and `profile_from_table` at the pin, double
+    precision. Its numbers reproduce those of {{< code docs/derivations/diffusion-face-coefficient.md >}} §3.
 
 ### Numerical method
 
@@ -103,9 +104,12 @@ from snapy_report.ch09.fig_x1profile_tendency import make_fig
 make_fig()
 ```
 
-The profile is stored per $x_1$ cell centre, ghosts included, in float64 on the CPU at construction, by `profile` ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}), and copied once to the state's device and dtype on first use, by `on_state` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). A profile of ones gives the coefficient without a profile bit for bit,
-because $q\times1=q$. The time-step bound uses the largest profile value (@eq-ch09-viscosity-dt). The stencil is
-that of @sec-ch09-viscosity; only the face coefficient changes.
+The profile is stored per $x_1$ cell centre, ghosts included, in float64 on the CPU when the module is built, by
+`profile` ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}), and copied once to the state's device and
+dtype on first use, by `on_state` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). A profile of ones
+gives the coefficient without a profile bit for bit, because $q\times1=q$. The time-step bound uses the largest
+profile value (@eq-ch09-viscosity-dt). The stencil is that of @sec-ch09-viscosity; only the face coefficient
+changes.
 
 ### Code
 
@@ -123,12 +127,14 @@ that of @sec-ch09-viscosity; only the face coefficient changes.
 : Code map of the $x_1$ coefficient profiles. {#tbl-ch09-x1profile-code}
 
 1. `from_yaml` reads a table `{x1, scale}` and checks it with `checked_table`: at least two knots, finite, strictly
-   increasing $x_1$, positive values ({{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}}, {{< code src/forcing/diffusion.cpp checked_table >}}).
-2. `reset` refuses a profile given both ways, any profile with `dynamic: true`, a per-cell profile when $x_1$ is
-   split into several blocks, of the wrong length, not float64, or not positive, and an inference tensor
+   increasing $x_1$, positive values ({{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}},
+   {{< code src/forcing/diffusion.cpp checked_table >}}).
+2. `reset` refuses an inference tensor, a profile given both ways, any profile with `dynamic: true`, and a per-cell
+   profile when $x_1$ is split into several blocks, of the wrong length, not float64, or not positive
    ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}).
-3. At every `forward` and `max_time_step`, a profile set, replaced or changed after construction is refused, by
-   identity, version counter and value, in `check_profiles` ({{< code src/forcing/diffusion.cpp DiffusionImpl::check_profiles >}}).
+3. At every `forward` and `max_time_step`, `check_profiles` refuses a profile set, replaced or changed after the
+   block was built, by identity, version counter and value
+   ({{< code src/forcing/diffusion.cpp DiffusionImpl::check_profiles >}}).
 4. `forward` uses `face_scaled_coefficient` in place of `face_coefficient` when a profile is set
    ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 
@@ -149,19 +155,17 @@ that of @sec-ch09-viscosity; only the face coefficient changes.
 : Tests of the $x_1$ coefficient profiles. {#tbl-ch09-x1profile-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
-line; deck: the check itself; run: `python3 x1profile_check.py`, numpy 2.4.6, double]; they reproduce the numbers
-of `docs/derivations/diffusion-face-coefficient.md@e894700ff7aee30b52882e5202b16461413780b0` §3. The fitted orders
-of the solver's own face fluxes are printed by no test: a data figure of the solver's convergence at $n_1$ = 32, 64,
-128 needs the ctest to print them and a pinned run, **pending**. ctest cases: **pending: pinned ctest run**.
-**Coverage.** CPU; the two `_cuda` cases on a device (a CUDA-arms note in `sources/team-notes/` reports them passing on an RTX 5090 at a development commit that is not a pin of this report). No multi-rank arm.
+**Evidence.** The check numbers come from the port named in the footnote. The fitted orders of the solver's own
+face fluxes are printed by no test: a data figure of the solver's convergence at $n_1$ = 32, 64, 128 needs the
+ctest to print them and a pinned run, **pending**. ctest cases: **pending a pinned ctest run**.
+**Coverage.** CPU; the two `_cuda` cases on a device, not run for this report. No multi-rank arm.
 :::
 
 ### Limits
 
-1. **Per-cell profiles on one $x_1$ block only.** A per-cell tensor covers one block's cells, so it is refused when $x_1$ is split, `nb1` $>1$
-   ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}); use a table.
+1. **Per-cell profiles on one $x_1$ block only.** A per-cell tensor covers one block's cells, so it is refused when
+   $x_1$ is split, `nb1` $>1$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}); use a table.
 2. **Kinematic form only.** A profile is refused with `dynamic: true`, which has no density to balance.
-3. **Frozen.** A profile changed after construction is refused, not used.
+3. **Frozen.** A profile changed after the block is built is refused, not used.
 4. **The table is linear between knots**; a profile with curvature needs enough knots. Not measured.
 5. **The wall cell keeps the $O(h)$ error** of the normal-stress kernel (@sec-ch09-viscosity).

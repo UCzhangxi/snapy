@@ -3,7 +3,7 @@ coefficient s q is constant, against the mean of products used by the code.
 
 Data: data/x1profile_tendency.csv, written by x1profile_check.py (claim C2), which ports
 face_scaled_coefficient of src/forcing/diffusion.cpp:168-194 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0; n1 = 32, rho = (1.25 - x1)^1.5, T = 300 + 50 x1.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; n1 = 32, rho = (1.25 - x1)^1.5, T = 300 + 50 x1.
 """
 import os
 

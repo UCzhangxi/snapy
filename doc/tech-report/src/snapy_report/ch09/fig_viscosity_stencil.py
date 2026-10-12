@@ -1,7 +1,7 @@
 """The stencil of the viscous and conductive x1 face flux on a 2-D Cartesian grid.
 
 Drawn from DiffusionImpl::forward, src/forcing/diffusion.cpp:504-562, with the helpers at
-:70-108, at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+:70-108, at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 from matplotlib.patches import Rectangle
 

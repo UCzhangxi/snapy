@@ -1,7 +1,7 @@
 """Interface of a user stage forcing: what it receives and what it may return.
 
 Drawn from src/mesh/meshblock.cpp:38-67 (stage_forcing_variables, stage_forcing_result) and
-:689-751 (application and dry carry) at snapy@e894700ff7aee30b52882e5202b16461413780b0.
+:689-751 (application and dry carry) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 A cartoon; it reads no data.
 """
 from matplotlib.patches import FancyBboxPatch

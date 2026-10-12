@@ -2,7 +2,7 @@
 (chapter 9, _x1profile.qmd).
 
 What is checked: face_scaled_coefficient (:168-194) and profile_from_table (:216-225) of
-src/forcing/diffusion.cpp at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
+src/forcing/diffusion.cpp at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for
 line, and the closed forms of docs/derivations/diffusion-face-coefficient.md at the same sha.
 Claims C1-C5. Writes data/x1profile_tendency.csv, read by fig_x1profile_tendency.py.
 

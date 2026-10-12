@@ -1,7 +1,7 @@
 """Projection of the rotation vector onto the local spherical-polar basis of a cell.
 
 Drawn from CoriolisXYZImpl::reset, src/forcing/coriolis.cpp:100-108, at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, for a rotation about z. A cartoon; it reads no
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, for a rotation about z. A cartoon; it reads no
 data.
 """
 import numpy as np

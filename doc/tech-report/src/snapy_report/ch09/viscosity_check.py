@@ -2,7 +2,7 @@
 
 What is checked: the discrete operator of DiffusionImpl::forward on a uniform Cartesian grid,
 ported line for line from src/forcing/diffusion.cpp at
-snapy@e894700ff7aee30b52882e5202b16461413780b0 (centered_derivative :70-84,
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (centered_derivative :70-84,
 face_normal_derivative :86-97, face_average :99-108, the flux loop :485-564, max_time_step
 :572-619). Claims C1-C8 of the Derivation layer.
 

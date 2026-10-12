@@ -1,17 +1,22 @@
 ## Plume forcing: accepted by the parser, never installed (`forcing/plume-forcing`) {#sec-ch09-plume}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 9.10; src/forcing/plume_forcing.cpp; src/hydro/hydro_options.cpp; src/eos/equation_of_state.cpp
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 9.10; src/forcing/plume_forcing.cpp, src/forcing/forcing.hpp, src/hydro/hydro_options.cpp,
+         src/hydro/register_forcing_modules.cpp, src/eos/equation_of_state.cpp at the pin
 status: draft
 -->
 
-`PlumeForcingImpl::forward` ({{< code src/forcing/plume_forcing.cpp PlumeForcingImpl::forward >}}) adds entrainment and buoyancy sources for a
-one-dimensional plume model whose primitive vector is radius, vertical velocity, buoyancy and a fourth variable,
-with options `entrainment` (default 0.1) and `N2` (default 0). The key `plume-forcing` is on the list
-`check_keys` accepts ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}), but its options are parsed and the module is installed
-only when the equation of state is `plume-eos` ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}},
-{{< code src/hydro/register_forcing_modules.cpp HydroImpl::_register_forcings_module >}}), and `EquationOfStateImpl::create` refuses that type as unknown
-({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}}; the plume EOS was removed in chengcli/snapy#282). So at the pin a deck
-with `plume-forcing:` is accepted and the key has no effect, and no test exercises the module; it is dead code and
-this report does not describe it further. chengcli/snapy#217 still lists it among the valid keys.
+`PlumeForcingImpl::forward` ({{< code src/forcing/plume_forcing.cpp PlumeForcingImpl::forward >}}) adds entrainment
+and buoyancy sources for a one-dimensional plume model whose primitive vector is radius, vertical velocity, buoyancy
+and a fourth variable, with options `entrainment` (default 0.1) and `N2` (default 0). The key `plume-forcing` is on
+the list `check_keys` accepts ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}), but its options
+are parsed and the module is installed only when the equation of state is `plume-eos`
+({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}},
+{{< code src/hydro/register_forcing_modules.cpp HydroImpl::_register_forcings_module >}}), and
+`EquationOfStateImpl::create` refuses that type as unknown
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}}). So a deck with `plume-forcing:` is accepted
+and the key has no effect. No test exercises the module; `plume_forcing_refuses_an_unknown_key`
+({{< code tests/test_yaml_keys.cpp yaml_keys.plume_forcing_refuses_an_unknown_key >}}) only checks that, with the
+equation of state set to `plume-eos` in the card, the parser refuses an unknown key in its options. The module is
+dead code and this report does not describe it further.

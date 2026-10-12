@@ -1,9 +1,9 @@
 ## Isotropic viscosity and heat conduction (`forcing/diffusion`) {#sec-ch09-viscosity}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 9.4; src/forcing/diffusion.cpp; sources/gh__ISSUE_THREADS_251-294.md (#252, #261, #264);
-         sources/canoe__diffusion_ghost_TECH_REPORT.md
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+sources: OUTLINE.md 9.4; src/forcing/diffusion.cpp, src/hydro/hydro.cpp, src/mesh/meshblock.cpp, tests/test_diffusion.cpp,
+         tests/test_diffusion_moist.cpp at the pin; sources/canoe__diffusion_ghost_TECH_REPORT.md
 status: draft
 -->
 
@@ -13,9 +13,9 @@ status: draft
 **What it does.** Adds the Newtonian viscous stress, its work, and a Fourier heat flux as face fluxes whose
 divergence enters the stage increment.
 **Switch.** `forcing/diffusion: {nu_iso, kappa_iso, dynamic, nu_scale_x1, kappa_scale_x1}`; defaults 0, 0,
-`false`, none, none. Off unless the key is present and a coefficient is positive.
-**Requires.** A `cartesian` grid; $n_{\mathrm{ghost}}\ge2$ for viscosity; an EOS with a positive reference $c_v$
-for conduction.
+`false`, none, none. Off unless the key is present; it acts only through a positive coefficient.
+**Requires.** A `cartesian` grid; $n_{\mathrm{ghost}}\ge2$ for viscosity; an equation of state with a positive
+reference $c_v$ for conduction.
 **Order.** Second order in space in the interior; first order in the kernel of the wall normal stress; explicit,
 with a parabolic time-step bound.
 **Defining equation.** @eq-ch09-viscosity-flux.
@@ -23,30 +23,30 @@ with a parabolic time-step bound.
 
 The diffusion module is snapy's only closure for sub-grid momentum and heat transport: constant isotropic
 coefficients, optionally shaped in $x_1$ (@sec-ch09-x1profile). With the default `dynamic: false`, `nu_iso` is a
-kinematic viscosity $\nu$ [m$^2$ s$^{-1}$] multiplied by the face density, and `kappa_iso` a thermal diffusivity
-$\kappa$ [m$^2$ s$^{-1}$] multiplied by the face volumetric heat capacity $\rho c_v$. With `dynamic: true` the two
-numbers are a dynamic viscosity $\mu$ [Pa s] and a conductivity, still written $\kappa$ but in W m$^{-1}$ K$^{-1}$ (NOTATION.md §8), and no density enters.
-The heat flux acts on the temperature, not on the potential temperature; so a resting adiabatic column, which is
-neutrally stable, is heated in the interior and at the walls (Limits).
+kinematic viscosity $\nu$ [$\mathrm{m^2\,s^{-1}}$] multiplied by the face density, and `kappa_iso` a thermal
+diffusivity $\kappa$ [$\mathrm{m^2\,s^{-1}}$] multiplied by the face volumetric heat capacity $\rho c_v$. With
+`dynamic: true` the two numbers are a dynamic viscosity $\mu$ [$\mathrm{Pa\,s}$] and a conductivity, still written
+$\kappa$ but in $\mathrm{W\,m^{-1}\,K^{-1}}$ (NOTATION.md §8), and no density enters. The heat flux acts on the
+temperature, not on the potential temperature, so a resting adiabatic column, which is neutrally stable, is heated
+in the interior and at the walls (Limits).
 
 The module adds its own time-step bound, $\Delta t\le h_{\min}^2/(2n_{\mathrm{dim}}K)$, which the solver takes
-together with the hyperbolic bound before the Courant factor is applied (the time-integration chapter).
-
-*Aliases.* The removed option `on_theta` (chengcli/snapy#253, #259; removed in #268, which closed #261) is not
-part of the code at the pin. Legacy keys `K` and `type` are refused.
+together with the hyperbolic bound before the Courant factor is applied (@sec-ch07-cfl). The YAML parser refuses
+the keys `K` and `type`.
 
 ### Derivation
 
 All quantities in this layer are per unit volume; $h$ is the cell width, uniform in each direction (the module
-refuses every grid but Cartesian). Units: $\mathbf v$ [m s$^{-1}$], $T$ [K], fluxes of momentum [Pa], of energy
-[W m$^{-2}$].
+refuses every grid but Cartesian). Units: $\mathbf v$ [$\mathrm{m\,s^{-1}}$], $T$ [$\mathrm{K}$], momentum fluxes
+[$\mathrm{Pa}$], energy fluxes [$\mathrm{W\,m^{-2}}$].
 
 #### Continuous fluxes
 
-The Newtonian stress for a fluid with no bulk viscosity is $\boldsymbol\tau = \mu[\nabla\mathbf v + (\nabla\mathbf v)^{\mathsf T} - \tfrac23(\nabla\cdot\mathbf v)\mathsf I]$, and the momentum and energy equations
-gain $\nabla\cdot\boldsymbol\tau$ and $\nabla\cdot(\boldsymbol\tau\cdot\mathbf v)$ plus the divergence of the
-Fourier heat flux, a conductivity times $\nabla T$. Written as fluxes through a face normal to $x_a$, with
-$\mu=\nu\rho$ and the conductivity $\kappa\rho c_v$ in the default form,
+The Newtonian stress for a fluid with no bulk viscosity is
+$\boldsymbol\tau = \mu[\nabla\mathbf v + (\nabla\mathbf v)^{\mathsf T} - \tfrac23(\nabla\cdot\mathbf v)\mathsf I]$, and
+the momentum and energy equations gain $\nabla\cdot\boldsymbol\tau$ and $\nabla\cdot(\boldsymbol\tau\cdot\mathbf v)$
+plus the divergence of the Fourier heat flux, a conductivity times $\nabla T$. Written as fluxes through a face
+normal to $x_a$, with $\mu=\nu\rho$ and the conductivity $\kappa\rho c_v$ in the default form,
 
 $$
 \begin{aligned}
@@ -58,8 +58,8 @@ $$ {#eq-ch09-viscosity-flux}
 and the stage adds $-\Delta t\,\nabla\cdot\mathbf F$ to momentum and energy. With `dynamic: true`, $\nu\rho$ is
 replaced by $\mu$ and $\kappa\rho c_v$ by the conductivity $\kappa$.
 
-In the code, @eq-ch09-viscosity-flux is the face flux `momentum_flux` with its work and conduction terms in the
-energy row ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
+@eq-ch09-viscosity-flux is the face flux `momentum_flux` with its work and conduction terms in the energy row of
+`DiffusionImpl::forward` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 
 #### Discrete fluxes
 
@@ -73,19 +73,20 @@ $$
 \end{aligned}
 $$ {#eq-ch09-viscosity-stencil}
 
-the face-normal difference, the average of the two cell-centred tangential differences, and the two-cell face
-average, in `face_normal_derivative`, `centered_derivative` and `face_average`
-([`diffusion.cpp:70-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L70-L108)). The divergence $\nabla\cdot\mathbf v$ is formed with centred differences in every cell, `div_vel` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}), and then
-face-averaged, `div_face` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The
-stress row $b=a$ is $2\partial_av_a - \tfrac23\overline{\nabla\cdot\mathbf v}$, a row $b\ne a$ is
-$\partial_av_b + \partial_bv_a$ with the second term dropped when direction $b$ is inactive
-({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The viscous work uses the `face_average` of the velocity, and the conductive term
-the face-normal temperature difference times the face coefficient of @sec-ch09-wallcoef
-({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The tendency subtracts $\Delta t$ times the `divergence` of the three flux arrays
+the face-normal difference over the centre distance, the average of the two cell-centred tangential differences,
+and the two-cell face average, in `face_normal_derivative`
+({{< code src/forcing/diffusion.cpp face_normal_derivative >}}), `centered_derivative`
+({{< code src/forcing/diffusion.cpp centered_derivative >}}) and `face_average`
+({{< code src/forcing/diffusion.cpp face_average >}}). The divergence $\nabla\cdot\mathbf v$ is formed with centred
+differences in every cell, `div_vel`, and then face-averaged, `div_face`
+({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The stress row $b=a$ is
+$2\partial_av_a - \tfrac23\overline{\nabla\cdot\mathbf v}$; a row $b\ne a$ is $\partial_av_b + \partial_bv_a$, with
+the second term dropped when direction $b$ is inactive. The viscous work uses the `face_average` of the velocity,
+and the conductive term the face-normal temperature difference times the face coefficient of @sec-ch09-wallcoef.
+The tendency subtracts $\Delta t$ times the `divergence` of the three flux arrays
 ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 
-Three properties follow and are checked against a line-by-line port of the module
-[check `src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out`]:
+Three properties follow, and a line-by-line port of the module checks them:[^vis-c]
 
 1. **Conservation.** Momentum and total energy change only by flux differences, so their column sums
    telescope; on a periodic column they are zero to round-off (`[C4]`).
@@ -93,10 +94,12 @@ Three properties follow and are checked against a line-by-line port of the modul
    energy through the work term; for a random shear the net internal-energy change is positive (`[C5]`).
 3. **Accuracy.** For a transverse velocity the tendency is $\nu\rho$ times the three-point Laplacian to round-off,
    which decays a mode of wavelength $\lambda_w$ at
-   $4\nu\sin^2\vartheta/h^2 = \nu(2\pi/\lambda_w)^2[1+O(\vartheta^2)]$, with $\vartheta=\pi h/\lambda_w$, second
-   order (`[C2]`). The
-   normal-stress row acts with the effective coefficient $\tfrac43\nu$, again second order; its stencil is wider
-   because the divergence is a centred difference averaged to the face (`[C3]`).
+   $4\nu\sin^2\vartheta/h^2 = \nu(2\pi/\lambda_w)^2[1+O(\vartheta^2)]$, with $\vartheta=\pi h/\lambda_w$: second
+   order (`[C2]`). The normal-stress row acts with the effective coefficient $\tfrac43\nu$, again second order; its
+   stencil is wider because the divergence is a centred difference averaged to the face (`[C3]`).
+
+[^vis-c]: `python3 src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out`, lines `[C1]`–`[C8]`; a
+    numpy port of `src/forcing/diffusion.cpp` at the pin, double precision.
 
 #### Time-step bound
 
@@ -107,29 +110,33 @@ $$
 \Delta t \le \frac{h_{\min}^2}{2n_{\mathrm{dim}}K},
 $$ {#eq-ch09-viscosity-dt}
 
-with $K=\max(\nu\varsigma_{\max}^{\nu},\kappa\varsigma_{\max}^{\kappa})$ in the default form ($\varsigma_{\max}$ the largest
-value of an $x_1$ profile of @sec-ch09-x1profile, 1 without one) and $K=\max(\mu/\rho_{\min}, \kappa/(\rho c_v)_{\min})$ with `dynamic: true`, in
-`max_time_step` ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}}). At the bound $|G|=1$ exactly (`[C6]`). The solver takes the minimum of @eq-ch09-viscosity-dt and the hyperbolic bound through
-`pdiffusion` ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}) and then multiplies by the Courant
-factor `cfl` (default 0.9; {{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}), so the diffusive step runs at `cfl` times its limit.
+with $K=\max(\nu\varsigma_{\max}^{\nu},\kappa\varsigma_{\max}^{\kappa})$ in the default form ($\varsigma_{\max}$ the
+largest value of an $x_1$ profile of @sec-ch09-x1profile, 1 without one) and
+$K=\max(\mu/\rho_{\min}, \kappa/(\rho c_v)_{\min})$ with `dynamic: true`, in `max_time_step`
+({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}}). At the bound $|G|=1$ exactly (`[C6]`). The
+solver takes the minimum of @eq-ch09-viscosity-dt and the hyperbolic bound through `pdiffusion`
+({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}) and then multiplies by the Courant factor `cfl`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}), 0.9 by default in pyharp's integrator options,
+so the diffusive step runs at `cfl` times its limit.
 
 #### What `kappa_iso` diffuses
 
 The energy row receives $\nabla\cdot(\kappa\rho c_v\nabla T)$. At fixed density the internal energy is $\rho c_vT$,
 so $\partial_tT = \kappa\nabla^2T$: `kappa_iso` is the thermal diffusivity of $T$. At fixed pressure the heat goes
-into enthalpy, $\rho c_p\partial_tT = \kappa\rho c_v\nabla^2T$, and $T$ diffuses at $\kappa/\gamma$ (`[C7]`,
-0.714286 for $\gamma=1.4$). A run sits between the two, depending on how fast the pressure adjusts.
+into enthalpy, $\rho c_p\partial_tT = \kappa\rho c_v\nabla^2T$, and $T$ diffuses at $\kappa/\gamma$, 0.714286 of
+$\kappa$ for $\gamma=1.4$ (`[C7]`). A run sits between the two, depending on how fast the pressure adjusts.
 
-On a resting adiabat, $\partial_zT = -g/c_p$ and $\rho\propto T^{c_v/R}$; the flux is uniform in $T$-gradient but
-not in $\rho c_v$, and the interior heats at
+On a resting adiabat, $\partial_zT = -g/c_p$ and $\rho\propto T^{c_v/R}$; the temperature gradient is uniform but
+$\rho c_v$ is not, and the interior heats at
 
 $$
 \partial_tT = \frac{\kappa g^2c_v}{R\,c_p^2\,T},
 $$ {#eq-ch09-viscosity-adiabat}
 
-$7.93\times10^{-7}$ K s$^{-1}$ per unit $\kappa$ at $T=300$ K for dry air ($R=287$, $c_p=1004.5$ J kg$^{-1}$
-K$^{-1}$, $g=9.8$ m s$^{-2}$). The discrete operator reproduces @eq-ch09-viscosity-adiabat at second order
-(`[C8]`: relative error $1.85\times10^{-6}$, $4.63\times10^{-7}$, $1.16\times10^{-7}$ at $n_1$ = 64, 128, 256).
+$7.93\times10^{-7}$ $\mathrm{K\,s^{-1}}$ per unit $\kappa$ at $T=300$ $\mathrm{K}$ for dry air
+($R=287$, $c_p=1004.5$ $\mathrm{J\,kg^{-1}\,K^{-1}}$, $g=9.8$ $\mathrm{m\,s^{-2}}$). The discrete operator
+reproduces @eq-ch09-viscosity-adiabat at second order: relative errors $1.85\times10^{-6}$, $4.63\times10^{-7}$
+and $1.16\times10^{-7}$ at $n_1$ = 64, 128, 256 (`[C8]`).
 
 *Exact and truncated.* Conservation of momentum and total energy is exact. The interior fluxes are second order;
 at a reflecting $x_1$ wall the coefficient is second order (@sec-ch09-wallcoef) but the face-averaged divergence in
@@ -148,12 +155,12 @@ from snapy_report.ch09.fig_viscosity_stencil import make_fig
 make_fig()
 ```
 
-Each face flux of @eq-ch09-viscosity-stencil reads the two cells across the face and, for the cross terms and the divergence, their neighbours
-in the tangential directions: one ghost layer for conduction, two for viscosity (the face average of a centred
-difference reaches two cells), hence the setup check $n_{\mathrm{ghost}}\ge2$. Ghosts are filled by the boundary
-functions and the block exchange before the stage (the boundary-conditions and parallelism chapters). Faces at a reflecting $x_1$ wall take
-the one-sided coefficient of @sec-ch09-wallcoef; every other face, including seams between blocks, takes the
-two-cell average. The module runs in every Runge–Kutta stage, explicit, third in the forcing loop
+Each face flux of @eq-ch09-viscosity-stencil reads the two cells across the face and, for the cross terms and the
+divergence, their neighbours in the tangential directions: one ghost layer for conduction, two for viscosity (the
+face average of a centred difference reaches two cells), hence the setup check $n_{\mathrm{ghost}}\ge2$. Ghosts are
+filled by the boundary functions and the block exchange before the stage (@sec-ch11). Faces at a reflecting $x_1$
+wall take the one-sided coefficient of @sec-ch09-wallcoef; every other face, including seams between blocks, takes
+the two-cell average. The module runs in every Runge–Kutta stage, explicit, third in the forcing loop
 (@sec-ch09-framework). Evidence for the orders: interior second order from `[C2]`, `[C3]` and `[C8]` (fitted slope
 2.00 over three resolutions); the wall coefficient second order from @sec-ch09-wallcoef; the order of the full
 operator at a wall through the solver is **not measured**.
@@ -164,29 +171,32 @@ operator at a wall through the solver is **not measured**.
 |---|---|---|---|
 | options, refusals | {{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}} | `DiffusionOptionsImpl::from_yaml` | all keys |
 | setup checks | {{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}} | `DiffusionImpl::reset` | grid, `nghost`, $c_v$ |
-| stencil helpers | [`diffusion.cpp:70-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L70-L108) | `face_normal_derivative` | |
+| face-normal difference | {{< code src/forcing/diffusion.cpp face_normal_derivative >}} | `face_normal_derivative` | |
+| tangential difference | {{< code src/forcing/diffusion.cpp centered_derivative >}} | `centered_derivative` | |
+| face average | {{< code src/forcing/diffusion.cpp face_average >}} | `face_average` | |
 | cell divergence | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `div_vel` | `nu_iso` $>0$ |
 | $\rho c_v$ | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `rho_cv` | `kappa_iso` $>0$, not dynamic |
 | stress and work | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `momentum_flux` | `nu_iso` $>0$ |
 | heat flux | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `dtdn` | `kappa_iso` $>0$ |
 | tendency | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `divergence` | |
 | time-step bound | {{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}} | `DiffusionImpl::max_time_step` | |
-| bound used by the solver | {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}} | `max_time_step` | |
+| bound used by the solver | {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}} | `pdiffusion` | |
 
 : Code map of the isotropic viscosity and heat conduction. {#tbl-ch09-viscosity-code}
 
 1. `DiffusionOptionsImpl::from_yaml` refuses `K` and `type`, checks the keys, and requires finite non-negative
-   coefficients and a literal `true`/`false` for `dynamic` ({{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}}).
+   coefficients and a literal `true`/`false` for `dynamic`
+   ({{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}}).
 2. `DiffusionImpl::reset` refuses a non-Cartesian grid when a coefficient is positive, viscosity with fewer than two
-   ghosts, and conduction without a positive reference $c_v$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}); it then builds
-   the $x_1$ profiles (@sec-ch09-x1profile).
-3. `forward` forms the cell divergence `div_vel` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}) and `rho_cv`
-   ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}), then, per active direction, the face coefficient, the stress rows and
-   their work, `momentum_flux` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}), and the heat flux from `dtdn`
+   ghosts, and conduction without a positive reference $c_v$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}});
+   it then builds the $x_1$ profiles (@sec-ch09-x1profile).
+3. `forward` forms the cell divergence `div_vel` and `rho_cv`, then, per active direction, the face coefficient, the
+   stress rows and their work, `momentum_flux`, and the heat flux from `dtdn`
    ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
-4. It subtracts $\Delta t$ times the `divergence` of the three flux arrays ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
-5. `max_time_step` returns @eq-ch09-viscosity-dt ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}}); it throws on a
-   non-finite coefficient or a non-positive bound.
+4. It subtracts $\Delta t$ times the `divergence` of the three flux arrays
+   ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
+5. `max_time_step` returns @eq-ch09-viscosity-dt ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}});
+   it throws on a non-finite coefficient or a non-positive bound.
 
 ### Tests
 
@@ -206,10 +216,8 @@ operator at a wall through the solver is **not measured**.
 : Tests of the isotropic viscosity and heat conduction. {#tbl-ch09-viscosity-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
-line; deck: the check itself; run: `python3 viscosity_check.py`, numpy 2.4.6, double]. ctest cases:
-**pending: pinned ctest run**. A data figure of the sine-mode decay against $e^{-\nu t}$ from the ctest is
-**pending** the same run.
+**Evidence.** The check numbers come from the port named in the footnote. ctest cases: **pending a pinned ctest
+run**. A data figure of the sine-mode decay against $e^{-\nu t}$ from the ctest is **pending** the same run.
 **Coverage.** The `DeviceTest` cases run on CPU in float32 and float64 and on CUDA in both when a device is present
 (`tests/device_testing.hpp`). No multi-rank test of the module.
 :::
@@ -222,23 +230,17 @@ coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer 
 :::
 
 1. **Conduction on $T$.** A resting adiabatic column heats in the interior at @eq-ch09-viscosity-adiabat, and its
-   wall cells cool at the bottom and warm at the top. chengcli/snapy#252 measured the bottom and top cells at
-   $-8.60\times10^{-1}$ and $+8.83\times10^{-1}$ K after 1000 steps at $\kappa=75$ m$^2$ s$^{-1}$ and the
-   interior within 9 % of @eq-ch09-viscosity-adiabat [sha: snapy@69e008452b373b9697c1668eebbd1ea51e7e41e4 on chengcli/snapy main, which is not a pin of this report;
-   deck: `tests/test_kappa_adiabatic_rest.py` from a red-test commit recorded in the issue and not in any listed
-   repository; run: CPU, recorded in the issue]. The
-   remedy `on_theta` was removed in #268; the drift is not addressed at the pin. Re-measuring needs that deck
-   committed at the pin: **pending**.
+   wall cells, where the reflecting wall makes the conductive flux zero, depart from that rate. The module has no
+   option to conduct on the potential temperature. The size of the wall drift through the solver is **not
+   measured at the pin**: no committed deck runs a resting adiabat with conduction.
 2. **Immersed solids** are read as fluid; see @sec-ch09-wallcoef.
 3. **Wall normal stress.** At a reflecting $x_1$ wall the face-averaged divergence takes the cell value, an $O(h)$
    error in the kernel of the normal stress that the wall coefficient does not remove
-   (`sources/canoe__diffusion_ghost_TECH_REPORT.md` §5, "What the fix deliberately does not touch").
-4. **Block edges.** Viscosity created $v_2$ beside $x_2$ block edges at an $x_1$ wall row (chengcli/snapy#264),
-   fixed by the corner refresh of #265 (the boundary-conditions chapter). Not re-measured at the pin.
-5. **Python setters** on `DiffusionOptions` bypass the YAML checks of step 1 of the walk-through (chengcli/snapy#216).
-6. **Time step.** The bound uses the largest coefficient everywhere and the smallest cell width in any direction;
-   the one-sided wall coefficient can exceed the cell value by about 17 % at $h/H=0.35$
-   (`sources/canoe__diffusion_ghost_TECH_REPORT.md` §7, off-pin) and is not included. The default `cfl` of 0.9
-   covers it; not measured at the pin.
-7. **Untested combinations.** Diffusion with an implicit scheme, with sedimentation, or on several ranks is not run
-   by any ctest listed here. See the switch coverage matrix in the configuration chapter.
+   (`sources/canoe__diffusion_ghost_TECH_REPORT.md` §5).
+4. **Python setters** on `DiffusionOptions` bypass the YAML checks of step 1 of the walk-through; `reset` checks
+   only the grid, the ghosts and $c_v$, so a negative coefficient set from Python is not refused there.
+5. **Time step.** The bound uses the largest coefficient everywhere and the smallest cell width in any direction;
+   it does not include the one-sided wall coefficient, which exceeds the two-cell average where the coefficient
+   grows toward the wall. The default `cfl` of 0.9 leaves a margin; not measured at the pin.
+6. **Untested combinations.** Diffusion with an implicit scheme, with sedimentation, or on several ranks is not run
+   by any ctest listed here. See the switch coverage matrix, @sec-ch12-matrix.
