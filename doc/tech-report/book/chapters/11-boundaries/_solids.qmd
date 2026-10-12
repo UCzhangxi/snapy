@@ -1,29 +1,54 @@
 ## Rectify a mask and close fluid faces against solids (`boundary-condition/internal/*; vars["solid"]`) {#sec-ch11-solids}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
+sources: OUTLINE.md 11.9; src/bc/internal_boundary.cpp; src/bc/rectify_solid.cpp; src/bc/bc_dispatch.cpp;
+         src/bc/flip_zero_impl.h; src/mesh/meshblock.cpp; src/hydro/hydro.cpp; src/hydro/hydro_forward.cpp;
+         src/implicit/vic_assemble_partial_impl.h; src/implicit/vic_assemble_full_impl.h; src/implicit/implicit_dispatch.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 Local symbols: $D_i(b,l)$ is the minimum flip count after processing $i$ mask entries, ending with bit
-$b$ and capped run length $l$; $m_b$ is its required run length (counts). Bits and $\mathrm{cost}_i(b)$, the candidate flip cost at position $i$, are dimensionless.
+$b$ and capped run length $l$; $m_b$ is its required run length (counts). Bits and $\mathrm{cost}_i(b)$, the
+candidate flip cost at position $i$, are dimensionless.
 $\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$.
 These symbols are proposed in the notation issue.
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-A static mask selects solid cells. Directional minimum-flip sweeps repair thin runs; mirrored face states and masked implicit rows isolate the fluid segments.
-Default: max-iter 5; density $10^3\ \mathrm{kg\,m^{-3}}$; pressure $10^9\ \mathrm{Pa}$.
-Order: exact discrete operation or local derivation below; coupled solver order not measured.
+**What it does.** A static Boolean mask marks solid cells. Rectification repairs runs that are too thin by
+flipping fluid cells to solid along each line; during a stage the face states at a fluid-solid interface are
+mirrored, the solid cells carry placeholder primitives, the implicit system gets a reflecting closure at
+every fluid-solid face and an identity row in every solid cell, and the solid conserved cells are refilled
+after each RK combination.
+**Switch.** `vars["solid"]` supplied at initialization; `boundary-condition/internal/max-iter` (default 5),
+`solid-density` ($10^3\ \mathrm{kg\,m^{-3}}$) and `solid-pressure` ($10^9\ \mathrm{Pa}$).
+**Requires / implies / turns off.** The implicit solve requires both x1 faces physical (no x1 decomposition).
+Solid cells are excluded from the gravity-work fixer's mass and get a sound speed of
+$10^{-8}\ \mathrm{m\,s^{-1}}$ in the time-step bound.
+**Order.** The line optimum of the flips is exact; the closure is exact; the geometry is a cell-aligned
+staircase with no measured convergence order.
+**Defining equation.** @eq-ch11-solids-dp and @eq-ch11-solids-closure.
 :::
+
+An immersed solid is a set of cells, not a surface: the mask says which cells are solid, and the solver
+closes every face between a fluid cell and a solid cell as if it were a reflecting wall. Two things make
+that work. The mask must not contain runs that are thinner than the reconstruction stencil can close, which
+is what the rectification guarantees along every grid line; and the solid cells must hold a state the
+reconstruction and the implicit solve can read without producing a flux, which is what the placeholder fill,
+the face mirror and the masked rows provide.
 
 ### Derivation
 
 At a single fluid-solid interface, copy the fluid reconstructed state to the solid side and negate its normal
 velocity. This yields the reflecting pair derived in @sec-ch11-reflecting, now at a face of a staircase mask.
-`InternalBoundaryImpl::forward` ([`internal_boundary.cpp:47-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/internal_boundary.cpp#L47-L95)) applies that rule after reconstructing the fluid side. A face with
-solid on both sides has no fluid flux interpretation in this argument.
+`InternalBoundaryImpl::forward` ({{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::forward >}})
+applies that rule after the fluid side has been reconstructed: for every row the solid-side face state
+takes the fluid-side value, and the normal velocity row of the direction being swept takes its negative. A
+face with solid on both sides has no fluid flux interpretation in this argument.
 
 The rectification problem on one line minimizes the count of changed zeros. Set $m_0=3$ and $m_1=2$.
 A candidate equal to the original bit costs zero; changing zero to one costs one; changing one to zero has
@@ -37,14 +62,20 @@ D_{i+1}(b,l)\leftarrow\min\bigl(D_{i+1}(b,l),D_i(b_{\mathrm{old}},l_{\mathrm{old
 +\mathrm{cost}_i(b)\bigr).
 $$ {#eq-ch11-solids-dp}
 
-`compute_min_flips` ([`flip_zero_impl.h:24-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/flip_zero_impl.h#L24-L198)) implements @eq-ch11-solids-dp and retains the predecessor only on a strict
-improvement. The terminal run must also reach its minimum. Every admissible prefix ends in one of these
-states; induction on prefix length shows the recurrence retains the smallest possible cost. Backtracking
-returns a minimizing line. This proves a line optimum, not a global multidimensional optimum after alternating
-sweeps. `flip_zero_cpu` ({{< code src/bc/bc_dispatch.cpp flip_zero_cpu >}}) sums line costs atomically. C5 compares an independent dynamic program
-with exhaustive enumeration for every binary line of lengths two through eight.
+`compute_min_flips` ({{< code src/bc/flip_zero_impl.h compute_min_flips >}}) implements @eq-ch11-solids-dp
+with the cost rule of `can_flip` ({{< code src/bc/flip_zero_impl.h can_flip >}}) and records the predecessor
+only on a strict improvement. The terminal run must also reach its minimum: the answer is the least cost
+over the end states whose run length is at least $m_b$, and a line with no admissible end state returns
+$-1$. Every admissible prefix ends in one of these states; induction on prefix length shows the recurrence
+retains the smallest possible cost. `reconstruct_solution`
+({{< code src/bc/flip_zero_impl.h reconstruct_solution >}}) walks the recorded predecessors back and writes
+a minimizing line. This proves a line optimum, not a global multidimensional optimum after alternating
+sweeps. `flip_zero_cpu` ({{< code src/bc/bc_dispatch.cpp flip_zero_cpu >}}) runs the two kernels on every
+line of the tensor iterator with $m_0=3$, $m_1=2$ and only zero-to-one flips allowed, and sums the line
+costs into an atomic counter. Check C5 compares an independent dynamic program with exhaustive enumeration
+for every binary line of lengths two through eight.
 
-For the partial implicit system, $\mathsf H=\operatorname{diag}(1,-1,1)$ on density, normal momentum and
+For the partial implicit system, $\mathsf H=\operatorname{diag}(1,-1,1)$ on the density, normal momentum and
 energy rows. A reflecting ghost increment is $\mathsf H\Delta\mathbf U_i$. Substitution into the lower
 neighbour block contributes $\mathsf B_i\mathsf H\Delta\mathbf U_i$ to the diagonal; the upper side contributes
 $\mathsf C_i\mathsf H\Delta\mathbf U_i$. Thus
@@ -56,28 +87,48 @@ $$
 \end{aligned}
 $$ {#eq-ch11-solids-closure}
 
-Apply each row only at its relevant fluid boundary. `Bnd` ({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}) implements
-@eq-ch11-solids-closure; `solid_lower` ({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}) also mirrors the base state used in the face Jacobian.
-A solid row has diagonal identity divided by $\Delta t$ and zero neighbours (`setIdentity`, {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}}).
-The masked RHS is zero (`forward_masked`, {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}), so that row has zero solved increment. C6 verifies the
-block substitution algebra. The full-system closure has an additional nonperiodic guard ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}});
-this derivation does not assert an untested periodic-solid combination.
-
-The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
-`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+Apply each row only at its relevant fluid boundary. The vector `Bnd` of `vic_assemble_partial_impl`
+({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}) implements
+@eq-ch11-solids-closure: the lower row is added when the cell is the first of the column or `solid_lower`
+is set, the upper row when it is the last or `solid_upper` is set. With `solid_lower` the same function also
+mirrors the base state used in the lower face Jacobian, copying the cell's primitives to the solid side
+with the normal velocity negated. A solid row has the identity divided by $\Delta t$ on the diagonal and
+zero neighbour blocks (`setIdentity`, {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}}),
+and its right-hand side is zeroed before the solve (`forward_masked`,
+{{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}), so that row has a zero solved
+increment. Check C6 verifies the block substitution algebra. The full-system closure
+({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}) adds the same rows under an
+additional non-periodic guard; this derivation does not assert an untested periodic-solid combination.
+Checks C5 and C6 are [check `src/snapy_report/ch11/boundary_check.py`, output
+`src/snapy_report/ch11/boundary_check.out`]; they do not call a snapy kernel.
 
 ### Numerical method
 
-The mask shape is the three spatial extents. Rectification makes it contiguous (which may alias an already
-contiguous input), fills all resolved ghost slabs with ones, sweeps x1/x2/x3 and alternates traversal direction
-until a sweep has no flips. Exhausting `max-iter` throws. Optional callbacks apply afterward.
+The mask has the three spatial extents of the block, ghosts included. `InternalBoundaryImpl::rectify_solid`
+({{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}) makes it contiguous (which may
+alias an already contiguous input), fills every ghost slab of every direction with more than one cell with
+ones through the solid callbacks of @sec-ch11-custom, then sweeps x1, x2 and x3 in turn, alternating the
+traversal direction, until a sweep makes no flip. Exhausting `max-iter` throws. The callbacks the caller
+supplies are applied afterwards.
 
-Initialization saves separate primitive/conserved fill states with velocity or momentum zeroed. Primitive
-placeholders use the configured density and pressure, zero velocity and zero composition. During a stage,
-face states mirror at solid interfaces; the time-step sound speed in solid cells is replaced by $10^{-8}\ \mathrm{m\,s^{-1}}$.
-The implicit solve masks solid increments and requires an unsplit x1 column. After RK combination only hydro
-conserved cells are refilled; the gravity-work fixer excludes solid mass. Staircase geometry is cell-aligned,
-not a cut-cell representation, and no geometric convergence order is measured.
+Initialization (`MeshBlockImpl::finalize_initialization`,
+{{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}}) saves separate primitive and
+conserved fill states, equal to the initial state in solid cells with the velocity or momentum rows zeroed,
+after `mark_prim_solid_` ({{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::mark_prim_solid_ >}})
+has written the placeholders into the primitives: the configured density and pressure, zero velocity and
+zero composition. During a stage `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}})
+marks the primitives again and passes the reconstructed face states of each direction through the interface
+mirror; the time-step bound (`HydroImpl::max_time_step`, {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}})
+replaces the sound speed in solid cells by $10^{-8}\ \mathrm{m\,s^{-1}}$. The implicit correction requires
+both x1 faces physical, masks the solid increments and reads the placeholder primitives in solid cells.
+After each RK combination `fill_cons_solid_`
+({{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::fill_cons_solid_ >}}) restores the conserved
+fill state in solid cells, in `MeshBlockImpl::advance_local`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); only the hydro tensor is refilled. The
+gravity-work fixer (`MeshBlockImpl::gravity_work_fixer_sums`,
+{{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}) zeroes the mass of solid cells
+before it sums, so they take no share of the energy correction. The staircase geometry is cell-aligned, not a
+cut-cell representation, and no geometric convergence order is measured.
 
 @fig-ch11-solids-stencil illustrates the operations, with labelled roles independent of colour.
 
@@ -92,49 +143,61 @@ make_fig()
 
 ### Code
 
-The sweep calls `mark_prim_solid_` in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} and the `pib` face mirror in
-x1 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, x2 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} and x3 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+The stage sweep calls `mark_prim_solid_` and the `pib` face mirror of the x1, x2 and x3 face states in
+`HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| internal | {{< code src/bc/internal_boundary.cpp InternalBoundaryOptionsImpl::from_yaml overload=2 >}} | `max_iter` | See Summary |
-| mark | [`internal_boundary.cpp:47-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/internal_boundary.cpp#L47-L95) | `mark_prim_solid_` | See Summary |
-| rectify | {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}} | `rectify_solid` | See Summary |
-| dispatch | {{< code src/bc/bc_dispatch.cpp flip_zero_cpu >}} | `compute_min_flips` | See Summary |
-| dp | [`flip_zero_impl.h:24-198`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/flip_zero_impl.h#L24-L198) | `minRun0` | See Summary |
-| backtrack | {{< code src/bc/flip_zero_impl.h reconstruct_solution >}} | `reconstruct` | See Summary |
-| finalinit | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}} | `fill_solid_hydro_u` | See Summary |
-| dt | {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}} | `solid` | See Summary |
-| masked | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `forward_masked` | See Summary |
-| solidrow | {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}} | `setIdentity` | See Summary |
-| closure | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `solid_lower` | See Summary |
-| closurediag | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `Bnd` | See Summary |
-| fullclosure | {{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}} | `Bnd` | See Summary |
-| refill | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_boundaries` | See Summary |
-| fixer | [`meshblock.cpp:850-907`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L850-L907) | `solid` | See Summary |
+| internal | {{< code src/bc/internal_boundary.cpp InternalBoundaryOptionsImpl::from_yaml overload=2 >}} | `max_iter` | `boundary-condition/internal/*` |
+| mark | {{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::mark_prim_solid_ >}} | `mark_prim_solid_` | `vars["solid"]` |
+| mirror | {{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::forward >}} | `solidl` | `vars["solid"]` |
+| refillcons | {{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::fill_cons_solid_ >}} | `fill_cons_solid_` | `vars["solid"]` |
+| rectify | {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}} | `rectify_solid` | `max-iter` |
+| dispatch | {{< code src/bc/bc_dispatch.cpp flip_zero_cpu >}} | `compute_min_flips` | none |
+| dp | {{< code src/bc/flip_zero_impl.h compute_min_flips >}} | `minRun0` | none |
+| cost | {{< code src/bc/flip_zero_impl.h can_flip >}} | `can_flip` | none |
+| backtrack | {{< code src/bc/flip_zero_impl.h reconstruct_solution >}} | `reconstruct_solution` | none |
+| finalinit | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}} | `fill_solid_hydro_u` | `vars["solid"]` |
+| dt | {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}} | `solid` | `vars["solid"]` |
+| masked | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `forward_masked` | `vars["solid"]` |
+| solidrow | {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}} | `setIdentity` | `vars["solid"]` |
+| closure | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `solid_lower` | `vars["solid"]` |
+| closurediag | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `Bnd` | none |
+| fullclosure | {{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}} | `Bnd` | none |
+| refill | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `fill_cons_solid_` | `vars["solid"]` |
+| fixer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `solid` | `gravity-work-fixer` |
 
 : Implementation sites for solids. {#tbl-ch11-solids-code}
 
-1. Read max iterations and solid placeholders; require the mask shape at initialization. The anchor `max_iter` is in {{< code src/bc/internal_boundary.cpp InternalBoundaryOptionsImpl::from_yaml overload=2 >}}.
-2. Mark ghost slabs solid, perform directional minimum-flip sweeps, reject nonconvergence, then apply optional mask callbacks. The anchor `rectify_solid` is in {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}.
-3. Save fill states, mark primitives, mirror reconstructed interface states and mask the implicit system. The anchor `mark_prim_solid_` is in [`internal_boundary.cpp:47-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/internal_boundary.cpp#L47-L95).
-4. Refill hydro after stage combination and exclude solids from gravity-fixer mass. The anchor `apply_boundaries` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
+1. Read `max-iter` and the solid placeholders; require the mask shape at initialization. The anchor
+   `max_iter` is in {{< code src/bc/internal_boundary.cpp InternalBoundaryOptionsImpl::from_yaml overload=2 >}}.
+2. Mark the ghost slabs solid, run the directional minimum-flip sweeps, reject nonconvergence, then apply the
+   optional mask callbacks. The anchor `rectify_solid` is in
+   {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}.
+3. Save the fill states, mark the primitives, mirror the reconstructed interface states and mask the
+   implicit system. The anchor `mark_prim_solid_` is in
+   {{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::mark_prim_solid_ >}}.
+4. Refill the solid hydro cells after the stage combination and exclude the solids from the fixer's mass.
+   The anchor `fill_cons_solid_` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_rectify.release` | Every outer and inner ghost slab is solid | Exact equality | Test constant / assertion |
-| `test_flip_zero_count.release` | Eight-thread counts equal serial over repeats | Exact integer equality | Test constant / assertion |
-| `test_implicit_stratified_solid_python` | Segmented and strided solid mass closure | Finite; mass error below 1e-12 | Test constant / assertion |
+| `test_rectify.release` | Every outer and inner ghost slab of a rectified mask is solid | exact equality | test fixture |
+| `test_flip_zero_count.release` | The flip count on eight threads equals the serial count over twenty repeats | exact integer equality | test fixture |
+| `test_implicit_stratified_solid_python` | A column with a solid segment or strided solids keeps the fluid mass of each segment and stays finite | mass error below $10^{-12}$ | script threshold |
 
 : Source-defined assertions for solids; no runtime results. {#tbl-ch11-solids-tests}
 
-The assertion anchor `test2` is in [`test_rectify.cpp:91-124`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_rectify.cpp#L91-L124).
+The ghost-slab assertion is in `test2` ({{< code tests/test_rectify.cpp test2 >}}).
 
-The assertion anchor `serial` is in {{< code tests/test_flip_zero_count.cpp main >}}.
+The thread comparison is the `serial` versus `parallel` count in `main`
+({{< code tests/test_flip_zero_count.cpp main >}}).
 
-The assertion anchor `1.e-12` is in [`test_implicit_stratified_solid.py:277-291`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_implicit_stratified_solid.py#L277-L291).
+The solid runs are built by `solid_run` ({{< code tests/test_implicit_stratified_solid.py solid_run >}}),
+which reports the mass error of the fluid segments; the threshold is applied in the script's main block
+({{< code tests/test_implicit_stratified_solid.py >}}).
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
@@ -142,11 +205,14 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The per-line optimum does not make the multidimensional repaired mask globally minimal. Exceeding the
-iteration limit can reject a mask whose last permitted sweep still changes entries. The mask and fill states
-are static. The cited stage refill only restores hydro, not passive scalars ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); scalar-solid isolation
-needs runtime evidence. Diffusion and solid placeholders require separate coefficient analysis; no quantitative
-placeholder contamination measurement is reused here. Implicit x1 decomposition is explicitly rejected ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}).
+The per-line optimum does not make the multidimensional repaired mask globally minimal. The sweep loop
+throws when its last permitted sweep still changes entries, even if one more sweep would have converged.
+The mask and the fill states are static. The stage refill restores only the hydro tensor, not the passive
+scalars ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); scalar-solid isolation needs
+runtime evidence. Diffusion coefficients at solid placeholders need a separate analysis; no quantitative
+placeholder contamination measurement is reused here. An x1 decomposition with the implicit solve is
+rejected ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}).
 
-Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
+is claimed.
 :::

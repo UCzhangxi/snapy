@@ -1,40 +1,74 @@
 ## Register and classify block faces (`boundary-condition/external/*`) {#sec-ch11-registry}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
+sources: OUTLINE.md 11.1; src/bc/bc_func.hpp; src/bc/bc.hpp; src/mesh/meshblock_options.cpp; src/mesh/meshblock.cpp;
+         src/hydro/hydro.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Face callbacks fill physical ghosts; layout exchange supplies internal and wrapped faces. Classification depends on the predicate used, not only on the boundary label.
-Default: reflecting.
-Order: exact discrete operation or local derivation below; coupled solver order not measured.
+**What it does.** Maps the six face names of the YAML card to registered callbacks, drops the callbacks on the
+faces the layout owns, and classifies a face when an operator asks whether it is physical or a wall.
+**Switch.** `boundary-condition/external/x1-inner` ... `x3-outer`; each defaults to `reflecting`.
+**Requires / implies / turns off.** A periodic x2 or x3 face sets the layout's periodic flag; a periodic x1 face
+does so only on the `cubed` layout. A layout-owned face has no callback.
+**Order.** Dispatch only; no order of accuracy.
+**Defining equation.** None; the two predicates are stated in the Derivation layer.
 :::
+
+Every boundary callback is a function of a tensor, a dimension and a `BoundaryFuncOptions` context, entered
+into one global registry under its name by the `BC_FUNCTION` macro ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}),
+which also declares the contract a callback must keep: it may be called again on a thin tangential ghost slab
+after an exchange, so it must not depend on the orthogonal extent of its input and a second call must
+reproduce the first. The card names a callback per face; `MeshBlockOptionsImpl::from_yaml` appends `_inner`
+or `_outer`, looks the name up in the registry, and refuses a name that is not there. Construction of the block
+then nulls the callbacks of the faces that another block or a periodic wrap supplies, so that "physical face"
+and "callback present" mean the same thing from then on.
 
 ### Derivation
 
-This is dispatch infrastructure, so there is no differential equation to discretize. A face is physical exactly
-when its callback exists. A diffusion wall is a physical face with a recorded reflecting or fixed-temperature name.
-The hydro predicate `is_x1_wall` instead accepts physical x1 faces whose names do not start with `periodic`.
-These are different sets: an outflow face passes the hydro predicate but not the diffusion whitelist.
-This follows directly from `is_wall_boundary` ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271)) and `is_x1_wall` ({{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}}).
+This is dispatch infrastructure, so there is no differential equation to discretize. Two predicates carry the
+chapter. A face is *physical* exactly when its callback is non-null: `MeshBlockOptionsImpl::is_physical_boundary`
+({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_physical_boundary >}}) tests the entry of
+`bfuncs` at the face index that `face_of` ({{< code src/mesh/meshblock_options.cpp face_of >}}) returns, first
+match winning in x3, x2, x1 order. A face is a *diffusion wall* when it is physical and its recorded name is one
+of `reflecting_inner`, `reflecting_outer`, `fixed_temperature_inner` or `fixed_temperature_outer`:
+`MeshBlockOptionsImpl::is_wall_boundary` ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}})
+is a whitelist, and a physical face whose name was not recorded (a callback installed programmatically without
+a name) warns once and is not a wall. The hydro predicate `HydroImpl::is_x1_wall`
+({{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}}) is a third, different set: a physical x1 face whose
+name does not start with `periodic`. The three sets are nested but not equal: an outflow face is physical and
+an x1 wall for the hydro, but not a diffusion wall; an in-block periodic x1 face (slab layout) is physical but
+neither kind of wall.
 
-A repeated fill must reproduce the same ghost values from the owned slab. This is an idempotence contract,
-not a guarantee for arbitrary callbacks: the registry comment requires it because a callback also runs on a
-thin tangential ghost slab (`BC_FUNCTION`, [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39)). Check C1 exercises this contract for the built-in mirror
-and copy rules; no spatial order is assigned to dispatch.
-
-The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
-`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+A repeated fill must reproduce the same ghost values from the owned slab. This idempotence is a contract on the
+callback, not a property of every tensor map; the registry asks for it because the corner refresh of
+@sec-ch11-timing calls the x1 callbacks a second time on a slab that is only $n_g$ cells wide in the
+tangential direction. Check C1 exercises the contract for the built-in mirror and copy rules; no spatial order
+is assigned to dispatch [check `src/snapy_report/ch11/boundary_check.py`, output
+`src/snapy_report/ch11/boundary_check.out`]. The checks do not call a snapy kernel.
 
 ### Numerical method
 
-The face order is x1 inner/outer, x2 inner/outer, x3 inner/outer. In a four-dimensional hydro tensor these
-map to dimensions 3, 2 and 1. Context carries EOS, coordinates, references, representation and ghost width.
-Construction nulls exchange-owned callbacks for slab/cubed layouts; the cubed-sphere branch is separate.
-A non-null custom callback therefore still counts as physical. No accuracy order follows from classification.
+The face order is x1 inner, x1 outer, x2 inner, x2 outer, x3 inner, x3 outer (`BoundaryFace`,
+{{< code src/bc/bc.hpp BoundaryFace >}}); in the four-dimensional hydro tensor `(variable, x3, x2, x1)` these
+faces act on dimensions 3, 2 and 1, and a callback receives the dimension it fills. The context
+`BoundaryFuncOptions` ({{< code src/bc/bc.hpp BoundaryFuncOptions >}}) carries a non-owning EOS and coordinate
+pointer, the saved backgrounds that outflow needs, the representation (`kConserved`, `kPrimitive` or
+`kScalar`) and the ghost width $n_g$. On a collapsed direction (one cell) the card entry is not read: the
+parser pushes a null callback and an empty name for both faces of that direction whenever a later direction
+has more than one cell, so the face indices of the other directions stay in place.
+
+`MeshBlockImpl::reset` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}) nulls, for a slab or cubed
+layout, the callback of every face that has a neighbouring block in that direction or whose direction is
+periodic in the layout; the cubed-sphere layout keeps its own panel rules and is not touched by this step. A
+non-null custom callback therefore still counts as physical for every predicate above. No accuracy order
+follows from classification.
 
 @fig-ch11-registry-stencil illustrates the operations, with labelled roles independent of colour.
 
@@ -51,32 +85,46 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| registry | [`bc_func.hpp:14-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.hpp#L14-L39) | `BC_FUNCTION` | See Summary |
-| context | [`bc.hpp:19-42`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc.hpp#L19-L42) | `BoundaryFuncOptions` | See Summary |
-| yaml | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_z` | See Summary |
-| yamlxy | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_x` | See Summary |
-| classify | [`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271) | `is_wall_boundary` | See Summary |
-| null | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `bfuncs` | See Summary |
-| x1wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | See Summary |
+| registry | {{< code src/bc/bc_func.hpp BC_FUNCTION >}} | `BC_FUNCTION` | none |
+| map | {{< code src/bc/bc_func.hpp get_bc_func >}} | `get_bc_func` | none |
+| context | {{< code src/bc/bc.hpp BoundaryFuncOptions >}} | `BoundaryFuncOptions` | none |
+| faces | {{< code src/bc/bc.hpp BoundaryFace >}} | `BoundaryFace` | none |
+| yaml | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_z` | `boundary-condition/external/*` |
+| physical | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_physical_boundary >}} | `is_physical_boundary` | none |
+| classify | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | none |
+| null | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `bfuncs` | layout periodic flags |
+| x1wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | none |
 
 : Implementation sites for registry. {#tbl-ch11-registry-code}
 
-1. Validate YAML keys and append `_inner` or `_outer`; reject names absent from the registry. The anchor `periodic_z` is in {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}.
-2. Set layout periodic flags, then null callbacks owned by exchange during construction. The anchor `bfuncs` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}.
-3. Classify at the consuming operator: unnamed programmatic callbacks warn once and return false for the diffusion wall test. The anchor `is_wall_boundary` is in [`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271).
+1. Validate the keys under `boundary-condition` and `boundary-condition/external`, read each face name with
+   the default `reflecting`, append `_inner` or `_outer`, and reject a name absent from the registry. A
+   periodic x2 or x3 name sets `periodic_x` or `periodic_y`; a periodic x1 name sets `periodic_z` only when
+   the layout type is `cubed`. The anchor `periodic_z` is in
+   {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}.
+2. At construction, null the callbacks of the faces the layout owns. The anchor `bfuncs` is in
+   {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}.
+3. Classify at the consuming operator: `is_physical_boundary` for the hydro, the exchange and the implicit
+   solve; `is_wall_boundary` for diffusion, where an unnamed callback warns once and returns false. The anchor
+   `is_wall_boundary` is in {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_yaml_keys.release` | Unknown key identifies its path | Exact string containment | Test constant / assertion |
-| `test_wb_wall_corner.release` | Stock and custom-named wall keep rest | Mach at most 1e-12 | Test constant / assertion |
+| `test_yaml_keys.release` | An unknown key under `boundary-condition` or `boundary-condition/external` is refused with its path in the message | exact string containment | test helper `expect_refused` |
+| `test_wb_wall_corner.release` | A stock reflecting wall and a user-installed wall both keep a resting column at rest | Mach at most $10^{-12}$ | test constant |
 
 : Source-defined assertions for registry; no runtime results. {#tbl-ch11-registry-tests}
 
-The assertion anchor `EXPECT` is in [`test_yaml_keys.cpp:37-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L37-L64).
+The refusal helper is `expect_refused` ({{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}},
+{{< code tests/test_yaml_keys.cpp expect_refused overload=2 >}}); the boundary cases are
+{{< code tests/test_yaml_keys.cpp yaml_keys.boundary_condition_refuses_an_unknown_key >}} and
+{{< code tests/test_yaml_keys.cpp yaml_keys.external_boundaries_refuse_an_unknown_key >}}.
 
-The assertion anchor `EXPECT` is in [`test_wb_wall_corner.cpp:166-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L166-L190).
+The rest assertions are `EXPECT_LE` on the Mach number in
+{{< code tests/test_wb_wall_corner.cpp WallCorner.x2_uniform_rest_keeps_u2_zero >}} and
+{{< code tests/test_wb_wall_corner.cpp WallCorner.user_wall_keeps_u2_zero >}}.
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
@@ -84,10 +132,12 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The fixed-temperature names occur in the whitelist, but no built-in registration is present in the boundary
-implementation inspected here. They do not establish an available thermal BC. The comment calling outflow
-zero-gradient in `is_wall_boundary` is stale relative to the characteristic implementation ([`meshblock_options.cpp:218-271`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L218-L271),
-{{< code src/bc/bc_func.cpp radiating >}}). Cubed-sphere custom panel faces require care wherever a physical-face test is used.
+The fixed-temperature names are accepted by the diffusion whitelist, but the boundary sources at the pin
+register no callback under them, so the card cannot select a thermal wall. The comment above the whitelist
+describes the outflow ghost as a zero-gradient statement, while the outflow callback of @sec-ch11-outflow
+builds a characteristic state; the classification itself (not a wall) is unaffected. A cubed-sphere panel
+face that carries a custom callback counts as physical wherever a physical-face test is used.
 
-Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
+is claimed.
 :::

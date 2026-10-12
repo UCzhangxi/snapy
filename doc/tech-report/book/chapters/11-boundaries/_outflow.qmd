@@ -1,8 +1,12 @@
 ## Select outgoing acoustic and advected perturbations (`outflow`) {#sec-ch11-outflow}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
+sources: OUTLINE.md 11.5; src/bc/bc_func.cpp; src/mesh/meshblock.cpp; tests/test_radiating_boundary.cpp;
+         tests/test_radiating_boundary_python.py
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 Local symbols: $\mathbf W^{\mathrm{bg}}$ denotes the saved initial boundary background, which is distinct
@@ -15,10 +19,27 @@ A prefix $\delta$ below means subtraction of this background, not the centroid o
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Build primitive ghosts from the saved initial background plus outgoing perturbations. A shared factor keeps hydro composition and tracers admissible.
-Default: off; external faces default reflecting.
-Order: exact discrete operation or local derivation below; coupled solver order not measured.
+**What it does.** Builds primitive ghosts from the background saved at initialization plus the interior
+perturbation projected on the outgoing characteristics; one factor per ghost scales that perturbation so
+that density, pressure, composition and tracers stay admissible.
+**Switch.** Face name `outflow`; off by default.
+**Requires / implies / turns off.** Requires an EOS of type `ideal-gas`, `ideal-moist` or `moist-mixture`, a
+coordinate, and the saved background `boundary_reference_w` (and `boundary_reference_r` with tracers); for
+`kScalar` input or a shallow-water EOS it falls back to @sec-ch11-extrapolation. Excluded from the corner
+refresh of @sec-ch11-timing and from the WB perturbation mirror of @sec-ch11-wb; the gravity-work fixer
+refuses a step that moves mass through it.
+**Order.** A locally linear characteristic prescription; the pulse test bounds the reflected fraction below
+$0.05$.
+**Defining equation.** @eq-ch11-outflow-modes, inverted by @eq-ch11-outflow-inverse and limited by
+@eq-ch11-outflow-admissible.
 :::
+
+The outflow callback is the radiating boundary of the solver. It freezes the state the block was initialized
+with, ghosts included, as the exterior background, and lets only the characteristics that leave the domain
+carry information into the ghosts. Everything the callback needs beyond the tensor it fills travels in the
+context: the EOS for the sound speed, the coordinate for the face-normal frame, and the two saved
+backgrounds. The conserved-variable driver converts to primitives for it, and converts back with the dry
+density as the tracer carrier.
 
 ### Derivation
 
@@ -47,20 +68,23 @@ d_{\mathrm{ent}}&=\delta\rho-\delta p/(c_s^{\mathrm{bg}})^2.
 \end{aligned}
 $$ {#eq-ch11-outflow-modes}
 
-The three combinations of @eq-ch11-outflow-modes are formed by `plus`, `minus` and `entropy`
-({{< code src/bc/bc_func.cpp radiating >}}), the same split that inverts them below.
-Adding/subtracting the linearized momentum equation and the pressure equation divided by impedance yields
-transport of $a_\pm$ at the two acoustic speeds; subtracting the pressure equation divided by squared sound
-speed from continuity cancels its divergence term and leaves advection of $d_{\mathrm{ent}}$.
+The three combinations of @eq-ch11-outflow-modes are formed by the tensors `plus`, `minus` and `entropy` of
+`radiating` ({{< code src/bc/bc_func.cpp radiating >}}), with `impedance` the background density times the
+background sound speed `c0`; the same function inverts them below.
+Adding and subtracting the linearized momentum equation and the pressure equation divided by the impedance
+yields transport of $a_\pm$ at the two acoustic speeds; subtracting the pressure equation divided by the
+squared sound speed from continuity cancels its divergence term and leaves advection of $d_{\mathrm{ent}}$.
 Integrating each constant-coefficient transport equation over a boundary-adjacent cell gives its incoming
-minus outgoing face transport. A characteristic entering from outside has no interior-determined perturbation:
-the boundary chooses zero perturbation for that incoming mode. The code uses the *current* outward velocity
-and sound speed for this selector, while @eq-ch11-outflow-modes uses the background impedance and sound speed.
-Thus it is a locally linear characteristic prescription, not the exact nonlinear exterior solution.
+minus outgoing face transport. A characteristic entering from outside has no interior-determined
+perturbation: the boundary chooses zero perturbation for that incoming mode. The code uses the *current*
+outward velocity and sound speed `c` of the nearest owned cell for this selector, while
+@eq-ch11-outflow-modes uses the background impedance and sound speed. It is therefore a locally linear
+characteristic prescription, not the exact nonlinear exterior solution.
 
 Keep $a_+$ when $v_{\mathrm{out}}+c_s\ge0$, keep $a_-$ when $v_{\mathrm{out}}-c_s\ge0$, and otherwise set each
-to zero. Keep $d_{\mathrm{ent}}$, tangential velocity, composition and tracer-ratio perturbations when
-$v_{\mathrm{out}}\ge0$; otherwise set them to zero. Equality selects the outgoing branch. Invert the split:
+to zero. Keep $d_{\mathrm{ent}}$, the tangential velocities, the composition and the tracer-ratio
+perturbations when $v_{\mathrm{out}}\ge0$; otherwise set them to zero. Equality selects the outgoing branch.
+Invert the split:
 
 $$
 \begin{aligned}
@@ -70,41 +94,59 @@ $$
 \end{aligned}
 $$ {#eq-ch11-outflow-inverse}
 
-`plus`, `minus` and `entropy` ({{< code src/bc/bc_func.cpp radiating >}}) implement both @eq-ch11-outflow-modes and @eq-ch11-outflow-inverse.
-For the lower face, reversing the coordinate normal before splitting and reversing it back after inversion
-accounts for the sign in the velocity update. The same selected interior perturbation is supplied to every
-ghost, but each ghost retains its own saved background.
+`radiating` ({{< code src/bc/bc_func.cpp radiating >}}) implements @eq-ch11-outflow-inverse by first
+multiplying every row of the perturbation by the advection selector and then overwriting the normal
+velocity, pressure and density rows with the inverted combinations. For the lower face the sign `sign`
+reverses the coordinate normal before the split and again after the inversion, which accounts for the sign
+in the velocity update. The same selected interior perturbation is supplied to every ghost, but each ghost
+retains its own saved background.
 
 For any lower-bounded component $q$ with floor $q_{\min}$, admissibility requires
 $q^{\mathrm{bg}}+\alpha_{\mathrm{bc}}\delta q\ge q_{\min}$.
 If $\delta q<0$, division gives the bound $(q^{\mathrm{bg}}-q_{\min})/(-\delta q)$;
-otherwise that component imposes no reduction. Start with one, take the minimum of all bounds, multiply each
-binding bound below one by 0.99, and clamp the result to $[0,1]$. Apply this to density, pressure, every $y_n$,
-the complement $1-\sum_n y_n$, and every passive tracer ratio $r_n$. Nonnegative complement enforces the
-composition sum. The same factor multiplies every perturbation, including tracers:
+otherwise that component imposes no reduction. Start with one, take the minimum over all bounds, multiply
+each binding bound below one by $0.99$, and clamp the result to $[0,1]$. Apply this to density with the EOS
+density floor, pressure with the pressure floor, every $y_n$ with floor zero, the complement $1-\sum_n y_n$
+with floor zero, and every passive tracer ratio $r_n$ with floor zero. The nonnegative complement enforces
+the composition sum. The same factor multiplies every perturbation, including the tracers:
 
 $$
 \mathbf W^{\mathrm{ghost}}=\mathbf W^{\mathrm{bg,ghost}}+
 \alpha_{\mathrm{bc}}\delta\mathbf W.
 $$ {#eq-ch11-outflow-admissible}
 
-`alpha` ({{< code src/bc/bc_func.cpp radiating >}}) implements @eq-ch11-outflow-admissible. Convexity of these linear inequalities proves
-admissibility for an admissible background in exact arithmetic. It proves neither a positive temperature
-for every EOS nor nonlinear nonreflection. C2 checks the invertible acoustic algebra; C3 verifies the shared
-limiter against independent inequality bounds, including a species-complement and tracer-limited case.
-
-The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
-`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+The tensor `alpha` of `radiating` ({{< code src/bc/bc_func.cpp radiating >}}) implements
+@eq-ch11-outflow-admissible through the closure `lower`, which folds one bound at a time into the running
+minimum. Convexity of these linear inequalities proves admissibility for an admissible background in exact
+arithmetic. It proves neither a positive temperature for every EOS nor nonlinear nonreflection. Check C2
+checks the invertible acoustic algebra; check C3 verifies the shared limiter against independent inequality
+bounds, including a species-complement and a tracer-limited case [check
+`src/snapy_report/ch11/boundary_check.py`, output `src/snapy_report/ch11/boundary_check.out`]. The checks
+do not call a snapy kernel.
 
 ### Numerical method
 
-Capture the background before the first physical fill, including initialized ghost values. Transform
-both current and saved velocities to the face frame, compute a perturbation from the nearest owned cell,
-select outgoing modes, limit each ghost, then transform back. The operator writes only ghosts.
-Conserved calls go through `apply_boundaries`: consecutive outflow faces share a primitive conversion;
-before another callback, pending faces are converted and flushed. Tracer densities use dry density, not
-primitive total density. The cartoon shows mode directions and the convex contraction separately.
-No coupled wall/seam convergence or reflection measurement is reported here.
+`MeshBlockImpl::initialize_local` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}})
+clones the primitive state, ghosts included, into `boundary_reference_w` (and the scalar ratios into
+`boundary_reference_r`) before the first physical fill, whenever `has_radiating_boundary`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::has_radiating_boundary >}}) finds an outflow callback on a
+face with more than one cell and the EOS is not shallow water. The callback first takes the scalar and
+shallow-water fallback, then requires the EOS, the coordinate and a saved background of the same shape as
+its input, a supported EOS type, primitive input, finite input, and an admissible background
+(`check_background`, {{< code src/bc/bc_func.cpp check_background >}}: finite, density and pressure at or
+above their floors, nonnegative composition summing to at most one); it also requires finite positive sound
+speeds of both the background and the current state. It transforms both states to the face frame with the
+coordinate's `boundary_velocity_`, forms the perturbation from the nearest owned cell, selects the outgoing
+modes, limits each ghost, transforms back, and writes only the ghosts; with tracers it also writes the
+tracer-ratio ghosts as background plus `alpha` times the selected ratio perturbation.
+
+Conserved calls go through `MeshBlockImpl::apply_boundaries`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_boundaries >}}): consecutive outflow faces share one
+primitive conversion of the block and are recorded as pending; before any other callback runs, and at the
+end, the pending ghost slabs are converted back and copied into the conserved tensor. The tracer densities
+written back are the ratios times the conserved dry density, as in the scalar primitive conversion, not the
+primitive total density. The cartoon shows the mode directions and the convex contraction separately. No
+coupled wall/seam convergence or reflection measurement is reported here.
 
 @fig-ch11-outflow-stencil illustrates the operations, with labelled roles independent of colour.
 
@@ -121,50 +163,67 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| init | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}} | `boundary_reference_w` | See Summary |
-| background | {{< code src/bc/bc_func.cpp check_background >}} | `check_background` | See Summary |
-| radiating | {{< code src/bc/bc_func.cpp radiating >}} | `radiating` | See Summary |
-| split | {{< code src/bc/bc_func.cpp radiating >}} | `plus` | See Summary |
-| alpha | {{< code src/bc/bc_func.cpp radiating >}} | `alpha` | See Summary |
-| outflow | [`bc_func.cpp:210-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L210-L218) | `is_outflow` | See Summary |
-| apply | [`meshblock.cpp:1441-1519`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1441-L1519) | `apply_boundaries` | See Summary |
-| fixer | [`meshblock.cpp:850-907`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L850-L907) | `solid` | See Summary |
+| init | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}} | `boundary_reference_w` | `outflow` |
+| detect | {{< code src/mesh/meshblock.cpp MeshBlockImpl::has_radiating_boundary >}} | `has_radiating_boundary` | `outflow` |
+| background | {{< code src/bc/bc_func.cpp check_background >}} | `check_background` | `outflow` |
+| radiating | {{< code src/bc/bc_func.cpp radiating >}} | `radiating` | `outflow` |
+| split | {{< code src/bc/bc_func.cpp radiating >}} | `plus` | `outflow` |
+| alpha | {{< code src/bc/bc_func.cpp radiating >}} | `alpha` | `outflow` |
+| outflow | {{< code src/bc/bc_func.cpp is_outflow >}} | `is_outflow` | `outflow` |
+| apply | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_boundaries >}} | `apply_boundaries` | none |
+| fixer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `wall` | `gravity-work-fixer` |
 
 : Implementation sites for outflow. {#tbl-ch11-outflow-code}
 
-1. Use the scalar/shallow-water fallback first. Otherwise require EOS, coordinates and a saved same-shape reference. The anchor `radiating` is in {{< code src/bc/bc_func.cpp radiating >}}.
-2. Require a supported EOS, primitive type, finite input, positive finite sound speeds, and admissible background density, pressure and composition. The anchor `check_background` is in {{< code src/bc/bc_func.cpp check_background >}}.
-3. Split in the face frame, select modes using current speeds, and reconstruct the selected perturbation. The anchor `plus` is in {{< code src/bc/bc_func.cpp radiating >}}.
-4. Validate tracer background shape, finiteness and nonnegativity; reduce the shared factor and verify reconstructed ghosts are finite. The anchor `alpha` is in {{< code src/bc/bc_func.cpp radiating >}}.
-5. Flush conserved pending faces in face order using dry-density tracer conversion. The anchor `apply_boundaries` is in [`meshblock.cpp:1441-1519`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1441-L1519).
+1. Take the scalar/shallow-water fallback first; otherwise require the EOS, the coordinate and a saved
+   same-shape background. The anchor `radiating` is in {{< code src/bc/bc_func.cpp radiating >}}.
+2. Require a supported EOS, primitive input, finite input, positive finite sound speeds, and an admissible
+   background density, pressure and composition. The anchor `check_background` is in
+   {{< code src/bc/bc_func.cpp check_background >}}.
+3. Split in the face frame, select the modes with the current speeds, and reconstruct the selected
+   perturbation. The anchor `plus` is in {{< code src/bc/bc_func.cpp radiating >}}.
+4. Validate the tracer background's shape, finiteness and nonnegativity; reduce the shared factor and verify
+   that the reconstructed ghosts are finite. The anchor `alpha` is in {{< code src/bc/bc_func.cpp radiating >}}.
+5. Flush the pending conserved faces in face order with the dry-density tracer conversion. The anchor
+   `apply_boundaries` is in {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_boundaries >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_radiating_boundary.release` | Modes on all faces and three EOS types | Float32 0.03; float64 1e-8 | Test constant / assertion |
-| `test_radiating_boundary.release` | Mixed-face representation and order | Hydro rtol 1e-12, atol 1e-9 | Test constant / assertion |
-| `test_radiating_boundary.release` | Dry-air tracer ratios | Below 1e-12 | Test constant / assertion |
-| `test_radiating_boundary.release` | PLM/WENO5 pulses, both signs | Reflected fraction below 0.05 | Test constant / assertion |
-| `test_radiating_boundary.release` | Joint limiter and restart | Inequalities; exact restart equality | Test constant / assertion |
-| `test_radiating_boundary.release` | CPU/CUDA agreement | rtol = atol = 1e-10 | Test constant / assertion |
-| `test_radiating_boundary_python` | Manual fill preserves reference and interior | Exact equality | Test constant / assertion |
+| `test_radiating_boundary.release` | Selected modes on all six faces for three EOS types | float32 $0.03$; float64 $10^{-8}$ | test constants |
+| `test_radiating_boundary.release` | Mixed faces keep the representation and the call order | hydro rtol $10^{-12}$, atol $10^{-9}$ | test constants |
+| `test_radiating_boundary.release` | Tracer ratios ride the dry density, dry and moist | below $10^{-12}$ | test constants |
+| `test_radiating_boundary.release` | PLM and WENO5 pulses of both signs leave through the outflow face | reflected fraction below $0.05$ | test constant |
+| `test_radiating_boundary.release` | Joint composition/tracer limiter; restart continuation; missing reference throws | inequalities; exact restart equality | test assertions |
+| `test_radiating_boundary.release` | CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | test constant |
+| `test_radiating_boundary_python` | A manual fill keeps the saved reference and the interior | exact equality | test assertions |
 
 : Source-defined assertions for outflow; no runtime results. {#tbl-ch11-outflow-tests}
 
-The assertion anchor `EXPECT` is in {{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}}.
+The all-face assertions are `EXPECT_LT` and `EXPECT_TRUE` in
+{{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}}.
 
-The assertion anchor `EXPECT` is in {{< code tests/test_radiating_boundary.cpp radiating.mixed_faces_preserve_representation_and_order >}}.
+The representation and order assertions are in
+{{< code tests/test_radiating_boundary.cpp radiating.mixed_faces_preserve_representation_and_order >}}.
 
-The assertion anchor `EXPECT` is in [`test_radiating_boundary.cpp:288-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary.cpp#L288-L360).
+The tracer assertions are in
+{{< code tests/test_radiating_boundary.cpp radiating.conserved_tracers_ride_dry_density >}} and
+{{< code tests/test_radiating_boundary.cpp radiating.moist_tracers_are_per_dry_air >}}.
 
-The assertion anchor `EXPECT_LT` is in {{< code tests/test_radiating_boundary.cpp radiating.acoustic_pulses >}}.
+The reflected-fraction assertion `EXPECT_LT` is in
+{{< code tests/test_radiating_boundary.cpp radiating.acoustic_pulses >}}.
 
-The assertion anchor `alpha` is in {{< code tests/test_radiating_boundary.cpp radiating.composition_entropy_and_joint_limiter >}}.
+The limiter assertions on `alpha` are in
+{{< code tests/test_radiating_boundary.cpp radiating.composition_entropy_and_joint_limiter >}}; the restart
+assertions and the `EXPECT_THROW` on a missing reference are in
+{{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}}.
 
-The assertion anchor `allclose` is in {{< code tests/test_radiating_boundary.cpp radiating.cpu_cuda_agreement >}}.
+The device comparison `allclose` is in
+{{< code tests/test_radiating_boundary.cpp radiating.cpu_cuda_agreement >}}.
 
-The assertion anchor `assert` is in [`test_radiating_boundary_python.py:16-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_radiating_boundary_python.py#L16-L36).
+The Python assertions are the top-level `assert` statements of
+{{< code tests/test_radiating_boundary_python.py >}}, after `apply_boundaries` with and without tracers.
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
@@ -172,12 +231,16 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Outflow is skipped by the tangential corner refresh ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}). The gravity-work fixer is not an open-boundary
-energy budget: its x1 mass-crossing check can reject an open boundary; the error directs users to
-`gravity-work-fixer: false` ([`meshblock.cpp:850-907`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L850-L907)). The implicit closure remains reflecting in the cited operator, so a
-characteristic ghost fill does not establish a characteristic implicit boundary. The test's restart continuation
-and missing-reference rejection are explicit in `restart_continuation_and_missing_reference` ({{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}}).
-Saved backgrounds are fixed initialization data; adaptive exterior evolution is not implemented by this callback.
+Outflow is skipped by the tangential corner refresh
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}). The gravity-work fixer is not an
+open-boundary energy budget: `MeshBlockImpl::apply_gravity_work_fixer`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}) refuses a step in which more
+than a round-off bound of mass crossed an x1 wall face, and the error text directs the user to
+`gravity-work-fixer: false` for open x1 boundaries. The implicit closure of @sec-ch11-solids stays
+reflecting at the column ends, so a characteristic ghost fill does not establish a characteristic implicit
+boundary. Saved backgrounds are fixed initialization data; no adaptive exterior evolution is implemented by
+this callback.
 
-Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
+is claimed.
 :::

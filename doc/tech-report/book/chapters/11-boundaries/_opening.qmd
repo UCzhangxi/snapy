@@ -1,9 +1,15 @@
-This chapter distinguishes physical face callbacks, exchange-owned ghosts, and immersed-solid interfaces.
-It follows the existing stage map and configuration matrix, deriving boundary-specific parity, acoustic
-selection, admissibility, mask rectification and implicit closure. Source tests are catalogued separately
-from the report's executed formula checks; no solver runtime measurement is supplied here.
+This chapter describes how snapy fills the ghost cells of a block and how it treats immersed solids. Three
+mechanisms share that job and are kept apart throughout: the physical face callbacks that a block installs
+from its YAML card (reflecting, periodic, extrapolation, outflow, custom, solid), the layout exchange that
+fills the ghosts a neighbouring block owns, and the solid mask that closes fluid faces inside the block. The
+chapter derives, for each callback, the discrete identity it implements (parity, permutation, constant
+extension, characteristic selection and admissibility), the ownership rule that decides which of the two
+fillers writes a ghost and when, the line optimum of the mask rectification, the reflecting closure of the
+implicit system against a solid, and the wall continuation of the hydrostatic reference. Every claim is read
+from the code at the pin named in each scheme's provenance block; no solver run is reported here, and the
+solver tests the schemes cite are catalogued, with their assertions, in @sec-ch15-ch11.
 
-@fig-ch11-opening-dependencies shows the verified local requirements. The complete switch matrix is
+@fig-ch11-opening-dependencies shows which scheme needs which. The complete switch matrix is
 @sec-ch12-matrix; the stage ownership map is @sec-ch01-stage.
 
 ```{python}
@@ -17,15 +23,15 @@ make_fig()
 
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
-| @sec-ch11-registry | `boundary-condition/external/*` | reflecting | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-reflecting | `reflecting` | reflecting on external faces | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-periodic | `periodic` | off; external faces default reflecting | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-extrapolation | `extrapolation` | off; fallback for outflow auxiliary scalars and shallow water | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-outflow | `outflow` | off; external faces default reflecting | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-custom | `custom; solid` | off | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-timing | `apply_boundaries; exchange_ghost_zones` | called by initialization and stage paths | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-exchange | `SyncOptions` | interpolate false; skip_corner true | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-solids | `boundary-condition/internal/*; vars["solid"]` | max-iter 5; density 1e3; pressure 1e9 | Local identity; solver order unmeasured | @sec-ch15-ch11 |
-| @sec-ch11-wb | `dynamics/wb-wall-clamp` | true | Local identity; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-registry | `boundary-condition/external/*` | `reflecting` on every face | exact dispatch; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-reflecting | `reflecting` | on (the default face name) | exact parity; wall order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-periodic | `periodic` | off | exact permutation; seam order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-extrapolation | `extrapolation` | off; the fallback of `outflow` for scalars and shallow water | $O(h)$ ghost consistency; solver order unmeasured | @sec-ch15-ch11 |
+| @sec-ch11-outflow | `outflow` | off | locally linear characteristic selection; reflection fraction below $0.05$ in the pulse test | @sec-ch15-ch11 |
+| @sec-ch11-custom | `custom`, `solid` | off | exact identity and constant fill | @sec-ch15-ch11 |
+| @sec-ch11-timing | `apply_boundaries`, `exchange_ghost_zones` | fixed by the driver | exact ownership; no order of accuracy | @sec-ch15-ch11 |
+| @sec-ch11-exchange | `SyncOptions` | `interpolate` off, `skip_corner` on | exact copy on matched cells; corners averaged | @sec-ch15-ch11 |
+| @sec-ch11-solids | `boundary-condition/internal/*`, `vars["solid"]` | `max-iter` 5, density $10^3$, pressure $10^9$ | line optimum of the mask; closure exact; geometry first order (staircase) | @sec-ch15-ch11 |
+| @sec-ch11-wb | `dynamics/wb-wall-clamp` | true | $O(h^2)$ reference bias at the wall cells (truncation argument) | @sec-ch15-ch11 |
 
 : Boundary scheme map. {#tbl-ch11-opening-schemes}

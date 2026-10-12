@@ -1,6 +1,6 @@
 """Independent algebra/finite-set checks; no compiled solver is exercised.
 
-Formula pin: e894700ff7aee30b52882e5202b16461413780b0.
+Formula pin: 6fbb39750f62b83df096058a4746e77d0a634bc5.
 C1: cell-copy parity and corner ownership; C2: acoustic inverse;
 C3: convex admissibility; C4: corner averaging; C5: run-length optimum;
 C6: reflecting block substitution; C7: reference wall continuation.
