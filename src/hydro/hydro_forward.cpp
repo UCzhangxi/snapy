@@ -11,6 +11,7 @@
 #include "flux_positivity.hpp"
 #include "gravity_work_radial.hpp"
 #include "hydro.hpp"
+#include "hydro_dispatch.hpp"
 
 namespace snap {
 
@@ -274,6 +275,41 @@ torch::Tensor HydroImpl::scalar_flux_covariance(torch::Tensor const& rl,
   auto c = cov(un, q);
   dflx.narrow(-1, 1, n1 - 2) = centroid ? c + ctr(rho * un * q) : c;
   return dflx;
+}
+
+// SNAP_FUSED_COV=1 (perf study, default off): on a grid whose x2/x3 faces
+// carry no centroid part and whose frame projection is the identity (a
+// Cartesian block), _flux_covariance and the `flux += dcov` after the Riemann
+// solve become: the face mean and its enthalpy here, before the solver may
+// project the states, and one fused kernel after it (flux_covariance_impl.h)
+static bool fused_flux_covariance() {
+  static bool const on = [] {
+    auto v = get_env("SNAP_FUSED_COV", "0");
+    return v == "1" || v == "true" || v == "on" || v == "yes";
+  }();
+  return on;
+}
+
+std::pair<torch::Tensor, torch::Tensor> HydroImpl::_flux_covariance_pre(
+    torch::Tensor const& wl, torch::Tensor const& wr) const {
+  auto wbar = 0.5 * (wl + wr);
+  auto enth = peos->compute("W->I", {wbar}) + wbar[IPR];
+  return {wbar, enth};
+}
+
+void HydroImpl::_flux_covariance_apply(
+    std::pair<torch::Tensor, torch::Tensor> const& pre, torch::Tensor& flux,
+    int dim) const {
+  auto pcoord = pmb->pcoord;
+  auto const& wbar = pre.first;
+  auto x1v = pcoord->x1v.to(wbar.device(), wbar.scalar_type()).contiguous();
+  auto s2 = pcoord->face_moment2_x1()
+                .to(wbar.device(), wbar.scalar_type())
+                .contiguous();
+  at::native::call_flux_covariance(flux.device().type(), flux,
+                                   wbar.contiguous(), pre.second.contiguous(),
+                                   s2, x1v, wbar.size(0) - ICY,
+                                   dim == 2 ? IVY : IVZ);
 }
 
 torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
@@ -695,8 +731,17 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         cwl = x1_seam_rows(wlr2[ILT], 0x7730);
         cwr = x1_seam_rows(wlr2[IRT], 0x7732);
       }
-      auto dcov = flux_covariance() ? _flux_covariance(cwl, cwr, DIM2)
-                                    : torch::Tensor();
+      // SNAP_FUSED_COV: no scalar rows, a Cartesian block, a resolved x1 axis
+      bool fuse = flux_covariance() && fused_flux_covariance() &&
+                  !has_scalars && pmb->pcoord->face_centroid_shift_zero() &&
+                  pmb->pcoord->options->type() == "cartesian" &&
+                  cwl.size(-1) >= 3 &&
+                  options->eos()->type() != "shallow-water";
+      std::pair<torch::Tensor, torch::Tensor> fpre;
+      if (fuse) fpre = _flux_covariance_pre(cwl, cwr);
+      auto dcov = flux_covariance() && !fuse
+                      ? _flux_covariance(cwl, cwr, DIM2)
+                      : torch::Tensor();
       // the passive scalars' rows are built from the same face states
       // (scalar_flux_covariance), taken before the solver may project them
       if (dcov.defined() && has_scalars) {
@@ -706,7 +751,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       }
       priemann->forward(wlr2[ILT], wlr2[IRT], DIM2, _flux2);
       if (dcov.defined()) _flux2 += dcov;
-      cov2 = dcov.defined();
+      if (fuse) _flux_covariance_apply(fpre, _flux2, DIM2);
+      cov2 = dcov.defined() || fuse;
       if (options->verbose()) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
@@ -729,8 +775,17 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         cwl = x1_seam_rows(wlr3[ILT], 0x7734);
         cwr = x1_seam_rows(wlr3[IRT], 0x7736);
       }
-      auto dcov = flux_covariance() ? _flux_covariance(cwl, cwr, DIM3)
-                                    : torch::Tensor();
+      // SNAP_FUSED_COV: no scalar rows, a Cartesian block, a resolved x1 axis
+      bool fuse = flux_covariance() && fused_flux_covariance() &&
+                  !has_scalars && pmb->pcoord->face_centroid_shift_zero() &&
+                  pmb->pcoord->options->type() == "cartesian" &&
+                  cwl.size(-1) >= 3 &&
+                  options->eos()->type() != "shallow-water";
+      std::pair<torch::Tensor, torch::Tensor> fpre;
+      if (fuse) fpre = _flux_covariance_pre(cwl, cwr);
+      auto dcov = flux_covariance() && !fuse
+                      ? _flux_covariance(cwl, cwr, DIM3)
+                      : torch::Tensor();
       if (dcov.defined() && has_scalars) {
         _cov_wl[1] = cwl.clone();
         _cov_wr[1] = cwr.clone();
@@ -738,7 +793,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       }
       priemann->forward(wlr3[ILT], wlr3[IRT], DIM3, _flux3);
       if (dcov.defined()) _flux3 += dcov;
-      cov3 = dcov.defined();
+      if (fuse) _flux_covariance_apply(fpre, _flux3, DIM3);
+      cov3 = dcov.defined() || fuse;
       if (options->verbose()) {
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;

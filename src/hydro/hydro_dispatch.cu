@@ -5,6 +5,7 @@
 
 // snap
 #include "hydro_dispatch.hpp"
+#include "flux_covariance_impl.h"
 #include "hydro_ref_x1_impl.h"
 
 namespace snap {
@@ -56,10 +57,43 @@ void hydro_ref_x1_cuda(torch::Tensor const &w, torch::Tensor const &dx1f,
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
+template <typename T>
+__global__ void flux_covariance_cuda_kernel(T *flux, T const *wbar,
+                                            T const *enth, T const *s2,
+                                            T const *x1v, int64_t ncell,
+                                            int nvar, int ny, int iun,
+                                            int nc1) {
+  int64_t c = blockIdx.x * (int64_t)blockDim.x + threadIdx.x;
+  if (c >= ncell) return;
+  flux_covariance_cell(flux, wbar, enth, s2, x1v, ncell, nvar, ny, iun, nc1,
+                       c);
+}
+
+void flux_covariance_cuda(torch::Tensor const &flux, torch::Tensor const &wbar,
+                          torch::Tensor const &enth, torch::Tensor const &s2,
+                          torch::Tensor const &x1v, int ny, int iun) {
+  at::cuda::CUDAGuard device_guard(flux.device());
+  TORCH_CHECK(flux.is_contiguous(), "fused covariance: flux must be contiguous");
+  int nvar = flux.size(0);
+  int nc1 = flux.size(-1);
+  int64_t ncell = flux.numel() / nvar;
+  int threads = 256;
+  int64_t blocks = (ncell + threads - 1) / threads;
+  auto stream = at::cuda::getCurrentCUDAStream();
+  AT_DISPATCH_FLOATING_TYPES(flux.scalar_type(), "flux_covariance_cuda", [&] {
+    flux_covariance_cuda_kernel<scalar_t><<<blocks, threads, 0, stream>>>(
+        flux.data_ptr<scalar_t>(), wbar.data_ptr<scalar_t>(),
+        enth.data_ptr<scalar_t>(), s2.data_ptr<scalar_t>(),
+        x1v.data_ptr<scalar_t>(), ncell, nvar, ny, iun, nc1);
+  });
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
 } // namespace snap
 
 namespace at::native {
 
 REGISTER_CUDA_DISPATCH(call_hydro_ref_x1, &snap::hydro_ref_x1_cuda);
+REGISTER_CUDA_DISPATCH(call_flux_covariance, &snap::flux_covariance_cuda);
 
 } // namespace at::native

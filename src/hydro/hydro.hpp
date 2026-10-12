@@ -248,6 +248,13 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
    */
   torch::Tensor _flux_covariance(torch::Tensor const& wl,
                                  torch::Tensor const& wr, int dim) const;
+  //! SNAP_FUSED_COV: the face mean and its enthalpy density (before the
+  //! Riemann solve), then the fused covariance rows added into the flux
+  std::pair<torch::Tensor, torch::Tensor> _flux_covariance_pre(
+      torch::Tensor const& wl, torch::Tensor const& wr) const;
+  void _flux_covariance_apply(
+      std::pair<torch::Tensor, torch::Tensor> const& pre, torch::Tensor& flux,
+      int dim) const;
 
   // Per-column hydrostatic references for the well-balanced x1
   // reconstruction: {psf_lo (face pressure), pref (cell pressure), dsf (face

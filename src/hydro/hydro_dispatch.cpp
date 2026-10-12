@@ -7,6 +7,7 @@
 
 // snap
 #include "hydro_dispatch.hpp"
+#include "flux_covariance_impl.h"
 #include "hydro_ref_x1_impl.h"
 
 namespace snap {
@@ -201,9 +202,35 @@ void hydro_ref_x1_mps(torch::Tensor const& w, torch::Tensor const& dx1f,
 
 }  // namespace snap
 
+namespace snap {
+
+void flux_covariance_cpu(torch::Tensor const& flux, torch::Tensor const& wbar,
+                         torch::Tensor const& enth, torch::Tensor const& s2,
+                         torch::Tensor const& x1v, int ny, int iun) {
+  TORCH_CHECK(flux.is_contiguous(), "fused covariance: flux must be contiguous");
+  int nvar = flux.size(0);
+  int nc1 = flux.size(-1);
+  int64_t ncell = flux.numel() / nvar;
+  AT_DISPATCH_FLOATING_TYPES(flux.scalar_type(), "flux_covariance_cpu", [&] {
+    auto* F = flux.data_ptr<scalar_t>();
+    auto const* W = wbar.data_ptr<scalar_t>();
+    auto const* E = enth.data_ptr<scalar_t>();
+    auto const* S = s2.data_ptr<scalar_t>();
+    auto const* X = x1v.data_ptr<scalar_t>();
+    at::parallel_for(0, ncell, 4096, [&](int64_t b, int64_t e) {
+      for (int64_t c = b; c < e; ++c)
+        flux_covariance_cell(F, W, E, S, X, ncell, nvar, ny, iun, nc1, c);
+    });
+  });
+}
+
+}  // namespace snap
+
 namespace at::native {
 
 DEFINE_DISPATCH(call_hydro_ref_x1);
+DEFINE_DISPATCH(call_flux_covariance);
+REGISTER_ALL_CPU_DISPATCH(call_flux_covariance, &snap::flux_covariance_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_hydro_ref_x1, &snap::hydro_ref_x1_cpu);
 REGISTER_MPS_DISPATCH(call_hydro_ref_x1, &snap::hydro_ref_x1_mps);
 
