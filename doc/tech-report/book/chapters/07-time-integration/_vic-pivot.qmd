@@ -1,4 +1,4 @@
-## LU pivot tolerance: refuse a pivot within $8N\epsilon$ of its row (`ludcmp`) {#sec-ch07-vic-pivot}
+## LU pivot tolerance: refuse a pivot within $8N\epsilon_{\mathrm m}$ of its row (`ludcmp`) {#sec-ch07-vic-pivot}
 
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
@@ -13,14 +13,14 @@ status: draft
 (@sec-ch07-vic-reject).
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Refuses to factor a VIC block when a pivot is, relative to the original size of its row, no
-bigger than the rounding error of the elimination, or when anything in the factorisation is not finite.
-
-**Switch.** None.
-
-**Order.** Not a discretisation.
-
-**Defining equation.** @eq-ch07-vic-pivot.
+**Purpose.** Refuses to factor a VIC block when a pivot is, relative to the original size of its row, no bigger than
+$\epsilon_{\mathrm{piv}} = 8N\epsilon_{\mathrm m}$, or when anything in the factorisation is not finite;
+@eq-ch07-vic-pivot.
+**Data.** In: one $N\times N$ block. Out: its LU factors, or a refusal.
+**Placement.** Inside the sweep, for every block it factors.
+**Activation.** None.
+**Guarantee / limits.** A column at rest is not refused.
+**Evidence.** `test_lu_failure.release` and `vic_pivot_check.py` `[C1]`–`[C2]`; the ctests were not run at the pin.
 :::
 
 ### Derivation
@@ -29,16 +29,16 @@ Let $s_j$ be the largest magnitude in the original row that ends up in position 
 there. The factorisation is refused when
 
 $$
-\frac{|p_j|}{s_j} \le \tau_N , \quad \tau_N = 8N\epsilon_T ,
+\frac{|p_j|}{s_j} \le \epsilon_{\mathrm{piv}} , \quad \epsilon_{\mathrm{piv}} = 8N\epsilon_{\mathrm m} ,
 $$ {#eq-ch07-vic-pivot}
 
-with $\epsilon_T$ the machine epsilon of the scalar type (`epsilon_T` in the note), the last pivot included; in the
+with $\epsilon_{\mathrm m}$ the machine epsilon of the scalar type (`epsilon_T` in the note), the last pivot included; in the
 code the threshold is `tolerance` in `ludcmp` ({{< code src/math/ludcmp.h ludcmp >}}). A dot product of length about
-$2N$ accumulates a relative rounding error of about $N\epsilon_T$. The factor 8 is a guard band around that
+$2N$ accumulates a relative rounding error of about $N\epsilon_{\mathrm m}$. The factor 8 is a guard band around that
 scale, as the derivation note argues with `epsilon_T`.[^ch07-pivot-note]
 The values are $2.861\times10^{-6}$ and $4.768\times10^{-6}$ in float, and $5.329\times10^{-15}$ and
 $8.882\times10^{-15}$ in double, for $N=3$ and 5 [check `src/snapy_report/ch07/vic_pivot_check.py`, output
-`vic_pivot_check.out`, `[C1]`]. A ratio $0.99\,\tau_3$ is refused and $1.01\,\tau_3$ accepted, in both types
+`vic_pivot_check.out`, `[C1]`]. A ratio $0.99\,\epsilon_{\mathrm{piv}}$ is refused and $1.01\,\epsilon_{\mathrm{piv}}$ accepted, with $\epsilon_{\mathrm{piv}} = 24\epsilon_{\mathrm m}$ at $N=3$, in both types
 (`[C2]`).
 
 [^ch07-pivot-note]: `docs/derivations/290-lu-pivot-tolerance.md@6fbb39750f62b83df096058a4746e77d0a634bc5`, opening section.
@@ -54,7 +54,7 @@ See @fig-ch07-vic-pivot for the threshold.
 
 ```{python}
 #| label: fig-ch07-vic-pivot
-#| fig-cap: "ludcmp on the $3\\times3$ test matrix of the check as its last pivot ratio $|p_j|/s_j$ is swept: dots are accepted, crosses (vermillion) refused. The dashed lines are $\\tau_3=24\\epsilon_T$ for float64 (blue) and float32 (orange); the refusals end exactly there."
+#| fig-cap: "ludcmp on the $3\\times3$ test matrix of the check as its last pivot ratio $|p_j|/s_j$ is swept: dots are accepted, crosses (vermillion) refused. The dashed lines are $\\epsilon_{\\mathrm{piv}}=24\\epsilon_{\\mathrm m}$ ($N=3$) for float64 (blue) and float32 (orange); the refusals end exactly there."
 #| fig-alt: "Two horizontal rows of markers, float64 and float32, against a log axis of pivot ratio; crosses to the left of each dashed threshold line and dots to its right."
 #| echo: false
 from snapy_report.ch07.fig_vic_pivot import make_fig

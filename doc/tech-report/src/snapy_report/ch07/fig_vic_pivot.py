@@ -24,5 +24,5 @@ def make_fig():
     ax.set_yticklabels(["float32", "float64"])
     ax.set_ylim(-0.6, 1.6)
     ax.set_xlabel(r"pivot ratio $|p_j|/s_j$")
-    ax.text(1e-16, 1.3, r"x refused, o accepted; dashed: $\tau_3$", fontsize=7)
+    ax.text(1e-16, 1.3, r"x refused, o accepted; dashed: $\epsilon_{\mathrm{piv}}$", fontsize=7)
     return fig

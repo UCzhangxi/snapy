@@ -15,15 +15,15 @@ the solver object is constructed. A VIC run also needs the whole $x_1$ column on
 gravity.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Reads `integration/implicit-scheme` and decides whether a run has a vertically implicit
-correction (VIC), and whether it solves the 3 x 3 or the 5 x 5 column system.
-
-**Switch.** `integration/implicit-scheme`: 0 or absent (explicit), 1 (`vic-partial`), 9 (`vic-full`);
+**Purpose.** Reads `integration/implicit-scheme` and decides whether a run has a vertically implicit correction
+(VIC), and whether it solves the 3 x 3 or the 5 x 5 column system; @eq-ch07-vic-size.
+**Data.** In: the YAML value. Out: the scheme type and the system size $N$.
+**Placement.** At setup.
+**Activation.** `integration/implicit-scheme`: 0 or absent (explicit), 1 (`vic-partial`), 9 (`vic-full`);
 `implicit-advection-cfl` (default 1) and `shear-cfl` (default 0), see @sec-ch07-cfl.
-
-**Order.** Not a discretisation.
-
-**Defining equation.** @eq-ch07-vic-size.
+**Guarantee / limits.** Any other value is refused.
+**Evidence.** `test_implicit_options_type_python`, `test_backward_substitution.release`,
+`test_hydro_options.release` and `vic_options_check.py`; the ctests were not run at the pin.
 :::
 
 ### Derivation
@@ -34,7 +34,7 @@ $$
 N(s) = 3 + 2\,\big(\lfloor s/8 \rfloor \bmod 2\big) ,
 $$ {#eq-ch07-vic-size}
 
-so `vic-partial` solves for $(\rho, \rho u, E)$ and `vic-full` for $(\rho, \rho u, \rho v, \rho w, E)$, with $u$ the
+so `vic-partial` solves for $(\rho, \rho v_1, E)$ and `vic-full` for $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$, with $v_1$ the
 $x_1$ velocity [check `src/snapy_report/ch07/vic_options_check.py`, output `vic_options_check.out`, `[C1]`]. Here
 $\rho$ is the total density: the species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute).
 
