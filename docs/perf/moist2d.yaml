@@ -1,0 +1,112 @@
+boundary-condition:
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+    x2-inner: periodic
+    x2-outer: periodic
+    x3-inner: periodic
+    x3-outer: periodic
+  internal:
+    max-iter: 5
+    solid-density: 1.e3
+    solid-pressure: 1.9
+dynamics:
+  equation-of-state:
+    density-floor: 1.0e-10
+    limiter: true
+    pressure-floor: 1.0e-10
+    type: ideal-moist
+  reconstruct:
+    horizontal:
+      scale: false
+      shock: false
+      type: weno5
+    vertical:
+      scale: false
+      shock: false
+      type: weno5
+  riemann-solver:
+    type: lmars
+forcing:
+  const-gravity:
+    grav1: -9.8
+geometry:
+  bounds:
+    x1max: 10.e3
+    x1min: 0.0
+    x2max: 20.e3
+    x2min: 0.0
+    x3max: 0.5
+    x3min: -0.5
+  cells:
+    nghost: 3
+    nx1: 100
+    nx2: 200
+    nx3: 1
+  type: cartesian
+integration:
+  cfl: 0.9
+  implicit-scheme: 1
+  nlim: 100000
+  tlim: 1000
+  type: rk3
+problem:
+  Ps: 1.e5
+  Tmin: 200
+  Ts: 300.0
+  xH2O: 0.02
+reactions:
+- equation: H2O <=> H2O(l)
+  rate-constant:
+    formula: h2o_ideal
+  type: nucleation
+- equation: H2O(l) => H2O(l,p)
+  rate-constant:
+    A: 0.1
+    Ea_R: 0.0
+    b: 0
+  type: coagulation
+- equation: H2O(l,p) => H2O
+  rate-constant:
+    diameter: 0.0001
+    diff_P: -1.0
+    diff_T: 1.75
+    diff_c: 2.0e-05
+    formula: h2o_ideal
+    vm: 1.8e-05
+  type: evaporation
+reference-state:
+  Pref: 1.e5
+  Tref: 0.0
+sedimentation:
+  const-vsed:
+    H2O(l,p): -10.0
+  density:
+    H2O(l,p): 1000.0
+  radius:
+    H2O(l,p): 1.0e-10
+species:
+- composition:
+    Ar: 0.01
+    N: 1.56
+    O: 0.42
+  cv_R: 2.5
+  name: dry
+- composition:
+    H: 2
+    O: 1
+  cv_R: 2.5
+  name: H2O
+  u0_R: 0.0
+- composition:
+    H: 2
+    O: 1
+  cv_R: 9.0
+  name: H2O(l)
+  u0_R: -3430.0
+- composition:
+    H: 2
+    O: 1
+  cv_R: 9.0
+  name: H2O(l,p)
+  u0_R: -3430.0
