@@ -7,16 +7,7 @@ fill is itself the finding, so write "not checked, because ..." rather than leav
 The sign-off line is the reviewer's own, and it rests on a line-by-line reading of that head. "Looks good" is
 not a verdict, and neither is a recommendation: only one of the three forms below counts.
 
----
-
-````markdown
-SIGN-OFF #<PR> <sha> approve
-
-## Review record
-
-**PR** <owner>/<repo>#<N> — <title>
-
-The sign-off line above is **the first line of the post**, on a line of its own, with nothing else on it.
+The sign-off line is **the first line of the post**, on a line of its own, with nothing else on it.
 `<sha>` is the PR's current head. Exactly one of these three forms, and no other wording:
 
 ```
@@ -28,6 +19,15 @@ SIGN-OFF #<PR> <sha> changes
 Use `approve (code review)` when the verdict rests on reading the code rather than on a build or run you
 performed; the next line then gives the runtime evidence relied on. For `changes`, the next line gives the
 reason. One sign-off per (PR, sha) — **any push resets every sign-off on the PR**.
+
+---
+
+````markdown
+SIGN-OFF #<PR> <sha> approve
+
+## Review record
+
+**PR** <owner>/<repo>#<N> — <title>
 
 | | value | how it was read | UTC |
 |---|---|---|---|
