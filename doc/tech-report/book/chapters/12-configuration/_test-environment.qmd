@@ -1,45 +1,62 @@
 ## Test harness environment (`test environment`) {#sec-ch12-test-environment}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: pinned code below; frozen outline section 12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 12.10; tests/CMakeLists.txt; tests/test_exchange.cpp; tests/test_uranus_cycle1_abort.cpp; tests/test_wb_ref_wall.cpp;
+         tests/test_python_import_path.py
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default: **per registration**. Harness variables select test arms and evidence provenance; they are not new hydro schemes.
-`SNAPY_BUILD_CUDA=0` is installed for non-CUDA builds even if a GPU is visible.
+**Purpose.** N/A: the harness variables select test arms and record evidence provenance; they are not hydro
+schemes.
+**Data.** In: the per-test environment that `tests/CMakeLists.txt` registers and the variables a test reads
+itself. Out: which arm runs, which case the filter selects, and whether a run counts as pass, fail or skip.
+**Placement.** CTest registration and the start of each test process.
+**Activation.** Per registration; on a non-CUDA build every test gets `SNAPY_BUILD_CUDA=0` and the
+CUDA-labelled entries are disabled, whatever GPU is visible.
+**Guarantee / limits.** A selected arm must execute its assertion: the seam arms require the one-test pass
+marker, and a Python CUDA arm that cannot run exits with the skip code 125, which is neither pass nor failure.
+**Evidence.** `test_python_import_path_python`: the imported package and the preserved caller path
+({{< code tests/test_python_import_path.py >}}, exact paths, skip 125 when unconfigured); check `[C9]` of
+`configuration_check.py`; no registered ctest was run for this chapter.
 :::
 
 | variable | purpose |
 |---|---|
-| `SNAPY_BUILD_CUDA` | suppress unavailable CUDA arms |
-| `GTEST_FILTER` | select exactly one seam case per registered arm |
-| `BLOCKS_PER_PROCESS` | exchange topology size |
-| `EXPECT_LOCAL_NEIGHBOR`, `EXPECT_REMOTE_NEIGHBOR` | assert selected exchange topology |
-| `SNAPY_RUN_HYDRO` | locate the cycle-abort test executable |
-| `WB_REF_WALL_DUMP`, `WB_REF_WALL_BETAS` | wall-reference scan/dump aids |
+| `SNAPY_BUILD_CUDA` | set to 0 on every test of a non-CUDA build, so a visible GPU is not taken as CUDA support |
+| `GTEST_FILTER` | selects exactly one seam case per registered arm, with a pass marker on one test |
+| `BLOCKS_PER_PROCESS`, `EXPECT_LOCAL_NEIGHBOR`, `EXPECT_REMOTE_NEIGHBOR` | the exchange test's topology and its expected neighbour kinds |
+| `SNAPY_RUN_HYDRO` | the path of the driver executable the cycle-abort test runs |
+| `WB_REF_WALL_DUMP`, `WB_REF_WALL_BETAS` | review aids of the wall-reference test: a dump path and a scan of the stratification parameter |
 
-`SNAPY_TEST_PYTHONPATH` is a CMake cache path, not one of these solver variables. The generated test environment
-prepends it while retaining the caller's path.
+: Harness variables at the pin. {#tbl-ch12-test-environment-variables}
+
+`SNAPY_TEST_PYTHONPATH` is a CMake cache path, not one of these variables: when set, every Python ctest that
+imports snapy gets it prepended to `PYTHONPATH` with the caller's entries kept behind it.
 
 ### Derivation
 
-No numerical derivation applies. A selected test must actually execute its assertion: a filter that selects no tests
-cannot certify a scheme. The seam-arm registration therefore requires a one-test pass marker, and Python CUDA arms
-use skip code 125 when unavailable. Check line `[C9]` enumerates the ten $(\text{selected}, \text{passed})$
-combinations up to three tests: no zero-selection case certifies, certification needs at least one selected test
-that passed, and 125 is distinct from the pass code 0 and from the ordinary failure codes, so a skipped arm is
-counted as neither [check `src/snapy_report/ch12/configuration_check.py`, output
+No numerical derivation applies. A selected test must actually execute its assertion: a filter that selects
+no tests certifies nothing. The seam-arm registration therefore requires the gtest pass marker for exactly one
+test, and the Python CUDA arms use the skip code 125 when unavailable. Check line `[C9]` enumerates the ten
+(selected, passed) combinations up to three tests: no zero-selection case certifies, certification needs at
+least one selected test that passed, and 125 is distinct from the pass code 0 and from the ordinary failure
+codes, so a skipped arm is counted as neither [check `src/snapy_report/ch12/configuration_check.py`, output
 `src/snapy_report/ch12/configuration_check.out`].
 
 ### Numerical method
 
-Register the arm with its environment, select its case, verify its execution marker, then interpret its assertions.
-Record disabled and skipped tests separately from passes. Supply all scheme flags explicitly or unset them before
-starting evidence runs: inherited user environment can otherwise contaminate a nominal default arm.
+Register the arm with its environment ({{< code tests/CMakeLists.txt >}}: the `seam_arm` and `seam_arm_mp`
+functions set `GTEST_FILTER` and the switch, `snapy_add_python_test` adds the Python entries, and the non-CUDA
+block at the end sets `SNAPY_BUILD_CUDA=0` and disables the CUDA entries), select its case, verify its execution
+marker, then interpret its assertions. Record disabled and skipped tests apart from passes. Supply every numerics
+switch explicitly or unset it before an evidence run: an inherited shell environment can otherwise turn a
+nominal default arm into a switched one (@sec-ch12-environment).
 
 ```{python}
 #| label: fig-ch12-test-environment-flow
@@ -54,36 +71,42 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| registration | [`CMakeLists.txt:38-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L38-L104) | `seam_arm` | `test environment` |
-| importreg | [`CMakeLists.txt:316-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L316-L363) | `SNAPY_TEST_PYTHONPATH` | `test environment` |
-| cudagate | [`CMakeLists.txt:515-536`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L515-L536) | `SNAPY_BUILD_CUDA` | `test environment` |
-| exchangeenv | {{< code tests/test_exchange.cpp main >}} | `BLOCKS_PER_PROCESS` | `test environment` |
-| exchangeexpect | {{< code tests/test_exchange.cpp main >}} | `EXPECT_REMOTE_NEIGHBOR` | `test environment` |
-| runenv | {{< code tests/test_uranus_cycle1_abort.cpp run_deck >}} | `SNAPY_RUN_HYDRO` | `test environment` |
-| dumpenv | {{< code tests/test_wb_ref_wall.cpp face_errors >}} | `WB_REF_WALL_DUMP` | `test environment` |
-| betaenv | {{< code tests/test_wb_ref_wall.cpp WbRefWall.order_table >}} | `WB_REF_WALL_BETAS` | `test environment` |
+| seam arms | {{< code tests/CMakeLists.txt >}} | `seam_arm` | `GTEST_FILTER` |
+| python entries | {{< code tests/CMakeLists.txt >}} | `snapy_add_python_test` | `SNAPY_TEST_PYTHONPATH` |
+| cuda gate | {{< code tests/CMakeLists.txt >}} | `SNAPY_BUILD_CUDA` | `CUDA` |
+| exchange topology | {{< code tests/test_exchange.cpp parse_env_int >}} | `parse_env_int` | `BLOCKS_PER_PROCESS` |
+| exchange expectation | {{< code tests/test_exchange.cpp parse_env_bool >}} | `parse_env_bool` | `EXPECT_LOCAL_NEIGHBOR`, `EXPECT_REMOTE_NEIGHBOR` |
+| driver path | {{< code tests/test_uranus_cycle1_abort.cpp run_deck >}} | `run_deck` | `SNAPY_RUN_HYDRO` |
+| dump aid | {{< code tests/test_wb_ref_wall.cpp face_errors >}} | `face_errors` | `WB_REF_WALL_DUMP` |
+| scan aid | {{< code tests/test_wb_ref_wall.cpp WbRefWall.order_table >}} | `order_table` | `WB_REF_WALL_BETAS` |
 
-: Pinned implementation anchors. {#tbl-ch12-test-environment-code}
+: Implementation sites for the harness environment. {#tbl-ch12-test-environment-code}
 
-Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
-The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+1. Register each arm with its environment and, for the seam arms, the one-test pass marker. The anchor
+   `seam_arm` is in {{< code tests/CMakeLists.txt >}}.
+2. On a non-CUDA build mark every test `SNAPY_BUILD_CUDA=0` and disable the CUDA entries. The anchor
+   `SNAPY_BUILD_CUDA` is in {{< code tests/CMakeLists.txt >}}.
+3. Inside a test, read its own variables with their fallbacks. The anchor `parse_env_int` is in
+   {{< code tests/test_exchange.cpp parse_env_int >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_python_import_path_python` | correct imported package and preserved caller entry | exact paths; skip 125 if unconfigured | [`test_python_import_path.py:7-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_python_import_path.py#L7-L23) |
+| `test_python_import_path_python` | the imported package lies under the cache path and the caller's `PYTHONPATH` entry survives | exact paths; skip 125 when unconfigured | the script's `assert` statements |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-test-environment-tests}
 
+The assertions are the top-level `assert` statements of {{< code tests/test_python_import_path.py >}}.
+
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
-Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Harness coverage is not solver coverage. This draft performs no registered CTest run, and a visible GPU is not
-used to infer CUDA support.
+Harness coverage is not solver coverage. No registered ctest was run for this chapter, and a visible GPU is
+never taken to imply CUDA support.
 
 The complete switch inventory is @sec-ch12-matrix.
 :::

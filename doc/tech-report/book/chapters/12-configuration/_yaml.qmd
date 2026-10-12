@@ -1,58 +1,92 @@
 ## YAML scheme selection and setup guards (`YAML keys`) {#sec-ch12-yaml}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: pinned code below; frozen outline section 12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 12.11; src/hydro/hydro_options.cpp; src/forcing/const_gravity.cpp; src/implicit/implicit_hydro.cpp;
+         src/eos/equation_of_state.cpp; src/recon/reconstruct.cpp; src/riemann/riemann_solver.cpp; src/coord/coordinate.cpp;
+         src/layout/layout.cpp; src/mesh/meshblock_options.cpp; src/hydro/hydro.cpp; tests/test_yaml_keys.cpp;
+         tests/test_hydro_options.cpp; tests/test_implicit_options_type.py
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default: **see table**. YAML selects the local numerical options; process-global study switches remain environment settings.
-Recognized parser blocks reject unknown keys. Direct Python option construction bypasses YAML parsing, so hydro reset
-rechecks gravity-work constraints.
+**Purpose.** N/A: the YAML card selects the local numerical options of a block; the process-global study
+switches stay in the environment (@sec-ch12-environment).
+**Data.** In: the recognized blocks of the card. Out: the component options (gravity, dynamics, EOS,
+reconstruction, Riemann solver, geometry, layout, boundaries, integration) and the guards `HydroImpl::reset`
+applies to them.
+**Placement.** Option construction, then the hydro module's reset, before any step.
+**Activation.** Every recognized block rejects an unknown key. Defaults are in the key table; the gravity-work
+mode defaults to `face`.
+**Guarantee / limits.** Incompatible options do not run silently: the fixer with non-cell work, a fixer with
+lateral gravity or a periodic $x_1$, an implicit CFL control without an implicit scheme, and an unsupported
+implicit scheme are all refused. Direct option construction from Python bypasses the YAML parse; the reset
+guards still apply.
+**Evidence.** `test_hydro_options.<b>` and `test_yaml_keys.<b>`: the defaults and the refusals
+({{< code tests/test_hydro_options.cpp hydro_options.wb_wall_clamp_ships_enabled >}},
+{{< code tests/test_yaml_keys.cpp yaml_keys.the_card_itself_loads >}}, exact booleans and exceptions);
+`test_implicit_options_type_python`: the implicit scheme names
+({{< code tests/test_implicit_options_type.py main >}}); check `[C10]` of `configuration_check.py`; the ctests
+were not run at the pin.
 :::
 
 | key | default | coupling |
 |---|---|---|
-| `forcing/const-gravity/gravity-work` | face (since chengcli/snapy#303, `gravity_work` {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}) | cell, face-wallc or face |
-| `gravity-work-fixer` in that block | true for cell | requires radial-only gravity and nonperiodic x1; non-cell reset clears it |
-| `grav1`, `grav2`, `grav3` | 0 | disabled flux direction zeros its gravity |
-| `non-hydrostatic` | 1 | must lie in [0,1] |
-| `dynamics/wb-wall-clamp` | true | required by balance_column |
-| `dynamics/disable-flux-x1/x2/x3`, `verbose` | false | flux/source direction gates |
-| `dynamics/equation-of-state/type` | moist-mixture | shallow-water bypasses radial WB |
+| `forcing/const-gravity/gravity-work` | `face` | `cell`, `face-wallc` or `face`; selects the budget the solver conserves |
+| `gravity-work-fixer` in that block | true for `cell`, false otherwise | with nonzero `grav1` it needs `cell`; the reset clears it for non-cell work and needs `grav2` = `grav3` = 0 and non-periodic $x_1$ |
+| `grav1`, `grav2`, `grav3` | 0 | the gravity components |
+| `non-hydrostatic` | 1 | must lie in $[0,1]$ |
+| `dynamics/wb-wall-clamp` | true | required by `balance_column` |
+| `dynamics/disable-flux-x1`, `-x2`, `-x3`, `verbose` | false | flux and source direction gates |
+| `dynamics/equation-of-state/type` | `moist-mixture` | `shallow-water` bypasses the radial well-balanced path |
 | EOS `limiter` | false | positivity correction |
-| EOS density, pressure, temperature floors | $10^{-6}$ kg m$^{-3}$, $10^{-3}$ Pa, 20 K | state floors |
-| reconstruction vertical/horizontal `type,scale,shock` | dc,false,false | spatial reconstruction |
-| `dynamics/riemann-solver/type,dir` | roe,omni | interface flux solver |
-| `integration/implicit-scheme` | absent / 0 | accepts 0, 1, 9 only |
-| `implicit-advection-cfl`, `shear-cfl` | 1, 0 | require active implicit scheme; positive / nonnegative finite values |
-| `geometry/cells/nghost` | 1 | WB/XC with gravity requires at least 3 |
-| `geometry/type` | cartesian | controls XC and corrected-work availability |
-| `distribute/layout,nb1,nb2,nb3` | slab,1,1,1 | block decomposition |
-| external x1/x2/x3 boundaries | reflecting | periodic x1 incompatible with active fixer |
-| `forcing/fric-heat` | removed | explicit parse error |
+| EOS density, pressure and temperature floors | $10^{-6}\ \mathrm{kg\,m^{-3}}$, $10^{-3}\ \mathrm{Pa}$, $20\ \mathrm{K}$ | state floors |
+| reconstruction `vertical`/`horizontal` `type`, `scale`, `shock` | `dc`, false, false | spatial reconstruction |
+| `dynamics/riemann-solver/type`, `dir` | `roe`, `omni` | interface flux solver |
+| `integration/implicit-scheme` | absent, no implicit module | 0 (none), 1 (`vic-partial`) or 9 (`vic-full`); anything else is refused |
+| `implicit-advection-cfl`, `shear-cfl` | 1, 0 | refused without an implicit scheme; must be finite, positive and nonnegative |
+| `geometry/cells/nghost` | 1 | WB or XC with gravity need at least 3 |
+| `geometry/type` | `cartesian` | gates XC and the corrected-work measure |
+| `distribute/layout`, `nb1`, `nb2`, `nb3` | `slab`, 1, 1, 1 | block decomposition; `backend` is accepted and ignored |
+| external boundaries `x1-inner` ... `x3-outer` | `reflecting` | a periodic $x_1$ is refused with an active fixer |
+| `forcing/fric-heat` | removed | an explicit parse error |
 
+: YAML keys and defaults at the pin. {#tbl-ch12-yaml-keys}
 
 ### Derivation
 
-No separate continuum equation is introduced by the parser. The configuration resolves into the schemes described
-in the preceding sections. In particular, changing face work changes the budget functional; it is not just an
-output label. Validation is part of the numerical contract because incompatible options must not silently run.
-Check line `[C10]` holds both halves. Over the ten option pairs the validator rejects exactly the two marked
-incompatible and accepts the rest, so none of them runs silently; and the corrected budget functional differs
-from the plain one symbolically, agreeing only on a constant density, so changing the face work moves the
-functional itself [check `src/snapy_report/ch12/configuration_check.py`, output
+No separate continuum equation is introduced by the parser; the configuration resolves into the schemes of
+the preceding sections and of @sec-ch04 to @sec-ch07. Changing the gravity-work mode changes the budget the
+solver conserves (@sec-ch06-dwork), not an output label, so validation is part of the numerical contract:
+incompatible options must not run silently. Check line `[C10]` holds both halves: over ten option pairs the
+validator rejects exactly the two marked incompatible and accepts the rest, and the corrected budget functional
+differs from the plain one symbolically, agreeing only for a constant density
+[check `src/snapy_report/ch12/configuration_check.py`, output
 `src/snapy_report/ch12/configuration_check.out`].
 
 ### Numerical method
 
-Parse the recognized sub-blocks, instantiate component options, then reset hydro. YAML rejects a true fixer with
-non-cell work and nonzero radial gravity; direct option construction is normalized by reset before its remaining
-guards. Implicit non-cell work without an in-operator path warns. A missing implicit scheme returns explicit options;
-setting its CFL controls without an active scheme fails.
+The parsers read their blocks with a key check: `HydroOptionsImpl::from_yaml`
+({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}) for `dynamics` and `forcing`, refusing
+`fric-heat`; `ConstGravityOptionsImpl::from_yaml` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}})
+for the gravity block, with the `face` default and the fixer check; `ImplicitOptionsImpl::from_yaml`
+({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}) for `integration`, which
+returns no implicit module when the scheme key is absent or 0, refuses the CFL keys without a scheme, and names
+the scheme through its second overload ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}});
+`EquationOfStateOptionsImpl::from_yaml` ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}});
+`ReconstructOptionsImpl::from_yaml` ({{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}});
+`RiemannSolverOptionsImpl::from_yaml` ({{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}});
+`CoordinateOptionsImpl::from_yaml` ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}});
+`LayoutOptionsImpl::from_yaml` ({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}); and
+`MeshBlockOptionsImpl::from_yaml` ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}})
+for the boundaries (@sec-ch11-registry). `HydroImpl::reset` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}})
+then re-checks the gravity-work constraints for options built directly: it clears the fixer for non-cell work,
+refuses a fixer with lateral gravity or a periodic $x_1$, applies the ghost and cell guards of the numerics
+switches, and warns when implicit non-cell work has no in-operator path.
 
 ```{python}
 #| label: fig-ch12-yaml-flow
@@ -67,42 +101,56 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| yaml | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `check_keys` | `YAML keys` |
-| gravity | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `YAML keys` |
-| implicit | [`implicit_hydro.cpp:26-98`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/implicit/implicit_hydro.cpp#L26-L98) | `implicit-scheme` | `YAML keys` |
-| eos | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `density_floor` | `YAML keys` |
-| recon | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}} | `shock` | `YAML keys` |
-| riemann | {{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}} | `roe` | `YAML keys` |
-| coord | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `nghost` | `YAML keys` |
-| geometry | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `cartesian` | `YAML keys` |
-| boundary | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `reflecting` | `YAML keys` |
-| guards | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | `YAML keys` |
-| operator | {{< code src/hydro/hydro.cpp HydroImpl::face_work_in_operator >}} | `face_work_in_operator` | `YAML keys` |
-| yamltest | [`test_yaml_keys.cpp:63-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_yaml_keys.cpp#L63-L93) | `TEST` | `YAML keys` |
-| hydrotest | [`test_hydro_options.cpp:195-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_hydro_options.cpp#L195-L258) | `wb_wall_clamp_ships_enabled` | `YAML keys` |
+| dynamics, forcing | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `check_keys` | YAML keys |
+| gravity | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `gravity-work` |
+| implicit | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}} | `implicit-scheme` | `integration/*` |
+| scheme names | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}} | `vic-partial` | `implicit-scheme` |
+| eos | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `density_floor` | `equation-of-state/*` |
+| reconstruction | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}} | `shock` | `reconstruct/*` |
+| riemann | {{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}} | `roe` | `riemann-solver/*` |
+| geometry | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `nghost` | `geometry/*` |
+| layout | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `slab` | `distribute/*` |
+| boundaries | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `reflecting` | `boundary-condition/*` |
+| guards | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `gravity_work_fixer` | `gravity-work-fixer` |
+| operator | {{< code src/hydro/hydro.cpp HydroImpl::face_work_in_operator >}} | `face_work_in_operator` | `implicit-scheme` |
 
-: Pinned implementation anchors. {#tbl-ch12-yaml-code}
+: Implementation sites for the YAML selection. {#tbl-ch12-yaml-code}
 
-Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
-The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+1. Parse the recognized blocks, each with its key check, and instantiate the component options. The anchor
+   `check_keys` is in {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}.
+2. Refuse a fixer with non-cell work at parse time. The anchor `gravity_work` is in
+   {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}.
+3. Reset the hydro module: normalize the fixer, apply the remaining guards, warn on implicit non-cell work
+   without an operator path. The anchor `gravity_work_fixer` is in
+   {{< code src/hydro/hydro.cpp HydroImpl::reset >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_hydro_options.<b>`, `test_yaml_keys.<b>` | known/default keys and invalid choices | exact booleans and exceptions | source anchors in the verification catalogue |
-| `test_implicit_options_type_python` | implicit type contract | integer/string and exception checks | registration [`CMakeLists.txt:206-277`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L206-L277) |
+| `test_hydro_options.<b>` | `wb-wall-clamp` ships enabled and can be turned off; unsupported implicit schemes, removed and unknown forcing keys and unknown dynamics keys are refused | exact booleans; expected exceptions | the test |
+| `test_yaml_keys.<b>` | the test card loads, and every recognized block refuses an unknown key with the key's path in the message | exact string containment | the test |
+| `test_implicit_options_type_python` | schemes 0, 1 and 9 name `none`, `vic-partial` and `vic-full`; scheme 5 is refused | exact strings; expected error | the script |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-yaml-tests}
 
+The hydro-options assertions are
+{{< code tests/test_hydro_options.cpp hydro_options.wb_wall_clamp_ships_enabled >}},
+{{< code tests/test_hydro_options.cpp hydro_options.reject_unsupported_implicit_scheme >}},
+{{< code tests/test_hydro_options.cpp hydro_options.reject_removed_and_unknown_forcing_keys >}} and
+{{< code tests/test_hydro_options.cpp hydro_options.reject_unknown_dynamics_keys >}}; the key-refusal helper is
+`expect_refused` ({{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}}) with the card test
+{{< code tests/test_yaml_keys.cpp yaml_keys.the_card_itself_loads >}}; the implicit names are checked in
+{{< code tests/test_implicit_options_type.py main >}}.
+
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
-Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Individual keys have tests, but the Cartesian product of every YAML value and study switch is not covered.
-Use @sec-ch12-matrix to distinguish constrained combinations from missing numerical evidence.
+Individual keys have tests, but the Cartesian product of every YAML value and study switch is not covered. Use
+@sec-ch12-matrix to distinguish constrained combinations from missing numerical evidence.
 
 The complete switch inventory is @sec-ch12-matrix.
 :::

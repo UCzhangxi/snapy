@@ -1,47 +1,63 @@
 ## Generated macros and compile definitions (`configure.h`) {#sec-ch12-macros}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: pinned code below; frozen outline section 12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 12.2; configure.h.in; cmake/parameters.cmake; cmake/compilers.cmake; CMakeLists.txt; src/CMakeLists.txt;
+         src/layout/layout.cpp; tests/test_process_group.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default: **generated**. CMake generates the macro interface used to select compiled readers. No runtime environment assignment can add a
-backend that was excluded at compile time. This layer has no numerical order.
+**Purpose.** N/A: `configure.h` fixes, at configure time, which backend, device and output readers are
+compiled; a run can only select among those.
+**Data.** In: the CMake options of @sec-ch12-build. Out: one generated header of macros and two path
+constants, included by every translation unit.
+**Placement.** Configure time (`configure_file`), before compilation.
+**Activation.** Always generated; each macro follows its option (`USE_UCX` or `NOT_USE_UCX`, `USE_CUDA` or
+`NOT_USE_CUDA`, `NETCDFOUTPUT` or `NO_NETCDFOUTPUT`, `PNETCDFOUTPUT` or `NO_PNETCDFOUTPUT`, `NMASS`).
+**Guarantee / limits.** The selectable set at run time is contained in the compiled set; a complement macro
+documents an excluded feature and supplies no fallback.
+**Evidence.** `test_process_group.<b>`: the default backend equals the platform's compiled default
+({{< code tests/test_process_group.cpp LayoutOptions.DefaultsToPlatformCommunicationBackend >}}, exact string);
+check `[C7]` of `configuration_check.py`; no build was run for this chapter.
 :::
 
 | definition | producer | reader or role |
 |---|---|---|
-| `USE_C10D_GLOO` | always defined | no source reader found; not a backend choice |
-| `USE_UCX` / `NOT_USE_UCX` | UCX option | process-group implementation and platform default |
-| `USE_CUDA` / `NOT_USE_CUDA` | CUDA option | mesh/device dispatch and test availability |
-| `NETCDFOUTPUT` / `NO_NETCDFOUTPUT` | NETCDF option | output implementation |
-| `PNETCDFOUTPUT` / `NO_PNETCDFOUTPUT` | PNETCDF option | parallel output implementation |
-| `NMASS` | cache value | legacy indices; use zero |
-| `DISPATCH_MACRO` | nvcc detection | host/device annotation under nvcc, empty otherwise |
-| `KINTERA_ROOT_DIR`, `HARP_ROOT_DIR` | configure source directory | no source reader found |
-| `_GLIBCXX_USE_CXX11_ABI` | Torch probe | all compiled translation units |
-| `HAVE_AVX512_CPU_DEFINITION`, `HAVE_AVX2_CPU_DEFINITION` | non-Apple compiler setup | Torch headers |
-| `COMMUX_WITH_CUDA_RUNTIME` | CUDA with UCX | commux CUDA integration |
+| `USE_C10D_GLOO` | always defined | no reader in the sources; not a backend choice |
+| `USE_UCX` or `NOT_USE_UCX` | the `UCX` option | process-group implementation and the platform default backend |
+| `USE_CUDA` or `NOT_USE_CUDA` | the `CUDA` option | device dispatch and test availability |
+| `NETCDFOUTPUT` or `NO_NETCDFOUTPUT` | the `NETCDF` option | output implementation |
+| `PNETCDFOUTPUT` or `NO_PNETCDFOUTPUT` | the `PNETCDF` option | parallel output implementation |
+| `NMASS` | the cache value | legacy index layout; must stay zero |
+| `DISPATCH_MACRO` | nvcc detection | `__host__ __device__` under nvcc, empty otherwise |
+| `KINTERA_ROOT_DIR`, `HARP_ROOT_DIR` | the configure directories | path constants; no reader in the sources |
+| `_GLIBCXX_USE_CXX11_ABI` | the Torch probe | every compiled translation unit |
+| `HAVE_AVX512_CPU_DEFINITION`, `HAVE_AVX2_CPU_DEFINITION` | the compiler setup | Torch headers |
+| `COMMUX_WITH_CUDA_RUNTIME` | `CUDA` together with UCX | the commux CUDA sidecar |
 
+: Generated definitions at the pin. {#tbl-ch12-macros-definitions}
 
 ### Derivation
 
-No physical derivation applies. Macro substitution happens before compilation, so runtime selection is restricted to
-compiled alternatives. The complement macros document an excluded feature rather than implementing a fallback.
-Check line `[C7]` enumerates that containment over four compiled sets and three alternatives: a value is
-selectable at run time exactly when it was compiled, the selectable set never exceeds the compiled one, and it
-never meets the complement, so no complement macro supplies a fallback
-[check `src/snapy_report/ch12/configuration_check.py`, output
-`src/snapy_report/ch12/configuration_check.out`].
+No physical derivation applies. Macro substitution happens before compilation, so a run-time selection is
+restricted to the compiled alternatives, and the complement macros document an excluded feature rather than
+implementing a fallback. Check line `[C7]` enumerates that containment over four compiled sets and three
+alternatives: a value is selectable at run time exactly when it was compiled, the selectable set never exceeds
+the compiled one, and it never meets the complement [check `src/snapy_report/ch12/configuration_check.py`,
+output `src/snapy_report/ch12/configuration_check.out`].
 
 ### Numerical method
 
-Generation uses `configure_file`; readers then compile the available path. ABI and backend selection must agree across
-linked libraries. These definitions have no cell location, ghost stencil or RK-stage dependence.
+Generation uses `configure_file` on {{< code configure.h.in >}}; readers then compile the available path. The
+ABI and backend selection must agree across the linked libraries. These definitions have no cell location,
+ghost stencil or RK-stage dependence. The one run-time consumer this chapter follows is `default_backend`
+({{< code src/layout/layout.cpp default_backend >}}), which returns `ucx` under `USE_UCX` except on Darwin and
+`gloo` otherwise.
 
 ```{python}
 #| label: fig-ch12-macros-flow
@@ -56,34 +72,42 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| macro | [`configure.h.in:1-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/configure.h.in#L1-L28) | `DISPATCH_MACRO` | `configure.h` |
-| params | [`parameters.cmake:1-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/parameters.cmake#L1-L46) | `NMASS` | `configure.h` |
-| compiler | [`compilers.cmake:4-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/compilers.cmake#L4-L35) | `HAVE_AVX2_CPU_DEFINITION` | `configure.h` |
-| abi | [`CMakeLists.txt:33-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L33-L47) | `_GLIBCXX_USE_CXX11_ABI` | `configure.h` |
-| sidecar | [`CMakeLists.txt:78-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L78-L106) | `COMMUX_WITH_CUDA_RUNTIME` | `configure.h` |
-| layoutdefault | {{< code src/layout/layout.cpp default_backend >}} | `default_backend` | `configure.h` |
+| template | {{< code configure.h.in >}} | `DISPATCH_MACRO` | `configure.h` |
+| params | {{< code cmake/parameters.cmake >}} | `NMASS` | `configure.h` |
+| compiler | {{< code cmake/compilers.cmake >}} | `HAVE_AVX2_CPU_DEFINITION` | `configure.h` |
+| abi | {{< code CMakeLists.txt >}} | `_GLIBCXX_USE_CXX11_ABI` | `configure.h` |
+| sidecar | {{< code src/CMakeLists.txt >}} | `COMMUX_WITH_CUDA_RUNTIME` | `CUDA` |
+| backend default | {{< code src/layout/layout.cpp default_backend >}} | `default_backend` | `USE_UCX` |
 
-: Pinned implementation anchors. {#tbl-ch12-macros-code}
+: Implementation sites for the generated macros. {#tbl-ch12-macros-code}
 
-Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
-The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+1. Map each option to its macro name in {{< code cmake/parameters.cmake >}}; the anchor `NMASS` is set there
+   when empty.
+2. Substitute the names into {{< code configure.h.in >}}; the anchor `DISPATCH_MACRO` is defined there under
+   nvcc.
+3. Compile the readers; the anchor `default_backend` in {{< code src/layout/layout.cpp default_backend >}}
+   is the one that selects the communication backend from `USE_UCX`.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_process_group.<b>` | platform backend default | exact equality | [`test_process_group.cpp:74-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L186) |
+| `test_process_group.<b>` | with `BACKEND` unset the backend is the platform's compiled default | exact string equality | the test's expected default helper |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-macros-tests}
 
+The assertion is `EXPECT_EQ` in
+{{< code tests/test_process_group.cpp LayoutOptions.DefaultsToPlatformCommunicationBackend >}}, against
+`expected_default_backend` ({{< code tests/test_process_group.cpp expected_default_backend >}}).
+
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
-Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Indirect default-backend tests do not constitute exhaustive preprocessor coverage. The unused definitions are retained
-as code facts, not promises of a public runtime API.
+The backend default test is the only indirect test of the preprocessor layer; there is no exhaustive macro
+coverage. The definitions without a reader are retained as code facts, not as a public run-time API.
 
 The complete switch inventory is @sec-ch12-matrix.
 :::

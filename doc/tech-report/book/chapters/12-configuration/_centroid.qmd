@@ -1,48 +1,63 @@
 ## Spherical cell-to-plain-mean conversion (`SNAP_X1_CENTROID_EXACT`) {#sec-ch12-centroid}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: pinned code below; frozen outline section 12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 12.5; src/coord/x1_centroid.cpp; src/hydro/wb_ref4.cpp; src/hydro/hydro.cpp; src/hydro/hydro_forward.cpp;
+         src/hydro/balance_column.cpp; tests/test_x1_centroid_rest.py; tests/test_x1_seam_split.cpp; tests/CMakeLists.txt
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default: **off**. Enable with `SNAP_X1_CENTROID_EXACT=1`. The conversion acts on spherical-polar x1 inputs and implies WB even on
-Cartesian grids. It inherits the nonzero-gravity three-ghost guard. The five-cell moment solve and six-face pressure
-source remove a measure mismatch; neither is a claim of arbitrary-order time integration.
+**Purpose.** Selects the $r^2$-exact $x_1$ maps on spherical-polar grids: the five-cell conversion of
+$r^2$-weighted cell means to plain means, @eq-ch05-x1cent-conv, and the six-face radial pressure source,
+@eq-ch05-x1cent-source (@sec-ch05-x1cent).
+**Data.** In: the $x_1$ primitives as $r^2 \,\mathrm{d}r$ averages and the six face pressures; out: plain
+means for the $x_1$ reconstruction and the radial pressure acceleration. Only $x_1$ inputs are converted.
+**Placement.** In `HydroImpl::forward`, before the well-balanced $x_1$ reconstruction (the conversion) and in
+the geometric source (the pressure operator), on spherical-polar grids only.
+**Activation.** `SNAP_X1_CENTROID_EXACT`, default off; it turns `SNAP_WB_REF4` on and so inherits the
+three-ghost guard with gravity. `balance_column` accepts only a Cartesian geometry while it is on.
+**Guarantee / limits.** Exact for polynomials of degree four (conversion) and for the quintic pressure
+interpolant (source); unusable stencils return the original means. No conversion exists for gnomonic grids.
+**Evidence.** `test_x1_centroid_rest_python`: a resting spherical column stays balanced to `TOL_ON` =
+$10^{-10}$ with the switch on and is unbalanced above `TOL_OFF` = $10^{-8}$ with it off, for explicit and
+implicit stepping and non-hydrostatic 1 and 0 ({{< code tests/test_x1_centroid_rest.py TOL_ON >}});
+`test_x1_seam_split_x1_centroid.<b>`: a split column matches one block to $10^{-13}$
+({{< code tests/test_x1_seam_split.cpp X1SeamSplit.centroid_exact_split_matches_one_block >}}); check `[C3]` of
+`configuration_check.py`; the ctests were not run at the pin.
 :::
+
+This section keeps the selector and the guards of the $r^2$-exact maps; the conversion weights, the pressure
+operator and their derivation are in @sec-ch05-x1cent and are not repeated here.
 
 ### Derivation
 
-A spherical cell stores $\langle q\rangle_{V^{(1)}_i}=\int r^2q\,\mathrm{d}r/V^{(1)}_i$,
-where radius $r$ is in $\mathrm m$ and $V^{(1)}_i=\int r^2\,\mathrm{d}r$ per unit solid angle is in $\mathrm{m^3}$.
-The x1 reconstruction instead needs $h^{-1}\int q\,\mathrm{d}r$. Choose a quartic polynomial whose five
-$r^2$ cell integrals match five input means, and integrate that polynomial with the plain measure over the target cell.
-Linearity gives five weights; requiring equality for degrees zero through four fixes them uniquely.
-`x1_plain_mean_stencils` forms and solves those five equations ([`x1_centroid.cpp:104-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L182)).
-For pressure $p$ in Pa, integration by parts gives the radial pressure acceleration density
-
-$$
--\frac1{V^{(1)}_i}\int_{r_{i-1/2}}^{r_{i+1/2}}r^2\partial_1p\,\mathrm{d}r
-=-\frac{\Delta_i[r^2p]}{V^{(1)}_i}+
-\frac2{V^{(1)}_i}\int_{r_{i-1/2}}^{r_{i+1/2}}rp\,\mathrm{d}r.
-$$ {#eq-ch12-centroid-pressure}
-
-The surface term is the pressure flux. `x1_pressure_source_stencils` integrates the second term from the quintic
-through six face pressures ([`x1_centroid.cpp:184-229`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L229)). Four-point quadrature integrates the degree-six product exactly.
-The polynomial identities are exact; general smooth fields retain interpolation truncation.
-`configuration_check.py` verifies the five moments and the integrated pressure identity.
-Source derivation: `docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §2–4.
+See @sec-ch05-x1cent for the moment solve and the integration by parts behind the pressure source. The
+chapter's check line `[C3]` re-derives both independently: five $r^2$ moments of degree zero to four are
+matched by the conversion, and the six-face pressure identity holds exactly for the quintic
+[check `src/snapy_report/ch12/configuration_check.py`, output
+`src/snapy_report/ch12/configuration_check.out`].
 
 ### Numerical method
 
-Five-cell windows move inside the owned region at a clamped wall. Ghost corrections are mirrored, odd for radial
-velocity at a reflecting wall; seam ghost rows are replaced by the neighbor's own converted values. The pressure
-operator needs six faces, with two neighbor faces beyond a seam. Unusable stencils return the original means.
-Only x1 inputs are converted; lateral fluxes retain the original primitives. The spherical pressure operator is also
-used for the non-hydrostatic split correction. `balance_column` accepts only Cartesian geometry when XC is on.
+The switch is read once per process by `x1_centroid_exact_enabled`
+({{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}}), and `wb_ref4_enabled`
+({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}) returns true whenever it does, so the fourth-order
+reference and its guard (@sec-ch12-wb-reference) come with it, on any grid. The conversion itself acts only when
+the coordinate type is `spherical-polar`: `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}})
+builds the stencils once per grid with `x1_plain_mean_stencils`
+({{< code src/coord/x1_centroid.cpp x1_plain_mean_stencils >}}) and reads the plain means with `x1_plain_means`
+({{< code src/coord/x1_centroid.cpp x1_plain_means >}}), with odd ghost corrections for the radial velocity at a
+reflecting wall and the neighbour's converted rows past a seam; the pressure source uses
+`x1_pressure_source_stencils` ({{< code src/coord/x1_centroid.cpp x1_pressure_source_stencils >}}) and
+`x1_pressure_source` ({{< code src/coord/x1_centroid.cpp x1_pressure_source >}}), which need six faces. A
+stencil that is not usable (too few cells, or too few owned cells next to a clamped wall) returns the original
+means. `balance_column` ({{< code src/hydro/balance_column.cpp balance_column >}}) refuses any geometry but
+`cartesian` while the switch is on, because it balances the declared Cartesian column.
 
 ```{python}
 #| label: fig-ch12-centroid-flow
@@ -57,37 +72,48 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| xcflag | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
-| xcmean | [`x1_centroid.cpp:104-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L182) | `x1_plain_means` | `SNAP_X1_CENTROID_EXACT` |
-| xcpressure | [`x1_centroid.cpp:184-229`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L229) | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
-| xcrun | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wx1` | `SNAP_X1_CENTROID_EXACT` |
-| xcnh | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
-| wbflag | [`wb_ref4.cpp:83-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L83-L118) | `wb_ref4_enabled` | `SNAP_X1_CENTROID_EXACT` |
-| guards | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | `SNAP_X1_CENTROID_EXACT` |
-| balance | {{< code src/hydro/balance_column.cpp balance_column >}} | `TORCH_CHECK` | `SNAP_X1_CENTROID_EXACT` |
+| flag | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| implies | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `wb_ref4_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| stencils | {{< code src/coord/x1_centroid.cpp x1_plain_mean_stencils >}} | `usable` | `SNAP_X1_CENTROID_EXACT` |
+| means | {{< code src/coord/x1_centroid.cpp x1_plain_means >}} | `x1_plain_means` | `SNAP_X1_CENTROID_EXACT` |
+| source | {{< code src/coord/x1_centroid.cpp x1_pressure_source >}} | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
+| call | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wx1` | `SNAP_X1_CENTROID_EXACT` |
+| guard | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `nghost` | `SNAP_WB_REF4` |
+| balance | {{< code src/hydro/balance_column.cpp balance_column >}} | `cartesian` | `SNAP_X1_CENTROID_EXACT` |
 
-: Pinned implementation anchors. {#tbl-ch12-centroid-code}
+: Implementation sites for the centroid selector. {#tbl-ch12-centroid-code}
 
-Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
-The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+1. Read the switch once; WB follows. The anchor `x1_centroid_exact_enabled` is in
+   {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}}.
+2. On a spherical-polar grid, convert the $x_1$ inputs to plain means before the reconstruction. The anchor
+   `wx1` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+3. Use the six-face pressure operator for the radial source. The anchor `x1_pressure_source` is in
+   {{< code src/coord/x1_centroid.cpp x1_pressure_source >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_x1_centroid_rest_python` (CUDA variant registered) | force balance with implicit 0/1 and non-hydrostatic 0/1 | on below $10^{-10}$; off above $10^{-8}$ near origin | [`test_x1_centroid_rest.py:37-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_centroid_rest.py#L37-L44) |
-| `test_x1_seam_split_x1_centroid.<b>` | split/unsplit comparison | relative gap at most $10^{-13}$ | [`test_x1_seam_split.cpp:232-297`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L232-L297) |
+| `test_x1_centroid_rest_python` (CUDA variant registered) | force balance of a resting spherical column, implicit scheme 0 and 1, non-hydrostatic 1 and 0 | on below $10^{-10}$; off above $10^{-8}$ | `TOL_ON`, `TOL_OFF` |
+| `test_x1_seam_split_x1_centroid.<b>` (CUDA and two-rank variants registered) | a split column matches one block | relative gap at most $10^{-13}$ | the test |
+| `test_balance_column_x1_centroid.<b>`, `test_face_floor_x1_centroid.<b>` | the balance and face-floor checks hold with the implied reference | as in their base tests | `tests/CMakeLists.txt` |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-centroid-tests}
 
+The thresholds are `TOL_ON` and `TOL_OFF` ({{< code tests/test_x1_centroid_rest.py TOL_ON >}},
+{{< code tests/test_x1_centroid_rest.py TOL_OFF >}}) applied in `main`
+({{< code tests/test_x1_centroid_rest.py main >}}); the seam assertion is
+{{< code tests/test_x1_seam_split.cpp X1SeamSplit.centroid_exact_split_matches_one_block >}}; the switched arms
+are registered in {{< code tests/CMakeLists.txt >}}.
+
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
-Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-XC does not provide a gnomonic measure conversion. XC with face work, radial exact or FC needs new runtime evidence.
-Cartesian activation still changes the reference through WB; it is not a universal no-op.
+XC provides no gnomonic measure conversion. XC together with face work, RE or FC has no registered numerical
+evidence. On a Cartesian grid the switch still changes the reference through WB; it is not a no-op there.
 
 The complete switch inventory is @sec-ch12-matrix.
 :::
