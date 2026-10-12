@@ -98,10 +98,10 @@ A moist initial condition needs one more loop. The projection holds the mass fra
 saturation adjustment moves the column off the balance again. The bryan example's `balance-ic` therefore alternates
 saturation and projection until saturation no longer moves the projected column (relative density change at most
 $4\epsilon_{\mathrm{mach}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `balance-ic-passes`.
-@fig-ch05-balcol-passes shows the passes of an earlier run, not repeated at the pin.[^ch05-bal-fig]
+@fig-ch05-balcol-passes shows the passes at the pin.[^ch05-bal-fig]
 
-[^ch05-bal-fig]: Data `src/snapy_report/ch05/data/bryan_balance_ic.json`, from `tests/run_bryan_balance_ic.cmake` on
-    `examples/bryan.cpp` in a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank.
+[^ch05-bal-fig]: Data `src/snapy_report/ch05/data/bryan_balance_ic.json`, from `ctest -V -R 'test_bryan_balance_ic'` in the build directory
+    (`tests/run_bryan_balance_ic.cmake` on `examples/bryan.cpp`, default case) of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
 
 ```{python}
 #| label: fig-ch05-balcol-passes
@@ -164,17 +164,16 @@ later run, the same uniform classification in every block, and the saturation lo
 : Tests of `balance_column`. {#tbl-ch05-balcol-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** Not run at the pin (**pending: a pinned ctest run**); the values of an earlier run are in the
-footnote.[^ch05-bal-run] The fixed point is checked by `[C15]`.
+**Evidence.** All pass at the pin.[^ch05-bal-run] The moist test prints audit residual $3.357\times10^{-1}$ before and
+$8.896\times10^{-11}$ after, in 13 sweeps, and $\max\lvert v_1\rvert/(g\Delta t)$ after one step $2.57\times10^{-11}$
+balanced against $2.05\times10^{-2}$ marched, identical in all three arms. The bryan default case stops after pass 6
+with saturation changes falling from $8.75\times10^{-8}$ to $1.33\times10^{-14}$ (@fig-ch05-balcol-passes). The fixed
+point is checked by `[C15]`.
 **Coverage.** CPU; the `_cuda` cases exist and were not run (**pending: a CUDA run at the pin**); no multi-rank case
 (the function works on one column).
 :::
 
-[^ch05-bal-run]: In a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1
-    rank, all passed; not re-measured. The moist test prints audit residual $3.357\times10^{-1}$ before and
-    $8.896\times10^{-11}$ after, in 13 sweeps, and $\max\lvert v_1\rvert/(g\Delta t)$ after one step
-    $2.58\times10^{-11}$ balanced against $2.05\times10^{-2}$ marched, identical in all three arms. The bryan
-    default case stops after pass 6 with saturation changes falling from $8.76\times10^{-8}$ to $1.39\times10^{-14}$.
+[^ch05-bal-run]: `ctest -V -R 'test_balance_column|test_bryan_balance_ic'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
 
 ### Limits
 
