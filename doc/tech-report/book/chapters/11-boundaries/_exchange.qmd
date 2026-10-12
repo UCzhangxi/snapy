@@ -1,43 +1,67 @@
 ## Supply ghosts through layout exchange (`SyncOptions`) {#sec-ch11-exchange}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
+sources: OUTLINE.md 11.8; src/layout/layout.hpp; src/layout/layout.cpp; src/layout/slab_layout.cpp;
+         src/layout/cubed_sphere_layout.cpp; src/coord/gnomonic_equiangle.cpp; src/hydro/hydro_forward.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Use layout exchange for seams and periodic neighbours. Cubed-sphere field exchange can interpolate and rotate vector components; raw limiter exchange avoids interpolation.
-Default: interpolate false; skip_corner true.
-Order: exact discrete operation or local derivation below; coupled solver order not measured.
+**What it does.** Fills the ghosts of a layout-owned face from the neighbouring block: a raw copy on a slab
+layout, and on the cubed sphere an optional interpolation of the received strip followed by a rotation of
+the vector components into the receiving panel's frame; corners are synthesized from the edge strips.
+**Switch.** `SyncOptions`: `interpolate` (default off), `skip_corner` (default on), `type`, `dim`,
+`intra_panel_only`, `cross_panel_only`.
+**Requires / implies / turns off.** The hydro and scalar state exchanges set `interpolate` on; the donor
+factor of the positivity limiter is exchanged raw.
+**Order.** An exact copy on matched cells; the corner average preserves constants; no seam order is measured.
+**Defining equation.** @eq-ch11-exchange-corner.
 :::
+
+This is a pointer section: the interpolation weights and the coordinate transforms belong to @sec-ch03, and
+the communication scheduling, buffers and tags belong to @sec-ch14. What is derived here is the one identity
+the layout itself implements, the corner synthesis, together with the ownership facts the boundary chapter
+relies on: which exchanges interpolate, which do not, and when the corners are filled.
 
 ### Derivation
 
-This is a pointer section: interpolation weights and coordinate transforms belong to the geometry
-chapter, and communication scheduling belongs to the parallel chapter. Here the directly implemented corner
-identity is the arithmetic average of two edge strips. For generic values $q$ already in the destination frame,
+The directly implemented corner identity is the arithmetic average of two edge strips. For generic values
+$q$ already in the destination frame,
 
 $$
-q^{\mathrm{corner}}=\tfrac12(q^{\mathrm{edge1}}+q^{\mathrm{edge2}}).
+q^{\mathrm{corner}}=\tfrac12\bigl(q^{\mathrm{edge1}}+q^{\mathrm{edge2}}\bigr).
 $$ {#eq-ch11-exchange-corner}
 
-`fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}) implements @eq-ch11-exchange-corner by broadcasting adjacent strips. The weights
-sum to one, so constants are preserved exactly in real arithmetic; this does not prove a two-dimensional
-interpolation order. C4 checks this constant-preservation identity and records why nonconstant edge values
-need not reconstruct the corner value.
-
-The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
-`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+`LayoutImpl::fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}) implements
+@eq-ch11-exchange-corner for the four corners of the tangential plane by broadcasting the end rows of the
+two adjacent exchanged strips. The weights sum to one, so constants are preserved exactly in real arithmetic;
+this does not prove a two-dimensional interpolation order. Check C4 checks the constant-preservation identity
+and records why nonconstant edge values need not reconstruct the corner value [check
+`src/snapy_report/ch11/boundary_check.py`, output `src/snapy_report/ch11/boundary_check.out`]. The checks
+do not call a snapy kernel.
 
 ### Numerical method
 
-For subdivided cubed-sphere panels, interpolated exchange first completes raw intra-panel exchange,
-then cross-panel exchange, and finally synthesizes skipped corners. This ensures the widened panel donor
-strip contains its tangential halo. `interp_ghost` widens the strip with `cs_interp_margin`; deserialization
-interpolates when requested and rotates conserved or primitive vector components. The hydro donor factor
-uses `interpolate(false)` with scalar type. This is a data-ownership map; no measured seam order is claimed.
+`LayoutImpl::finalize` ({{< code src/layout/layout.cpp LayoutImpl::finalize >}}) waits for the
+point-to-point work, deserializes the received strips, and calls `fill_corners` once per exchange when
+`skip_corner` is on and the exchange is not one half of a split cubed-sphere sync. On the cubed sphere the
+interpolated exchange of a subdivided panel runs in two halves, intra-panel first and cross-panel second, so
+that the widened donor strip of a panel seam already holds its tangential halo. `CubedSphereLayoutImpl::deserialize`
+({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}) writes the received
+strip, calls the coordinate's `interp_ghost` when `interpolate` is on, and then rotates the three velocity
+or momentum rows for `kConserved` and `kPrimitive` input; `kScalar` input is copied as is.
+`GnomonicEquiangleImpl::interp_ghost` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::interp_ghost >}})
+interpolates the strip widened by `cs_interp_margin` along the panel edge. The hydro state is exchanged
+with `interpolate` on in the stage and initialization exchanges of @sec-ch11-timing; the donor factor of the
+flux positivity limiter is exchanged raw, `interpolate(false)` with scalar type, in `HydroImpl::forward`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), because the donor of a seam face is the
+neighbour's edge cell and an interpolated ghost is not its factor. This is a data-ownership map; no measured
+seam order is claimed.
 
 @fig-ch11-exchange-stencil illustrates the operations, with labelled roles independent of colour.
 
@@ -54,33 +78,42 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| sync | {{< code src/layout/layout.hpp SyncOptions >}} | `skip_corner` | See Summary |
-| advance | [`meshblock.cpp:545-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L572) | `exchange_ghost_zones` | See Summary |
-| panel | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}} | `interp_ghost` | See Summary |
-| interp | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::interp_ghost >}} | `interp_ghost` | See Summary |
-| average | {{< code src/layout/layout.cpp LayoutImpl::fill_corners >}} | `fill_corners` | See Summary |
-| raw | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interpolate` | See Summary |
-| wrap | [`slab_layout.cpp:41-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L41-L70) | `periodic_x` | See Summary |
+| sync | {{< code src/layout/layout.hpp SyncOptions >}} | `skip_corner` | `SyncOptions` |
+| finalize | {{< code src/layout/layout.cpp LayoutImpl::finalize >}} | `fill_corners` | `skip_corner` |
+| block | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `interpolate` | none |
+| panel | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}} | `interp_ghost` | `interpolate` |
+| interp | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::interp_ghost >}} | `interp_ghost` | `interpolate` |
+| average | {{< code src/layout/layout.cpp LayoutImpl::fill_corners >}} | `fill_corners` | `skip_corner` |
+| raw | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interpolate` | none |
+| wrap | {{< code src/layout/slab_layout.cpp SlabLayoutImpl::neighbor_rank >}} | `periodic_x` | layout periodic flags |
 
 : Implementation sites for exchange. {#tbl-ch11-exchange-code}
 
-1. Read sync flags; defaults do not interpolate and do skip corners. The anchor `skip_corner` is in {{< code src/layout/layout.hpp SyncOptions >}}.
-2. For the subdivided interpolated panel path, finish intra-panel exchange before packing cross-panel donors. The anchor `exchange_ghost_zones` is in [`meshblock.cpp:545-572`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L545-L572).
-3. Deserialize, interpolate when selected, transform vector components, and fill synthetic corners when requested. The anchor `interp_ghost` is in {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}.
-4. Keep raw scalar donor-factor exchange separate from interpolated hydro exchange. The anchor `interpolate` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+1. Read the sync flags; the defaults do not interpolate and do skip corners. The anchor `skip_corner` is in
+   {{< code src/layout/layout.hpp SyncOptions >}}.
+2. For the subdivided interpolated panel path, finish the intra-panel exchange before packing the
+   cross-panel donors. The anchor `interpolate` is in
+   {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}.
+3. Deserialize, interpolate when selected, transform the vector components, and synthesize the corners once
+   per exchange. The anchor `interp_ghost` is in
+   {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}; the anchor
+   `fill_corners` is in {{< code src/layout/layout.cpp LayoutImpl::finalize >}}.
+4. Keep the raw scalar donor-factor exchange separate from the interpolated hydro exchange. The anchor
+   `interpolate` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_cubed_sphere_exchange.release` | Subdivided fields match one-block panel | Exact equality | Test constant / assertion |
-| `test_mesh_exchange_python` | Received scalar identifies neighbour | Exact equality | Test constant / assertion |
+| `test_cubed_sphere_exchange.release` | A panel subdivided into blocks exchanges to the same coordinates and density as one block per panel | exact equality | test assertion |
+| `test_mesh_exchange_python` | A received scalar ghost strip identifies its neighbour block | exact equality | test assertion |
 
 : Source-defined assertions for exchange; no runtime results. {#tbl-ch11-exchange-tests}
 
-The assertion anchor `torch::equal` is in [`test_cubed_sphere_exchange.cpp:161-196`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L161-L196).
+The panel assertions are `torch::equal` in
+{{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}.
 
-The assertion anchor `assert` is in [`test_mesh_exchange.py:24-49`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L24-L49).
+The neighbour assertion is the top-level `assert` in {{< code tests/test_mesh_exchange.py >}}.
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
@@ -88,10 +121,12 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The corner average is not the panel-edge interpolation formula. CPU/CUDA equality assertions in the panel
-suite do not establish multi-process coverage. The vertical-velocity exchange suite checks its own
-`ideal_match` criterion ({{< code tests/test_cubed_sphere_vertical_velocity_exchange.py main >}}); no result is claimed without a run. Broader seam flux and positivity
-coverage belongs to the geometry and switch-matrix chapters.
+The corner average is not the panel-edge interpolation formula. The CPU/CUDA equality assertions of the
+panel suite do not establish multi-process coverage. The vertical-velocity exchange suite checks its own
+`ideal_match` criterion ({{< code tests/test_cubed_sphere_vertical_velocity_exchange.py main >}}); no result
+is claimed without a run. Broader seam flux and positivity coverage belongs to @sec-ch03 and
+@sec-ch12-matrix.
 
-Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
+is claimed.
 :::

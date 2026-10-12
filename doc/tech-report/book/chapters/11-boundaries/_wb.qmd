@@ -1,17 +1,36 @@
 ## Keep wall ghosts consistent with the hydrostatic reference (`dynamics/wb-wall-clamp`) {#sec-ch11-wb}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
+sources: OUTLINE.md 11.10; docs/derivations/wb-ref-wall.md@6fbb39750f62b83df096058a4746e77d0a634bc5 section 4;
+         src/hydro/hydro_forward.cpp; src/hydro/hydro.cpp; src/hydro/hydro_ref_x1_impl.h; src/hydro/hydro_options.cpp;
+         src/hydro/wb_ref4.cpp; src/coord/x1_centroid.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-For gravity-driven x1 reconstruction, mirror pressure and density perturbations at physical non-outflow faces. The default reference continues density/pressure using owned cells.
-Default: true.
-Order: exact discrete operation or local derivation below; coupled solver order not measured.
+**What it does.** For the gravity-driven x1 reconstruction, continues the hydrostatic reference past a
+physical x1 wall from the two owned cells next to it instead of repeating the wall cell, and mirrors the
+pressure and density perturbations about that reference at every physical non-outflow x1 face.
+**Switch.** `dynamics/wb-wall-clamp`, default true, for the continuation; the mirror has no switch.
+**Requires / implies / turns off.** Active only on the well-balanced x1 path: nonzero $g_1$, a pressure row,
+an EOS other than shallow water. `SNAP_WB_REF4` (default off; implied by `SNAP_X1_CENTROID_EXACT`) selects
+the fourth-order reference, which takes the same clamp flags.
+**Order.** The continuation removes an $O(h)$ wall bias of the smoothed reference, leaving $O(h^2)$ for smooth
+data on a uniform grid; this is a truncation argument, not a fitted solver order.
+**Defining equation.** @eq-ch11-wb-continuation and @eq-ch11-wb-parity.
 :::
+
+The well-balanced x1 reconstruction of @sec-ch05 subtracts a discretely hydrostatic reference from pressure
+and density, reconstructs only the perturbations, and restores the reference at the faces. Near a wall two
+things must be decided: how the reference itself continues into the ghosts, since its five-point smoothing
+reads two cells past every owned cell, and what perturbation the ghosts carry. This scheme states both
+decisions and the different face predicates they use: the continuation is gated on a physical face, the
+mirror on a physical face that is not outflow.
 
 ### Derivation
 
@@ -31,15 +50,17 @@ $$
 \end{cases}
 $$ {#eq-ch11-wb-continuation}
 
-`hydro_ref_x1_wall_rop` ([`hydro_ref_x1_impl.h:69-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L69-L104)) implements @eq-ch11-wb-continuation, with fallback to $\chi_0$ if the
-computed value is not positive. The first branch linearly continues $\log\chi$, the second $\chi$.
-Expanding the power branch about equal adjacent values gives the same constant and linear terms as the
-second branch; the difference is $O(h^2)$ at fixed $l$. The binomial first moment then cancels the wall's
-$O(h)$ error for smooth data on a uniform grid. This is a truncation argument, not a fitted solver order.
-The reference construction is derived in the well-balanced chapter; the underlying note is
-`docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0` section 4.
-No historical measured values from that note are reused. C7 checks the binomial moments, the repeated-cell
-linear bias and the first-order agreement of the two continuations symbolically.
+`hydro_ref_x1_wall_rop` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}) implements
+@eq-ch11-wb-continuation, with fallback to $\chi_0$ if the computed value is not positive, and
+`hydro_ref_x1_rop_smooth` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}) calls it for
+the stencil points past a clamped end and repeats the wall cell when the end is not clamped. The first branch
+linearly continues $\log\chi$, the second $\chi$. Expanding the power branch about equal adjacent values
+gives the same constant and linear terms as the second branch; the difference is $O(h^2)$ at fixed $l$. The
+binomial first moment then cancels the wall's $O(h)$ error for smooth data on a uniform grid. This is a
+truncation argument, not a fitted solver order. The reference construction is derived in @sec-ch05; the
+underlying note is `docs/derivations/wb-ref-wall.md@6fbb39750f62b83df096058a4746e77d0a634bc5` section 4. No
+measured values from that note are reused. Check C7 checks the binomial moments, the repeated-cell linear
+bias and the first-order agreement of the two continuations symbolically.
 
 The sweep subtracts $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$, then mirrors the perturbations:
 
@@ -50,27 +71,36 @@ p'_{i-l}&=p'_{i+l-1},\\
 \end{aligned}
 $$ {#eq-ch11-wb-parity}
 
-`is_outflow` guards these fills in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, which implements @eq-ch11-wb-parity only at physical non-outflow
-faces. If the cell state matches the discrete reference exactly, both perturbations vanish, their mirrors
-vanish, and a constant-preserving reconstruction returns zero perturbation. Restoring matched reference
-face values therefore adds no perturbation flux residual. The full pressure/gravity cancellation is the
-well-balanced scheme's identity, not a consequence of parity alone. C7 checks zero-perturbation preservation.
-
-The report-only checks are `src/snapy_report/ch11/boundary_check.py`; their current output is
-`src/snapy_report/ch11/boundary_check.out`. They do not call a snapy kernel.
+The well-balanced branch of `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}})
+implements @eq-ch11-wb-parity with a `flip` of the first (last) $n_g$ owned perturbations into the ghosts,
+guarded by `is_outflow` ({{< code src/bc/bc_func.cpp is_outflow >}}) so that it acts only at physical
+non-outflow faces. If the cell state matches the discrete reference exactly, both perturbations vanish,
+their mirrors vanish, and a constant-preserving reconstruction returns zero perturbation. Restoring matched
+reference face values therefore adds no perturbation flux residual. The full pressure/gravity cancellation
+is the well-balanced scheme's identity, not a consequence of parity alone. Check C7 checks the
+zero-perturbation preservation [check `src/snapy_report/ch11/boundary_check.py`, output
+`src/snapy_report/ch11/boundary_check.out`]. The checks do not call a snapy kernel.
 
 ### Numerical method
 
-The well-balanced x1 path requires nonzero x1 gravity, a pressure row and an EOS other than shallow water.
-The old isentropic ghost revision calls are commented out. The optional mass-covariance path uses one-sided
-density derivatives and odd corrected-velocity ghosts at the same physical non-outflow ends.
-Without WB, the gravity path revises reconstructed face pairs instead. Default reference wall clamping
-passes physical-face flags into the kernel; unlike perturbation mirroring, those flags do not exclude outflow.
-The continuation requires owned neighbours; thin-block fallbacks belong to the reference kernel tests.
+The well-balanced x1 path engages when $g_1\ne0$, the state carries a pressure row and the EOS is not
+shallow water; an older isentropic ghost revision at the walls is present only as commented-out code.
+`HydroImpl::_hydro_ref_x1` ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}) passes two flags
+to the reference kernel, one per x1 end, each true when that face is physical and `wb_wall_clamp` is on;
+unlike the perturbation mirror, these flags do not exclude an outflow face. The continuation needs two
+owned cells next to the wall; a block too thin for that is the reference kernel's own case and is covered
+by its tests. The optional mass-covariance path (`SNAP_X1_MASS_COVARIANCE`, default off, read once by
+`HydroImpl::x1_mass_covariance`, {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}}) uses
+one-sided second-order density derivatives in the first and last cell and an odd mirror of the corrected
+velocity, at the same physical non-outflow ends. Without the well-balanced path, the gravity branch
+reconstructs the full state and revises the reconstructed face pairs at the physical ends instead
+(`_revise_x1inner_lr`, {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}}).
 
-The optional reference variant uses `SNAP_WB_REF4`; `SNAP_X1_CENTROID_EXACT` implies that variant.
-Both environment switches default off. This section does not rederive their high-order stencils or assign
-measured wall/seam convergence to them.
+The fourth-order reference variant is selected by `SNAP_WB_REF4` (`wb_ref4_enabled`,
+{{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}), which `SNAP_X1_CENTROID_EXACT` (`x1_centroid_exact_enabled`,
+{{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}}) implies; both environment switches default
+off, and the variant builds its stencils with the same clamp-and-physical flags. This section does not
+rederive their high-order stencils (@sec-ch05) or assign measured wall or seam convergence to them.
 
 @fig-ch11-wb-stencil illustrates the operations, with labelled roles independent of colour.
 
@@ -85,37 +115,44 @@ make_fig()
 
 ### Code
 
-`x1_mass_covariance` reads `SNAP_X1_MASS_COVARIANCE` once, default off, in {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}}.
-
 | what | code link | symbol | switch |
 |---|---|---|---|
-| wboption | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `wb_wall_clamp` | See Summary |
-| wbflags | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wb_x1` | See Summary |
-| wb | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `is_outflow` | See Summary |
-| nonwb | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_revise_x1` | See Summary |
-| ref | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `wall_clamp` | See Summary |
-| wallrop | [`hydro_ref_x1_impl.h:69-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L69-L104) | `hydro_ref_x1_wall_rop` | See Summary |
-| ref4option | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `SNAP_WB_REF4` | See Summary |
-| centroidoption | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `SNAP_X1_CENTROID_EXACT` | See Summary |
+| wboption | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `wb_wall_clamp` | `dynamics/wb-wall-clamp` |
+| wbflags | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wb_x1` | none |
+| wb | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `is_outflow` | none |
+| masscov | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
+| nonwb | {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}} | `_revise_x1inner_lr` | none |
+| ref | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `wall_clamp` | `dynamics/wb-wall-clamp` |
+| wallrop | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}} | `hydro_ref_x1_wall_rop` | `dynamics/wb-wall-clamp` |
+| smooth | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}} | `hydro_ref_x1_rop_smooth` | `dynamics/wb-wall-clamp` |
+| ref4option | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `SNAP_WB_REF4` | `SNAP_WB_REF4` |
+| centroidoption | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `SNAP_X1_CENTROID_EXACT` | `SNAP_X1_CENTROID_EXACT` |
 
 : Implementation sites for wb. {#tbl-ch11-wb-code}
 
-1. Select the gravity/pressure WB branch and construct its reference using physical-face flags. The anchor `wall_clamp` is in {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}.
-2. Subtract the reference and mirror only non-outflow physical-end perturbations. The anchor `is_outflow` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
-3. Apply selected mass-covariance wall treatment, reconstruct, and restore the reference; the non-WB path instead revises face pairs. The anchor `_revise_x1` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+1. Select the gravity/pressure well-balanced branch and build its reference with the physical-face clamp
+   flags. The anchor `wall_clamp` is in {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}.
+2. Subtract the reference and mirror the perturbations only at physical non-outflow ends. The anchor
+   `is_outflow` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+3. Apply the selected mass-covariance wall treatment, reconstruct the perturbations, and restore the
+   reference at the faces; the non-WB path revises the face pairs instead. The anchor `_revise_x1inner_lr`
+   is in {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_wb_ref_wall.release` | Near-wall reference and reconstructed densities | Two-grid slope at least 1.7 | Test constant / assertion |
-| `test_hydro_ref_x1.release` | Wall clamp excludes changed ghost values | Exact equality; off-arm differs | Test constant / assertion |
+| `test_wb_ref_wall.release` | The reference and reconstructed densities at the faces next to the walls converge at second order between two grids | two-grid slope at least $1.7$ | test constant |
+| `test_hydro_ref_x1.release` | With the clamp, changed ghost values leave the interior reference unchanged; without it they do not | exact equality; inequality on the off arm | test assertions |
 
 : Source-defined assertions for wb; no runtime results. {#tbl-ch11-wb-tests}
 
-The assertion anchor `EXPECT_GE` is in [`test_wb_ref_wall.cpp:229-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref_wall.cpp#L229-L264).
+The slope assertion `EXPECT_GE` is in
+{{< code tests/test_wb_ref_wall.cpp WbRefWall.faces_next_to_the_walls_are_second_order >}}.
 
-The assertion anchor `EXPECT` is in [`test_hydro_ref_x1.cpp:217-247`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_hydro_ref_x1.cpp#L217-L247).
+The clamp assertions are in
+{{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts >}}
+and {{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.without_the_clamp_the_ghosts_do_reach_the_interior >}}.
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
@@ -123,11 +160,14 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The reference clamp still receives physical-face flags for outflow ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}); it is incorrect to summarize
-all WB wall operations as excluding outflow. An in-block periodic x1 callback can count as physical here while
-`is_x1_wall` excludes its name ({{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}}). The two-resolution test assertion is not the three-resolution fitted
-order required for a report measurement. Nonuniform-grid wall accuracy and outflow/implicit/WB combinations
-remain unmeasured in this draft. The derivation is restricted to smooth uniform-grid data.
+The reference clamp still receives the physical-face flags for an outflow face
+({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}); it is incorrect to summarize all wall
+operations of this scheme as excluding outflow. An in-block periodic x1 callback counts as physical here
+while `is_x1_wall` ({{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}}) excludes its name. The
+two-resolution test assertion is not the three-resolution fitted order the report requires for a
+measurement. Nonuniform-grid wall accuracy and the outflow/implicit/WB combinations are unmeasured. The
+derivation is restricted to smooth uniform-grid data.
 
-Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result is claimed.
+Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
+is claimed.
 :::
