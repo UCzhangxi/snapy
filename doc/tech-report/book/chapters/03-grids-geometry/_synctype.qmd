@@ -1,7 +1,7 @@
 ## Sync types and the velocity frame at seams (`type`) {#sec-ch03-synctype}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/mesh/meshblock.cpp, src/mesh/mesh.cpp, src/layout/cubed_sphere_layout.cpp, src/coord/cubed_sphere_utils.cpp, src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, tests/test_coordinate.cpp
 status: draft
 -->
@@ -43,13 +43,17 @@ $$ {#eq-ch03-synctype-matrix}
 with $\mathsf G$ the lowering of @eq-ch03-gnomonic-lower acting on $(v_2, v_3)$ and $\mathsf R$ the panel-to-spherical
 rotation (local notation). For a primitive strip $\mathsf G$ is left out. The matrix is built column by column by
 transforming the three unit vectors, in `cs_velocity_transform_matrix` ({{< code src/coord/cubed_sphere_utils.cpp cs_velocity_transform_matrix >}}).
-Each factor is exact; the composition is a change of basis and loses nothing but round-off. Check line `[C14]`
+Each factor is exact; the composition is a change of basis and loses nothing but round-off. The check
 builds $\mathsf G$ from the gnomonic angle at four ghost positions and $\mathsf R$ at four rotation angles and
 forms both matrices of @eq-ch03-synctype-matrix: the round trip
-$\mathsf M^{\to\mathrm{panel}}\mathsf M^{\to\mathrm{sph}}$ departs from the identity by at most
-$2.2\times10^{-16}$, the primitive strip, which leaves $\mathsf G$ out, by $1.1\times10^{-16}$, and
-$\det\mathsf G - \sin^2\psi$ is exactly zero, so $\mathsf G$ is invertible away from a pole
-[check `src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`].
+$\mathsf M^{\to\mathrm{panel}}\mathsf M^{\to\mathrm{sph}}$ departs from the identity by round-off only, for the
+conserved and for the primitive strip, which leaves $\mathsf G$ out, within the check's threshold, and
+$\det\mathsf G - \sin^2\psi$ is exactly zero, so $\mathsf G$ is invertible away from a pole (`[C14]`).[^st-c14]
+
+[^st-c14]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C14]`; a numpy port of `cs_velocity_transform_matrix` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0. The two round-trip deviations
+    are round-off of a few products of order-one entries and are read against the check's threshold, not as
+    values.
 
 ### Numerical method
 
@@ -113,8 +117,8 @@ In step order (@tbl-ch03-synctype-code):
 : Tests of the sync types. C++ entries carry the build suffix (`.release`). {#tbl-ch03-synctype-tests}
 
 The matrix case is `cached_cubed_sphere_velocity_matrices_match_direct` ({{< code tests/test_coordinate.cpp DeviceTest.cached_cubed_sphere_velocity_matrices_match_direct >}}); it
-runs on CPU and CUDA in float32 and float64 through `DeviceTest`. Their pass status at the pin was not run for this
-chapter (missing evidence).
+runs on CPU and CUDA in float32 and float64 through `DeviceTest`. They were not run for this chapter at the pin
+(missing evidence).
 
 ### Limits
 

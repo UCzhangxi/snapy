@@ -1,7 +1,7 @@
 ## Layouts and rank maps (`distribute.layout`) {#sec-ch03-layouts}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/layout/layout.hpp, src/layout/layout.cpp, src/layout/slab_layout.cpp, src/layout/cubed_layout.cpp, src/layout/connectivity.cpp, src/layout/connectivity.hpp, src/layout/cubed_sphere_layout.hpp, src/layout/cubed_sphere_layout.cpp, src/mesh/meshblock_options.cpp, src/mesh/mesh.cpp, tests/run_exchange_decomp.py
 status: draft
 -->
@@ -33,7 +33,7 @@ The rank maps are definitions, not approximations; the derivation states them. W
 (or $p_x\times p_y\times p_z$) blocks, rank $\rho$ is the $\rho$-th valid point of the Morton curve: the codes
 $0, 1, 2, \dots$ are decoded with $r_x$ the even bits and $r_y$ the odd bits (three interleaved bit sets in 3-D), codes
 that fall outside the block grid are skipped, and the $\rho$-th surviving code is the location of rank $\rho$,
-in `build_zorder_coords2` ([`connectivity.cpp:28-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/connectivity.cpp#L28-L61)), with the decoder `morton_decode2`
+in `build_zorder_coords2` ({{< code src/layout/connectivity.cpp build_zorder_coords2 >}}), with the decoder `morton_decode2`
 ({{< code src/layout/connectivity.hpp morton_decode2 >}}). On the cubed sphere the global rank of the block at Morton rank $\rho_{\mathrm{f}}$
 on face $f$ is face-major, and with $b$ blocks per process a block's rank splits as
 
@@ -55,8 +55,11 @@ so ({{< code src/layout/cubed_sphere_layout.cpp CS_FACE_EDGES >}}). A corner ste
 on the panel when it can in `neighbor_rank` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::neighbor_rank >}}). Every map here is exact.
 
 ::: {.callout-important title="Check"}
-`geometry_check.py`, line `[C10]` of `geometry_check.out`: the Morton order of a $4\times4$ block grid, exact.
+The Morton order of a $4\times4$ block grid is checked exactly (`[C10]`).[^lay-c10]
 :::
+
+[^lay-c10]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C10]`; a numpy port of `build_zorder_coords2` and its decoder at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -83,13 +86,13 @@ make_fig()
 | options and block-to-process maps | {{< code src/layout/layout.hpp LayoutOptionsImpl >}} | `blocks_per_process` | `distribute` |
 | YAML card | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `from_yaml` | `layout`, `nb1`-`nb3` |
 | layout type | {{< code src/layout/layout.cpp LayoutImpl::create >}} | `create` | `layout` |
-| slab | [`slab_layout.cpp:10-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L10-L68) | `neighbor_rank` | `layout: slab` |
-| cubed | [`cubed_layout.cpp:10-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_layout.cpp#L10-L78) | `neighbor_rank` | `layout: cubed` |
-| Morton order | [`connectivity.cpp:28-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/connectivity.cpp#L28-L61) | `build_zorder_coords3` | none |
+| slab | {{< code src/layout/slab_layout.cpp SlabLayoutImpl::neighbor_rank >}} | `neighbor_rank` | `layout: slab` |
+| cubed | {{< code src/layout/cubed_layout.cpp CubedLayoutImpl::neighbor_rank >}} | `neighbor_rank` | `layout: cubed` |
+| Morton order | {{< code src/layout/connectivity.cpp build_zorder_coords3 >}} | `build_zorder_coords3` | none |
 | cubed-sphere setup | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_initialize >}} | `_initialize` | `layout: cubed-sphere` |
 | edge stepping | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_step_one >}} | `_step_one` | none |
 | periodic flags | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_x` | `boundary-condition` |
-| blocks per process | [`mesh.cpp:210-240`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L240) | `blocks_per_process` | `distribute` |
+| blocks per process | {{< code src/mesh/mesh.cpp MeshOptionsImpl::from_yaml >}} | `blocks_per_process` | `distribute` |
 
 : Code map of the layouts. {#tbl-ch03-layouts-code}
 
@@ -97,8 +100,9 @@ In step order (@tbl-ch03-layouts-code):
 
 1. `from_yaml` reads `layout` (default `slab`), `nb3` into `py`, `nb2` into `px`, `nb1` into `pz`; `backend` is an
    accepted but dead key, read from the `BACKEND` environment variable instead ({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}).
-2. `Mesh` reads `blocks_per_process` (default 1) and sets the world size to processes times blocks
-   ([`mesh.cpp:210-240`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L240)).
+2. `MeshOptionsImpl::from_yaml` reads `blocks_per_process` (default 1)
+   ({{< code src/mesh/mesh.cpp MeshOptionsImpl::from_yaml >}}), and `MeshImpl::reset` sets the world size to
+   processes times blocks ({{< code src/mesh/mesh.cpp MeshImpl::reset >}}).
 3. `slab` refuses a `pz` other than 1 with "pz must be 1 for slab layout" ({{< code src/layout/slab_layout.cpp SlabLayoutImpl::_initialize >}});
    `cubed-sphere` refuses a `pz` other than 1 and `px` unequal to `py` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_initialize >}});
    for any other layout name `create` stops with "Unsupported layout type" ({{< code src/layout/layout.cpp LayoutImpl::create >}}).
@@ -119,9 +123,10 @@ In step order (@tbl-ch03-layouts-code):
 `test_exchange_decomp` runs `test_exchange` under `torchrun` on gloo in the three cases of `cases`
 ({{< code tests/run_exchange_decomp.py main >}}); the comparison is `ghosts_match_expected`
 ({{< code tests/test_exchange.cpp ghosts_match_expected >}}) on the cubed-sphere deck `test_exchange.yaml`. The slab case,
-`test_mesh_exchange.py`, sets four blocks with `set_local_horizontal_cells` ([`test_mesh_exchange.py:7-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L7-L46)). Both run on CPU;
-`test_exchange_decomp` uses up to six processes and runs alone. Their pass status at the pin was not run for this
-chapter (missing evidence).
+`test_mesh_exchange.py`, sets four blocks with `set_local_horizontal_cells` in a top-level script
+({{< code tests/test_mesh_exchange.py >}}). Both run on CPU;
+`test_exchange_decomp` uses up to six processes and runs alone. They were not run for this chapter at the pin
+(missing evidence).
 
 ### Limits
 

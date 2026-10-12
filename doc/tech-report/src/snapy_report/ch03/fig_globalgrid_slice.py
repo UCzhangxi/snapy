@@ -1,6 +1,6 @@
 """One global x2 face array with its ghost extension, sliced for two and for three blocks.
 
-Drawn from CoordinateImpl::block_faces_ (src/coord/coordinate.cpp:307-324) at snapy@e894700ff7aee30b52882e5202b16461413780b0: six global cells, two ghost
+Drawn from CoordinateImpl::block_faces_ (src/coord/coordinate.cpp:307-324) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5: six global cells, two ghost
 faces per side. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt

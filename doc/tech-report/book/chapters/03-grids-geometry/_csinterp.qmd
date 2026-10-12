@@ -1,7 +1,7 @@
 ## Cross-panel ghost interpolation (`interpolate`) {#sec-ch03-csinterp}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/coord/cubed_sphere_utils.hpp, src/coord/cubed_sphere_utils.cpp, src/coord/gnomonic_equiangle.cpp, src/layout/cubed_sphere_layout.cpp, src/mesh/meshblock.cpp, sources/canoe__cubedsphere_decomposition_TECH_REPORT.md, tests/test_cubed_sphere_exchange.cpp
 status: draft
 -->
@@ -29,8 +29,7 @@ edge midpoint by up to $n_g - \tfrac12$ cells, independently of resolution. So t
 each side, and when a panel is split among blocks the widened strip reaches into the sender's own intra-panel halo,
 which must be current; the sync therefore runs in two phases, intra-panel first. Velocities are rotated from the
 sender's panel frame to the global spherical $(r, \theta, \varphi)$ frame before sending and back into the receiver's
-frame after interpolation. In the history: [chengcli/snapy#222](https://github.com/chengcli/snapy/issues/222) (the
-decomposition fixes).
+frame after interpolation.
 
 ### Derivation
 
@@ -61,8 +60,10 @@ with the cell index shifted by an integer per block. @eq-ch03-csinterp-weights i
 error otherwise. The margin is the largest slide rounded up, $\lceil n_g - \tfrac12\rceil = n_g$, which is
 `cs_interp_margin` ({{< code src/coord/cubed_sphere_utils.hpp cs_interp_margin >}}). For $N_{\mathrm{p}} = 64$ and $n_g = 3$ the exact slide
 from @eq-ch03-csinterp-slide is at most 2.4955 cells and departs from the expansion by at most 0.072 cells
-[check line `[C11]`, `src/snapy_report/ch03/geometry_check.py`, output
-`src/snapy_report/ch03/geometry_check.out`].
+(`[C11]`).[^csi-c11]
+
+[^csi-c11]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C11]`; a numpy port of the ghost-source positions of `src/coord/cubed_sphere_utils.cpp` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 The ordering constraint is derived in the same source, §5 and §6: on a subdivided panel the widened strip packed for a
 cross-panel neighbour contains cells this block holds only as intra-panel ghosts, and those are written by the unpack
@@ -133,10 +134,10 @@ In step order (@tbl-ch03-csinterp-code):
 
 The bitwise case is `subdivided_panel_exchange_matches_one_block` ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}});
 the deck is the card written by `write_card`, $8\times8$ cells per panel, `nb2` = 1, 2 and 4, all $6p_x^2$ blocks in one
-process ([`test_cubed_sphere_exchange.cpp:20-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L20-L40)). Its CUDA twin
+process ({{< code tests/test_cubed_sphere_exchange.cpp write_card >}}). Its CUDA twin
 `subdivided_panel_exchange_matches_one_block_cuda` is in the same binary and skips without a GPU
 ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block_cuda >}}). The tag case is `rejects_tags_that_collide_with_the_variable_offset`
-({{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}). Their pass status at the pin was not run for this chapter (missing
+({{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}). They were not run for this chapter at the pin (missing
 evidence).
 
 ### Limits

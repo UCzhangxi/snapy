@@ -1,7 +1,7 @@
 """Ghost centres of layers 1-3 beyond a panel edge and their interpolation sources on the neighbouring panel.
 
 Source angle tan(eta') = tan(eta) / tan(xi), as cs_build_ghost_usrc computes it (src/coord/cubed_sphere_utils.cpp:78-108)
-at snapy@e894700ff7aee30b52882e5202b16461413780b0, for 16 cells per edge. Computed; it reads no data.
+at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, for 16 cells per edge. Computed; it reads no data.
 """
 import numpy as np
 import matplotlib.pyplot as plt

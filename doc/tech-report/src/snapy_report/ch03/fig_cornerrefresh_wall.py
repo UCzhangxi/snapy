@@ -1,5 +1,5 @@
 """An x1 wall meeting an x2 block seam: the x1 ghost rows inside the tangential ghost slab are rewritten by the wall
-function (src/mesh/meshblock.cpp:932-974 at snapy@e894700ff7aee30b52882e5202b16461413780b0). A cartoon; it reads no data.
+function (src/mesh/meshblock.cpp:937-979 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5). A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle

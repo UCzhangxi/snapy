@@ -1,7 +1,7 @@
 ## Generic ghost exchange (`SyncOptions`) {#sec-ch03-exchange}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/layout/layout.hpp, src/layout/layout.cpp, src/mesh/meshblock.cpp, tests/test_mesh_exchange.py, tests/test_cubed_sphere_vertical_velocity_exchange.py
 status: draft
 -->
@@ -40,12 +40,14 @@ $$ {#eq-ch03-exchange-corner}
 that is, the mean of the left strip's value in the same $x_2$ column at the row next to the corner and the bottom
 strip's value in the same $x_3$ row at the column next to the corner. @eq-ch03-exchange-corner and its three mirror
 images are `fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}). It reproduces a constant field; for a field with a
-gradient it is a first-order fill, because both terms are read up to $n_g$ cells away from the corner cell. Check
-line `[C15]` evaluates @eq-ch03-exchange-corner on every corner ghost of an $n_g = 3$ block: a constant field is
+gradient it is a first-order fill, because both terms are read up to $n_g$ cells away from the corner cell. The
+check evaluates @eq-ch03-exchange-corner on every corner ghost of an $n_g = 3$ block: a constant field is
 reproduced to exactly zero, and on $q = \alpha + \beta x_2 + \gamma x_3$ the error halves at each refinement
 (measured order 1.00, 1.00) and stays under the closed-form bound
-$n_g h(|\beta| + |\gamma|)/2$ [check `src/snapy_report/ch03/geometry_check.py`, output
-`src/snapy_report/ch03/geometry_check.out`]. The tests below cover the face copies.
+$n_g h(|\beta| + |\gamma|)/2$ (`[C15]`).[^exc-c15] The tests below cover the face copies.
+
+[^exc-c15]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C15]`; a numpy port of `LayoutImpl::fill_corners` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -77,7 +79,7 @@ make_fig()
 | unpack | {{< code src/layout/layout.cpp LayoutImpl::deserialize >}} | `deserialize` | none |
 | corners | {{< code src/layout/layout.cpp LayoutImpl::fill_corners >}} | `fill_corners` | `skip_corner` |
 | wait, unpack, corners | {{< code src/layout/layout.cpp LayoutImpl::finalize >}} | `finalize` | none |
-| one sync, or two phases | [`meshblock.cpp:554-595`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L595) | `exchange` | `interpolate` |
+| one sync, or two phases | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange >}} | `exchange` | `interpolate` |
 | per-stage sync | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | none |
 
 : Code map of the generic exchange. {#tbl-ch03-exchange-code}
@@ -87,7 +89,7 @@ In step order (@tbl-ch03-exchange-code):
 1. `exchange_ghost_zones` syncs `hydro_u` as conserved with interpolation on, then `scalar_s` as scalar
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
 2. `exchange` takes the two-phase branch on a subdivided cubed sphere, otherwise calls `_exchange_once`, which is
-   `begin_exchange`, `launch_exchange`, `finalize_exchange` ([`meshblock.cpp:554-595`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L554-L595)).
+   `begin_exchange`, `launch_exchange`, `finalize_exchange` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_exchange >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::_exchange_once >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::begin_exchange >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::launch_exchange >}}).
 3. `serialize` copies each interior slab into the cached send buffer of its `get_buffer_id`
    ({{< code src/layout/layout.cpp LayoutImpl::serialize >}}).
 4. `finalize` waits on the messages, calls `deserialize` and then `fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::finalize >}}).
@@ -102,12 +104,13 @@ In step order (@tbl-ch03-exchange-code):
 
 : Tests of the generic exchange. C++ entries carry the build suffix (`.release`). {#tbl-ch03-exchange-tests}
 
-The slab check, in `test_mesh_exchange.py`, is the final `torch.all` comparison ([`test_mesh_exchange.py:20-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L20-L50)).
-The radial-velocity check sets `ABS_TOL` and `REL_TOL` ([`test_cubed_sphere_vertical_velocity_exchange.py:7-9`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_vertical_velocity_exchange.py#L7-L9))
+The slab check, in the top-level script `test_mesh_exchange.py`, is the final `torch.all` comparison of each ghost
+with the rank `neighbor_rank` names ({{< code tests/test_mesh_exchange.py >}}).
+The radial-velocity check sets `ABS_TOL` and `REL_TOL` ({{< code tests/test_cubed_sphere_vertical_velocity_exchange.py REL_TOL >}}, {{< code tests/test_cubed_sphere_vertical_velocity_exchange.py ABS_TOL >}})
 and compares the worst ghost error against them with `ideal_match`
 ({{< code tests/test_cubed_sphere_vertical_velocity_exchange.py main >}}). The two-rank case uses `ghosts_match_expected`
 ({{< code tests/test_exchange.cpp ghosts_match_expected >}}). The Python tests run on CPU in one process; `test_exchange.release` runs on two
-ranks with gloo. Their pass status at the pin was not run for this chapter (missing evidence). No test checks the
+ranks with gloo. They were not run for this chapter at the pin (missing evidence). No test checks the
 synthesised corners.
 
 ### Limits

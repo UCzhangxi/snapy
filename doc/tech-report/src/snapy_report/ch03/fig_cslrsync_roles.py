@@ -1,6 +1,6 @@
 """Left and right states at a face shared by two panels; interior-side states are sent, ghost-side states overwritten.
 
-Suffix rules of src/layout/cubed_sphere_layout.cpp:710-719 and 924-932 at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+Suffix rules of src/layout/cubed_sphere_layout.cpp:720-729 and 938-946 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

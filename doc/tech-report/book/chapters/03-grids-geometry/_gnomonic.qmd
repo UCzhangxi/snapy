@@ -1,7 +1,7 @@
 ## Gnomonic equiangular cubed sphere (`gnomonic-equiangle`) {#sec-ch03-gnomonic}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/coord/gnomonic_equiangle.cpp, src/coord/coord_utils.cpp, src/coord/coord_utils_impl.h, src/coord/cubed_sphere_utils.cpp, src/coord/cubed_sphere6.nb, tests/test_coordinate.cpp, tests/test_cubed_sphere_cell_volume.py
 status: draft
 -->
@@ -29,8 +29,8 @@ $\tfrac13(r_+^3 - r_-^3)$ times the same solid angle, and the $x_2$, $x_3$ face 
 sources are built so that a uniform pressure at rest is in exact discrete balance.
 
 The type is on when `geometry.type` is `gnomonic-equiangle`. Unlike spherical-polar, the radial cell centre is the
-midpoint, not the volume centroid. At the pin the corrected-PE gravity work of @sec-ch06 had no form here; since
-chengcli/snapy#303 it runs here with a centroid-offset term for that difference (@sec-ch06-dwork). The geometry was set up in the Mathematica notebook
+midpoint, not the volume centroid; the corrected-PE gravity work of @sec-ch06 runs on this grid with a
+centroid-offset term for that difference (@sec-ch06-dwork). The geometry was set up in the Mathematica notebook
 {{< code src/coord/cubed_sphere6.nb >}},
 which is symbolic and is not a prose derivation.
 
@@ -76,7 +76,7 @@ V_i &= \tfrac13 h_i\left(r_+^2 + r_+r_- + r_-^2\right)\varpi_{jk} = \tfrac13\lef
 \end{aligned}
 $$ {#eq-ch03-gnomonic-volume}
 
-written in `cell_volume` without the cancelling difference of cubes ([`gnomonic_equiangle.cpp:207-227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L207-L227)). An $x_2$ face lies in the plane through the centre that contains the line $X = X_{j\pm1/2}$, so it is a
+written in `cell_volume` without the cancelling difference of cubes ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::cell_volume >}}). An $x_2$ face lies in the plane through the centre that contains the line $X = X_{j\pm1/2}$, so it is a
 planar annular sector: its area is $\int r\,\mathrm{d}r = \tfrac12(r_+^2 - r_-^2)$ times the angle it subtends, the
 great-circle angle between its two $\eta$ edges. That angle between the unit vectors $\hat{\mathbf u}(X, Y_1)$ and
 $\hat{\mathbf u}(X, Y_2)$ is $\arccos[(1 + X^2 + Y_1Y_2)/(\delta_1\delta_2)]$, which is `dx3f_ang_face2_kj`
@@ -95,7 +95,7 @@ v_3 = \frac{v_{\underline 3} - v_{\underline 2}\cos\psi}{\sin^2\psi},
 $$ {#eq-ch03-gnomonic-lower}
 
 with the underline marking a covariant component (local notation). @eq-ch03-gnomonic-lower is `coord_vec_lower_impl`
-and `coord_vec_raise_impl` ([`coord_utils_impl.h:9-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L9-L24)). The conserved momenta are covariant; the primitive
+and `coord_vec_raise_impl` ({{< code src/coord/coord_utils_impl.h coord_vec_raise_impl >}}, {{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The conserved momenta are covariant; the primitive
 velocities are contravariant. For an $x_1$ face the local orthonormal frame is $(v_1,\ v_2 + v_3\cos\psi,\
 v_3\sin\psi)$, which keeps $\lvert\mathbf v\rvert^2$; the $x_2$ and $x_3$ faces use the same idea with the face values
 of $\psi$ and the normal along the face normal.
@@ -115,10 +115,15 @@ What is exact: @eq-ch03-gnomonic-angle to @eq-ch03-gnomonic-lower and the unifor
 truncated: the products of cell values in the velocity source terms, at $O(h^2)$.
 
 ::: {.callout-important title="Check"}
-`src/snapy_report/ch03/geometry_check.py`, lines `[C6]` to `[C9]` of `geometry_check.out`: the angle, the solid
-angle, lowering and raising, and the uniform-pressure flux; tolerances $10^{-8}$ to $10^{-15}$, stated with their
-reasons in the script.
+The angle, the solid angle, lowering and raising, and the uniform-pressure flux are checked against tolerances of
+$10^{-8}$ to $10^{-15}$, each stated with its reason in the script (`[C6]` to `[C9]`).[^gno-c] The finite-difference
+deviation of `[C6]` and the quadrature residual of `[C7]` are round-off and differ in their last digits from host
+to host; they are read against their thresholds, not as values.
 :::
+
+[^gno-c]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    lines `[C6]` to `[C9]`; a numpy and sympy port of `src/coord/gnomonic_equiangle.cpp` and of
+    `coord_vec_lower_impl`, `coord_vec_raise_impl` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -147,14 +152,14 @@ make_fig()
 | angle and great-circle widths | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `cosine_cell_kj` | none |
 | solid angle | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `solid_angle_kj` | none |
 | pressure-balance coefficients | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `x_ov_rD_kji` | none |
-| areas and volume | [`gnomonic_equiangle.cpp:207-227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L207-L227) | `face_area2` | none |
-| face metrics (marked TODO) | [`gnomonic_equiangle.cpp:265-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L265-L293) | `_set_face2_metric` | none |
-| local frames | [`gnomonic_equiangle.cpp:295-341`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L295-L341) | `prim2local2_` | none |
-| back to covariant | [`gnomonic_equiangle.cpp:343-413`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L343-L413) | `flux2global2_` | none |
+| areas and volume | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::face_area2 >}} | `face_area2` | none |
+| face metrics (marked TODO) | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::_set_face2_metric >}} | `_set_face2_metric` | none |
+| local frames | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::prim2local2_ >}} | `prim2local2_` | none |
+| back to covariant | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::flux2global2_ >}} | `flux2global2_` | none |
 | sources | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}} | `forward` | none |
-| lower and raise | [`coord_utils.cpp:12-44`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils.cpp#L12-L44) | `coord_vec_lower_` | none |
+| lower and raise | {{< code src/coord/coord_utils.cpp coord_vec_lower_ >}} | `coord_vec_lower_` | none |
 | wall frame | {{< code src/coord/coordinate.cpp CoordinateImpl::boundary_velocity_ >}} | `boundary_velocity_` | none |
-| panel to spherical | [`cubed_sphere_utils.cpp:245-257`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/cubed_sphere_utils.cpp#L245-L257) | `cs_contra_to_sph_` | none |
+| panel to spherical | {{< code src/coord/cubed_sphere_utils.cpp cs_contra_to_sph_ >}} | `cs_contra_to_sph_` | none |
 
 : Code map of the gnomonic grid. {#tbl-ch03-gnomonic-code}
 
@@ -189,27 +194,31 @@ The script checks are in `geometry`, which forms the sum of `cell_volume` and th
 ({{< code tests/test_cubed_sphere_cell_volume.py geometry >}}), and in `main`, which applies `ROUNDOFF` and `REST_TOL`
 ({{< code tests/test_cubed_sphere_cell_volume.py main >}}); the deck is `test_cubed_sphere_cell_volume.yaml`, six panels of
 $8\times8\times8$ cells in one process. The transform cases are `vec_lower_raise` to
-`uniform_radial_spherical_velocity_round_trips` ([`test_coordinate.cpp:234-412`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L234-L412)), the projection cases
-`flux_projection1` to `flux_projection3` ([`test_coordinate.cpp:507-577`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L507-L577)) and the face-pressure cases
+`uniform_radial_spherical_velocity_round_trips`
+({{< code tests/test_coordinate.cpp DeviceTest.vec_lower_raise >}}, {{< code tests/test_coordinate.cpp DeviceTest.contra_cart >}},
+{{< code tests/test_coordinate.cpp DeviceTest.contra_sph >}},
+{{< code tests/test_coordinate.cpp DeviceTest.cached_cubed_sphere_velocity_matrices_match_direct >}},
+{{< code tests/test_coordinate.cpp DeviceTest.contra_sph_matches_cartesian_composition >}},
+{{< code tests/test_coordinate.cpp DeviceTest.uniform_radial_spherical_velocity_round_trips >}}), the projection cases
+`flux_projection1` to `flux_projection3` ({{< code tests/test_coordinate.cpp DeviceTest.flux_projection3 >}}, {{< code tests/test_coordinate.cpp DeviceTest.flux_projection1 >}}, {{< code tests/test_coordinate.cpp DeviceTest.flux_projection2 >}}) and the face-pressure cases
 `radial_source_uses_face_pressure_in_x1_momentum` and `radial_source_preserves_face_pressure_gradient`
-([`test_coordinate.cpp:579-643`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L579-L643)). The `DeviceTest` cases run on CPU and CUDA in float32 and float64, as the
-fixture instantiates them ([`device_testing.hpp:44-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/device_testing.hpp#L44-L50)); the Python test also has no CUDA
-twin at the pin. All are single-rank. Their pass status at the pin was not run for this chapter (missing evidence).
+({{< code tests/test_coordinate.cpp DeviceTest.radial_source_preserves_face_pressure_gradient >}}, {{< code tests/test_coordinate.cpp DeviceTest.radial_source_uses_face_pressure_in_x1_momentum >}}). The `DeviceTest` cases run on CPU and CUDA in float32 and float64, as the
+fixture's `INSTANTIATE_TEST_SUITE_P` instantiates them ({{< code tests/device_testing.hpp >}}); the Python test has
+no CUDA twin. All are single-rank. They were not run for this chapter at the pin (missing evidence).
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 - `nx2` must equal `nx3`, and `interp_order` must be 2.
-- At the pin the corrected-PE face work was not available on this grid and setup warned. Since chengcli/snapy#303
-  (main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97) it runs here: the grid maps to the `radial_mid` measure
-  ({{< code src/hydro/gravity_work_radial.hpp x1_measure >}}) and the work gains the
-  centroid-offset term, because `x1v` is the midpoint and not the volume centroid (@sec-ch06-dwork). Only grids with
-  no $x_1$ measure (cylindrical) still warn, with `TORCH_WARN_ONCE` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
+- The corrected-PE face work maps this grid to the `radial_mid` measure
+  ({{< code src/hydro/gravity_work_radial.hpp x1_measure >}}) and gains the centroid-offset term, because `x1v` is
+  the midpoint and not the volume centroid (@sec-ch06-dwork). Only grids with no $x_1$ measure (cylindrical) warn,
+  with `TORCH_WARN_ONCE` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
 :::
 
 `DeviceTest.usrc` and `GnomonicEquiangle.area_vol` print values and assert nothing about the geometry, as in
 `area_vol` ({{< code tests/test_coordinate.cpp GnomonicEquiangle.area_vol >}}). `_set_face2_metric` and `_set_face3_metric` carry the comment
-"TODO(cli):: CHECK" ([`gnomonic_equiangle.cpp:265-293`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L265-L293)); the round-trip tests above
+"TODO(cli):: CHECK" ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::_set_face3_metric >}}, {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::_set_face2_metric >}}); the round-trip tests above
 exercise them only with the projection followed by its inverse, which a consistently wrong metric would also pass.
 The radial centre `x1v` is the midpoint, so a cell value is not stored at the volume centroid as on spherical-polar;
 the

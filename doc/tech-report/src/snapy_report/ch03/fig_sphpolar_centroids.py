@@ -1,6 +1,6 @@
 """A spherical-polar shell cell with its midpoint, volume centroid and face-measure centroid.
 
-Positions from src/coord/spherical_polar.cpp:17-21 and src/coord/coordinate.cpp:467-488 at snapy@e894700ff7aee30b52882e5202b16461413780b0, for a thick cell
+Positions from src/coord/spherical_polar.cpp:17-21 and src/coord/coordinate.cpp:467-488 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, for a thick cell
 r in [1, 2] so that the three marks separate. A cartoon; it reads no data.
 """
 import numpy as np

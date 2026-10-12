@@ -1,7 +1,7 @@
 ## Registered stub coordinate type (`cylindrical`) {#sec-ch03-cylindrical}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/coord/coordinate.hpp, src/coord/coordinate.cpp, src/coord/cylindrical.cpp_
 status: draft
 -->
@@ -9,13 +9,15 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: the name `cylindrical` is accepted and builds a coordinate whose `reset` is empty. **Switch**: YAML
+**What**: the name `cylindrical` is accepted and builds a coordinate whose `reset` is empty and whose zero-shift
+flag is `false`. **Switch**: YAML
 `geometry.type: cylindrical`. **Default**: off. **Requires**: nothing. **Order**: none; no metric is built.
 **Defining equation**: none.
 :::
 
 `CoordinateImpl::create` maps `cylindrical` to `CylindricalImpl`, but its `reset` does nothing and the source file that
-would define it is disabled by its suffix (`cylindrical.cpp_`). No widths, centres, areas or volumes are built. The
+would define it is disabled by its suffix (`cylindrical.cpp_`). Its one other override, `face_centroid_shift_zero`,
+returns `false` (@sec-ch03-facemoments). No widths, centres, areas or volumes are built. The
 type is recorded here so that a reader who meets the name knows it does not work.
 
 ### Derivation
@@ -41,7 +43,8 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| empty module | [`coordinate.hpp:363-380`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.hpp#L363-L380) | `CylindricalImpl` | `type: cylindrical` |
+| empty module | {{< code src/coord/coordinate.hpp CylindricalImpl >}} | `CylindricalImpl` | `type: cylindrical` |
+| zero-shift flag `false` | {{< code src/coord/coordinate.hpp CylindricalImpl::face_centroid_shift_zero >}} | `face_centroid_shift_zero` | none |
 | name registered | {{< code src/coord/coordinate.cpp CoordinateImpl::create >}} | `Cylindrical` | `geometry.type` |
 
 : Code map of the cylindrical stub. {#tbl-ch03-cylindrical-code}
@@ -53,11 +56,13 @@ In step order (@tbl-ch03-cylindrical-code): `create` returns a `Cylindrical` mod
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| none | no test selects `cylindrical` | n/a | n/a |
+| `test_coordinate` | `face_centroid_shift_zero_matches_the_shift` builds a cylindrical block and requires its zero-shift flag to be `false` | exact (boolean) | the test's `EXPECT_EQ` |
 
 : Tests of the cylindrical stub. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cylindrical-tests}
 
-Missing evidence: no test at the pin exercises this type.
+The case is `face_centroid_shift_zero_matches_the_shift`
+({{< code tests/test_coordinate.cpp Coordinate.face_centroid_shift_zero_matches_the_shift >}}); it builds the block
+and reads the flag, and steps nothing. No test runs a solver step on this type (missing evidence).
 
 ### Limits
 

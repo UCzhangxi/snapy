@@ -1,7 +1,7 @@
 ## Cubed-sphere face-state seam sync {#sec-ch03-cslrsync}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, src/layout/cubed_sphere_layout.cpp, sources/canoe__tracer_seam_TECH_REPORT.md, tests/test_flux_covariance_seams.py
 status: draft
 -->
@@ -20,9 +20,8 @@ the other side from its interpolated ghosts. Without a sync the two panels would
 the same face and the fluxes would not cancel. snapy sends each panel's interior-side state to the neighbour, which
 overwrites its ghost-side state with it; then both hold the same pair. Because a panel edge can join two edges of the
 same orientation, where one panel's "left" is the other's "right" in the other panel's frame, the two states travel
-under keys whose suffix selects the direction, and the receiving block assigns the role in its own frame. The scalar
-once used a single key that swapped the states at those edges and made the solver pick the downwind state
-([chengcli/snapy#220](https://github.com/chengcli/snapy/issues/220)).
+under keys whose suffix selects the direction, and the receiving block assigns the role in its own frame. A single key without the suffix would swap
+the two states at such an edge, and the upwind solver would then pick the downwind state.
 
 ### Derivation
 
@@ -89,15 +88,15 @@ In step order (@tbl-ch03-cslrsync-code):
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_flux_covariance_seams_python` | six panels with the #289 term on conserve mass, vapour and $E+\mathrm{PE}$ over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
+| `test_flux_covariance_seams_python` | six panels with the face-flux covariance on conserve mass, vapour and $E+\mathrm{PE}$ over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
 | `test_flux_positivity_cubedsphere_python` | tracer mass is conserved across seams and the hat stays in $[0,1]$ | $10^{-13}$ drift | `DRIFT_TOL`, @sec-ch03-thetacopy |
 
 : Tests that exercise the face-state sync. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cslrsync-tests}
 
-The conservation arm is `arm_conservation` and its threshold `DRIFT_TOL`
-([`test_flux_covariance_seams.py:34-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_covariance_seams.py#L34-L93)); a shared face whose two panels solved different problems would leak
-and fail it. There is no dedicated test of the suffix rule itself. The tests run on CPU in one process. Their pass
-status at the pin was not run for this chapter (missing evidence).
+The conservation arm is `arm_conservation` ({{< code tests/test_flux_covariance_seams.py arm_conservation >}}) and
+its threshold `DRIFT_TOL` ({{< code tests/test_flux_covariance_seams.py DRIFT_TOL >}}); a shared face whose two panels
+solved different problems would leak and fail it. There is no dedicated test of the suffix rule itself. The tests run
+on CPU in one process. They were not run for this chapter at the pin (missing evidence).
 
 ### Limits
 

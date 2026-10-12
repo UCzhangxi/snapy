@@ -1,20 +1,20 @@
 """Executable check of the grid and geometry derivations (chapter 3).
 
-What is checked, against the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0:
+What is checked, against the formulas of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5:
   C1-C3  radial face moments: CoordinateImpl::radial_face_moment2_ and radial_face_centroid_shift_
          (src/coord/coordinate.cpp:446-488) against the exact integrals, and the rationals of
          tests/test_radial_face_moments.cpp:30-34;
   C4-C5  spherical-polar coefficients, centroids, the face-pressure identity and the angular-momentum form
-         (src/coord/spherical_polar.cpp:17-28, 78-104, 265-303);
+         (src/coord/spherical_polar.cpp:17-28, 78-104, 264-302);
   C6-C9  gnomonic angle, solid angle, lowering and raising, and the uniform-pressure balance
          (src/coord/gnomonic_equiangle.cpp:70-148, 343-413; src/coord/coord_utils_impl.h:9-24);
   C10    Morton rank order of a 4x4 block grid (src/layout/connectivity.hpp:67-70, connectivity.cpp:28-43);
   C11    cross-panel ghost slide (src/coord/cubed_sphere_utils.cpp:78-108);
   C12    the theta seam: a face whose two sides use different limiter factors creates or destroys
          (Theta - Theta~) F A dt of species mass per stage, and nothing when the ghost is a bit copy
-         (src/hydro/hydro_forward.cpp:671-698);
+         (src/hydro/hydro_forward.cpp:785-812);
   C13    the x1 seam average: both blocks hold the same bits and the seam telescopes exactly
-         (src/hydro/hydro_forward.cpp:425-499);
+         (src/hydro/hydro_forward.cpp:508-582);
   C14    the sync matrices M->sph = R G^-1 and M->panel = G R^-1 compose to the identity, conserved and
          primitive strips alike (src/coord/cubed_sphere_utils.cpp:259-298);
   C15    the synthesised ghost corner is exact on a constant field and first order on a gradient

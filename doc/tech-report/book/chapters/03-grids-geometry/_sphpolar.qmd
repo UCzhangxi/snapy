@@ -1,14 +1,14 @@
 ## Spherical-polar metric and sources (`spherical-polar`) {#sec-ch03-sphpolar}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/coord/spherical_polar.cpp, src/coord/spherical_polar.hpp, src/coord/coordinate.hpp, tests/test_coordinate.cpp
 status: draft
 -->
 
 Local symbols (flagged to the editor): $r_\pm = x_{1,i\pm1/2}$ and $\theta_\pm = x_{2,j\pm1/2}$, the faces of one cell;
-$f^{(a)}_{i\pm1/2}$ the $x_1$ face flux of the momentum component $m_a$ (`flux1[IVY]`, `flux1[IVZ]`) [kg m$^{-1}$
-s$^{-2}$]; $p_{i\pm1/2}$ the face pressure returned by the Riemann solver [Pa].
+$f^{(a)}_{i\pm1/2}$ the $x_1$ face flux of the momentum component $m_a$ (`flux1[IVY]`, `flux1[IVZ]`) [$\mathrm{kg\,m^{-1}\,s^{-2}}$]; $p_{i\pm1/2}$ the face pressure returned by the Riemann solver
+[$\mathrm{Pa}$].
 
 ### Summary
 
@@ -46,7 +46,7 @@ $$ {#eq-ch03-sphpolar-metric}
 
 In the notation of NOTATION.md, $V_i = \varpi_{jk}V^{(1)}_i$ with $V^{(1)}_i = \tfrac13(r_+^3-r_-^3)$ and the solid
 angle $\varpi_{jk} = \lvert\cos\theta_- - \cos\theta_+\rvert\Delta\varphi$. @eq-ch03-sphpolar-metric is
-`face_area1` to `face_area3` and `cell_volume` ([`spherical_polar.cpp:178-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L211)).
+`face_area1` to `face_area3` and `cell_volume` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::cell_volume >}}, {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_area1 >}}, {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_area2 >}}, {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_area3 >}}).
 
 The cell centres are the centroids of the measure along each axis:
 
@@ -60,7 +60,7 @@ x_{2,j} &= \frac{\int \theta\sin\theta\,\mathrm{d}\theta}{\int\sin\theta\,\mathr
 $$ {#eq-ch03-sphpolar-centroids}
 
 with the integrals over the cell's own interval and $x_{3,k}$ the midpoint. @eq-ch03-sphpolar-centroids is
-`radial_centers` and `polar_centers` ([`spherical_polar.cpp:17-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L17-L28)); with a single $x_2$ cell the code sets `x2v`
+`radial_centers` and `polar_centers` ({{< code src/coord/spherical_polar.cpp polar_centers >}}, {{< code src/coord/spherical_polar.cpp radial_centers >}}); with a single $x_2$ cell the code sets `x2v`
 to the midpoint instead ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::reset >}}).
 
 The momentum equations in conservation form, written for the physical components $m_a = \rho v_a$, are the divergence
@@ -126,9 +126,13 @@ the product averages in @eq-ch03-sphpolar-src1, at $O(h^2)$. The tests cited bel
 coefficients and the face-pressure form in the code.
 
 ::: {.callout-important title="Check"}
-`src/snapy_report/ch03/geometry_check.py`, lines `[C4]` and `[C5]` of `geometry_check.out`: the coefficient
-averages, the centroid and the two source identities, exact symbolic (sympy).
+The coefficient averages, the centroid and the two source identities are checked exactly in sympy (`[C4]`,
+`[C5]`).[^sph-c]
 :::
+
+[^sph-c]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    lines `[C4]` and `[C5]`; a sympy restatement of `SphericalPolarImpl::reset` and `SphericalPolarImpl::forward` at
+    the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -160,11 +164,11 @@ pressure term only on blocks with a single $x_1$ cell.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| radial and polar centroids | [`spherical_polar.cpp:17-28`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L17-L28) | `radial_centers` | none |
+| radial and polar centroids | {{< code src/coord/spherical_polar.cpp radial_centers >}} | `radial_centers` | none |
 | setup check, widths, coefficients | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::reset >}} | `reset` | `type: spherical-polar` |
-| transverse lengths | [`spherical_polar.cpp:158-176`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L158-L176) | `center_width2` | none |
-| face areas and volume | [`spherical_polar.cpp:178-211`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L178-L211) | `cell_volume` | none |
-| radial face moments | [`spherical_polar.cpp:213-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L213-L222) | `face_moment2_x1` | `SNAP_FLUX_COVARIANCE` |
+| transverse lengths | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::center_width2 >}} | `center_width2` | none |
+| face areas and volume | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::cell_volume >}} | `cell_volume` | none |
+| radial face moments | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_moment2_x1 >}} | `face_moment2_x1` | `SNAP_FLUX_COVARIANCE` |
 | geometric sources | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `forward` | `SNAP_X1_CENTROID_EXACT` |
 | mesh-generator rebuild | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::reset_coordinates >}} | `reset_coordinates` | none |
 
@@ -199,12 +203,12 @@ The reference-formula case is `geometry_matches_athena_reference_formulas`
 ({{< code tests/test_coordinate.cpp SphericalPolar.geometry_matches_athena_reference_formulas >}}); it compares `x1v`, `x2v`, the three areas, the volume and `coord_src1_i` to
 `coord_src3_j` with `torch::allclose`. The face-pressure cases are
 `spherical_polar_radial_source_preserves_face_pressure_gradient` and
-`spherical_polar_radial_source_uses_face_pressure_in_x1_momentum` ([`test_coordinate.cpp:645-719`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L645-L719)); the first
+`spherical_polar_radial_source_uses_face_pressure_in_x1_momentum` ({{< code tests/test_coordinate.cpp DeviceTest.spherical_polar_radial_source_uses_face_pressure_in_x1_momentum >}}, {{< code tests/test_coordinate.cpp DeviceTest.spherical_polar_radial_source_preserves_face_pressure_gradient >}}); the first
 sets the face pressure to the face radius and checks that the $m_1$ row equals
 $(p_{i+1/2}-p_{i-1/2})/h_i$, the second checks that two cell pressures give the same $m_1$ row once face pressures
 are given. The face-pressure cases run on CPU and, through the `DeviceTest` parameter, on CUDA when it is built; the
 reference-formula case runs on CPU only. All are one block, one rank. No case checks the $m_2$ and $m_3$ source
-terms. Their pass status at the pin was not run for this chapter (missing evidence).
+terms. They were not run for this chapter at the pin (missing evidence).
 
 ### Limits
 

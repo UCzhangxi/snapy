@@ -1,7 +1,7 @@
 ## Physical and internal faces (`external`) {#sec-ch03-physfaces}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/mesh/meshblock.cpp, src/mesh/meshblock_options.cpp, src/bc/bc_func.cpp, src/hydro/hydro.cpp, src/layout/layout.cpp, tests/test_forcing_cubed_sphere.yaml
 status: draft
 -->
@@ -28,14 +28,18 @@ There is nothing to derive; the scheme is a rule, stated here in full. On the `s
 its bfunc when the block has a neighbouring block across it or when its axis is periodic; this is the reset of the
 internal `bfuncs` at construction ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}). Afterwards a face is physical exactly when a
 bfunc is installed on it, which is all that `is_physical_boundary` tests
-([`meshblock_options.cpp:213-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L213-L234)). For a multi-axis offset the first non-zero component in the order $x_3$,
+({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_physical_boundary >}}). For a multi-axis offset the first non-zero component in the order $x_3$,
 $x_2$, $x_1$ names the face, as `face_of` does in the same lines. On the cubed sphere no bfunc is removed.
 
-Check line `[C18]` enumerates the rule as stated: over all 26 non-zero offsets it names exactly one face every
+The check enumerates the rule as stated: over all 26 non-zero offsets it names exactly one face every
 time, splitting them 18 / 6 / 2 between $x_3$, $x_2$ and $x_1$, and on a single-axis offset it returns that
 axis's own face; of the four $(\text{neighbour}, \text{periodic})$ combinations exactly one keeps the bfunc, so
 "a bfunc is installed" and "no neighbour across it and the axis not periodic" are the same predicate
-[check `src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`].
+(`[C18]`).[^pf-c18]
+
+[^pf-c18]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C18]`; a Python enumeration of `face_of` and the bfunc removal in `MeshBlockImpl::reset` at the pin,
+    CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -61,9 +65,9 @@ make_fig()
 |---|---|---|---|
 | names to bfuncs, default `reflecting` | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `bfuncs` | `boundary-condition` |
 | internal faces lose their bfunc | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `bfuncs` | `distribute` |
-| face of an offset; physical predicate | [`meshblock_options.cpp:213-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L213-L234) | `is_physical_boundary` | none |
+| face of an offset; physical predicate | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_physical_boundary >}} | `is_physical_boundary` | none |
 | wall whitelist | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | none |
-| the no-op panel-edge bfunc | [`bc_func.cpp:7-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/bc/bc_func.cpp#L7-L8) | `custom_inner` | `custom` |
+| the no-op panel-edge bfuncs, defined by the `BC_FUNCTION` macro | {{< code src/bc/bc_func.cpp >}} | `custom_inner`, `custom_outer` | `custom` |
 | $x_1$ wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | none |
 | exchange skips physical faces | {{< code src/layout/layout.cpp LayoutImpl::serialize >}} | `is_physical_boundary` | none |
 
@@ -89,8 +93,9 @@ In step order (@tbl-ch03-physfaces-code):
 
 No test targets the classification alone. The forcing deck records why it must have more than one $x_1$ cell: with
 `nx1: 1` no $x_1$ bfunc is installed, `is_physical_boundary` is false at the top and bottom, and every top or bottom
-forcing returns early, so a test of them passes on zeros ([`test_forcing_cubed_sphere.yaml:1-11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_forcing_cubed_sphere.yaml#L1-L11)). The cases above run on CPU; their pass status at the pin was not run for this chapter
-(missing evidence).
+forcing returns early, so a test of them passes on zeros (the header comment of the deck,
+{{< code tests/test_forcing_cubed_sphere.yaml >}}). The cases above run on CPU; they were not run for this chapter
+at the pin (missing evidence).
 
 ### Limits
 

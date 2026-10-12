@@ -1,7 +1,7 @@
 ## $x_1$ seams between blocks (`layout: cubed`, `nb1` > 1) {#sec-ch03-x1seams}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/hydro/hydro.cpp, src/hydro/hydro_forward.cpp, src/layout/layout.cpp, src/eos/equation_of_state.cpp, tests/test_pref_local_seam.cpp, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp
 status: draft
 -->
@@ -55,17 +55,20 @@ and, after its own scan, passes its bottom face value down (`take_x1_anchor` and
 one-block scan has at the same face, up to the order of the additions. The scan kernel itself is in @sec-ch05.
 
 **Ghost rows.** A block's ghost rows of `pref`, `dref` computed locally from its ghost quadrature differ from the
-owner's interior values; the code comment records about $10^2$ Pa near a wall. Replacing them by the neighbour's
+owner's interior values; how far apart near a wall is **not measured at the pin** (the code comment gives a size
+without a deck or run). Replacing them by the neighbour's
 interior rows, sent under `kWbGhostUpTag` and `kWbGhostDnTag`, makes the perturbation field identical on both
 sides of the seam ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}). Nothing in the derivation is truncated; the remaining differences from one block are round-off from
 the order of operations.
 
-Check line `[C13]` takes the seam average on $4\times10^5$ random pairs with the two operands in both orders: the
+The check takes the seam average on $4\times10^5$ random pairs with the two operands in both orders: the
 two blocks' results carry identical bit patterns, and the seam's contribution to the column total is exactly zero
 at every pair. Without the average the same seam leaves a non-zero residual at every pair, up to
-$9.1\times10^3$ in flux units, which is the term @eq-ch03-x1seams-average removes
-[check `src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`]. The relay
+$9.1\times10^3$ in flux units, which is the term @eq-ch03-x1seams-average removes (`[C13]`).[^x1s-c13] The relay
 and the ghost rows are covered by the tests below.
+
+[^x1s-c13]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C13]`; a numpy port of the $x_1$ seam-face average in `HydroImpl::forward` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -97,8 +100,8 @@ make_fig()
 | relay and reference ghost rows | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `_hydro_ref_x1` | `nb1` |
 | physical-face gating | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `phys_x1inner` | none |
 | seam average | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `kSeamFluxUpTag` | none |
-| relay and boards | [`layout.cpp:879-922`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L922) | `take_x1_anchor` | none |
-| block messages, at most 16 blocks | [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877) | `send_to_block` | `blocks_per_process` |
+| relay and boards | {{< code src/layout/layout.cpp LayoutImpl::take_x1_anchor >}} | `take_x1_anchor` | none |
+| block messages, at most 16 blocks | {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}} | `send_to_block` | `blocks_per_process` |
 | column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | none |
 | EOS column repair | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `gather_x1` | `nb1` |
 
@@ -122,7 +125,8 @@ In step order (@tbl-ch03-x1seams-code):
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_pref_local_seam` | an in-process split restarts the reference at the seam; split equals one block after 200 steps | $10^{-6}$; $10^{-12}$ relative | set in the test |
-| `test_x1_seam_split` and arms `_x1_centroid`, `_radial_exact`, `_radial_exact_off`, `_wb_ref4`, `_wb_ref4_gravity_0`, `_x1_mass_covariance` | two blocks in one process equal one block after 20 steps, per switch | $10^{-13}$ relative | round-off of 20 steps |
+| `test_x1_seam_split` and arms `_x1_centroid`, `_radial_exact`, `_radial_exact_off`, `_vic_refuses_split`, `_wb_ref4`, `_wb_ref4_gravity_0`, `_x1_mass_covariance` | two blocks in one process equal one block after 20 steps, per switch; the setup refusals | $10^{-13}$ relative | round-off of 20 steps |
+| `test_pref_local_seam_flux_covariance` | the 200-step split comparison with the face-flux covariance forced on | $10^{-12}$ relative | as `test_pref_local_seam` |
 | `test_x1_seam_split_mp` and arms | the same split across two ranks | $10^{-13}$ relative | as above |
 | `test_parentless_cloud_nb1_mp` | column repair across two processes keeps mass | in the test | @sec-ch10 |
 
@@ -130,12 +134,13 @@ In step order (@tbl-ch03-x1seams-code):
 
 The reference cases are `local_blocks_restart_the_reference_at_the_seam` ({{< code tests/test_pref_local_seam.cpp HydroRefX1.local_blocks_restart_the_reference_at_the_seam >}}) and
 `in_process_split_matches_one_block_after_200_steps` ({{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}}). The arms run one
-gtest each with their environment through `seam_arm` ([`CMakeLists.txt:36-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L36-L61)); the comparisons are in
-`split_gap` and its callers ([`test_x1_seam_split.cpp:202-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L202-L286)). With `SNAP_GRAVITY_WORK_RADIAL_EXACT` on, `radial_exact_split_gap`
+gtest each with their environment through the CMake function `seam_arm` ({{< code tests/CMakeLists.txt >}}); the
+comparisons are in
+`split_gap` and its callers ({{< code tests/test_x1_seam_split.cpp split_gap >}}). With `SNAP_GRAVITY_WORK_RADIAL_EXACT` on, `radial_exact_split_gap`
 ({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}) requires the split column to equal one block
-exactly (gap 0) and its $E+P$ drift to stay within $10^{-13}$; the switch-off control bounds the gap by $10^{-13}$. CUDA twins of four arms are registered by `seam_arm` when CUDA is built ([`CMakeLists.txt:62-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L62-L78)); the
-`_mp` entries run on two ranks with `torchrun`. Their pass status at the pin was not run for this chapter (missing
-evidence).
+exactly (gap 0) and its $E+P$ drift to stay within $10^{-13}$; the switch-off control bounds the gap by $10^{-13}$. CUDA twins of four arms (`_x1_centroid_cuda`, `_radial_exact_cuda`, `_radial_exact_off_cuda`, `_wb_ref4_cuda`)
+are registered by `seam_arm` when CUDA is built, in the same file; the `_mp` entries run on two ranks with
+`torchrun`. They were not run for this chapter at the pin (missing evidence).
 
 ### Limits
 
@@ -151,9 +156,8 @@ evidence).
   `TORCH_CHECK` ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}).
 :::
 
-A split column is not bitwise equal to one block; the tests use $10^{-13}$ and $10^{-12}$. Issue #250 recorded, before
-the relay and ghost-row exchange existed, that $x_1$ splits on CPU with gloo differed from one rank by at most
-$8.0\times10^{-15}$ relative while two GPUs with UCX were bitwise (`sources/gh__ISSUE_THREADS_138-250.md`, issue #250);
-that measurement predates the pin and was not repeated here. The header comment of `test_pref_local_seam.cpp` still
-says that `HydroImpl` restarts the scan in a second same-process block and that the test does not fix it, while the
-assertions expect the fixed behaviour ([`test_pref_local_seam.cpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L1-L15)). The switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
+A split column is not bitwise equal to one block; the tests use $10^{-13}$ and $10^{-12}$. How far a split column
+differs from one block on CPU and on GPU is **not measured at the pin**. The header comment of
+`test_pref_local_seam.cpp` says that `HydroImpl` restarts the scan in a second same-process block and that the test
+does not fix it, while the assertions expect the relay of this section ({{< code tests/test_pref_local_seam.cpp >}});
+the comment is stale against the code it tests. The switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
