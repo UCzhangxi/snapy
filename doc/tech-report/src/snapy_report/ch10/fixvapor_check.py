@@ -1,7 +1,7 @@
 """Executable check of the column vapour and cloud repair (chapter 10, _fixvapor.qmd).
 
 What is checked: fix_vapor_impl (src/eos/fix_vapor_impl.h:9-79) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below. Claims C1-C7.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C7.
 C1-C3 replay the inputs of the eos_limiter gtests (tests/test_eos.cpp:40-120 at the same sha)
 through the port; C4-C6 check the claims of the Derivation layer on random columns.
 Also writes data/fixvapor_column.csv for fig_fixvapor_column.py.

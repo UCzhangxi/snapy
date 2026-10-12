@@ -1,8 +1,9 @@
 ## Sedimentation of condensates (`sedimentation`) {#sec-ch10-sed}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: OUTLINE.md 10.8 (moved from ch09); code links below
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md 10.8; src/sedimentation/, src/hydro/hydro_forward.cpp, src/hydro/hydro.cpp and the tests below at
+         the pin
 status: draft
 -->
 
@@ -29,8 +30,7 @@ constant. The flux is donor-cell, sealed at physical $x_1$ walls and open at int
 move, so the dry-air tracers of @sec-ch10-tracer are unaffected.
 
 It is on when the YAML card has a top-level `sedimentation` block listing cloud species, and the block refuses to
-build without `forcing/const-gravity`. Aliases: PR #216 (fused kernels, mean-free-path fix), PR #217 (removal of
-`fric-heat`), PR #258.
+build without `forcing/const-gravity`.
 
 ### Derivation
 
@@ -44,7 +44,7 @@ w_{\mathrm{s},n} = \frac{2\beta_n\,a_n^2\,g_1\,(\rho_{\mathrm{p},n}-\rho)}{9\,\m
 $$ {#eq-ch10-sed-stokes}
 
 clamped to $\pm$`upper-limit`. @eq-ch10-sed-stokes is computed in `SedVelImpl::forward` as `stokes`
-({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}).
+({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}); a non-zero `const_vsed` is the whole velocity.
 The viscosity is the Chapman-Enskog value for a Lennard-Jones gas,
 
 $$
@@ -53,36 +53,35 @@ $$ {#eq-ch10-sed-viscosity}
 
 with molecular mass $m$,
 diameter $d$ and well depth $\epsilon$ from the YAML defaults of an $\mathrm{H_2}$ background, and the mean free path
-is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m)}$
-({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}, `eta`).
-`sed_check.py` confirms the sign convention ($g_1<0$ and a dense particle settle, `[C1]`), the two limits of
+is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m)}$; the code calls $\mu$ `eta`
+({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}).
+The port confirms the sign convention ($g_1<0$ and a dense particle settle, `[C1]`), the two limits of
 $\beta_n$ (1 in the continuum, $1.656\,\mathrm{Kn}$ in the free-molecular limit, `[C2]`), that $\mu$ depends on $T$
-only (`[C3]`), and the clamp and the prescribed velocity (`[C4]`).
+only (`[C3]`), and the clamp and the prescribed velocity (`[C4]`).[^sed-c]
 
 The flux through the face below cell $i$ takes its donor from cell $i$ when $w_{\mathrm s,n}<0$ and from cell $i-1$
-when $w_{\mathrm s,n}>0$; faces at or beyond a physical $x_1$ wall carry nothing
-({{< code src/sedimentation/sed_hydro_dispatch.hpp sedimentation_upwind >}}, `sedimentation_upwind`).
+when $w_{\mathrm s,n}>0$; faces at or beyond a physical $x_1$ wall carry nothing, `sedimentation_upwind`
+({{< code src/sedimentation/sed_hydro_dispatch.hpp sedimentation_upwind >}}).
 The donor carries $\rho_nw_{\mathrm s,n}$ of mass, $\mathbf v\,\rho_nw_{\mathrm s,n}$ of momentum and
 $\rho_nw_{\mathrm s,n}\big(u^{\star}_n+c_{v,n}T+\tfrac12\lvert\mathbf v\rvert^2\big)$ of energy: the condensate's own
-internal energy plus kinetic energy, with no $R_nT$ share, because a condensate does no pressure work
-({{< code src/sedimentation/sed_hydro_impl.h sedimentation_donor_impl >}}, `species_energy`).
+internal energy plus kinetic energy, with no $R_nT$ share, because a condensate does no pressure work,
+`species_energy` ({{< code src/sedimentation/sed_hydro_impl.h sedimentation_donor_impl >}}).
 With both walls sealed the column's condensate mass changes only by what the advective flux does (`[C5]`).
 
-::: {.callout-important title="Check"}
-`src/snapy_report/ch10/sed_check.py`, output `sed_check.out` [sha: the formulas of
-snapy@e894700ff7aee30b52882e5202b16461413780b0 with kintera@c55b13b2204997d2d09e04498558ab9495d8ee77's Boltzmann
-constant, ported line for line; deck: the check itself; run: `python3 sed_check.py`, numpy, double].
-:::
+[^sed-c]: `python3 src/snapy_report/ch10/sed_check.py`, output `sed_check.out`, lines `[C1]`–`[C5]`; a numpy port
+    of `SedVelImpl::forward` and `sedimentation_upwind` at the pin with the Boltzmann constant of kintera at
+    `c55b13b2204997d2d09e04498558ab9495d8ee77`, double precision.
 
 ### Numerical method
 
-The flux is added to `flux1` after the $x_1$ Riemann solve, and its condensate part is saved as `fsed1` so the
-positivity limiter can carry the right energy and momentum with it
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, `fsed1`).
+The flux is added to `flux1` after the $x_1$ Riemann solve and before the $x_1$ seam faces are made single-valued.
+With the limiter on and species present its condensate part is saved as `fsed1`, so the positivity limiter can
+carry the right energy and momentum with it ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 With the ideal-moist EOS and contiguous tensors a fused CPU or CUDA kernel computes velocity and flux in one pass;
 otherwise a tensor path does the same in separate operations
-({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}, `SedHydroImpl::forward`). MPS has its own kernel behind the
-same dispatch stub (`sedimentation_flux_mps`, [`sed_hydro_dispatch.cpp:222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/sedimentation/sed_hydro_dispatch.cpp#L222)).
+({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}). MPS has its own kernel,
+`sedimentation_flux_mps`, behind the same dispatch stub
+({{< code src/sedimentation/sed_hydro_dispatch.cpp sedimentation_flux_mps >}}).
 The wall bounds are set only where the block face is a physical boundary, so seams between blocks stay open.
 @fig-ch10-sed-donor shows a column; @fig-ch10-sed-vsed the velocity.
 
@@ -116,12 +115,15 @@ make_fig()
 
 : Code map of sedimentation. {#tbl-ch10-sed-code}
 
-1. Parse the block and require cloud species ({{< code src/sedimentation/sed_options.cpp SedHydroOptionsImpl::from_yaml >}}, `from_yaml`).
-2. Read the gas constants and the clamp, with their defaults ({{< code src/sedimentation/sed_options.cpp SedVelOptionsImpl::from_yaml >}}, `upper_limit`).
-3. Refuse a card without constant gravity ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::reset >}}, `grav`).
-4. Skip when $g_1=0$ or nothing settles, seal physical walls ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}, `is_physical_boundary`).
-5. Choose the fused or the tensor path ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}, `sedimentation_flux_tensor`).
-6. Add to `flux1` and save the condensate part ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, `psed`).
+1. Parse the block and require cloud species ({{< code src/sedimentation/sed_options.cpp SedHydroOptionsImpl::from_yaml >}}).
+2. Read the gas constants and the clamp `upper_limit`, with their defaults
+   ({{< code src/sedimentation/sed_options.cpp SedVelOptionsImpl::from_yaml >}}).
+3. Refuse a card without constant gravity, `grav` ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::reset >}}).
+4. Skip when $g_1=0$ or nothing settles, seal physical walls, `is_physical_boundary`
+   ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}).
+5. Choose the fused or the tensor path, `sedimentation_flux_tensor`
+   ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}).
+6. Add to `flux1` and save the condensate part, `psed` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 Setup messages: "[SedHydro] sedimentation reads grav1; set forcing/const-gravity", "Missing sedimentation particles
 in the clouds.", "Sedimentation radius must be positive." and "Sedimentation density must be positive."
@@ -138,14 +140,14 @@ in the clouds.", "Sedimentation radius must be positive." and "Sedimentation den
 : Tests of sedimentation; assertions read from the test sources at the pin, not run. {#tbl-ch10-sed-tests}
 
 The fused kernel must equal the tensor path to $10^{-10}$ relative and settle (negative flux) inside the column
-({{< code tests/test_forcing.cpp forcing.fused_sedimentation_matches_tensor_path >}}, `fused_sedimentation_matches_tensor_path`).
+({{< code tests/test_forcing.cpp forcing.fused_sedimentation_matches_tensor_path >}}).
 A rising cloud must be taken from the cell below, mass and energy fluxes to $10^{-9}$ relative, on CPU and CUDA
-({{< code tests/test_sedimentation_guards.cpp expect_rising_cloud_taken_from_below >}}, `EXPECT_NEAR`).
+({{< code tests/test_sedimentation_guards.cpp expect_rising_cloud_taken_from_below >}}).
 On two ranks of a cubed sphere, the condensate mass is conserved to $10^{-12}$ relative and two seam sums are pinned
 to $10^{-7}$ and $5\times10^{-3}$ absolute
-({{< code tests/test_sedimentation_cubed_seam.cpp main >}}, `conserved`);
+({{< code tests/test_sedimentation_cubed_seam.cpp main >}});
 the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX result. Measured results at the pin are
-**missing evidence** (the verification catalogue's entry for this chapter).
+**missing evidence** (@sec-ch15-ch10-tests).
 
 ### Limits
 
@@ -154,8 +156,13 @@ The time step has no sedimentation term: `HydroImpl::max_time_step` does not rea
 settling speed can over-drain a cell, and only the positivity limiter catches it.
 :::
 
-- The MPS path is untested (PR #216).
-- Casting a block to float32 turns the index buffer into floats (PR #258).
-- `fric-heat` was removed because it double-counted the face gravity work (PR #217; @sec-ch06).
+- The MPS path is untested: no registered test runs on MPS.
+- libtorch's `Module::to` casts every buffer, so casting a block to float32 also casts the index buffer
+  `hydro_ids`. The fused path converts it back to int64 before use
+  ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}); the tensor path indexes with it as it is
+  ({{< code src/sedimentation/sed_hydro.cpp sedimentation_flux_tensor >}}). A float32 block on the tensor path is
+  not tested.
+- There is no frictional heating key: `forcing` refuses `fric-heat`, because the $x_1$ face gravity work already
+  carries the sedimentation part of the mass flux (@sec-ch09-framework, @sec-ch06).
 - The default gas constants describe $\mathrm{H_2}$; other backgrounds must set them.
 - Not in the switch coverage matrix (@sec-ch12-matrix).

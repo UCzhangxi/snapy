@@ -1,7 +1,7 @@
 """A 64-cell column with an interior and a bottom vapour deficit, before and after fix_vapor.
 
 Data: data/fixvapor_column.csv, written by fixvapor_check.py (claim C6), a line-for-line port of
-src/eos/fix_vapor_impl.h:9-79 at snapy@e894700ff7aee30b52882e5202b16461413780b0.
+src/eos/fix_vapor_impl.h:9-79 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 """
 import os
 

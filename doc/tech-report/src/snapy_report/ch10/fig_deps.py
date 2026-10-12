@@ -1,4 +1,4 @@
-"""Dependency map of the chapter 10 schemes; snapy@e894700ff7aee30b52882e5202b16461413780b0.
+"""Dependency map of the chapter 10 schemes; snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 
 Logical relations read from the code cited in each scheme file; no measured data.
 """

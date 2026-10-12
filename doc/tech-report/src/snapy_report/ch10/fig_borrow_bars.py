@@ -1,7 +1,7 @@
 """An NH4SH(s) deficit filled from NH3 and H2S in one cell, before and after the borrow.
 
 Data: data/borrow_bars.csv, written by borrow_check.py (claim C1), which ports
-src/eos/equation_of_state.cpp:110-163 and :262-268 at snapy@e894700ff7aee30b52882e5202b16461413780b0.
+src/eos/equation_of_state.cpp:110-163 and :262-268 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 """
 import os
 

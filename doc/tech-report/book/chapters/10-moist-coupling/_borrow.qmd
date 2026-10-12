@@ -1,8 +1,9 @@
 ## Condensate repair by parent-vapour borrow (`limiter`) {#sec-ch10-borrow}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 10.3; code links below; sources/canoe__POSITIVITY_TECH_REPORT.md section 6
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 10.3; src/eos/equation_of_state.cpp and the tests below at the pin;
+         sources/canoe__POSITIVITY_TECH_REPORT.md section 6
 status: draft
 -->
 
@@ -25,9 +26,7 @@ A cell whose vapour cannot cover the deficit goes vapour-negative and is handled
 before the saturation adjustment (@sec-ch10-satadj).
 
 It is on with `limiter: true` and acts only on condensates that some nucleation reaction produces; a condensate
-with no such reaction (rain, for example) is repaired by the column repair instead. Aliases: the parent cache
-was introduced in PR #223 and moved to the thermo's own species table in #235
-([chengcli/snapy#235](https://github.com/chengcli/snapy/issues/235)).
+with no such reaction (rain, for example) is repaired by the column repair instead.
 
 ### Derivation
 
@@ -43,12 +42,12 @@ $$
 $$ {#eq-ch10-borrow-split}
 
 for every $m\in\mathcal P_c$. @eq-ch10-borrow-split is applied to the `deficit` in `apply_conserved_limiter_`
-({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `deficit`),
-with the shares normalised once, at construction, in `cache_cloud_parents_`
-({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `parent_mass`).
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), with the shares
+normalised by `parent_mass` once, when the equation of state is built, in `cache_cloud_parents_`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}).
 
 The shares sum to one, so the parents lose exactly $-\min(\rho_c,0)$ and the condensate gains it: the cell's total
-density is unchanged (check line `[C1]`). Elements are conserved too. For $A+B\to AB$ the molar mass of the
+density is unchanged (`[C1]`).[^bor-c] Elements are conserved too. For $A+B\to AB$ the molar mass of the
 condensate is $\mu_A+\mu_B$; filling a deficit $d$ fills $d/(\mu_A+\mu_B)$ moles of condensate and debits
 $d\,\mu_A/(\mu_A+\mu_B)/\mu_A$ moles of $A$, the same number, and likewise for $B$ (`[C2]`, symbolic). Energy is not
 corrected: $E$ is untouched, so the shift between phases moves the temperature through the reference energies by
@@ -56,11 +55,9 @@ the latent heat of the borrowed mass. The comment at the call site estimates the
 local value and notes that the saturation adjustment re-equilibrates it within the same step; that estimate has no
 measurement behind it here.
 
-::: {.callout-important title="Check"}
-`src/snapy_report/ch10/borrow_check.py`, output
-`src/snapy_report/ch10/borrow_check.out` [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0,
-ported line for line; deck: the check itself; run: `python3 borrow_check.py`, numpy and sympy, double].
-:::
+[^bor-c]: `python3 src/snapy_report/ch10/borrow_check.py`, output `borrow_check.out`, lines `[C1]`–`[C4]`; a
+    numpy and sympy port of `cache_cloud_parents_` and of the borrow in `apply_conserved_limiter_` at the pin,
+    double precision.
 
 ### Numerical method
 
@@ -87,14 +84,18 @@ make_fig()
 | parent cache | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}} | `cache_cloud_parents_` | |
 | dry slot never a parent | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}} | `vapor_it` | |
 | first producing reaction | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}} | `break` | |
-| borrow and clamp | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `deficit` | `deficit` | `limiter` |
+| borrow and clamp | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `deficit` | `limiter` |
 
 : Code map of the parent-vapour borrow. {#tbl-ch10-borrow-code}
 
-1. At construction, take the thermo's own names and molar masses ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `populate_thermo`).
-2. Refuse a thermo whose tables disagree in length ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `TORCH_CHECK`).
-3. Record the parents and their mass shares ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}, `cloud_parent_cache_`).
-4. In each limiter call, skip parentless clouds and borrow for the rest ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `parentless`).
+1. When the equation of state is built, take the thermo's own names and molar masses, `populate_thermo`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}).
+2. Refuse a thermo whose tables disagree in length, `TORCH_CHECK`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}).
+3. Record the parents and their mass shares, `cloud_parent_cache_`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}).
+4. In each limiter call, skip parentless clouds and borrow for the rest, `parentless`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
 
 The only setup check is the table-length refusal of step 2, "[EquationOfState] thermo carries ... species names".
 
@@ -109,15 +110,14 @@ The only setup check is the table-length refusal of step 2, "[EquationOfState] t
 
 : Tests of the parent-vapour borrow; assertions read from the test sources at the pin, not run. {#tbl-ch10-borrow-tests}
 
-`test_condensate_conservation` keeps the total mass to $10^{-12}$ and checks the NH3 and H2S debits against their
-molar-mass shares to $10^{-6}$, with the condensate exactly zero after
-({{< code tests/test_condensate_conservation.cpp DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass >}}, `allclose`).
+`test_condensate_conservation` keeps the total mass to $10^{-12}$ and checks the $\mathrm{NH_3}$ and $\mathrm{H_2S}$
+debits against their molar-mass shares to $10^{-6}$, with the condensate exactly zero after
+({{< code tests/test_condensate_conservation.cpp DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass >}}).
 The $10^{-6}$ of the share comparison is looser than the arithmetic; the source gives no reason for it, and
-`borrow_check.py` `[C1]` shows the shares themselves are exact to round-off. The two-card test uses $10^{-10}$ in
-float64 and $10^{-4}$ in float32
-({{< code tests/test_two_cards_species.cpp expect_card_a_parents >}}, `tol`).
+`borrow_check.py` `[C1]` shows the shares themselves are exact to round-off. The two-card test uses `tol` $=10^{-10}$ in
+float64 and $10^{-4}$ in float32 ({{< code tests/test_two_cards_species.cpp expect_card_a_parents >}}).
 All four run on CPU, and on CUDA where the device fixture is compiled; none is multi-rank. Measured results at the
-pin are **missing evidence** (the verification catalogue's entry for this chapter).
+pin are **missing evidence** (@sec-ch15-ch10-tests).
 
 ### Limits
 

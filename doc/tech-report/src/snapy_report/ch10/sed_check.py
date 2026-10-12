@@ -2,7 +2,7 @@
 
 What is checked: SedVelImpl::forward (src/sedimentation/sed_vel.cpp:34-71) and the donor/sealing rule
 sedimentation_upwind (src/sedimentation/sed_hydro_dispatch.hpp:12-24) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below, with the YAML defaults of
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below, with the YAML defaults of
 src/sedimentation/sed_options.cpp:120-123 and kintera's KBoltz (src/constants.h:9 at
 kintera@c55b13b2204997d2d09e04498558ab9495d8ee77). Claims C1-C5.
 Also writes data/sed_vsed.csv for fig_sed_vsed.py.
