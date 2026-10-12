@@ -37,6 +37,20 @@ The verdict line is the reviewer's own, and it rests on reading that head. "Look
 **Render** run `<id>`, `<conclusion>`, on head `<sha>`, `<start>` → `<end>`.
 Link: <url>
 
+**Reviewer context** (STYLE.md 11.3)
+
+- [ ] I did not write this chapter and was not in its drafting conversation (**fresh context**). If I was,
+      say so here — the record is still useful, but it does not satisfy 11.3(a).
+
+**Blind restatement** — **[N: to be set]** sampled claims, restated in my own words before re-reading the
+author's framing, and confirmed or corrected by the author.
+
+*N has not been set. Xi or the editor sets it; do not pick a number locally. Until it is set, state how many
+claims you sampled and how you chose them, so the record is still auditable.*
+
+| # | claim, as I restate it | author: confirms / corrects |
+|---|---|---|
+
 **Read** — what I actually read, not what I assume.
 
 - Files read line by line: <list>
@@ -65,6 +79,9 @@ rule broken), **note** (observation, no action needed).
 
 - **Read the head immediately before posting.** If it moved while you were reviewing, say so and do not post a
   verdict on a sha that is no longer there.
+- **There is no separate recheck-after-fixes step.** Any push resets every sign-off, so a fix pushed after
+  this record invalidates it and the review is redone against the new head. That is why the record is pinned
+  to one head sha rather than to a PR number.
 - **Gate numbers are a pair.** A single column proves nothing: 163 problems is fine if the base had 163.
 - **A claim you did not check is not a claim you approved.** The "could not check" list is the honest part of
   the record and the one reviewers most often skip.
