@@ -155,6 +155,7 @@ the symbol in math, and never let the two touch.
 | $W^{\mathrm{wallc}}_i$ | the `face-wallc` work: $W^{\mathrm{face}}_i$ in interior cells, $W^{\mathrm{cell}}_i$ in the two $x_1$ wall cells | |
 | $\mathcal E$ | the conserved energy functional of a scheme, named each time ($\mathcal E = \sum_iV_iE_i+P$ under D, $\sum_iV_iE_i+\mathrm{PE}_d$ under the plain face form) | (logged `ie=` + `pe=`) |
 | $M$, $M_{\mathrm{wall}}$ | total mass of the domain, and total mass of the $x_1$ wall cells | |
+| $M_\partial$ | unweighted mass accumulated through the physical, non-periodic $x_1$ boundary faces over all stages of a step (ch13 fixgrav) [kg]; never written $W$, which is gravity work | `_gwfix_wall` |
 | $\mathcal D$ | the $E+\mathrm{PE}_d$ defect of a step, the quantity the gravity-work fixer removes [J] | `gravity_work_defect()` |
 | $F^{\mathrm{ref}}$ | the total $x_1$ mass flux as the Riemann solver returns it (dry plus every species row), before sedimentation and the positivity limiter change the flux; under `gravity-work: cell` only $F-F^{\mathrm{ref}}$ is booked as face work. Not a reference-state flux: the superscript is not the hydrostatic $\mathrm{ref}$ of §6 (the code comment writes $F^R$) [kg m$^{-2}$ s$^{-1}$] | `bflux1` |
 
