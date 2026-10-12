@@ -31,7 +31,7 @@ advection only.
 **Evidence.** Tests: the implicit $x_1$ step is $C_{\mathrm{adv}}\Delta x_1/|v_1|$,
 {{< code tests/test_implicit_advection_cfl.py main >}}; the shear bound binds and releases,
 {{< code tests/test_shear_cfl.py main >}} ($10^{-9}$ relative); bad values are refused and the defaults are 1 and 0,
-{{< code tests/test_implicit_cfl.cpp implicit_cfl.rejects_non_numeric_and_keeps_the_ranges >}} (exact); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/cfl_check.py`, output `cfl_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
+{{< code tests/test_implicit_cfl.cpp implicit_cfl.rejects_non_numeric_and_keeps_the_ranges >}} (exact); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/cfl_check.py`, output `cfl_check.out` lines `[C1]`–`[C5]`; the check ports the code at snapy@e894700ff7aee30b52882e5202b16461413780b0, not the pin.
 :::
 
 [^ch07-cfl-src]: Source and credit: the implicit-advective and shear bounds are those of chengcli/snapy#218
@@ -47,7 +47,7 @@ $$
 \begin{aligned}
 \tau_a &= \min_{\mathrm{cells}}\frac{\Delta x_a}{|v_a|+c_s} \quad\text{explicit direction},\\
 \tau_1 &= \min_{\mathrm{cells}}\frac{\Delta x_1}{|v_1|\,C/C_{\mathrm{adv}}} \quad\text{implicit direction},\\
-\tau_{\mathrm{sh}} &= \min_{\mathrm{faces}}\frac{C_{\mathrm{sh}}}{C}\,\frac{c_f\,h_b}{|v_{b,i}|\,|v_{b,i+1}|} ,
+\tau_{\mathrm{sh}} &= \min_{\mathrm{faces}}\frac{C_{\mathrm{sh}}}{C}\,\frac{c_f\,\Delta x_b}{|v_{b,i}|\,|v_{b,i+1}|} ,
 \end{aligned}
 $$ {#eq-ch07-cfl-bounds}
 
@@ -67,7 +67,7 @@ checked against a line-by-line port [check `src/snapy_report/ch07/cfl_check.py`,
 1. In an explicit direction the acoustic Courant number $(|v_a|+c_s)\Delta t/\Delta x_a$ is $C$ (`[C1]`).
 2. In the implicit $x_1$ direction the factor $C$ cancels: $|v_1|\Delta t/\Delta x_1 = C_{\mathrm{adv}}$ whatever $C$ is,
    so `implicit-advection-cfl` is the advective Courant number itself (`[C2]`).
-3. The shear bound is $\Delta t = C_{\mathrm{sh}}\,c_f h_b/(|v_{b,i}||v_{b,i+1}|)$, again independent of $C$, and
+3. The shear bound is $\Delta t = C_{\mathrm{sh}}\,c_f\,\Delta x_b/(|v_{b,i}||v_{b,i+1}|)$, again independent of $C$, and
    applies only on faces where the jump reaches $c_f$ (`[C4]`).
 
 A column with $n_2=n_3=1$ keeps the acoustic bound in $x_1$ even with an implicit scheme (`[C3]`), and each redo halves the step (`[C5]`). Solid cells get $c_s=10^{-8}$ in the `solid` mask, so they never bind
@@ -120,7 +120,7 @@ redo factor of the first local block applies to all blocks of a Mesh.
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_implicit_advection_cfl.py` (`test_implicit_advection_cfl_python`) | implicit $x_1$: $\Delta t = C_{\mathrm{adv}}\Delta x_1/|v_1|$ for $C_{\mathrm{adv}}$ 1 and 0.25; at rest the explicit $x_2$ bound; explicit scheme: the acoustic $x_1$ bound; the key without `implicit-scheme` raises | $10^{-12}$ relative | closed form |
-| `tests/test_shear_cfl.py` (`test_shear_cfl_python`) | a $6c_s$ reversal binds at $C_{\mathrm{sh}}c_sh_2/v^2$ for $C_{\mathrm{sh}}$ 0.2 and 0.1; off, uniform wind and a $0.6c_s$ jump leave the $x_2$ bound | $10^{-9}$ relative | closed form |
+| `tests/test_shear_cfl.py` (`test_shear_cfl_python`) | a $6c_s$ reversal binds at $C_{\mathrm{sh}}c_s\Delta x_2/v^2$ for $C_{\mathrm{sh}}$ 0.2 and 0.1; off, uniform wind and a $0.6c_s$ jump leave the $x_2$ bound | $10^{-9}$ relative | closed form |
 | `tests/test_implicit_cfl.cpp` (`test_implicit_cfl.release`) | non-numeric, negative and non-finite values are refused; defaults 1 and 0 | exact | contract |
 | `tests/test_diffusion.cpp` (`test_diffusion.release`), `timestep_uses_largest_diffusivity` | the diffusive bound enters the hydro bound | $10^{-6}$ | see @sec-ch09-viscosity |
 | this section's check, `cfl_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
@@ -128,7 +128,7 @@ redo factor of the first local block applies to all blocks of a Mesh.
 : Tests of the time-step bound. {#tbl-ch07-cfl-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `cfl_check.py`, which ports, from the code at the pin, the bound formulas line for line; deck: the check itself.[^ch07-cfl-run] ctest cases: **pending: pinned
+**Evidence.** Check numbers come from `cfl_check.py`, which ports, from the code at snapy@e894700, the bound formulas line for line; deck: the check itself.[^ch07-cfl-run] ctest cases: **pending: pinned
 ctest run**. A data figure of the step against the redo count needs a logged run, **pending**.
 **Coverage.** The two Python tests run on CPU and take `--device cuda`; no multi-rank test of the reduction is
 listed here.
