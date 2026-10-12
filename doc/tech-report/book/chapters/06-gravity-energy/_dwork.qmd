@@ -27,15 +27,15 @@ limiter and the forcings; with an implicit scheme partly inside the VIC energy r
 `false`, `off` or `no`; acts with `forcing/const-gravity/gravity-work: face` (the default), $g_1\neq0$, geometry
 `cartesian`, `spherical-polar` or `gnomonic-equiangle`, and $n_1\ge3$ cells per block. Turns off the
 cp3/cp5/weno5 curvature flux $\mathcal K$.
-**Guarantee / limits.** $E+P$ to round-off per stage and per step, explicit and implicit, on closed columns; booked
+**Guarantee / limits.** $E_{\mathrm{tot}}+P$ to round-off per stage and per step, explicit and implicit, on closed columns; booked
 work $O(h^4)$ against the exact work of the scheme's fluxes, about second order in the VIC wall cells;
-$E+\mathrm{PE}_d$ is not conserved.
+$E_{\mathrm{tot}}+\mathrm{PE}_d$ is not conserved.
 **Evidence.** `d_face_work_pe_check.py` (11 claims) and `d_cs_centroid_term_check.py` (2 claims);
 `test_gravity_work_radial_exact`, `test_x1_seam_split_radial_exact` and the tall-column test, read from the source,
 not run here.
 :::
 
-With `gravity-work: face`, snapy books the energy that gravity exchanges with the flow in the form of a flux
+With `gravity-work: face`, snapy books the work gravity does on the flow in the form of a flux
 difference of potential energy across each cell's $x_1$ faces (the face form). This scheme adds
 one term to that work in every cell, @eq-ch06-dwork-d, where $\dot\rho$ is the stage's $x_1$ density tendency,
 $s_i$ the centroid slope of @eq-ch06-dwork-slope and $\sigma_i^2$ the variance of $x_1$ over the cell. The added
@@ -47,9 +47,9 @@ The face form therefore books a gravity work with an $O(h^2)$ error in every cel
 $\tfrac{h^2}{12}\partial_1^2F$, plus two $O(h^2/r)$ curvature terms on spherical-polar grids. The cp3/cp5/weno5
 reconstructions remove part of it with the curvature flux $\mathcal K$ (the face form), but that flux is zero at
 walls, which leaves the two wall cells of every column first order. This scheme replaces $\mathrm{PE}_d$ by a
-fourth-order potential energy $P$ and books exactly the work that conserves $E+P$. The result is a gravity work
+fourth-order potential energy $P$ and books exactly the work that conserves $E_{\mathrm{tot}}+P$. The result is a gravity work
 that is $O(h^4)$ relative to the exact work of the scheme's own $x_1$ mass fluxes, in every cell, measured on
-uniform Cartesian and spherical-polar grids; and $E+P$ conserved to round-off on a closed column, in every RK
+uniform Cartesian and spherical-polar grids; and $E_{\mathrm{tot}}+P$ conserved to round-off on a closed column, in every RK
 stage, explicit and implicit. It does not make the energy equation fourth order: the fluxes $F_{i\pm1/2}$ keep
 the reconstruction's and the Riemann solver's error.
 
@@ -62,8 +62,8 @@ work gains the centroid-offset term of @eq-ch06-dwork-cs. Only on a grid with no
 active the curvature flux $\mathcal K$ is turned off, because the scheme already removes the term $\mathcal K$
 removes and the two together are back to $O(h^2)$; it never meets the gravity-work fixer, which
 runs only with `gravity-work: cell`; and with an implicit scheme part of it is booked inside the vertical
-implicit operator (the VIC gravity work). Under it the conserved invariant is $E+P$, the cycle diagnostics log $P$ as
-`pe=`, and every $E+\mathrm{PE}_d$ check measures the wrong quantity.
+implicit operator (the VIC gravity work). Under it the conserved invariant is $E_{\mathrm{tot}}+P$, the cycle diagnostics log $P$ as
+`pe=`, and every $E_{\mathrm{tot}}+\mathrm{PE}_d$ check measures the wrong quantity.
 
 *Aliases.* "Leg D" of the gravity-work round, hence "scheme D" in commit messages; "option F" in
 `docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §7, whose "option D" is
@@ -81,13 +81,14 @@ internal $x_1$ seams the port takes the one-sided slope, which the code keeps on
 Check below); deck: the check itself; run: `python3 d_face_work_pe_check.py`, numpy 2.5.3, sympy 1.14.0, double].
 Fitted orders use the last three resolutions ($n_1$ = 64, 128, 256) unless stated. Units: $g_1$ [m s$^{-2}$],
 $\rho$ [kg m$^{-3}$], $F$ [kg m$^{-2}$ s$^{-1}$], $h$ and $x_1$ [m], $\sigma^2$ [m$^2$], $\phi$ [m$^2$ s$^{-2}$],
-$W$ [W m$^{-3}$]; $E$ is an energy density [J m$^{-3}$], and $E+\mathrm{PE}_d$ and $E+P$ are the integrated sums
-of the chapter preamble [J, per unit horizontal area on Cartesian grids and per steradian on spherical-polar]. The
+$W$ [W m$^{-3}$]; $E$ is the total energy density [J m$^{-3}$], and $E_{\mathrm{tot}}+\mathrm{PE}_d$ and
+$E_{\mathrm{tot}}+P$ are the integrated sums of the chapter preamble, with $E_{\mathrm{tot}}=\sum_iV_iE_i$ [J, per
+unit horizontal area on Cartesian grids and per steradian on spherical-polar]. The
 executable check is nondimensional, with $g_1=-10$ and scale height $H=1$.
 
 The continuous budget, the exact work of one cell @eq-ch06-dwork-template and the booked work
 @eq-ch06-dwork-booked are derived in the chapter preamble: whatever discrete potential energy $P$ a form uses, the
-work @eq-ch06-dwork-booked conserves $E+P$ exactly and is as accurate as $P$ is. The design problem of this section
+work @eq-ch06-dwork-booked conserves $E_{\mathrm{tot}}+P$ exactly and is as accurate as $P$ is. The design problem of this section
 is to choose a $P_i$ that is accurate and computable from cell averages.
 
 #### The face form is $P = \mathrm{PE}_d$
@@ -115,7 +116,7 @@ $$ {#eq-ch06-dwork-face}
 the second form from $\phi_i - \phi_{i\pm1/2} = g_1(x_{1,i\pm1/2}-x_{1,i})$. @eq-ch06-dwork-face is computed as
 `face_gravity_work` in
 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}
-(times $\Delta t$). The face form conserves $E+\mathrm{PE}_d$ exactly, by @eq-ch06-dwork-booked.
+(times $\Delta t$). The face form conserves $E_{\mathrm{tot}}+\mathrm{PE}_d$ exactly, by @eq-ch06-dwork-booked.
 
 $\mathrm{PE}_d$ is the exact $\int\rho\phi\,\mathrm{d}V$ of a piecewise-constant density, so it misses the in-cell
 density gradient. On a uniform Cartesian grid @eq-ch06-dwork-face is the trapezoid rule,
@@ -219,7 +220,7 @@ is fourth-order accurate. `[C4]` measures $|P-\mathcal P|/|\mathcal P|$ at order
 $P$ is linear in $\bar\rho$ and reads no cell outside the block: no ghost cells. That is the wall closure. From
 here on this section uses only cell averages, so the bar is dropped: $\rho_i$ is the cell average.
 
-#### The work that conserves $E+P$
+#### The work that conserves $E_{\mathrm{tot}}+P$
 
 Insert $P_i = V_i[\rho_i\phi_i - g_1\sigma_i^2s_i[\rho]]$ into @eq-ch06-dwork-booked. Because $s_i$ is linear,
 $\dot P_i = V_i[\dot\rho_i\phi_i - g_1\sigma_i^2s_i[\dot\rho]]$, and comparing with @eq-ch06-dwork-face,
@@ -272,7 +273,7 @@ $\Delta P_i$, which leaves $-\Delta t\,\Delta_i[A\phi F]$, and that telescopes t
 The new term is diagonal: it uses only the cell's own density change. It enters with the same sign and weights
 the four places that book or log the work: the explicit face work, the diagonal of the VIC energy row, the
 post-solve remainder and the logged `pe=`. With the term in the work but not in $P$, or the reverse, each cell
-keeps $\pm g_1V_i\delta_i\Delta\rho_i$, an $O(h^2/r)$ defect. Left out of both, $E+P$ still closes, but the work
+keeps $\pm g_1V_i\delta_i\Delta\rho_i$, an $O(h^2/r)$ defect. Left out of both, $E_{\mathrm{tot}}+P$ still closes, but the work
 error is $-g_1\delta\dot\rho$, second order with a $1/r$ coefficient (same note, §12.7).
 
 `d_cs_centroid_term_check.py` ports the four helpers and checks both statements [sha: the formulas of the code
@@ -303,18 +304,18 @@ Write $\mathcal E(\mathbf U) = \sum_iV_iE_i + P[\rho]$. $\mathcal E$ is linear i
 $\mathcal E(\Delta t\,\mathcal L) = 0$ by the identity above. Then
 $\mathcal E(\mathbf U^{\mathrm{new}}) = w_0^{(s)}\mathcal E(\mathbf U^n) + w_1^{(s)}\mathcal E(\mathbf U)$, which
 equals $\mathcal E(\mathbf U^n)$ whenever $\mathcal E(\mathbf U)=\mathcal E(\mathbf U^n)$. By induction over the
-stages, $E+P$ is constant over the step to round-off.
+stages, $E_{\mathrm{tot}}+P$ is constant over the step to round-off.
 
 `[C7]` steps closed columns 20 times with arbitrary nonlinear fluxes. The max per-step
-$|\Delta^{\mathrm{stg}}(E+P)|/|E+P|$ is $\le3.5\times10^{-16}$ on every case: Cartesian stretched; spherical with
+$|\Delta^{\mathrm{stg}}(E_{\mathrm{tot}}+P)|/|E_{\mathrm{tot}}+P|$ is $\le3.5\times10^{-16}$ on every case: Cartesian stretched; spherical with
 inner radius over scale height 1, 5 and 1000; two $x_1$ blocks; a 2-D box. Over the same steps
-$E+\mathrm{PE}_d$ drifts by $10^{-8}$ to $10^{-5}$ per step.
+$E_{\mathrm{tot}}+\mathrm{PE}_d$ drifts by $10^{-8}$ to $10^{-5}$ per step.
 
-$E+\mathrm{PE}_d$ is not conserved by this scheme. Since
+$E_{\mathrm{tot}}+\mathrm{PE}_d$ is not conserved by this scheme. Since
 $\mathrm{PE}_d = P + g_1\sum_iV_i\sigma_i^2s_i[\rho]$, it changes per stage by
 
 $$
-\Delta^{\mathrm{stg}}(E+\mathrm{PE}_d) = +g_1\sum_iV_i\sigma_i^2s_i[\Delta^{\mathrm{stg}}\rho],
+\Delta^{\mathrm{stg}}(E_{\mathrm{tot}}+\mathrm{PE}_d) = +g_1\sum_iV_i\sigma_i^2s_i[\Delta^{\mathrm{stg}}\rho],
 $$ {#eq-ch06-dwork-ped-change}
 
 the $O(h^2)$ error of $\mathrm{PE}_d$ itself. `[C7]` checks @eq-ch06-dwork-ped-change on one stage of every case,
@@ -400,18 +401,18 @@ $$
 $$
 
 $\bar M_i$ is the level's total mass, which horizontal fluxes conserve (periodic or closed lateral boundaries).
-So $E+P$ stays exact. `[C7]` checks this on a 2-D box with periodic $x_2$ fluxes: $3.4\times10^{-16}$ per step.
+So $E_{\mathrm{tot}}+P$ stays exact. `[C7]` checks this on a 2-D box with periodic $x_2$ fluxes: $3.4\times10^{-16}$ per step.
 
 For blocks split in $x_1$ (explicit runs only; an implicit scheme refuses any $x_1$ split), a seam cell takes the
 centred slope that a single block takes: the explicit work exchanges one row of the stage's density change with the
 $x_1$ neighbour (a ghost $\dot\rho$ cannot be computed locally: it needs the mass flux on the ghost cell's far face,
 which no block computes), and the logged `pe=` reads the ghost density, which the mesh exchanges after every
 stage. Both call `corrected_pe_work_seam` in {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work_seam >}}. The slope stays one-sided only at physical walls, so
-$P$ and the work are those of one block on any $x_1$ decomposition, and global $E+P$ is exact. A periodic $x_1$
+$P$ and the work are those of one block on any $x_1$ decomposition, and global $E_{\mathrm{tot}}+P$ is exact. A periodic $x_1$
 column keeps one-sided slopes at its block edges (Limits layer); there $P$ is a sum of per-block functionals.
 `[C10]` measures what that choice costs, the functional difference $|P_{\mathrm{split}}-P_{\mathrm{one}}|/|P|$
 with one-sided seam slopes, falling from $2.6\times10^{-8}$ at $n_1$ = 32 to $5.3\times10^{-13}$ at 256, order 5.2
-(fit over all four resolutions); `[C7]`, two blocks with one-sided seams, $2.2\times10^{-16}$, shows that $E+P$ is
+(fit over all four resolutions); `[C7]`, two blocks with one-sided seams, $2.2\times10^{-16}$, shows that $E_{\mathrm{tot}}+P$ is
 exact with either seam slope.
 
 #### How the scheme enters the vertical implicit solve
@@ -528,10 +529,10 @@ computed from `moved` in
 {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}},
 so the implicit part books exactly $g_1\sigma^2s[\Delta\rho_i-\Delta\rho^{(0)}]$ in fluid cells, the work of the
 mass actually moved. With the explicit part, the stage total is @eq-ch06-dwork-d for the full $x_1$ density
-change, and $E+P$ closes. Lumping only changes how much of the work the solve sees implicitly, never the total.
+change, and $E_{\mathrm{tot}}+P$ closes. Lumping only changes how much of the work the solve sees implicitly, never the total.
 
 `[C8]` makes two checks on this. First, a mock solve whose redistribution changes the face masses (a binding
-clamp at one face, a shifted mass at another): its $E+P$ defect is round-off ($2.4\times10^{-16}$ and
+clamp at one face, a shifted mass at another): its $E_{\mathrm{tot}}+P$ defect is round-off ($2.4\times10^{-16}$ and
 $5.5\times10^{-14}$ against $\sum|\Delta E\,V|$ of 0.35 and 18). Second, the same solve booked on the raw change
 instead of the solved one leaves defects of $4.4\times10^{-7}$ and $2.6\times10^{-4}$. The sum of the matrix part
 and @eq-ch06-dwork-remainder is an identity by construction and is only printed.
@@ -545,7 +546,7 @@ in the same remainder block, because the slope stencil of a solid cell would rea
 next to a solid keeps its centred stencil, which then reads the solid's density change, which is zero.
 
 **What is exact and what is truncated.** Exact to round-off, on any grid, per stage and per step, explicit and
-implicit: the conservation of $E+P$ on closed columns and on several $x_1$ blocks, and the identity
+implicit: the conservation of $E_{\mathrm{tot}}+P$ on closed columns and on several $x_1$ blocks, and the identity
 @eq-ch06-dwork-ped-change. Truncated: $P$ approximates the true potential energy to $O(h^4)$
 (@eq-ch06-dwork-pe); the booked work approximates the exact work of the scheme's own mass fluxes to $O(h^4)$ in
 every cell (@eq-ch06-dwork-order), for smooth fields on smoothly varying grids. A column split in $x_1$ equals
@@ -620,7 +621,7 @@ turns it off when the scheme is active.
     before approval.
 
 On open (non-reflecting) $x_1$ boundaries the same one-sided stencil is used, but there the boundary face's
-$A\phi F$ does not vanish. $E+P$ then changes by exactly the potential-energy flux through the boundary, which
+$A\phi F$ does not vanish. $E_{\mathrm{tot}}+P$ then changes by exactly the potential-energy flux through the boundary, which
 is the physical budget. Not separately tested; see the Limits layer.
 
 **Block seams in $x_1$.** At an internal $x_1$ seam the explicit work fills a full-length array with the stage's
@@ -637,12 +638,13 @@ layout holds one block in $x_1$, so there the one-sided slope sits only at the t
 
 **When it runs in a stage.** Within `HydroImpl::forward` the scheme runs in step (6), external forcing, after the
 $x_1$, $x_2$, $x_3$ fluxes and the tracer positivity limiter, after the flux divergence, and after every forcing
-module, including the const-gravity cell work $\rho v_1g_1\alpha_{\mathrm{nh}}$ in `ConstGravityImpl::forward` at
+module, including the const-gravity cell work $\rho v_1g_1\alpha_{\mathrm{nh}}$, with $\alpha_{\mathrm{nh}}$ the non-hydrostatic
+factor (key `non-hydrostatic`), in `ConstGravityImpl::forward` at
 {{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}}.
 The energy correction booked is $W^{\mathrm{D}}_i\Delta t - W^{\mathrm{cell}}_i\Delta t$: the cell work is
 removed and the face form plus this scheme is put in its place, as `gravity_energy_correction` in
 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
-With $\alpha_{\mathrm{nh}}<1$ the removed cell work includes the hydrostatic-split part of
+With a non-hydrostatic factor $\alpha_{\mathrm{nh}}<1$ the removed cell work includes the hydrostatic-split part of
 `original_gravity_work`, computed at
 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}};
 that part is not added by a forcing module, so the `rho_grav` block at
@@ -749,29 +751,29 @@ the cited symbol contains.
    {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}.
 8. The cycle diagnostics log $P$ under `radial_exact_work` at
    {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}},
-   so the logged `ie=` + `pe=` is the conserved $E+P$.
+   so the logged `ie=` + `pe=` is the conserved $E_{\mathrm{tot}}+P$.
 
 ### Tests
 
-Tolerances are relative to $|E+P|$ unless stated. Python tests run each switch arm in a child process, because
+Tolerances are relative to $|E_{\mathrm{tot}}+P|$ unless stated. Python tests run each switch arm in a child process, because
 the switch is read once per process. C++ ctest names end in the lower-case build type (`release` in CI).
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_gravity_work_radial_exact.py` (`test_gravity_work_radial_exact_python`; CUDA `..._cuda_python`), check 1 | switch unset and `1` give bit-identical states; `0` differs | exact | the default-on contract |
-| same, check 2 | per-step $\lVert\Delta^{\mathrm{stg}}(E+P)\rVert_\infty/|E+P|\le10^{-14}$ over 20 steps, on spherical-polar and Cartesian columns, a 2-D box and a 4x4-column gnomonic-equiangle block (radial flow only), each explicit and VIC | `EP_TOL = 1e-14` | about 50 ulp of double on sums of up to 512 cells of one sign, with margin for the VIC solve |
+| same, check 2 | per-step $\lVert\Delta^{\mathrm{stg}}(E_{\mathrm{tot}}+P)\rVert_\infty/|E_{\mathrm{tot}}+P|\le10^{-14}$ over 20 steps, on spherical-polar and Cartesian columns, a 2-D box and a 4x4-column gnomonic-equiangle block (radial flow only), each explicit and VIC | `EP_TOL = 1e-14` | about 50 ulp of double on sums of up to 512 cells of one sign, with margin for the VIC solve |
 | same, check 3 | one explicit plm stage: $E_{\mathrm{on}}-E_{\mathrm{off}} = g_1\sigma^2s[\Delta^{\mathrm{stg}}\rho]$ cell by cell; density unchanged by the switch | $\le10^{-13}\max|E|$, term $\ge10^3\times$ the error | round-off of the energy; the second bound rules out a vacuous pass |
 | same, check 4 | a discretely balanced Cartesian rest column keeps $\max|v_1|/c_s$ no worse than without the scheme, 50 steps | on $\le1.05\times$ off $+10^{-14}$ | the scheme adds zero at rest; 5 % allows round-off growth |
-| same, check 5 | the logged `ie=`+`pe=` equals $E+P$ with the scheme on and $E+\mathrm{PE}_d$ with it off | `DIAG_TOL = 1e-11` | the printed digits of the log |
+| same, check 5 | the logged `ie=`+`pe=` equals $E_{\mathrm{tot}}+P$ with the scheme on and $E_{\mathrm{tot}}+\mathrm{PE}_d$ with it off | `DIAG_TOL = 1e-11` | the printed digits of the log |
 | same, check 6 | a gnomonic-equiangle block with `face` sets up and does not warn (the scheme has a form there); a cylindrical block, which has none, warns with the switch on | exact | the no-form contract |
-| same, check 7 | one VIC solve with a binding availability clamp: the $E+P$ defect is round-off, and the defect if the raw change had been used is far above it | defect $\le10^{-13}\sum|\Delta E|$; mutation $\ge10^3\times$ | round-off; the mutation shows the check can fail |
-| same, check 8 | VIC column with a 4-cell immersed solid: fluid $E+P$ per step $\le10^{-14}$, and the energy correction in solid cells is exactly 0 while the ungated work there is not | `EP_TOL`; exact | the solid is refilled every step; the second part tests the gate |
-| `tests/test_x1_seam_split.cpp` (`test_x1_seam_split_radial_exact`, control `..._radial_exact_off`, `..._vic_refuses_split`) | spherical column, one block vs two split in $x_1$, $n_1$ = 32, 64, 128: with the switch on the state gap is exactly 0 (centred seam slope), with it off bounded by round-off; the split column's $E+P$ drift; under an implicit scheme the split is refused with `requires nb1 = 1` | exact; `1e-13`; `1e-13`; message | the one-block contract; round-off over up to 80 steps |
+| same, check 7 | one VIC solve with a binding availability clamp: the $E_{\mathrm{tot}}+P$ defect is round-off, and the defect if the raw change had been used is far above it | defect $\le10^{-13}\sum|\Delta E|$; mutation $\ge10^3\times$ | round-off; the mutation shows the check can fail |
+| same, check 8 | VIC column with a 4-cell immersed solid: fluid $E_{\mathrm{tot}}+P$ per step $\le10^{-14}$, and the energy correction in solid cells is exactly 0 while the ungated work there is not | `EP_TOL`; exact | the solid is refilled every step; the second part tests the gate |
+| `tests/test_x1_seam_split.cpp` (`test_x1_seam_split_radial_exact`, control `..._radial_exact_off`, `..._vic_refuses_split`) | spherical column, one block vs two split in $x_1$, $n_1$ = 32, 64, 128: with the switch on the state gap is exactly 0 (centred seam slope), with it off bounded by round-off; the split column's $E_{\mathrm{tot}}+P$ drift; under an implicit scheme the split is refused with `requires nb1 = 1` | exact; `1e-13`; `1e-13`; message | the one-block contract; round-off over up to 80 steps |
 | `tests/test_pref_local_seam.cpp` (`test_pref_local_seam`; `test_pref_local_seam_flux_covariance` with `SNAP_FLUX_COVARIANCE=1`) | 4 $x_1$ blocks vs 1 after 200 steps | `1e-12` | the CMakeLists comment of the covariance arm |
-| `tests/test_x1_seam_split_mp.cpp` (`test_x1_seam_split_mp_radial_exact`) | the same split on 2 ranks equals the one-process 2-block split, and the split $E+P$ drift holds | `1e-13` | round-off |
+| `tests/test_x1_seam_split_mp.cpp` (`test_x1_seam_split_mp_radial_exact`) | the same split on 2 ranks equals the one-process 2-block split, and the split $E_{\mathrm{tot}}+P$ drift holds | `1e-13` | round-off |
 | `tests/test_implicit_gravity_tall_column.py` (`test_implicit_gravity_tall_column_python`) | $11.3H$ balanced rest column, vertical acoustic Courant 6.6 to 250, both geometries: $\max|v_1|<10^{-7}$ m s$^{-1}$, settled $<10^{-10}$, and on $\le1.1\times$ its switch-off rung; the cell + fixer arm states `cell` explicitly | `W_TOL`, `W_SETTLED`, `ON_OFF` | the stability gate; 1.1 allows round-off differences between arms |
-| `tests/test_implicit_face_work_operator.py`, `tests/test_implicit_stratified_solid.py`, each also registered as a `_radial_exact_python` arm with the switch set to 1 (`foreach` in {{< code tests/CMakeLists.txt >}}) | face-work energy oracles measure $E+P$ with the switch on, $E+\mathrm{PE}_d$ with it off | per test | they read the switch as `hydro.cpp` does |
-| `test_forcing`, `test_gravity_work_fixer_python`, `test_horizontal_flux_covariance_python`, `test_flux_covariance_rows_python` | plain face-form $E+\mathrm{PE}_d$ oracles | per test | the switch set to **0** by `set_tests_properties` in {{< code tests/CMakeLists.txt >}}: they test the face form, not this scheme |
+| `tests/test_implicit_face_work_operator.py`, `tests/test_implicit_stratified_solid.py`, each also registered as a `_radial_exact_python` arm with the switch set to 1 (`foreach` in {{< code tests/CMakeLists.txt >}}) | face-work energy oracles measure $E_{\mathrm{tot}}+P$ with the switch on, $E_{\mathrm{tot}}+\mathrm{PE}_d$ with it off | per test | they read the switch as `hydro.cpp` does |
+| `test_forcing`, `test_gravity_work_fixer_python`, `test_horizontal_flux_covariance_python`, `test_flux_covariance_rows_python` | plain face-form $E_{\mathrm{tot}}+\mathrm{PE}_d$ oracles | per test | the switch set to **0** by `set_tests_properties` in {{< code tests/CMakeLists.txt >}}: they test the face form, not this scheme |
 
 : Tests of the corrected-PE face gravity work and the tolerance each uses. {#tbl-ch06-dwork-tests}
 
@@ -779,7 +781,7 @@ the switch is read once per process. C++ ctest names end in the lower-case build
 in the derivation note, so they must be re-measured at the pin before approval.
 
 - This section's check: every `[Cn]` number, with the provenance given at the head of the Derivation layer.
-- $E+P$ in the code: per-step $\Delta^{\mathrm{stg}}(E+P)\le3.9\times10^{-16}$ of $E+P$ on the implicit cases of
+- $E_{\mathrm{tot}}+P$ in the code: per-step $\Delta^{\mathrm{stg}}(E_{\mathrm{tot}}+P)\le3.9\times10^{-16}$ of $E_{\mathrm{tot}}+P$ on the implicit cases of
   `test_gravity_work_radial_exact.py` and on its column under partial VIC
   [`docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §10; deck: that
   test; run: CPU build, sha not recorded $\to$ **re-run**].
@@ -795,7 +797,7 @@ in the derivation note, so they must be re-measured at the pin before approval.
 
 [^ch06-dwork-cuda]: Source: the body of chengcli/snapy#303; sha: snapy@f5c0cff427db4681d0e65e40ae5a88c974e1a617;
     deck/run: ctest -j1.
-- Cubed sphere, six panels, flow across the panel seams, both $x_1$ walls closed, $E+P$ from the logged energy
+- Cubed sphere, six panels, flow across the panel seams, both $x_1$ walls closed, $E_{\mathrm{tot}}+P$ from the logged energy
   and `pe=`: $1.88\times10^{-15}$ per step explicit and $3.14\times10^{-15}$ VIC; with the centroid term left out
   of $P$, $1.28\times10^{-10}$ and $2.57\times10^{-10}$.[^ch06-dwork-cs6]
 
@@ -813,8 +815,8 @@ in the derivation note, so they must be re-measured at the pin before approval.
   $4.89\times10^{-9}$ m s$^{-1}$, at or below the switch-off rung, settled to $\le7.4\times10^{-13}$ m s$^{-1}$
   by step 40 [same note §10; deck: `tests/test_implicit_gravity_tall_column.py`; run: CPU, sha not recorded
   $\to$ **re-run**].
-- $E+\mathrm{PE}_d$ is the wrong oracle here: on the spherical implicit energy check of
-  `test_implicit_stratified_solid`, $E+\mathrm{PE}_d$ changes by $-0.166$ while $E+P$ changes by
+- $E_{\mathrm{tot}}+\mathrm{PE}_d$ is the wrong oracle here: on the spherical implicit energy check of
+  `test_implicit_stratified_solid`, $E_{\mathrm{tot}}+\mathrm{PE}_d$ changes by $-0.166$ while $E_{\mathrm{tot}}+P$ changes by
   $3.5\times10^{-14}$ (scale 2119) [same note §10; deck: that test; run: sha not recorded $\to$ **re-run**].
 - **Missing evidence.** The onset-rate numbers of §11.2 of the derivation note and the coarse polytrope
   kinetic-energy numbers carry no deck or run. The onset numbers are $\varepsilon_{\mathrm{eff}}n_1^2$ at $n_1$
@@ -828,7 +830,7 @@ in the derivation note, so they must be re-measured at the pin before approval.
 {{< code tests/CMakeLists.txt >}}), whose Cartesian deck states no `gravity-work` key
 and sets `grav1` to $-9.81$ ({{< code tests/test_pref_local_seam.cpp kDriftYaml >}}), so the scheme is
 on by default. It asserts that four $x_1$ blocks match one block after 200 steps to $10^{-12}$; it does not check
-$E+P$. No test runs this scheme with `SNAP_WB_REF4` or `SNAP_X1_CENTROID_EXACT` on: their seam arms pass
+$E_{\mathrm{tot}}+P$. No test runs this scheme with `SNAP_WB_REF4` or `SNAP_X1_CENTROID_EXACT` on: their seam arms pass
 `cell` to `split_gap` ({{< code tests/test_x1_seam_split.cpp centroid_exact_split_matches_one_block >}} and, for `SNAP_WB_REF4`,
 `split_gap` {{< code tests/test_x1_seam_split.cpp wb_ref4_flag_at_the_seam_split_matches_one_block >}}); see the switch coverage matrix, `@sec-ch12-matrix`.
 
@@ -837,7 +839,7 @@ $E+P$. No test runs this scheme with `SNAP_WB_REF4` or `SNAP_X1_CENTROID_EXACT` 
 ::: {.callout-warning title="Limits"}
 The limits a user can hit by configuration: a periodic $x_1$ column keeps one-sided seam slopes (and warns), a grid
 with no $x_1$ measure (cylindrical) keeps the plain face work, `face-wallc` does not get this scheme, a block with fewer than three $x_1$ cells books nothing beyond the face form, and under this scheme
-every $E+\mathrm{PE}_d$ check — including `gravity_work_defect()` — measures the wrong invariant.
+every $E_{\mathrm{tot}}+\mathrm{PE}_d$ check — including `gravity_work_defect()` — measures the wrong invariant.
 :::
 
 1. **Seams and periodic $x_1$.** A column split in $x_1$ gives the one-block state
@@ -847,7 +849,7 @@ every $E+\mathrm{PE}_d$ check — including `gravity_work_defect()` — measures
    warns once. Documented, by design.
 2. **Cubed sphere.** The scheme runs on `gnomonic-equiangle` grids with the centroid-offset term of
    @eq-ch06-dwork-cs. A lone gnomonic block with reflecting lateral walls loses mass under lateral flow, with the
-   switch on or off,[^ch06-dwork-301] so its $E+P$ cannot close; the single-block test
+   switch on or off,[^ch06-dwork-301] so its $E_{\mathrm{tot}}+P$ cannot close; the single-block test
    uses radial flow only, and lateral flow and panel seams are covered by the six-panel test. Grids with no $x_1$
    measure (cylindrical) keep the plain face work and warn.
 3. **`face-wallc`** does not get this scheme: it keeps the cell work in the wall cells by design.
@@ -864,9 +866,9 @@ every $E+\mathrm{PE}_d$ check — including `gravity_work_defect()` — measures
    Evidence): the implicit correction flux is first-order upwind and $O(\Delta t)$, so its grid-scale part is
    $O(\Delta t\,h)$ and the wall work is second order at fixed CFL; with $\Delta t\sim h^2$ the order rises toward
    3. Cartesian grids show the same.[^ch06-dwork-302]
-8. **Open $x_1$ boundaries.** $E+P$ changes by the boundary potential-energy flux, as it should. No test covers
+8. **Open $x_1$ boundaries.** $E_{\mathrm{tot}}+P$ changes by the boundary potential-energy flux, as it should. No test covers
    the scheme with an outflow $x_1$ boundary.
-9. **Diagnostics and oracles.** Under this scheme `gravity_work_defect()` and any $E+\mathrm{PE}_d$ check measure
+9. **Diagnostics and oracles.** Under this scheme `gravity_work_defect()` and any $E_{\mathrm{tot}}+\mathrm{PE}_d$ check measure
    the wrong invariant. Tests that check the plain face form set the switch to 0 explicitly.
 10. **Explicit solids.** The explicit path books the scheme in every interior cell, solid or not; immersed solid
     cells are refilled every step. The VIC gates them. The explicit path with solids is not separately tested.
@@ -878,9 +880,9 @@ every $E+\mathrm{PE}_d$ check — including `gravity_work_defect()` — measures
 12. **Untested switch combinations.** This scheme with `SNAP_WB_REF4`, `SNAP_X1_CENTROID_EXACT` or
     `SNAP_X1_MASS_COVARIANCE`, and on moist columns with several mass rows, is covered by no ctest entry; with
     `SNAP_FLUX_COVARIANCE` only the split-column check `test_pref_local_seam_flux_covariance` covers it (Evidence),
-    and no entry checks $E+P$ there. The onset numbers above used `SNAP_FLUX_COVARIANCE` and `SNAP_WB_REF4`; the note
+    and no entry checks $E_{\mathrm{tot}}+P$ there. The onset numbers above used `SNAP_FLUX_COVARIANCE` and `SNAP_WB_REF4`; the note
     names their deck, but no ctest covers the combination. See the switch coverage matrix, `@sec-ch12-matrix`.
-13. **Float32.** $\sigma^2$ is written without cancellation (@eq-ch06-dwork-variance), but the $E+P$ identity has
+13. **Float32.** $\sigma^2$ is written without cancellation (@eq-ch06-dwork-variance), but the $E_{\mathrm{tot}}+P$ identity has
     been checked only in double precision.
 14. **Open disagreement in the sources.** `sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md` §4.4 lists
     claims it holds to be wrong or under-qualified in the derivation note this section rests on, in particular
