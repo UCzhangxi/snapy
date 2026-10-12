@@ -16,7 +16,7 @@ curvature flux of NOTATION section 3. Tracked in ISSUES.md.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Book the $x_1$ gravity work as the flux difference of potential energy across a cell's faces,
-@eq-ch06-dwork-face, so that $E+\mathrm{PE}_d$ is conserved exactly.
+@eq-ch06-dwork-face, so that, with the corrected-PE work off, $E_{\mathrm{tot}}+\mathrm{PE}_d$ is conserved exactly.
 **Data.** Reads the total $x_1$ mass flux $F$ [kg m$^{-2}$ s$^{-1}$] on the two faces of each cell (dry row plus the
 mass-carrying species rows), the face and centroid potentials, and with $\mathcal K$ the $m$ of three cells; writes
 the energy-row correction [W m$^{-3}$] of the interior cells.
@@ -26,8 +26,10 @@ forcings; before the implicit solve when one runs with `face`, after it with `fa
 {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}), or `face-wallc`, which keeps the cell
 work in the two $x_1$ wall cells. Turns off the gravity-work fixer; the corrected-PE work of @sec-ch06-dwork is on
 with it by default.
-**Guarantee / limits.** $E+\mathrm{PE}_d$ exact on a closed column; second order, fourth in the interior with the
-cp3/cp5/weno5 curvature flux, first in the wall cells.
+**Guarantee / limits.** On a closed column: plain `face` with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` keeps
+$E_{\mathrm{tot}}+\mathrm{PE}_d$ exact; default `face`, with the corrected-PE work on, keeps $E_{\mathrm{tot}}+P$
+exact instead (@sec-ch06-dwork); `face-wallc` has no exact invariant, because of its two wall cells. Second order,
+fourth in the interior with the cp3/cp5/weno5 curvature flux, first in the wall cells.
 **Evidence.** `cellface_check.py` `[C1]`, `[C3]`-`[C5]`; `test_forcing` curvature case, read from the source, not
 run here.
 :::
@@ -63,7 +65,7 @@ with $\mathcal K=0$ on every physical $x_1$ face and only for cp3, cp5 and weno5
 with the curvature term from `curv_flux1`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
-The face form conserves $E+\mathrm{PE}_d$ exactly on a closed column (`cellface_check.py` `[C1]`, to
+The face form conserves $E_{\mathrm{tot}}+\mathrm{PE}_d$ exactly on a closed column (`cellface_check.py` `[C1]`, to
 $3.9\times10^{-15}$ relative on Cartesian and spherical-polar columns). $\mathcal K$ does not change that: it is a
 flux, zero at both walls, so its divergence sums to zero (`[C4]`, $5\times10^{-17}$). Its purpose is accuracy. A
 high-order reconstruction's face flux exceeds the point value $m$ by $\tfrac{h^2}{12}(\partial_1^2m+\dots)$, and the
@@ -156,6 +158,6 @@ and a tall column then blows up at acoustic Courant about 66.[^ch06-face-283]
 [^ch06-face-283]: The tall-column blow-up is recorded in chengcli/snapy#283.
 
 - The work is $O(h^2)$ in every cell without $\mathcal K$, and first order in the wall cells with it.
-- `face-wallc` does not conserve $E+\mathrm{PE}_d$ in its two wall cells (`[C5]`).
+- `face-wallc` does not conserve $E_{\mathrm{tot}}+\mathrm{PE}_d$ in its two wall cells (`[C5]`).
 - The orders above use exact point fluxes; with the scheme's own fluxes the reconstruction and Riemann errors add.
 - Combinations with the study switches: @sec-ch12-matrix.

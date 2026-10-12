@@ -13,7 +13,7 @@ Local symbols: $\varpi_s$ is the weight of stage $s$'s increment in the step (co
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Measure each step's $E+\mathrm{PE}_d$ defect $\mathcal D$ [J] of the cell form and add $-\mathcal D$
+**Purpose.** Measure each step's $E_{\mathrm{tot}}+\mathrm{PE}_d$ defect $\mathcal D$ [J] of the cell form and add $-\mathcal D$
 back as heat, uniformly per unit mass, @eq-ch06-fixer-fix.
 **Data.** Per block: the stage-weighted defect, the fluid mass (total density, solid cells left out), the mass
 through the $x_1$ wall faces, the wall cells' mass and a redo flag, five float64 numbers; writes $E$ of every
@@ -22,17 +22,17 @@ fluid cell.
 one deposit after the last stage of the step.
 **Activation.** `forcing/const-gravity/gravity-work-fixer`, default true with `gravity-work: cell`, refused with a
 face form; requires $g_2=g_3=0$, non-periodic $x_1$ and no mass through the $x_1$ walls.
-**Guarantee / limits.** $E+\mathrm{PE}_d$ to round-off per step, explicit and implicit; a global correction that
+**Guarantee / limits.** $E_{\mathrm{tot}}+\mathrm{PE}_d$ to round-off per step, explicit and implicit; a global correction that
 leaves the local error of the cell form.
 **Evidence.** `fixer_check.py` `[C1]`-`[C4]`; `test_gravity_work_fixer` at `TOL` $=10^{-12}$, read from the
 source, not run here.
 :::
 
-The cell form (@sec-ch06-cell) leaves a defect of $E+\mathrm{PE}_d$ every stage, @eq-ch06-cell-defect. The fixer
+The cell form (@sec-ch06-cell) leaves a defect of $E_{\mathrm{tot}}+\mathrm{PE}_d$ every stage, @eq-ch06-cell-defect. The fixer
 adds the defects of the stages with the weights they carry in the step, sums the result over every block and
 rank, and subtracts it from the total energy in proportion to each cell's mass. Momentum and mass are untouched,
 so the correction is a heating or cooling of the whole domain, of size $\mathcal D/M$ per kilogram. The run then
-conserves $E+\mathrm{PE}_d$ to round-off per step, explicit and implicit, while the local work stays that of the
+conserves $E_{\mathrm{tot}}+\mathrm{PE}_d$ to round-off per step, explicit and implicit, while the local work stays that of the
 cell form.
 
 It runs only with `gravity-work: cell` and $g_1\neq0$. Its terms leave out the boundary fluxes, so it refuses any
@@ -112,7 +112,7 @@ make_fig()
 1. Per stage, form the defect of the cell work, the face work of $F-F^{\mathrm{ref}}$ and the potential-energy
    change of the moved mass as `gwfix_stage` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 2. Add the mass that crossed the wall faces to `_gwfix_wall` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-3. Add the implicit solve's change of $E+\mathrm{PE}_d$ with `epe` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+3. Add the implicit solve's change of $E_{\mathrm{tot}}+\mathrm{PE}_d$ with `epe` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. Weight the stage by `cw` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 5. After the last stage, sum and reduce once in `gravity_work_fixer_sums` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 6. Refuse on the wall bound, else add `efix` per unit mass ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
@@ -124,7 +124,7 @@ boundaries", and at run time "const-gravity gravity-work-fixer: ... kg crossed a
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_gravity_work_fixer_python` | $E+\mathrm{PE}_d$ kept, explicit and VIC | $10^{-12}$ rel. | `TOL` |
+| `test_gravity_work_fixer_python` | $E_{\mathrm{tot}}+\mathrm{PE}_d$ kept, explicit and VIC | $10^{-12}$ rel. | `TOL` |
 | `test_gravity_work_fixer_python` | fixer off drifts | $>10^{-10}$ | planted control |
 | `test_gravity_work_fixer_python` | refusals: outflow, periodic, $g_2$ | message | refusal text |
 | `test_implicit_gravity_tall_column_python` | `cell`+fixer rest column (the deck states `cell`; the default is `face`) | $10^{-7}$ m s$^{-1}$ | `W_TOL` |
@@ -132,7 +132,7 @@ boundaries", and at run time "const-gravity gravity-work-fixer: ... kg crossed a
 : Tests of the gravity-work fixer; assertions read from the test sources at the pin, not run. {#tbl-ch06-fixer-tests}
 
 `test_gravity_work_fixer` runs a moving isentropic column between reflecting walls for 200 rk3 steps and requires
-$\lvert\Delta(E+\mathrm{PE}_d)\rvert/\lvert E+\mathrm{PE}_d\rvert\le$ `TOL` ({{< code tests/test_gravity_work_fixer.py TOL >}}).
+$\lvert\Delta(E_{\mathrm{tot}}+\mathrm{PE}_d)\rvert/\lvert E_{\mathrm{tot}}+\mathrm{PE}_d\rvert\le$ `TOL` ({{< code tests/test_gravity_work_fixer.py TOL >}}).
 It also checks the refusals in float64 and float32, a Python-installed wall and a NaN wall cell sent to the
 redo check. It runs on CPU with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`. Measured values at the pin are **missing
 evidence**.

@@ -13,9 +13,9 @@ reviewer:
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Say, for each gravity-work form, which energy is exact, per stage or per step, explicit and implicit,
+**Purpose.** Say, for each gravity-work form, which invariant $E_{\mathrm{tot}}+P$ is exact, per stage or per step, explicit and implicit,
 which logged numbers measure it and which test is its oracle; the common rule is @eq-ch06-dwork-booked.
-**Data.** The integrated invariants $E+\mathrm{PE}_d$ and $E+P$ [J]; the logged `ie=`, `pe=` and `fixgrav=`.
+**Data.** The integrated invariants $E_{\mathrm{tot}}+\mathrm{PE}_d$ and $E_{\mathrm{tot}}+P$ [J]; the logged `ie=`, `pe=` and `fixgrav=`.
 **Placement.** A guide across @sec-ch06-cell to @sec-ch06-vic; it adds no step of its own.
 **Activation.** `gravity-work`, default `face`, with `SNAP_GRAVITY_WORK_RADIAL_EXACT` on by default;
 `gravity-work-fixer` only with `cell`.
@@ -25,7 +25,7 @@ by the boundary potential-energy flux.
 :::
 
 Two facts set the default case. The default of `gravity-work` is `face`, and with it the corrected-PE face work of
-@sec-ch06-dwork, so a deck that omits the key conserves $E+P$, not $E+\mathrm{PE}_d$. And the corrected-PE work
+@sec-ch06-dwork, so a deck that omits the key conserves $E_{\mathrm{tot}}+P$, not $E_{\mathrm{tot}}+\mathrm{PE}_d$. And the corrected-PE work
 runs on `gnomonic-equiangle` (cubed-sphere) grids as well as Cartesian and spherical-polar ones; there it books one
 more term, for the offset between the cell's volume centroid and `x1v`.
 
@@ -33,22 +33,22 @@ Every form in this chapter is the identity @eq-ch06-dwork-booked with a differen
 the question "what does it conserve" is "which $P$ does it use, and where does it stop using it". The face form
 uses $P=\mathrm{PE}_d$ everywhere; the corrected-PE work uses the fourth-order $P$ of @eq-ch06-dwork-pe; the cell
 form uses none and leaves the defect @eq-ch06-cell-defect, which the fixer removes once per step; `face-wallc`
-uses $\mathrm{PE}_d$ except in its two $x_1$ wall cells. The logged `ie=` (total energy) plus `pe=` is the
+uses $\mathrm{PE}_d$ except in its two $x_1$ wall cells. The logged `ie=` (the integrated total energy $E_{\mathrm{tot}}$) plus `pe=` is the
 invariant of the run's own form, because `pe=` logs $P$ whenever the corrected-PE work is active and
-$\mathrm{PE}_d$ otherwise. An oracle that checks $E+\mathrm{PE}_d$ on a default run therefore measures the wrong
+$\mathrm{PE}_d$ otherwise. An oracle that checks $E_{\mathrm{tot}}+\mathrm{PE}_d$ on a default run therefore measures the wrong
 quantity.
 
 ### Derivation
 
-The template @eq-ch06-dwork-booked conserves $E+P$ exactly on a closed column for any $P$; the forms differ only
+The template @eq-ch06-dwork-booked conserves $E_{\mathrm{tot}}+P$ exactly on a closed column for any $P$; the forms differ only
 in $P$, and the derivations are in the sections that own them. The face form is $P=\mathrm{PE}_d$
 (@eq-ch06-dwork-face). The corrected-PE work is @eq-ch06-dwork-d, conserving @eq-ch06-dwork-pe; its stage-by-stage
-argument extends to the step because $E+P$ is linear in the state and every RK stage is a convex combination
+argument extends to the step because $E_{\mathrm{tot}}+P$ is linear in the state and every RK stage is a convex combination
 (@sec-ch06-dwork), and in the implicit solve the matrix part @eq-ch06-dwork-couple plus the remainder
 @eq-ch06-dwork-remainder book the work of the mass actually moved. The cell form leaves @eq-ch06-cell-defect per
-stage; the fixer @eq-ch06-fixer-fix subtracts the stage-weighted sum after the last stage, so $E+\mathrm{PE}_d$
+stage; the fixer @eq-ch06-fixer-fix subtracts the stage-weighted sum after the last stage, so $E_{\mathrm{tot}}+\mathrm{PE}_d$
 closes per step but not per stage. `face-wallc` books $W^{\mathrm{cell}}$ instead of $W^{\mathrm{face}}$ in the
-two $x_1$ wall cells, so its $E+\mathrm{PE}_d$ defect is their cell-minus-face work (@sec-ch06-face).
+two $x_1$ wall cells, so its $E_{\mathrm{tot}}+\mathrm{PE}_d$ defect is their cell-minus-face work (@sec-ch06-face).
 
 One step has no home in the earlier sections: the cubed-sphere term. On a `gnomonic-equiangle` grid the volume uses the $r^2$
 measure, but `x1v` is the cell's face midpoint, not its volume centroid $r_{\mathrm{c},i}$. The fourth-order
@@ -74,17 +74,17 @@ section that derives it.
 
 ### Numerical method
 
-@tbl-ch06-conserves-summary is the oracle guide. "Stage" means $E+P$ is exact after every RK stage, "step" only
+@tbl-ch06-conserves-summary is the oracle guide. "Stage" means $E_{\mathrm{tot}}+P$ is exact after every RK stage, "step" only
 after the whole step. Exact means to round-off on a closed column (reflecting $x_1$ walls); with an open $x_1$
 boundary every invariant changes by the potential-energy flux through it, and the fixer refuses that case.
 
 | form | exact invariant | when | logged | oracle |
 |---|---|---|---|---|
 | `cell`, no fixer | none | | `ie=`+`pe=` drifts | `test_gravity_work_fixer_python` |
-| `cell` + fixer | $E+\mathrm{PE}_d$ | step, explicit and VIC | `ie=`+`pe=`, `fixgrav=` | `test_gravity_work_fixer_python` |
-| `face`, switch 0 | $E+\mathrm{PE}_d$ | stage, explicit and VIC | `ie=`+`pe=` | `test_implicit_face_work_operator_python` |
+| `cell` + fixer | $E_{\mathrm{tot}}+\mathrm{PE}_d$ | step, explicit and VIC | `ie=`+`pe=`, `fixgrav=` | `test_gravity_work_fixer_python` |
+| `face`, switch 0 | $E_{\mathrm{tot}}+\mathrm{PE}_d$ | stage, explicit and VIC | `ie=`+`pe=` | `test_implicit_face_work_operator_python` |
 | `face-wallc` | none in the wall cells | | `ie=`+`pe=` | reported only |
-| `face` (default) | $E+P$ | stage, explicit and VIC | `ie=`+`pe=` ($P$) | `test_gravity_work_radial_exact_python` |
+| `face` (default) | $E_{\mathrm{tot}}+P$ | stage, explicit and VIC | `ie=`+`pe=` ($P$) | `test_gravity_work_radial_exact_python` |
 
 : What each form conserves on a closed column, which logged sum measures it and which test checks it. "Switch 0"
 is `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`; the default `face` row also holds for grids with no corrected-PE form, as
@@ -125,7 +125,7 @@ column keeps at its block edges.
 | `ie=` label | {{< code src/mesh/meshblock.cpp MeshBlockImpl::print_cycle_info >}} | `print_cycle_diagnostics` | |
 | implicit needs one $x_1$ block | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `TORCH_CHECK` | `implicit-scheme` |
 
-: Code map of where each form books its energy and where the logged sums are formed. {#tbl-ch06-conserves-code}
+: Code map of where each form books its gravity work and where the logged sums are formed. {#tbl-ch06-conserves-code}
 
 1. `from_yaml` sets `gravity_work` to `face` when the key is absent and `gravity_work_fixer` to true only for
    `cell` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}});
@@ -153,7 +153,7 @@ column keeps at its block edges.
    `radial_exact_work` holds, into `pe_sum`
    ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}),
    print it as `pe=` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}),
-   and print the run-to-date fixer energy `gravity_work_fix` as `fixgrav=` only when the fixer is on
+   and print the fixer's run-to-date energy correction `gravity_work_fix` as `fixgrav=` only when the fixer is on
    ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
 So `pe=` is $P$ (with $\phi$ at the volume centroid on the cubed sphere) under the corrected-PE work and
@@ -165,11 +165,11 @@ is constant and `fixgrav=` records how much heat that took.
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_gravity_work_radial_exact_python` | per-step $E+P$, explicit and VIC, incl. `cs`, `cs_vic` | $10^{-14}$ rel. | `EP_TOL` |
-| `test_gravity_work_radial_exact_python` | logged `ie=`+`pe=` equals $E+P$ (on), $E+\mathrm{PE}_d$ (off) | $10^{-11}$ | `DIAG_TOL` |
-| `test_gravity_work_fixer_python` | `cell` + fixer keeps $E+\mathrm{PE}_d$; no fixer drifts | $10^{-12}$; $>100\times$ | `TOL` |
-| `test_x1_seam_split_radial_exact` | 2 vs 1 $x_1$ blocks: gap 0, split $E+P$ drift | exact; $10^{-13}$ | the centred seam slope |
-| `test_implicit_face_work_operator_python` | $E+\mathrm{PE}_d$ (switch 0) or $E+P$ under VIC | $10^{-11}$ rel. | `EPE_TOL` |
+| `test_gravity_work_radial_exact_python` | per-step $E_{\mathrm{tot}}+P$, explicit and VIC, incl. `cs`, `cs_vic` | $10^{-14}$ rel. | `EP_TOL` |
+| `test_gravity_work_radial_exact_python` | logged `ie=`+`pe=` equals $E_{\mathrm{tot}}+P$ (on), $E_{\mathrm{tot}}+\mathrm{PE}_d$ (off) | $10^{-11}$ | `DIAG_TOL` |
+| `test_gravity_work_fixer_python` | `cell` + fixer keeps $E_{\mathrm{tot}}+\mathrm{PE}_d$; no fixer drifts | $10^{-12}$; $>100\times$ | `TOL` |
+| `test_x1_seam_split_radial_exact` | 2 vs 1 $x_1$ blocks: gap 0, split $E_{\mathrm{tot}}+P$ drift | exact; $10^{-13}$ | the centred seam slope |
+| `test_implicit_face_work_operator_python` | $E_{\mathrm{tot}}+\mathrm{PE}_d$ (switch 0) or $E_{\mathrm{tot}}+P$ under VIC | $10^{-11}$ rel. | `EPE_TOL` |
 
 : Oracles of each form; assertions read from the test sources at the pin, not run here.
 {#tbl-ch06-conserves-tests}
@@ -187,7 +187,7 @@ switch on and at most $10^{-13}$ with it off, in `radial_exact_split_gap`
 
 Evidence:
 
-- Cubed sphere, six panels, flow across the panel seams, both $x_1$ walls closed, $E+P$ from the logged energy
+- Cubed sphere, six panels, flow across the panel seams, both $x_1$ walls closed, $E_{\mathrm{tot}}+P$ from the logged energy
   and `pe=`: per step $1.88\times10^{-15}$ explicit and $3.14\times10^{-15}$ VIC; with the centroid term left out
   of $P$, $1.28\times10^{-10}$ and $2.57\times10^{-10}$.[^ch06-cons-cs]
 - $x_1$ seams, explicit: `radial_exact_split_gap` at $n_1$ = 32, 64, 128 is 0, and `test_pref_local_seam`, 4 blocks
@@ -202,17 +202,17 @@ Evidence:
     (its head); deck/run: ctest `test_x1_seam_split_radial_exact` and `test_pref_local_seam`, device not stated in
     the body.
 
-Coverage: the six-panel $E+P$ numbers are measurements reported in the body; no ctest named in it asserts $E+P$
+Coverage: the six-panel $E_{\mathrm{tot}}+P$ numbers are measurements reported in the body; no ctest named in it asserts $E_{\mathrm{tot}}+P$
 on six panels. CUDA and several-rank coverage are as in @sec-ch06-dwork.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-On a default run (`face`, switch on) every $E+\mathrm{PE}_d$ check, including `gravity_work_defect()`, measures
+On a default run (`face`, switch on) every $E_{\mathrm{tot}}+\mathrm{PE}_d$ check, including `gravity_work_defect()`, measures
 the wrong invariant: check `ie=`+`pe=`. `fixgrav=` is printed only with `cell` + fixer.
 :::
 
-- `cell` without the fixer and `face-wallc` have no exact energy invariant; neither has an oracle that bounds the
+- `cell` without the fixer and `face-wallc` have no exact invariant $E_{\mathrm{tot}}+P$; neither has an oracle that bounds the
   drift.
 - Periodic $x_1$: the corrected-PE work keeps the one-sided slope at block edges and $P$ is not defined; setup
   warns once. The fixer refuses periodic and open $x_1$.
@@ -221,7 +221,7 @@ the wrong invariant: check `ie=`+`pe=`. `fixgrav=` is printed only with `cell` +
   first-order upwind and $O(\Delta t)$;[^ch06-cons-302] conservation is unaffected.
 - A lone gnomonic block with reflecting lateral walls loses mass under lateral flow, switch on or
   off;[^ch06-cons-301] the single-block ctest uses radial flow only.
-- Grids other than Cartesian, spherical-polar and gnomonic-equiangle keep the plain face form and $E+\mathrm{PE}_d$.
+- Grids other than Cartesian, spherical-polar and gnomonic-equiangle keep the plain face form and $E_{\mathrm{tot}}+\mathrm{PE}_d$.
 - Untested combinations: @sec-ch12-matrix.
 
 [^ch06-cons-302]: Recorded in chengcli/snapy#302.

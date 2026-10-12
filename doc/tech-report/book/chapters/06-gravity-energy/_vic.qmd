@@ -51,8 +51,8 @@ that scheme's work (@sec-ch06-dwork).[^ch06-vic-src]
 ### Derivation
 
 **The operator this section adds to.** The VIC works on a reduced state per cell, not on $\mathbf U$: the unknown
-of block row $i$ is $\mathbf q_i = (\rho, \rho u, E)_i$ with `implicit-scheme` 1 and
-$(\rho, \rho u, \rho v, \rho w, E)_i$ with 9 (@eq-ch07-vic-size), $u$ the $x_1$ velocity and $\rho$ the *total*
+of block row $i$ is $\mathbf q_i = (\rho, \rho v_1, E)_i$ with `implicit-scheme` 1 and
+$(\rho, \rho v_1, \rho v_2, \rho v_3, E)_i$ with 9 (@eq-ch07-vic-size), $v_1$ the $x_1$ velocity and $\rho$ the *total*
 density, dry air plus every species; the species ride on it and are redistributed after the solve
 (@sec-ch07-vic-redistribute). Each column is one block-tridiagonal system
 $\mathsf B_i\boldsymbol\delta_{i-1} + \mathsf A_i\boldsymbol\delta_i + \mathsf C_i\boldsymbol\delta_{i+1} = \mathbf r_i$
@@ -91,7 +91,7 @@ $\boldsymbol\Phi$, the cell work, and only the $[\mathsf A^\pm]_\rho$ terms are 
 After the solve the code books $\phi_i$ times the difference between the raw solved mass change, the explicit
 change and the mass the projection moved, and the potential-energy flux of the mass the availability clamp moved
 minus what was requested. The first vanishes when the solve is applied as solved; the second keeps
-$E+\mathrm{PE}_d$ over a closed column (`[C4]`). Checks: `src/snapy_report/ch06/vicwork_check.py`, output
+$E_{\mathrm{tot}}+\mathrm{PE}_d$ over a closed column (`[C4]`). Checks: `src/snapy_report/ch06/vicwork_check.py`, output
 `vicwork_check.out` [sha: the code at the pin, ported line for line (the energy rows of
 `vic_assemble_full_impl`, `work_lo`/`work_hi` and the projection and clamp work, byte-identical at the pin to the
 lines the port was written from); deck: the check itself; run: `python3 vicwork_check.py`, numpy, double].
@@ -141,7 +141,7 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_implicit_face_work_operator_python` | rest column at rest, Courant 66-657 | $10^{-7}$ m s$^{-1}$ | `W_TOL` |
-| `test_implicit_face_work_operator_python` | $E+\mathrm{PE}_d$ drift | $10^{-11}$ rel. | `EPE_TOL` |
+| `test_implicit_face_work_operator_python` | $E_{\mathrm{tot}}+\mathrm{PE}_d$ drift | $10^{-11}$ rel. | `EPE_TOL` |
 | `test_implicit_stratified_solid_python` | clamp energy, solids | $10^{-11}$ rel. | `EPE_TOL` |
 | `test_forcing.release` | energy under rk3 stage weights | $10^{-9}$ abs. | test threshold |
 
@@ -152,7 +152,7 @@ make_fig()
 `gravity-work: face`, full and partial VIC, at acoustic Courant 65.6, 197 and 657, requiring `W_TOL` and `EPE_TOL`
 (module constants of {{< code tests/test_implicit_face_work_operator.py >}}). The plain arms run with
 `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`; the `_radial_exact_python` entries run the same scripts with it on and measure
-$E+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` also has a CUDA case. Measured values at the pin are
+$E_{\mathrm{tot}}+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` also has a CUDA case. Measured values at the pin are
 **missing evidence**.
 
 ### Limits

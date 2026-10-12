@@ -24,7 +24,7 @@ interior cell.
 final, that is after the positivity limiter and sedimentation.
 **Activation.** YAML `forcing/const-gravity/gravity-work: cell`, set explicitly (the key defaults to `face`); it
 implies the gravity-work fixer (@sec-ch06-fixer), on by default with it.
-**Guarantee / limits.** Second order against the exact cell work, but no exact energy invariant: the defect
+**Guarantee / limits.** Second order against the exact cell work, but no exact invariant $E_{\mathrm{tot}}+P$: the defect
 @eq-ch06-cell-defect is left for the fixer.
 **Evidence.** `cellface_check.py` `[C2]`; the "cell, fixer false" arm of `test_gravity_work_fixer`, read from the
 source, not run here.
@@ -32,7 +32,7 @@ source, not run here.
 
 `const-gravity` is the only gravity snapy has: a constant vector $(g_1, g_2, g_3)$ in m s$^{-2}$, read from the
 `forcing` block. It adds $\rho g_a$ to each momentum and $\rho v_ag_a$ to the total energy, in every cell and at
-every stage. The $x_1$ part is scaled by the non-hydrostatic factor $\alpha_{\mathrm{nh}}$; the rest of the
+every stage. The $x_1$ part is scaled by the non-hydrostatic factor $\alpha_{\mathrm{nh}}$ (key `non-hydrostatic`); the rest of the
 $x_1$ gravity, $(1-\alpha_{\mathrm{nh}})$, is applied through the hydrostatic pressure correction of
 @sec-ch05. With `gravity-work: cell` the energy term stays as it is: the work is booked in the cell where the
 force acts. That is the simplest choice, and it is the one the key selects away from: `gravity-work` defaults to
@@ -46,7 +46,7 @@ again when the hydro module is built from Python. $g_2$ and $g_3$ always book ce
 
 ### Derivation
 
-The template of @eq-ch06-dwork-booked says that a scheme conserves $E+P$ exactly when its work satisfies
+The template of @eq-ch06-dwork-booked says that a scheme conserves $E_{\mathrm{tot}}+P$ exactly when its work satisfies
 $W_iV_i = -\dot P_i - \Delta_i[A\phi F]$ for some discrete potential energy $P$. The cell form does not start from
 a $P$. It books
 
@@ -70,7 +70,7 @@ When neither the limiter nor sedimentation changed the flux, $F=F^{\mathrm{ref}}
 is (check line `[C2]`).
 
 Summing $V_i$ times @eq-ch06-cell-work over a closed column and adding the potential-energy change
-$\sum_iV_i\phi_i\dot\rho_i$ gives the step's defect of $E+\mathrm{PE}_d$. Since the face form alone makes that
+$\sum_iV_i\phi_i\dot\rho_i$ gives the step's defect of $E_{\mathrm{tot}}+\mathrm{PE}_d$. Since the face form alone makes that
 sum vanish (@eq-ch06-dwork-booked with $P=\mathrm{PE}_d$), the defect is
 
 $$
@@ -143,7 +143,7 @@ The messages a user can hit are "forcing/const-gravity/gravity-work must be cell
 
 : Tests of the cell form; assertions read from the test sources at the pin, not run. {#tbl-ch06-cell-tests}
 
-The arm "cell, fixer false" of `test_gravity_work_fixer` requires the $E+\mathrm{PE}_d$ drift to exceed 100 times
+The arm "cell, fixer false" of `test_gravity_work_fixer` requires the $E_{\mathrm{tot}}+\mathrm{PE}_d$ drift to exceed 100 times
 `TOL` $=10^{-12}$, so the defect @eq-ch06-cell-defect is shown to be real and the fixer load-bearing
 ({{< code tests/test_gravity_work_fixer.py main >}}). `vertical_gravity_work_uses_continuity_mass_flux` checks the
 total-energy change against the boundary flux to $10^{-9}$ ({{< code tests/test_forcing.cpp forcing.vertical_gravity_work_uses_continuity_mass_flux >}}).
@@ -153,7 +153,7 @@ evidence**.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The cell form alone does not conserve $E+\mathrm{PE}_d$; with `gravity-work-fixer: false` the defect
+The cell form alone does not conserve $E_{\mathrm{tot}}+\mathrm{PE}_d$; with `gravity-work-fixer: false` the defect
 @eq-ch06-cell-defect accumulates.
 :::
 
