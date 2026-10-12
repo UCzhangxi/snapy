@@ -1,7 +1,7 @@
 ## Donor factor across seams: raw copy (`limiter`) {#sec-ch03-thetacopy}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, sources/canoe__theta_seam_TECH_REPORT.md, tests/test_flux_positivity_cubedsphere.py, tests/test_sedimentation_cubed_seam.cpp
 status: draft
 -->
@@ -19,13 +19,12 @@ copy, never interpolated, so both blocks that share a face scale its flux by the
 @eq-ch03-thetacopy-face.
 :::
 
-The tracer flux positivity limiter of @sec-ch08 computes, per cell and species, a factor $\Theta\in[0,1]$ and scales
+The tracer flux positivity limiter of @sec-ch08-theta computes, per cell and species, a factor $\Theta\in[0,1]$ and scales
 every face flux that drains the cell by it. The limited flux of a face must be one number on both sides, or the mass
 removed from the donor is not the mass added to the receiver. At a block seam one side's donor is a ghost, so that
 ghost must hold the donor's own $\Theta$. On a cubed sphere an interpolated ghost would be a blend of several cells'
 factors, not the donor's; the exchange therefore uses `interpolate(false)`. The species enthalpy that the withheld
-mass carries is recomputed from the ghost state instead of being exchanged. In the history:
-[chengcli/snapy#220](https://github.com/chengcli/snapy/issues/220).
+mass carries is recomputed from the ghost state instead of being exchanged.
 
 ### Derivation
 
@@ -44,12 +43,15 @@ relabelling as every cubed-sphere strip; within a panel and across $x_1$ seams t
 scaling @eq-ch03-thetacopy-face is `flux_positivity_scale_`, called after the copy
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Nothing is approximated.
 
-Check line `[C12]` confirms the two halves of that statement. The closed form
+The check confirms the two halves of that statement (`[C12]`).[^tc-c12] The closed form
 $(\Theta - \tilde\Theta)\mathcal F_f A_f\Delta t$ is exact in sympy; and over $2\times10^5$ random faces a copied
 $\Theta$ leaves a column residual of exactly zero at every one of them, while moving the ghost's value a single ulp
 away leaves a non-zero residual at 160 213 of them. Bit equality is the whole requirement: nothing weaker closes
-the seam [check `src/snapy_report/ch03/geometry_check.py`, output
-`src/snapy_report/ch03/geometry_check.out`].
+the seam.
+
+[^tc-c12]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C12]`; a numpy and sympy port of the donor-factor exchange and `flux_positivity_scale_` in
+    `HydroImpl::forward` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -102,11 +104,13 @@ In step order (@tbl-ch03-thetacopy-code):
 : Tests of the donor-factor copy. C++ entries carry the build suffix (`.release`). {#tbl-ch03-thetacopy-tests}
 
 The seam test places the downwind edge of a tracer hat on the +X/+Y seam so that $\Theta$ jumps there, and checks the bounds and
-`DRIFT_TOL` ({{< code tests/test_flux_positivity_cubedsphere.py main >}}). Its docstring, on the donor
-factor `theta`, records a leak of $10^{-3}$ per 300 cycles with an interpolated fill
-([`test_flux_positivity_cubedsphere.py:1-11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_cubedsphere.py#L1-L11)); that number has no sha, deck or run attached (missing evidence). Both Python tests have CUDA twins
-(`_cuda_python`) registered when CUDA is built; the sedimentation test runs on two ranks. Their pass status at the pin
-was not run for this chapter (missing evidence).
+`DRIFT_TOL` ({{< code tests/test_flux_positivity_cubedsphere.py main >}},
+{{< code tests/test_flux_positivity_cubedsphere.py DRIFT_TOL >}}). How large the leak of an interpolated fill
+would be is not measured at the pin. The same script also runs as `test_flux_positivity_cubedsphere_cov_off_python`
+and `test_flux_positivity_cubedsphere_flux_covariance_python`, with `SNAP_FLUX_COVARIANCE` set to 0 and 1
+({{< code tests/CMakeLists.txt >}}). Both Python tests have CUDA twins (`_cuda_python`) registered when CUDA is
+built; the sedimentation test runs on two ranks. They were not run for this chapter at the pin (missing
+evidence).
 
 ### Limits
 

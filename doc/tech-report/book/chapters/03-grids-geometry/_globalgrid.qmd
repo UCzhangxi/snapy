@@ -1,7 +1,7 @@
 ## One global grid, sliced per block (YAML `geometry`) {#sec-ch03-globalgrid}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/coord/coordinate.cpp, src/coord/coordinate.hpp, tests/test_coordinate.cpp
 status: draft
 -->
@@ -29,8 +29,7 @@ whoever owns it, and the cell width is the global $\Delta x_a$ in every block.
 
 The scheme is always on. The YAML card declares the global bounds and cell counts; `distribute` declares the number of
 blocks per axis; each block's own bounds and counts follow from its place in the layout (@sec-ch03-layouts). A block
-built programmatically without a global grid adopts its own bounds and count as the global grid. Alias in the history:
-[chengcli/snapy#222](https://github.com/chengcli/snapy/issues/222).
+built programmatically without a global grid adopts its own bounds and count as the global grid.
 
 ### Derivation
 
@@ -65,12 +64,15 @@ needs rounding, not truncation: `repartition` places block $l$ at $x^{\min}_a + 
 quotient is an integer only up to round-off, and truncating a value just below an integer would shift the block by a
 whole cell. Nothing is truncated in this scheme; the statement is exact.
 
-Check line `[C16]` builds $X_a$ for $n^{\mathrm{glob}}_a = 96$ on $[-3, 5]$ with $n_g = 3$, slices it with three
-pairs of decompositions and compares every shared entry as a bit pattern: 634 shared entries, no mismatch. It then
-walks the block boundaries `repartition` produces for $n_b = 2$ to $24$: rounding recovers the exact integer at all
-107 of them, while truncation is a whole cell low at two, the first being $n_b = 12$, $l = 1$, where it gives 7
-instead of 8 [check `src/snapy_report/ch03/geometry_check.py`, output
-`src/snapy_report/ch03/geometry_check.out`].
+The check builds $X_a$ for $n^{\mathrm{glob}}_a = 96$ on $[-3, 5]$ with $n_g = 3$, slices it with three pairs of
+decompositions and compares every shared entry as a bit pattern: 634 shared entries, no mismatch. It then walks the
+block boundaries `repartition` produces for $n_b = 2$ to $24$: rounding recovers the exact integer at all 107 of
+them, while truncation is a whole cell low at two, the first being $n_b = 12$, $l = 1$, where it gives 7 instead
+of 8 (`[C16]`).[^gg-c16]
+
+[^gg-c16]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C16]`; a numpy port of `CoordinateImpl::block_faces_` and `CoordinateOptionsImpl::_offset` at the pin,
+    CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -130,7 +132,7 @@ In step order (@tbl-ch03-globalgrid-code):
    layout location, with $x_1$ forced to the first block on the cubed sphere, and its counts to
    $n^{\mathrm{glob}}_a/n_b$ ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}}).
 5. `resolve_global_grid` runs `_resolve_axis` on each axis: adopt the block when the global count is 0, else
-   check inside-ness and the exact cell count ([`coordinate.cpp:186-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L186-L233)). The two refusals a user can hit
+   check inside-ness and the exact cell count ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::_resolve_axis >}}, {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::resolve_global_grid >}}). The two refusals a user can hit
    read "block x2 = [...] lies outside the declared global x2 grid" and "... is not exactly n cells of the declared
    global x2 grid".
 6. The constructor calls `block_faces_` per axis with the global bounds and count and the block's count and offset
@@ -153,19 +155,21 @@ In step order (@tbl-ch03-globalgrid-code):
 The bitwise case is `blocks_match_the_undecomposed_grid_bitwise`
 ({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}): a six-cell $x_2$ axis is split into two and three blocks and each block's
 interior faces are compared with `torch::equal` against the matching slice of the undecomposed grid. The
-programmatic cases run from `faces_span_the_callers_bounds_on_every_axis` to
-`a_declared_block_must_span_exactly_nx_global_faces` ([`test_coordinate.cpp:755-1030`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_coordinate.cpp#L755-L1030)); they cover the
-adopted grid, the bounds-only card, a degenerate axis beside live ones, and the two refusals of step 5. The Python
-setter test checks the resolved counts and the faces of each axis with `NG` ghost layers
-([`test_local_horizontal_cells.py:28-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_local_horizontal_cells.py#L28-L37)). The gnomonic case is `subdivided_panel_exchange_matches_one_block`
+programmatic cases run from `faces_span_the_callers_bounds_on_every_axis`
+({{< code tests/test_coordinate.cpp CoordinateProgrammatic.faces_span_the_callers_bounds_on_every_axis >}}) to
+`a_declared_block_must_span_exactly_nx_global_faces`
+({{< code tests/test_coordinate.cpp CoordinateProgrammatic.a_declared_block_must_span_exactly_nx_global_faces >}});
+they cover the adopted grid, the bounds-only card
+({{< code tests/test_coordinate.cpp CoordinateProgrammatic.a_bounds_only_card_keeps_its_declared_domain >}}), a
+degenerate axis beside live ones, and the two refusals of step 5
+({{< code tests/test_coordinate.cpp CoordinateProgrammatic.a_block_outside_its_declared_grid_is_refused >}}). The
+Python setter test checks the resolved counts and the faces of each axis in `AXES` with `NG` ghost layers
+({{< code tests/test_local_horizontal_cells.py AXES >}}, {{< code tests/test_local_horizontal_cells.py NG >}}). The gnomonic case is `subdivided_panel_exchange_matches_one_block`
 ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}).
 
 All four entries run on CPU; the gnomonic comparison also has a CUDA case in the same binary, which skips without a
-GPU. None runs on more than one rank. No number is quoted from them here: their pass status at the pin was not run
-for this chapter (missing evidence). The code comment that motivated the scheme records that at a cubed sphere with
-64 cells per panel edge and nb2 = 4, 15 of 71 $x_2$ faces were inconsistent between the two blocks sharing them and 26
-differed from the nb2 = 2 grid, each by one unit in the last place, in the comment on the `x2` faces
-({{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}}); the deck and run are not recorded (missing evidence).
+GPU. None runs on more than one rank. No number is quoted from them here: they were not run for this chapter at
+the pin (missing evidence). How far per-block spacing would move the faces is not measured at the pin.
 
 ### Limits
 

@@ -1,5 +1,5 @@
 """The 3x3 neighbour stencil of a block with the buffer id of each offset (get_buffer_id,
-src/layout/layout.hpp:32-35 at snapy@e894700ff7aee30b52882e5202b16461413780b0); face slabs exchanged, corners synthesised. A cartoon; it reads no data.
+src/layout/layout.hpp:32-35 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5); face slabs exchanged, corners synthesised. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

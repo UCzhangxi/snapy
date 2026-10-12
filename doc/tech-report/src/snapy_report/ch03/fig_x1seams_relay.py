@@ -1,6 +1,6 @@
 """A column split into three x1 blocks: reference relay, ghost-row copies and seam-flux averaging.
 
-Mechanisms of src/hydro/hydro.cpp:502-640 and src/hydro/hydro_forward.cpp:425-499 at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+Mechanisms of src/hydro/hydro.cpp:517-662 (HydroImpl::_hydro_ref_x1) and src/hydro/hydro_forward.cpp:508-582 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

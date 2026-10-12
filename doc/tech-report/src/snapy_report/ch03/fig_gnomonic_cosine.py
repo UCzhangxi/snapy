@@ -1,4 +1,4 @@
-"""cos psi = -XY/(CD) over one gnomonic panel (src/coord/gnomonic_equiangle.cpp:75-80 at snapy@e894700ff7aee30b52882e5202b16461413780b0).
+"""cos psi = -XY/(CD) over one gnomonic panel (src/coord/gnomonic_equiangle.cpp:75-80 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5).
 
 Analytic; it reads no data.
 """

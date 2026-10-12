@@ -1,7 +1,7 @@
 """(a) Morton rank order of a 4x4 block grid; (b) the cubed-sphere face numbering.
 
 From build_zorder_coords2 (src/layout/connectivity.cpp:28-43) and CS_FACE_NAMES with the net of
-src/layout/cubed_sphere_layout.cpp:207-246 at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+src/layout/cubed_sphere_layout.cpp:215-254 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

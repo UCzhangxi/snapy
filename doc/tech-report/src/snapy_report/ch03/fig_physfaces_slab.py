@@ -1,6 +1,6 @@
 """A 2x2 slab decomposition with reflecting x2 walls and periodic x3: physical, internal and periodic faces.
 
-Classification of src/mesh/meshblock.cpp:137-179 at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+Classification of src/mesh/meshblock.cpp:137-179 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

@@ -1,5 +1,5 @@
-"""The velocity path of a conserved strip across a panel edge (src/layout/cubed_sphere_layout.cpp:736-753, 934-956
-and src/coord/cubed_sphere_utils.cpp:259-298 at snapy@e894700ff7aee30b52882e5202b16461413780b0). A cartoon; it reads no data.
+"""The velocity path of a conserved strip across a panel edge (src/layout/cubed_sphere_layout.cpp:746-763, 948-970
+and src/coord/cubed_sphere_utils.cpp:259-298 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5). A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

@@ -1,7 +1,7 @@
 ## Cartesian metric (`cartesian`) {#sec-ch03-cartesian}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/coord/cartesian.cpp, src/coord/coordinate.cpp, src/coord/coordinate.hpp
 status: draft
 -->
@@ -36,15 +36,19 @@ V_i &= \Delta x_1\,\Delta x_2\,\Delta x_3.
 $$ {#eq-ch03-cartesian-metric}
 
 The face areas of @eq-ch03-cartesian-metric are `face_area1` to `face_area3` and the volume is `cell_volume`
-([`coordinate.cpp:425-440`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L425-L440)). The centroid of a uniform weight over an interval is its midpoint,
+({{< code src/coord/coordinate.cpp CoordinateImpl::cell_volume >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_area1 >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_area2 >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_area3 >}}). The centroid of a uniform weight over an interval is its midpoint,
 $x_{1,i} = \tfrac12(x_{1,i-1/2}+x_{1,i+1/2})$, computed in `reset` for `x1v` ({{< code src/coord/cartesian.cpp CartesianImpl::reset >}}).
 Integrating the conservation law $\partial_t q + \nabla\cdot\mathbf F = 0$ over the cell and dividing by $V_i$ gives
 the update of the cell average by the face-area-weighted flux difference over the volume, with no further term,
-because the basis vectors are constant. Every quantity here is exact: check line `[C17]` integrates the three face
+because the basis vectors are constant. Every quantity here is exact: the check integrates the three face
 measures and $\mathrm{d}V$ over the cell in sympy and recovers $A_{i\pm1/2} = \Delta x_2\Delta x_3$,
 $A_{j\pm1/2} = \Delta x_1\Delta x_3$, $A_{k\pm1/2} = \Delta x_1\Delta x_2$ and $V_i$, and the uniform-weight
-centroid as the midpoint, each with zero residual [check `src/snapy_report/ch03/geometry_check.py`, output
-`src/snapy_report/ch03/geometry_check.out`]. The Tests layer adds the product test on the built grid.
+centroid as the midpoint, each with zero residual (`[C17]`).[^cart-c17] The Tests layer adds the product test on
+the built grid.
+
+[^cart-c17]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C17]`; a sympy restatement of `CoordinateImpl::face_area1` to `face_area3`, `CoordinateImpl::cell_volume`
+    and `CartesianImpl::reset` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -64,7 +68,7 @@ make_fig()
 ```
 
 A mesh generator (`reset_coordinates`) may move the faces; the Cartesian override then recomputes widths, midpoints
-and centre spacings from the moved faces, so the grid is no longer uniform and @eq-ch03-cartesian-metric uses the
+and centre spacings from the moved faces, so the grid need not be uniform and @eq-ch03-cartesian-metric uses the
 local widths ({{< code src/coord/cartesian.cpp CartesianImpl::reset_coordinates >}} for the $x_1$ part).
 
 ### Code
@@ -72,7 +76,7 @@ local widths ({{< code src/coord/cartesian.cpp CartesianImpl::reset_coordinates 
 | what | code link | symbol | switch |
 |---|---|---|---|
 | widths, centres, zero cosine | {{< code src/coord/cartesian.cpp CartesianImpl::reset >}} | `reset` | `type: cartesian` |
-| face areas and volume | [`coordinate.cpp:425-440`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coordinate.cpp#L425-L440) | `cell_volume` | none |
+| face areas and volume | {{< code src/coord/coordinate.cpp CoordinateImpl::cell_volume >}} | `cell_volume` | none |
 | flux divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `divergence` | none |
 | stage operator (no source) | {{< code src/coord/coordinate.cpp CoordinateImpl::forward >}} | `forward` | none |
 | type selection | {{< code src/coord/coordinate.cpp CoordinateImpl::create >}} | `create` | `geometry.type` |
@@ -100,7 +104,7 @@ In step order (@tbl-ch03-cartesian-code):
 
 The cases are `cell_volume_is_the_product_of_the_callers_widths` ({{< code tests/test_coordinate.cpp CoordinateProgrammatic.cell_volume_is_the_product_of_the_callers_widths >}}) and
 `a_degenerate_axis_beside_live_ones` ({{< code tests/test_coordinate.cpp CoordinateProgrammatic.a_degenerate_axis_beside_live_ones >}}). Both run on CPU only, one block, one
-rank. Their pass status at the pin was not run for this chapter (missing evidence).
+rank. They were not run for this chapter at the pin (missing evidence).
 
 ### Limits
 

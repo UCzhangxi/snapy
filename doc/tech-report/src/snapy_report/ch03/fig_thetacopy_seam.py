@@ -1,6 +1,6 @@
 """A seam face with its donor on panel A: raw-copied factor (top) and interpolated blend (bottom).
 
-Mechanism of src/hydro/hydro_forward.cpp:671-698 at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+Mechanism of src/hydro/hydro_forward.cpp:785-812 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 

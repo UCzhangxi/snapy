@@ -1,7 +1,7 @@
 ## $x_1$-wall corner refresh inside tangential ghost slabs {#sec-ch03-cornerrefresh}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: src/mesh/meshblock.cpp, src/bc/bc_func.hpp, src/mesh/mesh.cpp, tests/test_wb_wall_corner.cpp
 status: draft
 -->
@@ -20,7 +20,7 @@ The tangential exchange fills the $x_2$ and $x_3$ ghost slabs with the neighbour
 $x_1$ ghost rows (the corners next to an $x_1$ wall) hold whatever the neighbour's wall wrote last, or stale values on
 a periodic edge. A stencil with cross-derivatives, such as viscosity next to the wall, then reads a wall corner that
 does not belong to this column. Re-applying the $x_1$ boundary function on the slabs makes those corners the wall
-ghosts of the updated slab. In the history: [chengcli/snapy#265](https://github.com/chengcli/snapy/issues/265).
+ghosts of the updated slab.
 
 ### Derivation
 
@@ -31,11 +31,14 @@ wrote the corner. The rule relies on the contract stated with the `BC_FUNCTION` 
 a tangential slab must not depend on the slab's size and must give the same ghosts ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}).
 Outflow is excluded because its background must match the whole block and it needs primitives.
 
-Check line `[C19]` enumerates the rule. Over 35 $(n_g, n)$ pairs the two end slabs of width
+The check enumerates the rule (`[C19]`).[^cr-c19] Over 35 $(n_g, n)$ pairs the two end slabs of width
 $g = \min(n_g, n/2)$ never meet, which is what the minimum is for; and over the 140 combinations of
 $(n_g, n, \text{tangential face physical}, \text{periodic})$ the number of writers of a corner cell is never more
-than one, so the exclusion is exactly what keeps the result independent of the order the bfuncs run in
-[check `src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`].
+than one, so the exclusion is exactly what keeps the result independent of the order the bfuncs run in.
+
+[^cr-c19]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
+    line `[C19]`; a Python enumeration of the slab rule of the corner refresh in `src/mesh/meshblock.cpp` at the pin,
+    CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -78,10 +81,10 @@ In step order (@tbl-ch03-cornerrefresh-code):
 
 : Tests of the corner refresh. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cornerrefresh-tests}
 
-The cases are `x2_uniform_rest_keeps_u2_zero` and `user_wall_keeps_u2_zero` ([`test_wb_wall_corner.cpp:160-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L160-L190)),
-`x2_split_matches_one_block_exactly` ([`test_wb_wall_corner.cpp:295-318`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L295-L318)) and
-`scalar_corner_primitive_matches_conserved` ([`test_wb_wall_corner.cpp:321-336`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_wall_corner.cpp#L321-L336)), each with a `_cuda` twin that
-skips without a GPU. One process. Their pass status at the pin was not run for this chapter (missing evidence).
+The cases are `x2_uniform_rest_keeps_u2_zero` and `user_wall_keeps_u2_zero` ({{< code tests/test_wb_wall_corner.cpp WallCorner.user_wall_keeps_u2_zero >}}, {{< code tests/test_wb_wall_corner.cpp WallCorner.x2_uniform_rest_keeps_u2_zero >}}),
+`x2_split_matches_one_block_exactly` ({{< code tests/test_wb_wall_corner.cpp WallCorner.x2_split_matches_one_block_exactly >}}) and
+`scalar_corner_primitive_matches_conserved` ({{< code tests/test_wb_wall_corner.cpp WallCorner.scalar_corner_primitive_matches_conserved >}}), each with a `_cuda` twin that
+skips without a GPU. One process. They were not run for this chapter at the pin (missing evidence).
 
 ### Limits
 
