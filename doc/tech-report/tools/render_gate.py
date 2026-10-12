@@ -1121,6 +1121,23 @@ def gate_chapter_list(book):
     return 0 if status == 0 else max(1, len([m for m in msgs if not m.startswith("fix:")]))
 
 
+def gate_figstyle(book):
+    """Figure code styles only through snapy_report.figstyle; per-chapter counts may only shrink
+    (tools/check_figstyle.py, STYLE 6). Checked in the report's layout, where the baseline file is."""
+    report = book.parent
+    baseline = report / "tools" / "figstyle-baseline.json"
+    if not baseline.exists():
+        print("\n[figstyle gate] no tools/figstyle-baseline.json next to the book: skipped")
+        return 0
+    import check_figstyle
+    status, msgs = check_figstyle.check(report, baseline)
+    print("\n[figstyle gate] " + ("every chapter at its baseline of styling outside figstyle"
+                                  if status == 0 else f"{len(msgs)} chapter(s) differ from the baseline"))
+    for m in msgs:
+        print(f"  ✗ {m}")
+    return len(msgs)
+
+
 #: The two report-mode checks below list every hit by file:line but do not fail the gate while this is True.
 #: Set it to False to make them fail (the editor calls the switch once the chapters' cross-ref commits are in).
 REPORT_ONLY = True
@@ -1251,6 +1268,7 @@ def main(argv):
                     ("maths spans", gate_maths_span_broken_by_a_bullet),
                     ("freeze tracked", gate_freeze_is_tracked),
                     ("chapter list", gate_chapter_list),
+                    ("figstyle", gate_figstyle),
                     ("hand-typed chapter", gate_hand_typed_chapters))
     for name, gate in source_gates:
         record(name, gate(book))
