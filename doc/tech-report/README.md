@@ -24,23 +24,36 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
   commits. Links that could not be converted to symbols (lines across several symbols, top-level code,
   kintera/pyharp, generated appendices) remain STYLE 10.6 links, listed in `reviews/code-anchors-unmapped.tsv`.
 - `tools/check_figstyle.py`: the figure-style gate (STYLE 6). Figure code under `src/snapy_report/` and `chapters/` may style only through `snapy_report.figstyle`: it counts, per chapter and without importing anything, imports of other style modules, rcParams writes and inline font settings (`fontsize=8`, `family=...`), and compares the counts with `tools/figstyle-baseline.json`. Ratchet: a chapter above its baseline fails, and so does one below it until `python3 tools/check_figstyle.py --update` lowers the baseline in the same commit (it never raises one); `--list` prints every site. `render_gate.py` runs it as its `figstyle` source gate; `python3 -m pytest tools/tests` tests it.
-- **Ratchet gate.** `tools/ratchet_gate.py` counts four things per chapter and compares them with the committed
-  baseline `tools/ratchet-baseline.json`; the `tech-report-ratchet` workflow runs it with its tests on every pull
-  request. **history**: change history in body text (PR or issue numbers, "main after", "previously", "now fixed",
-  "no longer" and the other phrases of `HISTORY_PATTERNS`); footnotes, HTML comments (PROVENANCE), shortcodes and
-  fenced code are not body text, so a source or credit footnote may carry a PR number. **offpin**: a sha of snapy,
-  kintera, pyharp, pydisort or commux that is not that package's one pin (`code_pin.yml` for snapy,
-  `tools/package-pins.json` for the others), in body text, footnotes and link targets. **status**: a file whose
+- **Ratchet gate.** `tools/ratchet_gate.py` counts four things per chapter (and for the preface,
+  `book/index.qmd`) and compares them with the committed baseline `tools/ratchet-baseline.json`; the
+  `tech-report-ratchet` workflow runs it with its tests on every pull request and push. **history**: change history
+  in body text (PR or issue numbers, "main after", "main at", "squash-merged", "the previous pin", "pull request",
+  "is now", "was introduced in" and the other phrases of `HISTORY_PATTERNS`; words that also describe physics, such
+  as "no longer" or "used to", count only in their history forms). Footnotes, HTML comments (PROVENANCE), shortcodes
+  and fenced code are not body text, so a source or credit footnote may carry a PR number. **offpin**: a sha of
+  snapy, kintera, pyharp, pydisort or commux that is not that package's one pin (`code_pin.yml` for snapy,
+  `tools/package-pins.json` for the others), anywhere in the file: body text, footnotes, link targets, code comments
+  and fenced code, and the plain fields of the PROVENANCE header (`<package>@<sha>`, `<path>@<sha>`, a GitHub
+  blob/tree/commit URL, or any other full sha that is no pin); a shortcode carries no sha. **status**: a file whose
   PROVENANCE says `reviewed` or `approved` without a valid entry in `reviews/review-record.tsv`. **xref**: a
   reference that resolves nowhere (render_gate's own resolution) and every `sec-` label no other chapter cites.
-  A rise fails the run; a fall must lower the baseline in the same pull request (`python3 tools/ratchet_gate.py
-  update`, which refuses to raise it). `python3 tools/ratchet_gate.py counts -v` lists every instance.
+  **The ratchet.** A rise fails; a fall must lower the baseline in the same pull request
+  (`python3 tools/ratchet_gate.py update`). The baseline records the pin it was measured at and may rise only with a
+  move of that pin: `update` refuses a higher count unless `code_pin.yml` has moved since the baseline was written,
+  and `check --base-ref <target>` (what CI runs) fails when the committed baseline is higher than the target
+  branch's without a pin change between them. `python3 tools/ratchet_gate.py counts -v` lists every instance.
+  **Owners.** `tools/chapter-owners.tsv` names one rewrite owner per chapter: it is the lock (one owner per chapter;
+  `check` fails on none or two) and the source of the per-owner burn-down table that `counts` and `check` print.
   **Review record.** One tab-separated line per event, newest last: `file kind reviewer author pin sha256 date
-  note`. `kind` is `review`, or `restamp` when the same reviewer confirms an unchanged verdict after an edit (the
-  note says what changed, in one line). `pin` is the full sha of `code_pin.yml`; `sha256` is
-  `python3 tools/ratchet_gate.py hash book/<file>`, the file without its PROVENANCE comment, so setting the status
-  does not change it. A reviewed file passes when its newest entry has the current hash and pin and a reviewer who
-  is not its author.
+  note`. A `review` says the reviewer read the file at this content and this pin and stands behind its status. A
+  `restamp` is the same reviewer confirming that review after the file or the pin changed without changing the
+  verdict, with a one-line note on what changed; anyone else, or a change that alters the verdict, needs a new
+  `review`. `pin` is the full sha of `code_pin.yml`; `sha256` is the file without its PROVENANCE comment, so setting
+  the status does not change it. Write entries with
+  `python3 tools/ratchet_gate.py record review <file> --reviewer R --author A` and
+  `python3 tools/ratchet_gate.py record restamp <file> --reviewer R --note "what changed"`, which fill in the hash,
+  the pin and the date and refuse a re-stamp by anyone but the reviewer. A reviewed file passes when its newest entry
+  has the current hash and pin and a reviewer who is not its author.
 - `tools/render_gate.py`: renders `book/` to HTML and PDF and gates the render (STYLE 10.9). Outcomes: pass (exit 0), pending (exit 2: a `snapy_report` function a chapter calls is not written yet, or there is no book yet) and fail (exit 1). Nothing is released while anything is pending; `--release` makes pending a failure.
   References into a chapter that is not written yet (a valid chapter id of STYLE 10.1 whose `{#sec-<id>}` is defined nowhere) are listed in their own gate, by target id, as expected failures: they still fail, apart from the real dangling references. So are references into a scheme of a written chapter whose `_<scheme>.qmd` does not exist yet.
 - `tools/gen_test_index.py`: generates Appendix C, the test index (`book/chapters/17-appendices/_appc-test-index.qmd`), from `tools/ctest-index.json`, the tests `ctest` lists for snapy at the pin (Eigen's own tests, which the build fetches, are counted, not listed). Both files are committed; CI runs `python3 tools/gen_test_index.py --check`, which fails if the fragment is not what the fixture gives. When the pin moves, refresh both from a clean checkout at the new pin (configuring is enough, no build):
