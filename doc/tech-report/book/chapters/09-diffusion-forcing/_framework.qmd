@@ -12,15 +12,22 @@ status: draft
 ::: {.callout-note title="At a glance"}
 **Purpose.** Turns each key of the YAML block `forcing:` into one module that adds $\Delta t\,\mathbf S$ to the stage
 increment $\Delta\mathbf U$; @eq-ch09-framework-stage.
-**Data.** In: the stage primitives $\mathbf W$ and the temperature $T$, cell averages. Out: the stage increment, and,
-when the block carries passive scalars, the modules' dry-density increment `_forcing_dry`.
+**Data.** In: the stage primitives $\mathbf W$ and the temperature $T$ = `W->T` of the same $\mathbf W$, cell
+averages on the block including ghosts, and $\Delta t$ [$\mathrm{s}$]. Out: the conserved stage increment $\Delta\mathbf U$
+(per unit volume, total-mass basis, interior and ghost cells) and, when the block carries passive scalars, the
+modules' dry-density increment `_forcing_dry` [$\mathrm{kg\,m^{-3}}$]. Check case: three toy modules on a 12-cell
+row with one ghost each side.
 **Placement.** Every RK stage, in `HydroImpl::forward`, after the flux divergence and before the gravity-work
 bookkeeping and the vertical implicit correction; modules in a fixed registration order.
 **Activation.** The presence of each key; no key, no module. Default: no forcing.
 **Guarantee / limits.** The sum does not depend on the module order, up to round-off; each module is first order in
 time within a stage.
-**Evidence.** `test_hydro_options.release`, `test_forcing.release`, `test_yaml_keys.release` and
-`framework_check.py` `[C1]`–`[C3]`; the ctests were not run at the pin.
+**Evidence.** Tests: the parser refuses `fric-heat` and unknown keys,
+{{< code tests/test_hydro_options.cpp hydro_options.reject_removed_and_unknown_forcing_keys >}} (exact); a MeshBlock
+with `body-heat` and the three relaxations constructs,
+{{< code tests/test_forcing.cpp forcing.meshblock_registers_parent_dependent_modules >}}; `top-cool` and `bot-heat` are
+linear in $\Delta t$, {{< code tests/test_forcing.cpp forcing.boundary_fluxes_scale_with_timestep >}} (`allclose`
+defaults); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/framework_check.py`, output `framework_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 snapy treats every source term other than the flux divergence as a *forcing*: a module that reads the

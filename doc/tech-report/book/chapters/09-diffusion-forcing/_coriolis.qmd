@@ -11,15 +11,22 @@ status: draft
 ::: {.callout-note title="At a glance"}
 **Purpose.** Adds the Coriolis force $-2\boldsymbol\Omega\times\rho\mathbf v$ to the momentum;
 @eq-ch09-coriolis-force.
-**Data.** In: the cell-centre density and velocity and $\boldsymbol\Omega$, given in the cell frame (`123`) or as
-a Cartesian vector projected onto the cell frame (`xyz`). Out: the three momentum rows; the energy row is not touched.
+**Data.** In: the cell-centre density $\rho$ [$\mathrm{kg\,m^{-3}}$] and velocity $\mathbf v$
+[$\mathrm{m\,s^{-1}}$] of the stage, $\Delta t$, and $\boldsymbol\Omega$ [$\mathrm{s^{-1}}$] from `omega1..3`, used in
+the cell frame (`123`) or projected once from a Cartesian vector onto Cartesian, cylindrical, spherical-polar or
+gnomonic cells (`xyz`). Out: the three momentum rows of the increment, covariant on the cubed sphere; the energy row is
+not touched. Check cases: random orthogonal frames, a $z$ rotation at colatitude 0.7, a two-dimensional `123` case.
 **Placement.** Every RK stage, second in the forcing loop (@sec-ch09-framework).
 **Activation.** `forcing/coriolis: {type, omega1, omega2, omega3, traditional}`; defaults `xyz`, 0, 0, 0, `false`.
 Off unless the key is present.
 **Guarantee / limits.** Exact pointwise for the cell-centre state; no work on an orthogonal frame; `123` with
 $n_3 = 1$ drops the $x_3$ row; `traditional` acts only on the cubed sphere.
-**Evidence.** `test_forcing.release` (cubed sphere, $10^{-12}$) and `coriolis_check.py` `[C1]`–`[C5]`; the ctests
-were not run at the pin.
+**Evidence.** Tests: on all six cubed-sphere panels the force equals the Cartesian one mapped to the panel,
+{{< code tests/test_forcing.cpp forcing.cubed_sphere_coriolis_uses_cartesian_rotation_vector >}} (rtol and atol
+$10^{-12}$), with and without `traditional`
+({{< code tests/test_forcing.cpp forcing.cubed_sphere_coriolis_supports_traditional_approximation >}}); these ctests
+were not run at the pin. The Cartesian, cylindrical and spherical-polar branches have no ctest. Check:
+`python3 src/snapy_report/ch09/coriolis_check.py`, output `coriolis_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 The module adds the Coriolis force evaluated at the cell centre from the stage-entry density and velocity. With
