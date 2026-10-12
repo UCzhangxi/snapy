@@ -106,58 +106,122 @@ Rules for the layers:
 ## 3. Citations
 
 ### 3.1 Code
-In a rendered chapter a code citation is always the link of section 10.6: link text `basename:lines`, target
-the file at the pinned **full** sha on GitHub. The notation `path:lines@<short-sha>` names a location in this
-guide, in OUTLINE.md, in a review and in a pre-conversion draft; it never appears in a `.qmd`. Converting one
-to the other is mechanical. **The old form, forbidden in a `.qmd`,** is
-`src/hydro/hydro_forward.cpp:817-822@e894700`; it becomes
-`` [`hydro_forward.cpp:817-822`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L817-L822) ``.
-That line is the one place in this guide where a short sha is allowed, and it is allowed because it is
-explicitly labelled as the old form (section 3.2).
-In prose the symbol comes first, then the link:
+A snapy code citation is the shortcode, and nothing else:
 
-> The slope stencil is `centroid_slope` ([`gravity_work_radial.hpp:28-51`](https://github.com/UCzhangxi/snapy/blob/<sha>/src/hydro/gravity_work_radial.hpp#L28-L51)).
+```markdown
+{{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}
+```
 
-- The line points at the definition or the statement that carries the claim, not at a comment above it (unless the
-  claim is about the comment).
-- Other repositories are cited exactly like snapy, with the owner spelled out in the URL and the repository name
-  prefixed to the link text:
-  `` [`pyharp integrator.cpp:49-61`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L49-L61) ``.
-  The repositories the report may cite, and the only owner each may be cited from, are listed with their pins in
-  `index.qmd`: snapy (`UCzhangxi/snapy` for the round pin, `chengcli/snapy` for the main pin), kintera
-  (`chengcli/kintera`), pyharp (`chengcli/pyharp`), pydisort (`zoeyzyhu/pydisort`), commux (`zoeyzyhu/commux`).
-  A citation to any other repository, or to a fork not on that list, is a review failure. Note that a sha from a
-  fork resolves through the parent's URL on GitHub; cite the repository the commit actually lives on.
-- Pins for round 1. They are defined **here and nowhere else**; `index.qmd` and OUTLINE.md reproduce this
-  table and are regenerated from it, never edited by hand. Each pin is a full sha and a description of what
-  the commit *is*, not of which branch happens to point at it:
+It renders as the file's basename and the symbol, linked to that symbol's lines at the pin. A citation names a
+**path and a symbol**, never a line number: line numbers move under the text and a reader cannot tell a stale
+range from a fresh one. `python3 tools/code_anchors.py check` resolves every citation at the pin and fails on
+any that does not resolve; it is the render's pre-render step and a CI step.
 
-  | pin | full sha | what it is |
-  |---|---|---|
-  | snapy base | `aea71ed852effb09e6aa155dd26349f1210ef556` | the commit of `chengcli/snapy` on which the gravity-work round is based |
-  | snapy round | `e894700ff7aee30b52882e5202b16461413780b0` | the gravity-work round as squash-merged by `chengcli/snapy#297`, on `chengcli/snapy` main |
-  | kintera | `c55b13b2204997d2d09e04498558ab9495d8ee77` | `chengcli/kintera` main (tag `v2.6.2`) when `chengcli/snapy#297` merged; every kintera citation uses it |
-  | pyharp | `4721715855e937c1e8b218e964c0655f46e56e29` | the pyharp commit the round builds against |
-
-  Code that differs between the base and the round is cited at the round pin. A branch name may be given as a
-  note ("`next/final-batch` pointed here on 2026-10-09") but is never the pin: branches move. When the round
-  merges, the editor moves every pin with the script of section 3.1; authors do not edit shas by hand.
-- Every code citation names its anchor: the function, method, type or variable whose definition or use the cited
-  lines contain. The anchor is the "symbol" column of the Code table, and in prose it is the identifier the
-  sentence uses before the link. `tools/check_citations.py` checks three things, not two: the file exists at the
-  sha; the lines exist; and the anchor's identifier appears at least once inside the cited range. A citation
-  whose range does not contain its anchor fails, even though the lines exist.
-- When the pin moves, the editor's script rewrites the sha and **re-resolves each range by locating the anchor
-  in the new file**; it never carries a line range across a sha unchanged. Where the anchor has moved to another
-  file, been renamed, or been deleted, the script does not guess: it lists the citation in
-  `reviews/pin-move-<newsha>.md` and the owning author re-reads the code and rewrites the citation and, if the
-  code changed, the claim. A pin move is not merged until that list is empty. Authors check their own citations
-  before committing with `git show <full-sha>:<path> | sed -n '<lo>,<hi>p'` and confirm the anchor is in the
-  output — not just that the lines exist.
+- The symbol is a function, method, class, struct, member or variable. C++ names keep their class and drop their
+  namespace (`HydroImpl::forward`), gtest tests are `Suite.Name`, Python symbols are `Class.method`. A file as a
+  whole is `{{< code <path> >}}`. When the gate reports a symbol as ambiguous it lists the overloads; add the
+  `overload=N` it gives.
+- Every citation still names its anchor in the prose around it: the identifier the sentence uses before the
+  citation, and the "symbol" column of the Code table. A citation the surrounding sentence does not name is a
+  review failure even when it resolves.
+- Hand-written line numbers are forbidden in a `.qmd`, in both the link form and the `path:lines@sha` notation.
+  The STYLE 10.6 link survives in exactly two places: a repository with no code pin, and the passages listed in
+  `reviews/code-anchors-unmapped.tsv` (lines spanning several symbols, lines outside any symbol). Both are
+  listed, not improvised; adding a new one needs an entry in that file and a reason.
 - Tests are cited by file and ctest name: `tests/test_gravity_work_radial_exact.py` (ctest
   `test_gravity_work_radial_exact_python`).
 
-### 3.2 Sources and history
+#### The pin
+
+**One pin per package, stated once, in one file.** For snapy that file is `code_pin.yml`, and it is the single
+source of truth:
+
+```yaml
+repo: chengcli/snapy
+sha: <the 40-character sha, written only here>
+```
+
+This guide does not restate that sha, and neither does any other file. Read it from `code_pin.yml`; move it only
+with `python3 tools/code_anchors.py bump <full-sha>`, which refuses to write a new pin until every citation
+resolves there and lists the symbols whose body changed so their claims can be re-read.
+
+A sha written anywhere else is a copy, and copies go stale. They had: at tech-report
+`f38085bb02c2043b7002bfeb85a47601f52cc2d7`, three files stated a snapy pin and all three disagreed with the
+one the tools use —
+
+| where | what it said |
+|---|---|
+| `code_pin.yml:4` | `6fbb39750f62b83df096058a4746e77d0a634bc5` — what every `{{< code >}}` actually resolves at |
+| `STYLE.md:138` (this section, before this revision) | `e894700ff7aee30b52882e5202b16461413780b0` |
+| `book/index.qmd:10` | `e894700ff7aee30b52882e5202b16461413780b0`, described as "reproduced" from this section |
+
+- `index.qmd` names the pinned repository and links to `code_pin.yml`; it does not carry a sha.
+- A PROVENANCE block records the pin the section was written against (section 3.2). Those blocks are the one
+  place a sha is written out per file, and they are the editor's to move with the pin.
+- **Known gap, for the editor.** `code_pin.yml` holds one `repo:`/`sha:` pair and `tools/code_anchors.py` reads
+  only those two fields, so kintera and pyharp have no entry and no gate. Until the file and the tool take one
+  pin per package, those two are pinned here and nowhere else, and a human has to check them:
+
+  | package | pin | cited |
+  |---|---|---|
+  | kintera (`chengcli/kintera`) | `c55b13b2204997d2d09e04498558ab9495d8ee77` | 85 times in `book/**/*.qmd` |
+  | pyharp (`chengcli/pyharp`) | `4721715855e937c1e8b218e964c0655f46e56e29` | 32 times in `book/**/*.qmd` |
+
+  Extending `code_pin.yml` to a mapping of package to pin, and `code_anchors.py` with it, removes this exception.
+- The repositories the report may cite, each from one owner only: snapy (`chengcli/snapy`), kintera
+  (`chengcli/kintera`), pyharp (`chengcli/pyharp`), pydisort (`zoeyzyhu/pydisort`), commux (`zoeyzyhu/commux`).
+  Any other repository, or a fork off that list, is a review failure. A sha from a fork resolves through the
+  parent on GitHub; cite the repository the commit lives on.
+
+#### When a cited symbol changes at the pin
+
+**PROVISIONAL — pending the editor's ruling. Do not treat the numbers below as settled practice.**
+
+Moving the pin can rename a symbol, move it to another file, split it in two, or delete it. `code_anchors.py
+bump` lists every cited symbol whose body changed, and refuses the move while any citation fails to resolve.
+When that happens:
+
+1. **Rewrite the citation to the symbol the code now has, and keep the pin.** The pin does not move backwards
+   for one citation, and the citation is not deleted to make a gate pass. Dropping either hides the change
+   instead of recording it.
+2. **Re-read the claim beside it.** A symbol whose body changed is the usual reason a sentence has quietly gone
+   false; the point of the list is the claim, not the link.
+3. **Where the symbol is genuinely gone** — the behaviour was removed, not renamed — the claim goes with it. Cite
+   what the code does now, or delete the sentence. A citation to a symbol that no longer exists is never correct.
+4. **Flag every one of these in the PR body**, one line each: the old symbol, the new symbol, and whether the
+   claim changed. A reviewer reads that list first.
+
+### 3.2 Sources, provenance, and no history in the text
+
+The report describes the code **as it is at the pin**, as one coherent text. A reader opens a chapter to learn
+what snapy does today, not how it got here. So the body text carries no change history:
+
+- no "since `chengcli/snapy#307`", "before `#303`", "after `snapy@ae61e39`";
+- no "main after ...", and no per-section note saying which sha a passage "was checked at";
+- no PR or issue number in prose at all.
+
+Write the behaviour plainly — "the limiter also runs when the covariance rows are on" — not the story of the
+commit that introduced it. Two consequences worth stating, because both have been got wrong:
+
+- A sentence that reads "at the pin X was true; since `#NNN` it is Y" is not merely stale style. Once `#NNN` is
+  *in* the pin, that sentence is **false**, because it describes the pin's own content as something later.
+- Deleting history does not mean deleting evidence. A measurement keeps its numbers and its provenance
+  (section 4); only the narrative framing goes.
+
+**Where provenance does belong**
+
+- The **PROVENANCE block** at the top of each scheme file: the pin the section was written against, its sources,
+  and its status. This is the one place per file that records where the text came from.
+- A **`[source: ...]` or `[sha: ...]` footnote** attached to a specific number or claim. A PR number may appear
+  here — it is a credit and a trail, not narration — alongside the deck and the run.
+- `ISSUES.md` and the review record for anything still open.
+
+Measured over `book/chapters/**/*.qmd` at tech-report `f38085bb02c2043b7002bfeb85a47601f52cc2d7`, excluding
+PROVENANCE blocks, the text still carries **103** "since/before/after <PR or sha>" in 23 files, **58**
+"main after/at ..." in 15 files, **2** per-section "links at the pin <sha>" notes in 2 files, and **207** PR
+numbers in prose in 49 files. Those are the editor's coherence pass; an author clears them in whatever
+paragraph they touch and does not sweep the rest of the book in a content PR.
+
 - Derivation notes: `sources/<file> §n` for a copy in this directory, or `docs/derivations/<file>@<full-sha>
   §n` for one in the code tree. The path, the sha and the section are repeated in full at every citation; no
   abbreviation to `§n` alone, and no second form for the same file within a chapter. A script is cited by path
@@ -170,14 +234,14 @@ In prose the symbol comes first, then the link:
   publication". The editor re-reads every such statement against the note's branch tip as the last step before
   each release render, and the author either removes the statement or re-pins it. The same applies to any
   sentence that says a defect was "flagged to its author".
-- Pull requests and issues: `chengcli/snapy#NNN` or `UCzhangxi/snapy#NNN`, always with the owner/repo.
+- Pull requests and issues, **in a PROVENANCE block or a `[source: ...]` footnote only**, never in prose:
+  `chengcli/snapy#NNN` or `UCzhangxi/snapy#NNN`, always with the owner/repo.
 - Commit: `snapy@<full-sha>`, the full 40 characters, with its subject line in quotes when the subject carries
   the meaning. A short sha appears nowhere in a rendered file: it is not stable as the repository grows and
   `git fetch` does not accept it. Where a short form is wanted for reading, write the full sha and let the link
   text carry the short form. Two exceptions, and no others:
   - **a short sha may appear only inside an example that is explicitly labelled as the old or forbidden form**,
-    so that a rule can show what it converts away from. The example in section 3.1 is the only such example in
-    this guide;
+    so that a rule can show what it converts away from;
   - planning files are exempt (section 10.2): OUTLINE.md and the sources keep the short-sha notation of
     section 3.1, and it is converted when the text moves into a `.qmd`. They are never swept for short shas,
     and a short sha in one of them is not a defect.
@@ -186,12 +250,32 @@ In prose the symbol comes first, then the link:
 
 Every number that is a measurement (an error, a drift, a rate, a timing, a growth) carries a provenance tag:
 
-> max per-step $|\Delta(E+P)|/|E+P| = 3.9\times10^{-16}$ [sha `e894700ff7aee30b52882e5202b16461413780b0`; deck: `tests/test_gravity_work_radial_exact.py`
-> case `sph_vic`; run: ctest `test_gravity_work_radial_exact_python`, CPU, double].
+> max per-step $|\Delta(E+P)|/|E+P| = 3.9\times10^{-16}$ [sha: the code pin; deck:
+> `tests/test_gravity_work_radial_exact.py` case `sph_vic`; run: `ctest -R test_gravity_work_radial_exact_python`,
+> CPU, double, 1 rank; Python 3.12.3, numpy 2.4.6].
 
 - **sha**: the code that produced it.
 - **deck**: the input (YAML file, or the test/script and case that builds the input).
-- **run**: how it was run (ctest name, or the committed script with its arguments), device, precision, ranks.
+- **run**: the **exact command**, then the device, precision and ranks, then the **versions that can move the
+  digits** — interpreter, and the numerical libraries the result goes through (`numpy`, `sympy`, `torch`, BLAS).
+  "numpy, double" is not a run record: it names no command and no version, so nobody can tell a wrong number
+  from a differently-rounded one.
+
+**A quoted number must be reproducible by the reader from what the page says.** It therefore comes from a
+committed check or a recorded run, and the record carries the command and the versions. Two failure modes this
+rule exists to stop:
+
+- *A number with no command.* The reader cannot re-run it, so it cannot be checked, only believed.
+- *A number with a command but no versions.* It can be re-run and will disagree, and nobody can say whether the
+  code changed or the host did. Three checks in this report are in exactly that state: `cellface_check` (ch06),
+  `fixvapor_check` and `kinetics_check` (ch10) print a round-off magnitude whose committed value this project's
+  own machines no longer reproduce (`1.3e-17` against a committed `5.0e-17`; `1.79e-15` against `2.20e-15`;
+  `1.6e-15` against `2.1e-15`), and their provenance says only "numpy, double". Every claim still passes its
+  threshold, so nothing is wrong with the code — the records are simply too thin to prove it.
+
+  Where a reported quantity is pure round-off noise, say so and compare it with its threshold ("below
+  $10^{-13}$ relative") rather than printing digits that no two machines agree on. A byte-compared `.out` file
+  must not contain a number the text cannot promise.
 - A number copied from a source note keeps the note's sha; if the note has none, the number is marked
   **missing evidence** and is either re-run at the pinned sha or removed (ISSUES.md items 2, 3, 5).
 - A number from an executable check in this report cites the check script and its output file:
@@ -342,17 +426,32 @@ doc/tech-report/
     tools/                        # scripts: citation checker, pin mover
 ```
 
-## 9. Review checklist (authors run it before asking for review)
+## 9. Checklists and the review record
 
-1. Six layers present, in order, with the headings of section 2; `quarto render book --to html` and `--to pdf` both
-   succeed with no unresolved cross-reference and no warning from the chapter (section 10.9).
+Two companion files hold the operational lists, so this guide can stay the rules and they can stay runnable:
+
+- **`AUTHOR-CHECKLIST.md`** — the gates an author runs before opening a chapter PR, with the exact command and
+  what each must say; what belongs in the PR body; what the text may not contain; and the questions that go to
+  the editor instead of being settled in a chapter PR.
+- **`REVIEW-RECORD.md`** — the template a reviewer fills: head, tree and base shas with the command and the UTC
+  time each was read, the gate table compared against the base, the render run, what was read and what was not,
+  the findings, and the verdict.
+
+A review is of one head sha. If the head moves, the record is void and the review is redone.
+
+The substance an author is checking for:
+
+1. Six layers present, in order, with the headings of section 2; the book renders to HTML and PDF with no
+   unresolved cross-reference and no warning from the chapter (section 10.9).
 2. Every symbol in NOTATION.md or defined locally and flagged to the editor.
-3. Every code link resolves at its sha and its lines show the claimed statement (`tools/check_citations.py`).
-4. Every number carries sha, deck, run, or is marked missing evidence.
-5. Every figure re-renders from its script with no diff; colour-blind palette; labelled axes and units.
-6. Every derivation's check runs, passes, and its `.out` is committed and current.
-7. No machine names, cluster paths, personal paths; no other model's code.
-8. Switch, default and couplings in the Summary agree with the switch coverage matrix,
+3. Every snapy citation is the shortcode of section 3.1, resolves at the pin, and the sentence around it names
+   its symbol. No hand-written line numbers.
+4. Every number carries its command and the versions behind it, or is marked missing evidence (section 4).
+5. No change history in the body text (section 3.2).
+6. Every figure re-renders from its script with no diff; colour-blind palette; labelled axes and units.
+7. Every derivation's check runs, passes, and its `.out` is committed and current.
+8. No machine names, cluster paths, personal paths; no other model's code.
+9. Switch, default and couplings in the Summary agree with the switch coverage matrix,
    `@sec-ch12-matrix`.
 
 ## 10. Quarto markup (binding)
@@ -498,18 +597,18 @@ files, so every construct below must work in both. When in doubt, render both an
 
 ### 10.6 Code citations and links
 - snapy code is cited by symbol, `{{< code <path> <symbol> >}}`, resolved at the pin of `code_pin.yml`
-  (README, "Citing code"); that form replaces the link below for snapy. The link remains the form for the
-  other repositories and for the passages listed in `reviews/code-anchors-unmapped.tsv`.
-- A code citation is a link whose text is `basename:lines` and whose target is the file at the pinned full sha
-  on GitHub. Written out, the source is:
+  (section 3.1; README, "Citing code"). That is the only form for snapy.
+- The link below is the form for a repository with no code pin, and for the passages listed in
+  `reviews/code-anchors-unmapped.tsv` — and nowhere else. Its text is `basename:lines` and its target is the
+  file at a full sha on GitHub:
 
   ```markdown
-  [`gravity_work_radial.hpp:28-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/gravity_work_radial.hpp#L28-L51)
+  [`kintera thermo_y.cpp:275-284`](https://github.com/chengcli/kintera/blob/<full-sha>/src/thermo/thermo_y.cpp#L275-L284)
   ```
 
   The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
   directory (`hydro/hydro.cpp:120-140`). The Code table of a scheme holds the same short links, and its "symbol"
-  column holds the anchor of section 3.1. The pins are defined in section 3.1 and reproduced in `index.qmd`. The
+  column holds the anchor of section 3.1. The pins are defined in section 3.1. The
   editor's pin-mover script rewrites every URL when the pin moves and re-resolves each range by its anchor
   (section 3.1), and `tools/check_citations.py` checks every link (file, lines and anchor at the sha).
 - A citation is never abbreviated to a bare `:lines`. Every citation, including the second and tenth to the same
