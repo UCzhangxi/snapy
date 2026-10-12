@@ -12,10 +12,17 @@ Local symbols: $\mathcal P_c$ is the set of parent vapours of condensate $c$. Tr
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Fills a negative condensate density from its parent vapours in the same cell, split by
-stoichiometric mass, then sets the condensate to exactly zero.
-**Switch.** EOS `limiter: true`; default false. **Conserves.** Mass and every element, cell by cell, ghosts included.
-**Defining equation.** @eq-ch10-borrow-split.
+**Purpose.** Fills a negative condensate density from its parent vapours in the same cell, split by stoichiometric
+mass, then sets the condensate to exactly zero; @eq-ch10-borrow-split.
+**Data.** In and out: the species partial densities [$\mathrm{kg\,m^{-3}}$] of every cell, ghosts included; the
+parent shares are cached when the equation of state is built.
+**Placement.** Inside every call of the conserved limiter, before the column repair: every stage and once more
+before the saturation adjustment.
+**Activation.** EOS `limiter: true`; default false. Only condensates that a nucleation reaction produces.
+**Guarantee / limits.** Mass and every element conserved cell by cell; $E$ is not corrected; a deficit larger than
+the parents' vapour is left to the column repair.
+**Evidence.** `test_condensate_conservation` ($10^{-12}$; $10^{-6}$) and `borrow_check.py` `[C1]`–`[C4]`; the
+ctests were not run at the pin.
 :::
 
 A negative condensate density means the positivity-limited transport over-drained a cell: the mass is in a

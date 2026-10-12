@@ -16,11 +16,17 @@ $\mathsf J_{\dot\omega}$ apart from the $\mathsf J$ of the phase solve in @sec-c
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Between two steps, advances the species by one linearised backward-Euler step of kintera's
-reaction rates (evaporation, precipitation), then asks `check_redo` whether to keep the step.
-**Switch.** None in the library: it runs only in drivers that build a kintera `Kinetics` from the card.
-**Changes.** Species rows only; $E$ is untouched. **Order.** First order in time.
-**Defining equation.** @eq-ch10-kinetics-step.
+**Purpose.** Between two steps, advances the species by one linearised backward-Euler step of kintera's reaction
+rates (evaporation, precipitation); @eq-ch10-kinetics-step.
+**Data.** In: temperature, pressure and molar concentrations from the post-step state. Out: the species rows of
+`hydro_u`, ghosts included; $E$ is untouched.
+**Placement.** In the driver, after all RK stages of a step and before `check_redo`.
+**Activation.** No library switch: only drivers that build a kintera `Kinetics` from the card
+(`examples/run_hydro.cpp`, `examples/jupiter_evap_precip_1d.cpp`).
+**Guarantee / limits.** First order in time, operator-split; one step never overshoots equilibrium for a linear
+rate law; no exchange after the update.
+**Evidence.** `test_uranus_cycle1_abort.release` (exit status) and `kinetics_check.py` `[C1]`–`[C4]`; no snapy test
+of one step's budget; the ctest was not run at the pin.
 :::
 
 The snapy library does not run reaction kinetics. Two example drivers do: `examples/run_hydro.cpp` and

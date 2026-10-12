@@ -13,10 +13,19 @@ $F_{\mathrm d}$ are the $x_1$ face fluxes of tracer $n$ and of dry air. Tracked 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Keeps passive tracers as mixing ratios $r_n$ per unit dry mass, so they move with the dry air
-under every operator that moves dry air; keeps them non-negative and, optionally, at or below a bound $b$.
-**Switch.** YAML `scalar` (`nvar` or `names`); `upper-bound` default $-1$ (off), $0$ refused, needs the EOS limiter.
-**Defining equation.** @eq-ch10-tracer-bound.
+**Purpose.** Keeps passive tracers as mixing ratios $r_n$ per unit dry mass, so they move with the dry air under
+every operator that moves dry air; keeps them non-negative and, optionally, at or below a bound $b$;
+@eq-ch10-tracer-bound.
+**Data.** In: the tracer densities $\rho_{\mathrm d}r_n$ and the hydro dry-mass fluxes. Out: the stage tendency of
+the tracers on interior cells.
+**Placement.** Every RK stage, after the hydro fluxes; positivity limiter first, complement bound second.
+**Activation.** YAML `scalar` (`nvar` or `names`); `upper-bound` default $-1$ (off), $0$ refused, needs the EOS
+limiter.
+**Guarantee / limits.** Non-negativity from the positivity limiter. The upper bound holds only while the mass
+Courant number stays below one and $\rho_{\mathrm d}$ changes only by the transport divergence; the implicit
+vertical correction and a forcing that writes the dry row break that premise.
+**Evidence.** `test_scalar.release` ($10^{-12}$; $10^{-5}$ in float32), `test_tracer_dry_convention_python` and
+`tracer_check.py` `[C1]`–`[C4]`; the ctests were not run at the pin.
 :::
 
 @sec-ch01 maps the scalar transport path and derives how the ratio rides with the implicit dry transfer and with

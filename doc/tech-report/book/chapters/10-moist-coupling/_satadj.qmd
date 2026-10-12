@@ -10,17 +10,22 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Brings every interior cell to phase equilibrium once per step, at fixed density and fixed
-internal energy, by moving mass between each vapour and its condensates.
-**Switch.** None of its own: on whenever the thermo block declares reactions; kintera's `uv-solver`, `max-iter`
-and `ftol` tune the solve. **Requires.** The whole-column conserved limiter, which runs just before it.
-**Runs.** On the last RK stage, interior cells only, before the boundary fill.
-**Defining equation.** @eq-ch10-satadj-state.
+**Purpose.** Brings every interior cell to phase equilibrium once per step, at fixed density and fixed internal
+energy density, by moving mass between each vapour and its condensates; @eq-ch10-satadj-state.
+**Data.** In: $\rho$, $\rho e$ and $y_n$ of each interior cell, cell averages. Out: the species rows
+$\rho_n = \rho\,y_n$; $E$, momentum and $\rho_{\mathrm d}$ are not written.
+**Placement.** Last RK stage, after the whole-column conserved limiter and before the boundary fill.
+**Activation.** On whenever the thermo block declares reactions; no switch of its own. kintera's `uv-solver`,
+`max-iter` and `ftol` tune the solve.
+**Guarantee / limits.** $E$ exact; total water to the phase solve's tolerance; ghosts are not adjusted; a failed
+cell stays unadjusted and raises redo cause 16.
+**Evidence.** `test_wall_saturation` ($10^{-12}$ relative) and `satadj_check.py` `[C1]`–`[C3]`; the ctest was not
+run at the pin.
 :::
 
 Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK stages. It lets the
 stages advect vapour and condensate as tracers that carry their own reference energies, and once per step, after
-the last stage has been averaged, it hands each interior cell to kintera's fixed-volume fixed-energy equilibrium
+the last stage has been averaged, it hands each interior cell to kintera's equilibrium solve at fixed volume and fixed internal energy density
 solve (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is never a separate source: it is
 the difference of the species reference energies $u^{\star}_n$ (NOTATION.md section 2), so moving mass between
 phases at fixed $\rho e$ changes the temperature and leaves $E$ alone. This section is the snapy side of that solve:
@@ -33,7 +38,7 @@ from the adjusted interior.
 
 ### Derivation
 
-The derivation of the equilibrium itself, its energy constraint and its active-set solve, is
+The derivation of the equilibrium itself, its internal-energy-density constraint and its active-set solve, is
 @sec-ch02-saturation; it is not repeated here. What this section adds is the state handed to it and the proof that
 the write-back changes only the species rows.
 
