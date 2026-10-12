@@ -19,13 +19,13 @@ correction for the whole block, skips the solve in the remaining stages, and ask
 an equation, the guards are listed in the Derivation.
 **Data.** In: the solve's inputs, the solved increment and the correction of every column of the block,
 and the stage index. Out: the restored `du` and primitives, a zero correction for the whole block, and the solve
-latch read by the redo check. Check cases: each of the four guards, a failure at stage 0, one failed column of 4.
+latch read by the redo check. Check cases: each of the four guards, a failure at stage 0, one failed column of 4, a screen total that overflows.
 **Placement.** Every stage with a VIC, around the solve.
 **Activation.** None; always on with the VIC.
 **Guarantee / limits.** The whole block is rejected, never a single column.
 **Evidence.** Tests: a refused column restores the step and the retry solves again,
 {{< code tests/test_lu_failure.cpp lu_failure.partial_retry_restores_step >}}, and the full, stop and assembly
-variants; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/vic_reject_check.py`, output `vic_reject_check.out` lines `[C1]`–`[C4]`; the check ports the code at snapy@e894700ff7aee30b52882e5202b16461413780b0, not the pin; two of the ported ranges, `forward_masked` and the redo flag in `meshblock.cpp`, changed between that commit and the pin.
+variants; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/vic_reject_check.py`, output `vic_reject_check.out` lines `[C1]`–`[C5]`; the check ports the code at the pin.
 :::
 
 ### Derivation
@@ -50,7 +50,8 @@ copies are bit for bit the inputs [check `src/snapy_report/ch07/vic_reject_check
 `vic_reject_check.out`, `[C1]`]. It also sets the latch and logs the rank, column, step, stage and retry. After a
 failure at stage 0 the other two stages of rk3 do not solve (`[C2]`). The latch raises redo cause 32. The reset
 at stage 0 of the retry lets the retry solve again (`[C3]`). One failed column out of four gives a zero
-correction for every column of the block, so no column is partly updated (`[C4]`).
+correction for every column of the block, so no column is partly updated (`[C4]`). A screen total that overflows
+while every value is finite runs the per-column guards, which find nothing, and the stage is not refused (`[C5]`).
 
 ### Numerical method
 
@@ -59,7 +60,7 @@ See @fig-ch07-vic-reject for the guards.
 ```{python}
 #| label: fig-ch07-vic-reject
 #| fig-cap: "The path through forward_masked. The latch (white) returns a zero correction for the rest of a failed step. The four guards (orange) each lead to the same refusal (vermillion): restore du and w, return a zero correction, set the latch and log the column, which check_redo reads as cause 32. A pass through all of them returns du - du0 (green)."
-#| fig-alt: "A row of seven boxes, latch, input check, solve, sentinel check, redistribution, result check and correction check, with arrows from the four checks down to a single refusal box."
+#| fig-alt: "A row of seven boxes, latch, solve, input check, sentinel check, redistribution, result check and correction check, with arrows from the four checks down to a single refusal box."
 #| echo: false
 from snapy_report.ch07.fig_vic_reject import make_fig
 make_fig()
@@ -102,12 +103,12 @@ cause that still restores the step after `max_redo` (@sec-ch07-redo).
 | `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `partial_retry_restores_step`, `full_retry_restores_step`, `*_stop_restores_step`, `*_assembly_*` | a refused correction (a NaN $\gamma$, or $\Delta t=0$ in the `*_assembly_*` cases) leaves `du` and the primitives unchanged, and `check_redo` returns 1 (retry) or $-1$ (stop) with `hydro_u` restored to the step input | `torch::equal` (bitwise) | contract |
 | same file, `mesh_terminal_failure_restores_all_blocks` | a two-block Mesh restores both blocks at a terminal failure | `torch::equal` | contract |
 | same file, `finite_near_singular_forward_masked` (and CUDA twins of these cases) | a finite float32 column with a long step ($10^4$) is refused by the pivot guard and sets the latch, leaving `du` and the primitives unchanged | logical; `torch::equal` | contract |
-| this section's check, `vic_reject_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+| this section's check, `vic_reject_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
 
 : Tests of VIC rejection and rollback. {#tbl-ch07-vic-reject-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `vic_reject_check.py`, which ports, from the code at snapy@e894700, the rejection control flow as a state machine around the ported sweep; deck: the check itself.[^ch07-vic-reject-run] ctest cases: **pending: pinned ctest run**.
+**Evidence.** Check numbers come from `vic_reject_check.py`, which ports, from the code at the pin, the rejection control flow as a state machine around the ported sweep; deck: the check itself.[^ch07-vic-reject-run] ctest cases: **pending: pinned ctest run**.
 **Coverage.** CPU and CUDA (the CUDA twins of the retry cases).
 :::
 
