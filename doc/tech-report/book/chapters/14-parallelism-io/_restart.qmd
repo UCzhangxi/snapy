@@ -60,20 +60,20 @@ call.
 **Keys.** An output's key is a 64-bit FNV-1a hash of its type, its interval and its variable list. The legacy key
 hashes the text `type|dt|var...`, with `dt` printed by `std::to_string` (six decimals). The precise key hashes the
 type, the eight bytes of `dt` and the variables, separated by zero bytes, so two intervals that print alike still
-differ ([`output_type.cpp:16-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L16-L43)). `output_key` stores the $N$ legacy keys
+differ ({{< code src/output/output_type.cpp OutputType::schedule_key_v2 >}}). `output_key` stores the $N$ legacy keys
 followed by the $N$ precise keys; a reader that knows only the legacy layout reads the first $N$.
 
 **Bundle.** The last block of the process to write enters `combine_blocks`, which uses the same barrier and
 mirror-barrier pattern as NetCDF (@sec-ch14-netcdf). On the root it globs the parts of the frame. One part is renamed
 to `<basename>.<kkkkk>.restart`. Several parts are written by `make_restart_bundle` as a text header and the
-concatenated payloads, and the parts are deleted ([`combine_restart.cpp:35-174`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_restart.cpp#L35-L174)).
+concatenated payloads, and the parts are deleted ({{< code src/output/combine_restart.cpp make_restart_bundle >}}).
 The header is the magic line `SNAPY_RESTART_BUNDLE_V1`, the part count, one `name<TAB>size` line per part, and an
 empty line (`kRestartBundleMagic`, {{< code src/output/combine_restart.cpp kRestartBundleMagic >}}).
 
 **Read.** The driver passes the file to `Mesh::initialize`, and each block calls `_init_from_restart`. A relative
 path that does not exist is looked up in the output directory. `load_restart` checks for the magic line. In a bundle,
 it extracts the part whose name holds `block<r>` for this block's rank, through a temporary file. A file without the
-magic is loaded whole (`load_pt_from_bundle`, [`read_restart_file.cpp:154-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/read_restart_file.cpp#L154-L234)). The block then
+magic is loaded whole (`load_pt_from_bundle`, {{< code src/input/read_restart_file.cpp load_pt_from_bundle >}}). The block then
 requires `hydro_u`, `last_time`, `last_cycle`, `file_number` and `next_time`, and resumes at the saved cycle and time
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}).
 
@@ -95,10 +95,10 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 |---|---|---|---|
 | always combined | {{< code src/output/restart.cpp RestartOutput::RestartOutput >}} | `RestartOutput` | `type: restart` |
 | state, time, schedules, keys | {{< code src/output/restart.cpp RestartOutput::write_output_file >}} | `RestartOutput::write_output_file` | none |
-| legacy and precise keys | [`output_type.cpp:16-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L16-L43) | `schedule_key_v2` | none |
+| legacy and precise keys | {{< code src/output/output_type.cpp OutputType::schedule_key_v2 >}} | `schedule_key_v2` | none |
 | bundle magic | {{< code src/output/combine_restart.cpp kRestartBundleMagic >}} | `kRestartBundleMagic` | none |
-| bundle and barriers | [`combine_restart.cpp:35-174`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/combine_restart.cpp#L35-L174) | `make_restart_bundle` | none |
-| read one block's entry | [`read_restart_file.cpp:154-234`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/input/read_restart_file.cpp#L154-L234) | `load_restart` | `--restart` |
+| bundle and barriers | {{< code src/output/combine_restart.cpp make_restart_bundle >}} | `make_restart_bundle` | none |
+| read one block's entry | {{< code src/input/read_restart_file.cpp load_pt_from_bundle >}} | `load_restart` | `--restart` |
 | required fields, cycle, time | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `_init_from_restart` | none |
 | schedule matching | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `claimed` | none |
 | next-time rule | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `next_time` | `dt` |
@@ -128,7 +128,7 @@ ones skip with exit 125 when a tool is missing. `test_user_output` and
 The cycle-limit comparison is `assert_close` with `atol` $10^{-12}$
 ({{< code tests/run_restart_cycle_limit.py assert_close >}}). The multiblock runner sets
 `tlim: 0` and `nlim: 0` and compares with `compare_netcdf`
-([`run_restart_multiblock.py:26-82`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_restart_multiblock.py#L26-L82)). Pass status at the pin was not run
+({{< code tests/run_restart_multiblock.py compare_netcdf >}}). Pass status at the pin was not run
 for this chapter.
 
 ::: {.callout-important title="Check: what the multiblock test covers"}
