@@ -1,40 +1,70 @@
 ## Environment parsing and process lifetime (`SNAP_*`) {#sec-ch12-environment}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: pinned code below; frozen outline section 12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 12.3; src/layout/layout.hpp; src/hydro/hydro.cpp; src/hydro/wb_ref4.cpp; src/coord/x1_centroid.cpp;
+         tests/test_horizontal_flux_covariance.py; tests/test_gravity_work_radial_exact.py
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default: **four off; radial exact on**. Set the five scheme variables before process startup. The helper `get_env` itself is not cached; each scheme accessor
-caches its parsed boolean in a function-local static. Changing the environment after first use does not change that accessor.
-An A/B comparison therefore needs a fresh child process per arm.
+**Purpose.** N/A: one parsing rule and one lifetime rule for the five numerics switches `SNAP_WB_REF4`,
+`SNAP_X1_CENTROID_EXACT`, `SNAP_FLUX_COVARIANCE`, `SNAP_X1_MASS_COVARIANCE` and
+`SNAP_GRAVITY_WORK_RADIAL_EXACT`.
+**Data.** In: the environment string of each variable at the first call of its accessor. Out: one cached
+boolean per accessor, shared by every block of the process.
+**Placement.** The first call of an accessor, which can happen during setup before any time step; the value
+is then fixed for the life of the process.
+**Activation.** Three switches default to off (WB, XC, MC); two default to on: FC, whose lookup falls back to
+`"1"` ({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}), and RE, whose lookup falls back to `"1"`
+as well ({{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}}). XC turns WB on.
+**Guarantee / limits.** The parse is a lower-cased comparison with four false tokens; no trimming, no
+validation of spelling, and nothing checks that the ranks of a run agree.
+**Evidence.** `test_horizontal_flux_covariance_python` and `test_gravity_work_radial_exact_python` each compare
+the unset arm with the `1` arm bit for bit and the `0` arm against it
+({{< code tests/test_horizontal_flux_covariance.py main >}},
+{{< code tests/test_gravity_work_radial_exact.py main >}}); check `[C1]` of `configuration_check.py`; the
+ctests were not run at the pin.
 :::
 
-| value, compared after lower-casing | WB / XC / FC / MC | radial exact |
-|---|---|---|
-| unset | off | on |
-| empty string | off | on |
-| `0`, `false`, `off`, `no` | off | off |
-| every other string | on | on |
+The five numerics switches are study flags: they change the scheme for the whole run and every block must make
+the same choice, or the shared faces of the mesh stop being single-valued. The code reads each of them once per
+process and never again, which is why this section exists apart from the switches themselves: an A/B comparison
+of a switch needs one child process per arm, and a flag set between two stages of one process does nothing.
 
-There is no trimming or validation of spelling: `false ` is on. Every block in one process sees the same cached value;
-the code does not by itself make different MPI processes agree.
+| value, compared after lower-casing | WB, XC, MC | FC | RE |
+|---|---|---|---|
+| unset | off | on | on |
+| empty string | off | off | on |
+| `0`, `false`, `off`, `no` | off | off | off |
+| every other string | on | on | on |
+
+: The parse of the five numerics switches at the pin. {#tbl-ch12-environment-parse}
+
+There is no trimming: `false ` with a trailing space is "every other string" and turns a switch on. Every block
+in one process sees the same cached value; the code does not by itself make different MPI processes agree.
 
 ### Derivation
 
-No numerical equation is added. Read the environment string, substitute the accessor default only when absent,
-lower-case it, compare with the false tokens, and cache the result. The empty string is deliberately excluded from
-radial exact's false set. `configuration_check.py` enumerates this truth table and the centroid implication.
+No numerical equation is added. `get_env` ({{< code src/layout/layout.hpp get_env >}}) returns the environment
+string when the variable is set, otherwise the default the caller passes. Each accessor lower-cases the string,
+compares it with `0`, `false`, `off` and `no`, and stores the result in a function-local static. The three
+off-by-default accessors and `HydroImpl::flux_covariance` also count the empty string as off;
+`HydroImpl::gravity_work_radial_exact` does not, so an empty value leaves it on. Check line `[C1]` enumerates
+this truth table over nine values for both rules and the implication from XC to WB with and without gravity
+[check `src/snapy_report/ch12/configuration_check.py`, output
+`src/snapy_report/ch12/configuration_check.out`].
 
 ### Numerical method
 
-Launch child A with its environment, evaluate its first accessor call, then run all its blocks with that cached flag.
-Launch child B separately. The first call can occur during setup before a time step, so changing a flag between RK stages
-is not a valid experiment.
+Launch child A with its environment, let its first accessor call fix the flag, then run all its blocks with
+that cached value; launch child B separately for the other arm. The first call can occur during setup, before
+a time step, so changing a flag between RK stages is not a valid experiment, and a test that inherits the
+user's environment can run a nominal default arm with a switch set by the shell.
 
 ```{python}
 #| label: fig-ch12-environment-flow
@@ -49,35 +79,49 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| env | [`layout.hpp:38-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L38-L50) | `get_env` | `SNAP_*` |
-| flags | [`hydro.cpp:217-259`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L217-L259) | `gravity_work_radial_exact` | `SNAP_*` |
-| wbflag | [`wb_ref4.cpp:83-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L83-L118) | `wb_ref4_enabled` | `SNAP_*` |
-| xcflag | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `x1_centroid_exact_enabled` | `SNAP_*` |
-| wbarms | [`test_wb_ref4_order.py:130-144`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wb_ref4_order.py#L130-L144) | `SNAP_FLUX_COVARIANCE` | `SNAP_*` |
-| xcarms | [`test_x1_centroid_rest.py:109-123`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_centroid_rest.py#L109-L123) | `SNAP_X1_CENTROID_EXACT` | `SNAP_*` |
-| rearms | {{< code tests/test_gravity_work_radial_exact.py main >}} | `warned` | `SNAP_*` |
+| env | {{< code src/layout/layout.hpp get_env >}} | `get_env` | `SNAP_*` |
+| fc | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | `flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| mc | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
+| re | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}} | `gravity_work_radial_exact` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| wb | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `wb_ref4_enabled` | `SNAP_WB_REF4` |
+| xc | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| fc arms | {{< code tests/test_horizontal_flux_covariance.py ARMS >}} | `ARMS` | `SNAP_FLUX_COVARIANCE` |
+| re arms | {{< code tests/test_gravity_work_radial_exact.py ARMS >}} | `ARMS` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
 
-: Pinned implementation anchors. {#tbl-ch12-environment-code}
+: Implementation sites for the environment switches. {#tbl-ch12-environment-code}
 
-Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
-The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+1. Read the string, or the accessor's default when the variable is absent. The anchor `get_env` is in
+   {{< code src/layout/layout.hpp get_env >}}.
+2. Lower-case it, compare with the false tokens (the empty string included for all but RE), and cache the
+   boolean. The anchor `flux_covariance` is in {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}; the
+   anchor `gravity_work_radial_exact` is in
+   {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}}.
+3. Let XC imply WB: `wb_ref4_enabled` returns true when `x1_centroid_exact_enabled` does. The anchor
+   `wb_ref4_enabled` is in {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_gravity_work_radial_exact_python` | unset equals on; false arm differs | bitwise state comparison | {{< code tests/test_gravity_work_radial_exact.py main >}} |
+| `test_horizontal_flux_covariance_python` | the unset arm equals the `1` arm bit for bit; the `0` arm differs | `torch.equal` | the script |
+| `test_gravity_work_radial_exact_python` | the unset arm equals the `1` arm bit for bit; the `0` arm differs | `torch.equal` | the script |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-environment-tests}
 
+The arm dictionaries are `ARMS` in {{< code tests/test_horizontal_flux_covariance.py ARMS >}} and
+{{< code tests/test_gravity_work_radial_exact.py ARMS >}}; the comparisons are in each script's `main`
+({{< code tests/test_horizontal_flux_covariance.py main >}},
+{{< code tests/test_gravity_work_radial_exact.py main >}}).
+
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
-Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 The independent parser check models the documented contract; it does not execute the C++ static storage.
-Cross-rank consistency is a launch responsibility. Unknown strings silently enable these switches.
+Cross-rank consistency is a launch responsibility. Any string outside the four false tokens (and the empty
+string where it counts) silently turns a switch on.
 
 The complete switch inventory is @sec-ch12-matrix.
 :::

@@ -1,48 +1,76 @@
-## Layout and communication environment (`BACKEND / rank variables`) {#sec-ch12-layout}
+## Layout and communication environment (`BACKEND` and the rank variables) {#sec-ch12-layout}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: pinned code below; frozen outline section 12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 12.9; src/layout/layout.cpp; src/layout/layout.hpp; src/layout/process_group_ucx.cpp; setup.py;
+         tests/test_process_group.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default: **platform-dependent**. `BACKEND` defaults to UCX when compiled with UCX on non-Apple systems, otherwise Gloo.
-The YAML `distribute/backend` key is accepted but ignored: the environment wins. Unlike the five scheme flags,
-layout options read their environment during option construction.
+**Purpose.** N/A: the launch variables fix the process topology (rank, world size, rendezvous, device) and the
+communication backend before any block exists.
+**Data.** In: the environment at the construction of the layout options. Out: the layout options' backend,
+ranks, sizes, master address and port, device and device index; three UCX defaults written into the process
+environment.
+**Placement.** Each time layout options are constructed, and again for `BACKEND` and `DEVICE` when options are
+read from YAML; the UCX defaults when the UCX process group starts.
+**Activation.** `BACKEND` defaults to the compiled platform default (`ucx` in a UCX build off macOS, else
+`gloo`); the rank variables default to one CPU process. The YAML key `distribute/backend` passes the key check
+and is not read.
+**Guarantee / limits.** A multi-process run must set `MASTER_PORT`; without it the options refuse any world
+size above one and a single process gets a random port. Nothing validates that the ranks agree on the numerics
+switches.
+**Evidence.** `test_process_group.<b>`: the platform default, the environment override, the ignored YAML key,
+the random port for one process, the refusal without a port at world size two, and a provided port
+({{< code tests/test_process_group.cpp LayoutOptions.UsesBackendEnvironmentVariable >}} and its siblings, exact
+strings and expected exceptions); check `[C8]` of `configuration_check.py`; the ctest was not run at the pin.
 :::
 
 | environment | default | role |
 |---|---|---|
-| `PROCESS_RANK` | `RANK`, then 0 | process rank |
+| `BACKEND` | the compiled platform default | process-group backend; wins over the YAML key |
+| `PROCESS_RANK` | `RANK`, then 0 | the process rank; `rank` itself is `RANK` when that is set, else this value |
 | `PROCESS_WORLD_SIZE` | `WORLD_SIZE`, then 1 | process count |
-| `WORLD_SIZE` | process world size | global world size |
+| `WORLD_SIZE` | the process world size | global world size |
 | `LOCAL_RANK` | 0 | local rank |
-| `MASTER_ADDR` | 127.0.0.1 | rendezvous address |
-| `MASTER_PORT` | random only for single-process | required for either multi-process size indication |
-| `DEVICE`, `DEVICE_ID` | cpu, -1 | device choice |
-| `COMMUX_COALESCE`, `COMMUX_GROUP` | 1 if unset | UCX batching |
-| `UCX_TLS` | CPU exclusions if unset | excludes CUDA copy/IPC/GDR paths on CPU |
-| `WORKSPACE`, `NC_HOME` | current directory, unset | package-build search paths only |
+| `MASTER_ADDR` | `127.0.0.1` | rendezvous address |
+| `MASTER_PORT` | a random port, single process only | rendezvous port; required when either world size exceeds one |
+| `DEVICE`, `DEVICE_ID` | `cpu`, $-1$ | device choice |
+| `COMMUX_COALESCE`, `COMMUX_GROUP` | set to 1 if unset | commux batching, written before the UCX group starts |
+| `UCX_TLS` | set to exclude the CUDA transports if unset on a CPU device | UCX transport selection |
+| `WORKSPACE`, `NC_HOME` | the current directory, unset | package-build search paths only |
 
+: Launch variables at the pin. {#tbl-ch12-layout-variables}
 
 ### Derivation
 
-No continuum derivation applies. Rank metadata selects the process topology; block layout and neighbor exchange
-then follow it. A common rendezvous port is necessary for processes to join the same group, so automatic port
-selection is only admissible for one process. Check line `[C8]` enumerates the 53 independent port
-assignments over port sets of size two and three and one to three processes: the group forms for every
-assignment only when there is a single process, while a port given to all of them forms it at every size
+No continuum derivation applies. Rank metadata selects the process topology; the block layout and the neighbour
+exchange of @sec-ch03 and @sec-ch14 then follow it. A common rendezvous port is necessary for the processes to
+join one group, so automatic port selection is admissible only for one process. Check line `[C8]` enumerates
+the 53 independent port assignments over port sets of size two and three and one to three processes: the group
+forms for every assignment only with a single process, and a port given to all of them forms it at every size
 [check `src/snapy_report/ch12/configuration_check.py`, output
 `src/snapy_report/ch12/configuration_check.out`].
 
 ### Numerical method
 
-Construct layout options, validate rendezvous configuration, then instantiate the compiled process-group backend.
-UCX defaults are installed only if absent. These controls affect seam communication, not stencil coefficients;
-incorrect rank settings invalidate a multi-rank numerical comparison.
+The constructor `LayoutOptionsImpl::LayoutOptionsImpl`
+({{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}) reads `BACKEND` with the default of
+`default_backend` ({{< code src/layout/layout.cpp default_backend >}}), the rank and world-size variables with
+the fallbacks of the table, `MASTER_ADDR`, and `MASTER_PORT`, which it draws at random when unset and both
+world sizes are one and refuses to leave unset otherwise; then `DEVICE_ID` and `DEVICE`. `LayoutOptionsImpl::from_yaml`
+({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}) reads the `distribute` block (`layout`,
+`nb1`, `nb2`, `nb3`, `verbose`, `blocks_per_process`, `backend`) and then re-reads `BACKEND` and `DEVICE` from
+the environment, so the YAML backend value is never used. When a UCX process group starts, `_init_ucx`
+({{< code src/layout/process_group_ucx.cpp ProcessGroupContext::_init_ucx >}}) writes the three UCX defaults
+with `set_default_env` ({{< code src/layout/process_group_ucx.cpp set_default_env >}}), only where the variable
+is unset. These controls affect seam communication, not stencil coefficients; wrong rank settings invalidate a
+multi-rank numerical comparison rather than change a scheme.
 
 ```{python}
 #| label: fig-ch12-layout-flow
@@ -57,32 +85,49 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| layoutdefault | {{< code src/layout/layout.cpp default_backend >}} | `default_backend` | `BACKEND / rank variables` |
-| layout | [`layout.cpp:189-242`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L189-L242) | `MASTER_PORT` | `BACKEND / rank variables` |
-| ucxenv | [`process_group_ucx.cpp:14-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/process_group_ucx.cpp#L14-L32) | `set_default_env` | `BACKEND / rank variables` |
-| setup | [`setup.py:42-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/setup.py#L42-L63) | `NC_HOME` | `BACKEND / rank variables` |
+| backend default | {{< code src/layout/layout.cpp default_backend >}} | `default_backend` | `USE_UCX` |
+| options | {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}} | `MASTER_PORT` | `BACKEND` and the rank variables |
+| yaml | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `backend` | `distribute/*` |
+| helpers | {{< code src/layout/layout.hpp get_rank >}} | `get_rank` | `RANK` |
+| ucx env | {{< code src/layout/process_group_ucx.cpp set_default_env >}} | `set_default_env` | `COMMUX_*`, `UCX_TLS` |
+| ucx start | {{< code src/layout/process_group_ucx.cpp ProcessGroupContext::_init_ucx >}} | `_init_ucx` | `BACKEND` |
+| package build | {{< code setup.py nc_home >}} | `nc_home` | `NC_HOME`, `WORKSPACE` |
 
-: Pinned implementation anchors. {#tbl-ch12-layout-code}
+: Implementation sites for the layout environment. {#tbl-ch12-layout-code}
 
-Read the table in order: establish the selector, follow its gates and consumers, then inspect the registered assertions.
-The cited ranges are re-read at the full pin; no line numbers are carried from the outline's earlier pin.
+1. Construct the layout options from the environment and the compiled default; refuse a multi-process world
+   without a port. The anchor `MASTER_PORT` is in
+   {{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}.
+2. Read the `distribute` block and let the environment override `BACKEND` and `DEVICE`. The anchor `backend`
+   is in {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}.
+3. Start the compiled process group; on UCX write the missing defaults first. The anchor `_init_ucx` is in
+   {{< code src/layout/process_group_ucx.cpp ProcessGroupContext::_init_ucx >}}.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_process_group.<b>` | backend precedence and port requirements | exact strings; required exceptions | [`test_process_group.cpp:74-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L186) |
+| `test_process_group.<b>` | the platform default with `BACKEND` unset; `BACKEND=gloo` overrides; the YAML key is ignored; a random port in 29500 to 29600 for one process; a missing port is refused at world size two; a provided port is kept; a single process owns no group | exact strings; expected exceptions | the test |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-layout-tests}
 
+The assertions are {{< code tests/test_process_group.cpp LayoutOptions.DefaultsToPlatformCommunicationBackend >}},
+{{< code tests/test_process_group.cpp LayoutOptions.UsesBackendEnvironmentVariable >}},
+{{< code tests/test_process_group.cpp LayoutOptions.IgnoresYamlBackend >}},
+{{< code tests/test_process_group.cpp LayoutOptions.RandomizesDefaultMasterPortWhenEnvUnset >}},
+{{< code tests/test_process_group.cpp LayoutOptions.RequiresMasterPortForMultiProcessWhenEnvUnset >}},
+{{< code tests/test_process_group.cpp LayoutOptions.UsesProvidedMasterPortForMultiProcess >}} and
+{{< code tests/test_process_group.cpp ProcessGroupContext.SkipsSingleProcessCommunication >}}.
+
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
-Independent CPU formula/contract checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-No network or multi-rank run is performed. A YAML backend value cannot override the environment at this pin.
-Runtime selection of a backend does not prove its library was compiled and linked.
+No network or multi-rank run is performed here. A YAML backend value cannot override the environment. A
+run-time backend selection does not prove that its library was compiled and linked. `LOCAL_RANK` has a second
+default in the Python launch helper, the rank modulo the GPU count (@sec-ch14).
 
 The complete switch inventory is @sec-ch12-matrix.
 :::
