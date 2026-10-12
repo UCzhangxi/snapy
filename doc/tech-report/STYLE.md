@@ -497,6 +497,9 @@ files, so every construct below must work in both. When in doubt, render both an
 - The Code and Tests layers each use one table, as in section 2; the column headers there are fixed.
 
 ### 10.6 Code citations and links
+- snapy code is cited by symbol, `{{< code <path> <symbol> >}}`, resolved at the pin of `code_pin.yml`
+  (README, "Citing code"); that form replaces the link below for snapy. The link remains the form for the
+  other repositories and for the passages listed in `reviews/code-anchors-unmapped.tsv`.
 - A code citation is a link whose text is `basename:lines` and whose target is the file at the pinned full sha
   on GitHub. Written out, the source is:
 

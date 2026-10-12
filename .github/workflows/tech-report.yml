@@ -27,6 +27,8 @@ concurrency:
 env:
   PYTHON_VERSION: "3.12"
   QUARTO_VERSION: "1.10.19"
+  # Universal Ctags finds the line ranges of the code citations (tools/code_anchors.py, which names the same version)
+  CTAGS_VERSION: "6.2.1"
   # Gates that fail on the branch as it stands and are reported, not failed, here (render_gate.py's report mode).
   # "freeze tracked": only ch05 has a committed _freeze/, so CI executes the other chapters' cells, as a fresh
   # clone does. Every other gate failure fails the run.
@@ -57,6 +59,28 @@ jobs:
 
       - name: Install pdftotext
         run: sudo apt-get update -q && sudo apt-get install -y -q poppler-utils
+
+      - name: Cache Universal Ctags
+        uses: actions/cache@v4
+        with:
+          path: ~/uctags
+          key: uctags-${{ env.CTAGS_VERSION }}-${{ runner.os }}
+
+      - name: Build Universal Ctags
+        run: |
+          if [ ! -x "$HOME/uctags/bin/ctags" ]; then
+            sudo apt-get install -y -q autoconf automake pkg-config
+            git clone --quiet --depth 1 --branch "v$CTAGS_VERSION" https://github.com/universal-ctags/ctags "$RUNNER_TEMP/uctags"
+            cd "$RUNNER_TEMP/uctags"
+            ./autogen.sh && ./configure --quiet --prefix="$HOME/uctags" --disable-json --disable-xml --disable-yaml \
+              --disable-seccomp && make -s -j4 && make -s install
+          fi
+          echo "CTAGS=$HOME/uctags/bin/ctags" >> "$GITHUB_ENV"
+
+      # The gate of the code citations: every {{< code >}} resolves at the pin of code_pin.yml (README, "Citing code").
+      # The render runs the same check again as its pre-render, which writes the table the shortcode reads.
+      - name: Code citations resolve at the pin
+        run: python3 tools/code_anchors.py check
 
       - name: Set up Quarto and TinyTeX
         uses: quarto-dev/quarto-actions/setup@v2

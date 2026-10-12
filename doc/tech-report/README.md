@@ -9,6 +9,20 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
 - `OUTLINE.md`: the plan, chapter by chapter and scheme by scheme.
 - `chapters/NN-slug/`: Markdown with LaTeX, with `figures/` (scripts and PNGs) and `checks/` (sympy/numpy scripts and their output). `chapters/common/figstyle.py` is the shared figure style. The worked example is `chapters/06-gravity-energy/D_face_work_pe.md`.
 - `tools/check_citations.py`: checks that every code citation (STYLE 10.6 links and `path:line@sha`) resolves at its sha, that the cited lines exist and, in a `.qmd`, contain the link's anchor symbol, and that the repository is one STYLE 3.1 allows; `python3 -m pytest tools/tests` tests it.
+- **Citing code.** Cite snapy code by file and symbol, never by line number:
+  `{{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}` renders as the link
+  `hydro_forward.cpp` `HydroImpl::_flux_covariance` to the symbol's lines at the one pinned commit,
+  `code_pin.yml`. The symbol is a function, method, class, struct, member or variable; C++ names keep their
+  classes and drop their namespaces, gtest tests are `Suite.Name`, Python symbols are `Class.method`, and a file
+  alone is `{{< code <path> >}}`. If the gate reports a symbol as ambiguous (overloads), add the `overload=N` it
+  lists. `python3 tools/code_anchors.py check` resolves every citation at the pin (Universal Ctags 6.2.1:
+  `brew install universal-ctags` or set `CTAGS=<binary>`; a clone holding the pin in `SNAPY_REPO`, else it is
+  fetched into `~/.cache/snapy-report`); it is the render's pre-render and a CI step, and either fails on a
+  citation that does not resolve. To move the pin: `python3 tools/code_anchors.py bump <full-sha>` lists the
+  cited symbols whose body changed (re-read those, and fix the claims they carry), and writes the new sha into
+  `code_pin.yml` only when every citation resolves there; `diff <old> <new>` prints the same list for any two
+  commits. Links that could not be converted to symbols (lines across several symbols, top-level code,
+  kintera/pyharp, generated appendices) remain STYLE 10.6 links, listed in `reviews/code-anchors-unmapped.tsv`.
 - `tools/render_gate.py`: renders `book/` to HTML and PDF and gates the render (STYLE 10.9). Outcomes: pass (exit 0), pending (exit 2: a `snapy_report` function a chapter calls is not written yet, or there is no book yet) and fail (exit 1). Nothing is released while anything is pending; `--release` makes pending a failure.
   References into a chapter that is not written yet (a valid chapter id of STYLE 10.1 whose `{#sec-<id>}` is defined nowhere) are listed in their own gate, by target id, as expected failures: they still fail, apart from the real dangling references. So are references into a scheme of a written chapter whose `_<scheme>.qmd` does not exist yet.
 - `tools/gen_test_index.py`: generates Appendix C, the test index (`book/chapters/17-appendices/_appc-test-index.qmd`), from `tools/ctest-index.json`, the tests `ctest` lists for snapy at the pin (Eigen's own tests, which the build fetches, are counted, not listed). Both files are committed; CI runs `python3 tools/gen_test_index.py --check`, which fails if the fragment is not what the fixture gives. When the pin moves, refresh both from a clean checkout at the new pin (configuring is enough, no build):

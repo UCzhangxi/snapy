@@ -58,6 +58,7 @@ _SCHEME = re.compile(r"^## (?P<title>.*?)\s*\{#(?P<label>sec-[\w-]+)[^}]*\}\s*$"
 _CHAPTER = re.compile(r"^# (?P<title>.*?)\s*\{#(?P<label>sec-ch\d+[a-z]?)\}\s*$")
 _EQ = re.compile(r"\{#(eq-[\w-]+)\}")
 _CODE = re.compile(r"\[`?[^\]\n]*`?\]\((https://github\.com/(?:chengcli|UCzhangxi)/\w+/blob/[0-9a-f]{40}/[^)\s]+)\)")
+_SHORTCODE = re.compile(r"(?<!\{)\{\{<\s*code\s[^>]*>\}\}")
 _CHECK = re.compile(r"\b([\w-]+_check\.py)\b")
 _CLINE = re.compile(r"\[C\d+\]")
 _NOTE = re.compile(r"docs/derivations/|(?<![\w/])sources/")
@@ -148,8 +149,13 @@ def scan_file(path: Path, chapter: str) -> list[Scheme]:
 
 
 def _code_cell(s: Scheme, a: int, b: int) -> str | None:
-    """The first code link in lines [a, b) of the scheme, as "`symbol`, [text](url)", or None."""
+    """The first code citation in lines [a, b) of the scheme: a symbol citation (README, "Citing code") as it
+    is, a link as "`symbol` at `text`"; or None."""
     for n in range(a, b):
+        sc = _SHORTCODE.search(s.lines[n])
+        link = _CODE.search(s.lines[n])
+        if sc and (not link or sc.start() < link.start()):
+            return sc.group(0)
         for m in _CODE.finditer(s.lines[n]):
             text = re.match(r"\[`?([^\]`]*)`?\]", s.lines[n][m.start():])
             sym = find_anchor(s.lines, n, m.start())
