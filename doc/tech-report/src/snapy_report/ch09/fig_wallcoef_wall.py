@@ -2,7 +2,7 @@
 one-sided extrapolation from the two active cells.
 
 Drawn from extrapolate_to_wall and face_coefficient, src/forcing/diffusion.cpp:110-159, at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, for rho = exp(-x1/H) with h = H/2. A cartoon
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, for rho = exp(-x1/H) with h = H/2. A cartoon
 with an analytic profile; it reads no data.
 """
 import numpy as np

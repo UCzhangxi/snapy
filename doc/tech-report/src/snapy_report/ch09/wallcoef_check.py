@@ -1,7 +1,7 @@
 """Executable check of the diffusion face coefficient at walls (chapter 9, _wallcoef.qmd).
 
 What is checked: extrapolate_to_wall and face_coefficient of src/forcing/diffusion.cpp
-:110-159 at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line, against the
+:110-159 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line, against the
 two-cell average that reads the mirror ghost; and the arithmetic of the immersed-solid
 placeholder state of sources/canoe__diffusion_ghost_TECH_REPORT.md section 3. Claims C1-C5.
 

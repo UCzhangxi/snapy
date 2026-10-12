@@ -1,24 +1,33 @@
 # Diffusion, viscosity and forcing {#sec-ch09}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: OUTLINE.md, the diffusion, viscosity and forcing entry
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+sources: OUTLINE.md, the diffusion, viscosity and forcing entry; the code at the pin
 status: draft
 -->
 
-This chapter covers every source term snapy adds to the stage increment besides the flux divergence and gravity:
-the forcing framework that parses, installs and sums them; user stage forcings written in TorchScript; the
-Coriolis force; the isotropic viscosity and heat conduction with their face coefficients at walls and their
+This chapter covers every source term snapy adds to the stage increment besides the flux divergence and constant
+gravity: the forcing loop that parses, installs and sums them; user stage forcings written in TorchScript; the
+Coriolis force; the isotropic viscosity and heat conduction, with their face coefficient at walls and their
 optional $x_1$ profiles; prescribed heating and cooling; the bottom relaxations of temperature, velocity and
-composition; and the sponge layers. All of them are explicit and act through the same increment, in a fixed order
-that does not change the result. Constant gravity and its work are @sec-ch06; sedimentation is @sec-ch10. Two
-entries record code that is present but never runs: the plume forcing and the unbuilt turbulence closure.
+composition; and the sponge layers. All of them are explicit and act through one increment, and every native
+module reads the same stage-entry state, so their order does not change the result. Constant gravity is the first module of the same loop; it and its work
+are @sec-ch06; sedimentation is @sec-ch10-sed; the tracers that ride the dry-air part of these sources are
+@sec-ch10-tracer. Two entries record code that is present but never runs: the plume forcing and the turbulence
+closure, which is not built.
 
-<!-- PENDING: the chapter's dependency map (STYLE.md section 10.1) is drawn from the switch coverage matrix of the configuration chapter, which is not in the book yet. -->
+```{python}
+#| label: fig-ch09-deps
+#| fig-cap: "Dependency map of the schemes of this chapter. Solid arrows read 'is part of', dashed arrows 'hands its dry-air increment to', dotted arrows 'needs'. Every native module runs inside the forcing loop; the wall face coefficient and the $x_1$ profiles are parts of the viscosity and conduction module; the forcing loop and the user stage forcings both hand their dry-air density change to the passive tracers; the wall coefficient needs $x_1$ boundary functions with a recorded wall name, and the composition relaxation needs kintera's thermodynamics."
+#| fig-alt: "Directed graph of twelve boxes: user stage forcings, forcing loop and dry-air tracers on top; Coriolis, viscosity and conduction, heating and cooling, bottom relaxation and sponge layers in the middle; x1 coefficient profiles, wall face coefficient, named x1 walls and kintera thermo at the bottom, joined by solid, dashed and dotted arrows."
+#| echo: false
+from snapy_report.ch09.fig_deps import make_fig
+make_fig()
+```
 
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
-| Forcing framework (@sec-ch09-framework) | `forcing:` keys | none | — | `test_forcing` |
+| Forcing loop (@sec-ch09-framework) | `forcing:` keys | none | n/a | `test_forcing` |
 | User stage forcings (@sec-ch09-user) | `set_user_stage_forcings` | none | user | `test_stage_forcing_dry_tracer_python` |
 | Coriolis (@sec-ch09-coriolis) | `coriolis` | off | exact pointwise | `test_forcing` |
 | Viscosity and conduction (@sec-ch09-viscosity) | `diffusion` | off | 2 (1 at walls) | `test_diffusion` |
@@ -27,11 +36,11 @@ entries record code that is present but never runs: the plume forcing and the un
 | Heating and cooling (@sec-ch09-heating) | `body-heat`, `top-cool`, `bot-heat` | off | exact pointwise | `test_forcing` |
 | Bottom relaxation (@sec-ch09-relax) | `relax-bot-temp`, `-velo`, `-comp` | off | 1 in time | `test_forcing` |
 | Sponge layers (@sec-ch09-sponge) | `top-sponge-lyr`, `bot-sponge-lyr` | off | 1 in time | `test_forcing` |
-| Plume forcing (@sec-ch09-plume) | `plume-forcing` | never installed | — | none |
-| Turbulence (@sec-ch09-turbulence) | none | not built | — | none |
+| Plume forcing (@sec-ch09-plume) | `plume-forcing` | never installed | n/a | none |
+| Turbulence (@sec-ch09-turbulence) | none | not built | n/a | none |
 
 : The schemes of this chapter. "Order" is the spatial order of the discrete operator, or the order in time for the
-relaxations; all are explicit. {#tbl-ch09-schemes}
+relaxations; all are explicit. Full ctest names and tolerances are in each scheme's Tests layer. {#tbl-ch09-schemes}
 
 {{< include 09-diffusion-forcing/_framework.qmd >}}
 

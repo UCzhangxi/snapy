@@ -2,7 +2,7 @@
 
 What is checked: BodyHeatImpl::forward (src/forcing/body_heat.cpp:43-55),
 TopCoolImpl::forward (src/forcing/top_cool.cpp:42-56) and BotHeatImpl::forward
-(src/forcing/bot_heat.cpp:42-56) at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported
+(src/forcing/bot_heat.cpp:42-56) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported
 line for line on one Cartesian column. Claims C1-C3.
 
 Run: python3 heating_check.py   (numpy only; exits with the number of failed claims)

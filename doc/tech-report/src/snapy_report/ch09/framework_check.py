@@ -1,7 +1,7 @@
 """Executable check of the stage increment of the forcing framework (chapter 9, _framework.qmd).
 
-What is checked: the assembly of the stage increment in HydroImpl::forward (src/hydro/hydro_forward.cpp:754-765)
-at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported on numpy arrays: the divergence term on interior cells,
+What is checked: the assembly of the stage increment in HydroImpl::forward (src/hydro/hydro_forward.cpp:869-880)
+at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported on numpy arrays: the divergence term on interior cells,
 then each registered module adding dt times its source evaluated on the same W and T, and the dry-density
 increment of the forcings kept only when the block carries tracers. Three toy source terms stand in for the
 modules. Claims C1-C3.
@@ -32,7 +32,7 @@ MODULES = [lambda w, t: np.stack([0.1 * w[0], -w[1], np.zeros(NC), np.zeros(NC),
 
 def stage_increment(dt, order, track_dry):
     du = np.zeros((NV, NC))
-    du[:, 1:-1] = -dt * DIV[:, 1:-1]                 # hydro_forward.cpp:755-757, interior only
+    du[:, 1:-1] = -dt * DIV[:, 1:-1]                 # hydro_forward.cpp:870-872, interior only
     dry_before = du[0].copy() if track_dry else None  # :761-763
     for m in order:                                   # :764, each module adds dt * S(w, temp)
         du += dt * MODULES[m](W, T)

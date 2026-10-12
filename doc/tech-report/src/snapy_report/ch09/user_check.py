@@ -1,7 +1,7 @@
 """Executable check of the user stage forcings (chapter 9, _user.qmd).
 
 What is checked: the addition of user hydro_du to the native stage increment in MeshBlockImpl::advance_local
-(src/mesh/meshblock.cpp:689-742) at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported on numpy arrays, and
+(src/mesh/meshblock.cpp:689-742) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported on numpy arrays, and
 how a user increment enters the step through the stage weights of pyharp
 (src/integrator/integrator.cpp:33-85 at pyharp@4721715855e937c1e8b218e964c0655f46e56e29, as in chapter 7's
 rk_check.py). Claims C1-C3.

@@ -2,7 +2,7 @@
 
 What is checked: TopSpongeLyrImpl::forward (src/forcing/top_sponge_lyr.cpp:47-76),
 BotSpongeLyrImpl::forward (src/forcing/bot_sponge_lyr.cpp:47-76) and coord_vec_lower_impl
-(src/coord/coord_utils_impl.h:19-24) at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported
+(src/coord/coord_utils_impl.h:19-24) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported
 line for line. Claims C1-C4. Also writes data/sponge_profile.csv for fig_sponge_profile.py.
 
 Run: python3 sponge_check.py   (numpy only; exits with the number of failed claims)

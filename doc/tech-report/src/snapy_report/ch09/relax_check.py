@@ -2,7 +2,7 @@
 
 What is checked: the at-face target and gain of RelaxBotTempImpl::forward
 (src/forcing/relax_bot_temp.cpp:80-104) and the mass bookkeeping of RelaxBotCompImpl::forward
-(src/forcing/relax_bot_comp.cpp:113-117) at snapy@e894700ff7aee30b52882e5202b16461413780b0,
+(src/forcing/relax_bot_comp.cpp:113-117) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5,
 ported line for line. Claims C1-C4.
 
 Run: python3 relax_check.py   (numpy only; exits with the number of failed claims)

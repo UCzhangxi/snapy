@@ -2,7 +2,7 @@
 
 Data: data/sponge_profile.csv, written by sponge_check.py (claim C1), which ports
 src/forcing/top_sponge_lyr.cpp:58-62 and bot_sponge_lyr.cpp:58-62 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0; 20 cells of 0.5 on [0, 10], width 2.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; 20 cells of 0.5 on [0, 10], width 2.
 """
 import os
 
