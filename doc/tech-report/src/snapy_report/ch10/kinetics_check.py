@@ -3,7 +3,7 @@
 What is checked, at kintera@c55b13b2204997d2d09e04498558ab9495d8ee77:
 - the two-product extent of EvaporationImpl::forward (src/kinetics/evaporation.cpp:165-192), ported below;
 - the implicit step of evolve_implicit_cell (src/kinetics/evolve_implicit_impl.h:66-77), ported below;
-and the species update of examples/run_hydro.cpp:187-191 at snapy@e894700ff7aee30b52882e5202b16461413780b0.
+and the species update of examples/run_hydro.cpp:187-191 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 Claims C1-C4. Also writes data/kinetics_extent.csv for fig_kinetics_extent.py.
 
 Run: python3 kinetics_check.py   (numpy and sympy; exits with the number of failed claims)

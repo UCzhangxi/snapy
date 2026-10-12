@@ -2,7 +2,7 @@
 
 What is checked: EquationOfStateImpl::cache_cloud_parents_ (src/eos/equation_of_state.cpp:110-163)
 and the borrow in apply_conserved_limiter_ (:262-268) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below. Claims C1-C4.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C4.
 Also writes data/borrow_bars.csv for fig_borrow_bars.py.
 
 Run: python3 borrow_check.py   (numpy and sympy; exits with the number of failed claims)

@@ -1,7 +1,7 @@
 """Terminal velocity against particle radius for the H2 defaults at two pressures.
 
 Data: data/sed_vsed.csv, written by sed_check.py (claim C5), a port of src/sedimentation/sed_vel.cpp:34-71 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0 (T = 150 K, rho = 0.1, rho_p = 1000 kg m^-3, g_1 = -24.79 m s^-2).
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (T = 150 K, rho = 0.1, rho_p = 1000 kg m^-3, g_1 = -24.79 m s^-2).
 """
 import os
 

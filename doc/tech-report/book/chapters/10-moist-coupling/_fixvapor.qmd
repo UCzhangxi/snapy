@@ -1,9 +1,10 @@
 ## Column vapour and cloud repair (`limiter`) {#sec-ch10-fixvapor}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: OUTLINE.md 10.4 and 10.5 (two inventories of the same kernel, merged as the chapter note asks);
-         code links below; sources/canoe__POSITIVITY_TECH_REPORT.md section 6
+         src/eos/fix_vapor_impl.h, src/eos/eos_dispatch.cpp, src/eos/eos_dispatch.cu, src/eos/equation_of_state.cpp,
+         src/layout/layout.cpp and the tests below at the pin; sources/canoe__POSITIVITY_TECH_REPORT.md section 6
 status: draft
 -->
 
@@ -27,9 +28,7 @@ volume changes with height. If nothing below can cover a deficit, the cells abov
 deficit. A vapour column that cannot be repaired at all is an error; a cloud column in net deficit is clamped to
 zero, which creates exactly the missing mass.
 
-The repair is on with `limiter: true`. Aliases: the volume weights are #241, the upward branch #243, the
-whole-column gather #244 and #268 ([chengcli/snapy#268](https://github.com/chengcli/snapy/issues/268)); PR #230's
-"the repair is per meshblock" is superseded by the gather.
+The repair is on with `limiter: true`.
 
 ### Derivation
 
@@ -54,31 +53,33 @@ cell at most twice and terminates. If the bottom is passed with the sum still ne
 $D=-\sum_{l\le i_0}V_l\rho_{n,l}/V_0$ of the cells from the starting cell $i_0$ down is taken from the cells above,
 in order, each giving at most what it holds; the cells from $i_0$ down are set to zero. Before writing anything this
 branch checks that the cells above hold at least $D$, so it writes nothing when it fails
-({{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}, `deficit`).
+(`deficit`, {{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}).
 A window repaired earlier in the same scan stays rewritten, though: a column that fails below an already repaired
 window is returned with that window flattened, mass kept. The kernel fails on a non-positive dry density; otherwise, in every case
 `fixvapor_check.py` tried, only on a column whose total vapour mass is negative.
 
 ::: {.callout-important title="Check"}
-All of this is checked by `src/snapy_report/ch10/fixvapor_check.py`, a line-for-line port of the kernel. It replays
-the inputs of the `eos_limiter` gtests (`[C1]`, `[C2]`, `[C3]`), keeps $\sum_iV_i\rho_{n,i}$ to $2.2\times10^{-15}$ relative
-on 1995 repaired random columns with unequal volumes (`[C4]`), finds no failure on a column with non-negative total
-(`[C5]`), repairs an interior and a bottom deficit in one scan (`[C6]`) and confirms the partial rewrite before a
-failure (`[C7]`) [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck:
-the check itself; run: `python3 fixvapor_check.py`, numpy, double]. The partial rewrite is a property of the port; it
-has not been reproduced in a snapy run.
+All of this is checked against a line-for-line port of the kernel.[^fix-c] It replays the inputs of the
+`eos_limiter` gtests (`[C1]`, `[C2]`, `[C3]`), keeps $\sum_iV_i\rho_{n,i}$ to $2.2\times10^{-15}$ relative on 1995
+repaired random columns with unequal volumes (`[C4]`), finds no failure on a column with non-negative total (`[C5]`),
+repairs an interior and a bottom deficit in one scan (`[C6]`) and confirms the partial rewrite before a failure
+(`[C7]`). The partial rewrite is a property of the port; it has not been reproduced in a snapy run.
 :::
+
+[^fix-c]: `python3 src/snapy_report/ch10/fixvapor_check.py`, output `fixvapor_check.out`, lines `[C1]`–`[C7]`; a
+    numpy port of `fix_vapor_impl` at the pin, double precision.
 
 ### Numerical method
 
 The kernel runs once per $x_1$ column of interior cells, one CPU thread or one CUDA thread per column, inside each
 call of the conserved limiter. Parentless clouds are repaired first without requiring success and then clamped;
-vapour is repaired second and must succeed
-({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `parentless`).
+vapour is repaired second and must succeed, `parentless`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
 When the call comes from the stage update and $x_1$ is split over several blocks (`pz` > 1), every block gathers
 the full column with the dry density and the volumes, repairs it and keeps its own slice
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
-Failures are counted with `std::atomic` on CPU on every call. On CUDA they are counted with `atomicAdd` and read
+Failures are counted with `std::atomic` on CPU on every call
+({{< code src/eos/eos_dispatch.cpp call_fix_vapor_cpu >}}). On CUDA they are counted with `atomicAdd` and read
 back, one device synchronisation, only when the caller needs the count, that is when it requires success (`count`);
 otherwise no counter is allocated and nothing is read. A limiter call with parentless clouds runs the kernel twice
 (`nerr`, {{< code src/eos/eos_dispatch.cu call_fix_vapor_cuda >}}). @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
@@ -100,16 +101,22 @@ make_fig()
 | CPU dispatch | {{< code src/eos/eos_dispatch.cpp call_fix_vapor_cpu >}} | `call_fix_vapor_cpu` | |
 | CUDA dispatch | {{< code src/eos/eos_dispatch.cu call_fix_vapor_cuda >}} | `call_fix_vapor_cuda` | |
 | column repair, gather | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `repair_column` | `whole_column` |
-| parentless, then vapour | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `parentless` | `parentless` | |
+| parentless, then vapour | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `parentless` | |
+| same-process column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | `pz` $>1$ |
 
 : Code map of the column vapour and cloud repair. {#tbl-ch10-fixvapor-code}
 
-1. Take the cell volumes so the repair conserves mass ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `vol`).
-2. Gather the column when split over $x_1$ blocks ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `gather_x1`).
-3. Run the kernel per column ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `call_fix_vapor`).
-4. Throw for vapour ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `require_success`).
-5. Copy back this block's slice ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `copy_`).
-6. Mark the limiter only above round-off ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, `positivity_roundoff`).
+1. Take the cell volumes so the repair conserves mass, `vol`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
+2. Gather the column when split over $x_1$ blocks, `gather_x1`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}},
+   {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}}).
+3. Run the kernel per column, `call_fix_vapor`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
+4. Throw for vapour, `require_success` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
+5. Copy back this block's slice, `copy_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
+6. Mark the limiter only above round-off, `positivity_roundoff`
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
 
 A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed to fix vapor mass fractions."
 
@@ -127,15 +134,15 @@ A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed 
 
 The `eos_limiter` cases are the inputs replayed by `fixvapor_check.py`; the bottom-cell case asserts the transfer
 itself to $10^{-25}$ absolute, because a tolerance on the supplier's value would also pass a supplier that gave
-nothing ([`test_eos.cpp:68-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L68-L89), `repairs_bottom_cell_from_above`).
+nothing ({{< code tests/test_eos.cpp eos_limiter.repairs_bottom_cell_from_above >}}).
 `test_fix_vapor_volume` keeps the column mass of a spherical-polar column to $10^{-12}$ in float64 and $10^{-6}$ in
-float32 ({{< code tests/test_fix_vapor_volume.cpp DeviceTest.fix_vapor_keeps_the_column_mass_on_varying_cell_volume >}}, `tol`).
+float32 ({{< code tests/test_fix_vapor_volume.cpp DeviceTest.fix_vapor_keeps_the_column_mass_on_varying_cell_volume >}}).
 The split-column test requires every vapour cell of a two-block column to equal the one-block result exactly
-({{< code tests/test_vapor_column_nb1.cpp DeviceTest.vapor_repair_keeps_the_mass_with_nb1_2 >}}, `vapor_repair_keeps_the_mass_with_nb1_2`).
+({{< code tests/test_vapor_column_nb1.cpp DeviceTest.vapor_repair_keeps_the_mass_with_nb1_2 >}}).
 Also registered: `test_parentless_cloud_nb1.release`, the 2-rank `test_parentless_cloud_nb1_mp` (rain and total
 mass to $10^{-12}$), `test_fix_vapor_counts_every_column_python` (one broken column in 16384 is reported) and the CUDA
 arm `test_fix_vapor_reports_failure_cuda_python`. Measured results at the pin are **missing evidence**
-(the verification catalogue's entry for this chapter).
+(@sec-ch15-ch10-tests).
 
 ### Limits
 
@@ -147,7 +154,9 @@ the missing mass.
 - The downward branch mixes: it moves vapour beyond the deficit, over the whole window.
 - A failure below an already repaired window leaves that window rewritten (`fixvapor_check.py` `[C7]`, port only).
   For vapour the run stops anyway; for parentless clouds the rewrite stays, mass kept.
-- Serial callers with several $x_1$ blocks wait at the gather (PR #244); the cross-process gather has not run on CUDA.
-- The weight is relative to the bottom cell, so last-bit differences in spacing can move results at round-off
-  (PR #243).
+- When the blocks of one column live in one process, `gather_x1` waits until every one of them has posted its
+  piece, so they must call the limiter concurrently; a caller that steps them one after another waits at the first
+  block's gather. No registered test runs the cross-process gather on CUDA: `test_parentless_cloud_nb1_mp` has no
+  device argument.
+- The weight is relative to the bottom cell, so last-bit differences in spacing can move results at round-off.
 - Not in the switch coverage matrix (@sec-ch12-matrix).

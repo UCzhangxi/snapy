@@ -1,7 +1,7 @@
 """Executable check of the saturation-adjustment write-back (chapter 10, _satadj.qmd).
 
-What is checked, at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below:
-- the state formed for the solve and the write-back of MeshBlockImpl::forward, step (6)
+What is checked, at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below:
+- the state formed for the solve and the write-back of MeshBlockImpl::advance_local, step (6)
   (src/mesh/meshblock.cpp:800-816).
 The equilibrium solve itself (kintera ThermoYImpl::forward) is replaced by a stand-in that moves mass
 between a vapour and its condensate at fixed sum of the fractions, or, for C2, changes that sum on purpose;

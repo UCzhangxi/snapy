@@ -1,8 +1,8 @@
 """Executable check of the dry-air tracers (chapter 10, _tracer.qmd).
 
-What is checked, at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below:
-- the complement upper bound of ScalarImpl::forward (src/scalar/scalar.cpp:175-198);
-- the implicit tracer transfer of MeshBlockImpl::forward (src/mesh/meshblock.cpp:661-676).
+What is checked, at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below:
+- the complement upper bound of ScalarImpl::forward (src/scalar/scalar.cpp:191-214);
+- the implicit tracer transfer of MeshBlockImpl::advance_local (src/mesh/meshblock.cpp:661-676).
 Claims C1-C3. The donor side and the telescoping of the transfer are chapter 1's
 (src/snapy_report/ch01/stage_check.py, claim C2) and are not repeated here.
 
@@ -19,7 +19,7 @@ def report(tag, ok, label, numbers):
     return ok
 
 
-def bound_flux(fs, fm, b, theta):  # scalar.cpp:184-197 for one direction
+def bound_flux(fs, fm, b, theta):  # scalar.cpp:200-213 for one direction
     g = b * fm - fs
     h = g.copy()
     g = g * theta  # flux_positivity_scale_ on the complement flux

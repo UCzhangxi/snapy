@@ -1,8 +1,10 @@
 ## Precipitation and evaporation kinetics in the example drivers (driver-level coupling) {#sec-ch10-kinetics}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: OUTLINE.md 10.6; code links below; sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md sections 4-5
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: OUTLINE.md 10.6; examples/run_hydro.cpp, examples/jupiter_evap_precip_1d.cpp, src/eos/*.cpp,
+         src/mesh/meshblock.cpp, tests/test_uranus_cycle1_abort.cpp at the pin; kintera src/kinetics at its pin;
+         sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md sections 4-5
 status: draft
 -->
 
@@ -29,9 +31,6 @@ therefore operator-split, first order, and a property of those drivers: a run bu
 kinetics unless its own driver adds the same block. As with the saturation adjustment, latent heat is carried by
 the reference energies, so the energy row is not touched.
 
-Aliases: the refresh before kinetics is #257 ([chengcli/snapy#257](https://github.com/chengcli/snapy/issues/257));
-the two-product extent law is kintera #114.
-
 ### Derivation
 
 The rates are evaluated once, at the concentrations $\tilde{\mathbf c}$ of the step's end. Linearising
@@ -42,12 +41,12 @@ $$
 \Big(\frac{\mathsf I}{\Delta t}-\mathsf N\mathsf J_{\dot\omega}\Big)\Delta\tilde{\mathbf c} = \mathsf N\dot{\boldsymbol\omega}
 $$ {#eq-ch10-kinetics-step}
 
-for the change $\Delta\tilde{\mathbf c}$ over the step $\Delta t$. @eq-ch10-kinetics-step is assembled as `A` and
-`sr` in `evolve_implicit_cell`
-([`kintera evolve_implicit_impl.h:66-71`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L66-L71), `inv_dt`)
-and solved by LU with partial pivoting, falling back to a minimum-norm least-squares solve for a singular cell
-([`kintera evolve_implicit_impl.h:77`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L77), `dsolve_lu`).
-For a linear rate law the step is exactly backward Euler (check line `[C2]`). For the reversible linear reaction
+for the change $\Delta\tilde{\mathbf c}$ over the step $\Delta t$. @eq-ch10-kinetics-step is assembled in
+kintera's `evolve_implicit_cell` as the matrix `A`, with `inv_dt` on its diagonal, and the right-hand side `sr`
+([`kintera evolve_implicit_impl.h:66-71`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L66-L71)), and solved by LU with
+partial pivoting, falling back to a minimum-norm least-squares solve for a singular cell, `dsolve_lu`
+([`kintera evolve_implicit_impl.h:77`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L77)).
+For a linear rate law the step is exactly backward Euler (`[C2]`).[^kin-c] For the reversible linear reaction
 $A\rightleftharpoons B$ with rate constants $k_{\mathrm f}$, $k_{\mathrm b}$ it moves the distance to equilibrium by
 the factor $1/(1+\Delta t(k_{\mathrm f}+k_{\mathrm b}))$, which lies in $(0,1]$ for every $\Delta t$: one step never
 overshoots equilibrium, however large the step (`[C3]`). The driver converts the change to partial densities,
@@ -62,18 +61,17 @@ $$
 x = \frac{2\,(K-\tilde c_A\tilde c_B)}{\tilde c_A+\tilde c_B+\sqrt{(\tilde c_A-\tilde c_B)^2+4K}},
 $$ {#eq-ch10-kinetics-extent}
 
-and sets it to zero for supersaturated cells. @eq-ch10-kinetics-extent is computed as `x` in
-`EvaporationImpl::forward`
-([`kintera evaporation.cpp:180-191`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L180-L191), `root`).
+and sets it to zero for supersaturated cells. @eq-ch10-kinetics-extent is computed in kintera's
+`EvaporationImpl::forward` as `x`, with the square root as `root`
+([`kintera evaporation.cpp:180-191`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L180-L191)).
 `[C1]` shows symbolically that it is the positive root. The full derivation of the steady-diffusion rate law behind
 it is in `sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md` section 4, written in symbols this report reserves for
 other quantities; its translation into the report's notation is still to be written.
 
-::: {.callout-important title="Check"}
-`src/snapy_report/ch10/kinetics_check.py`, output `kinetics_check.out` [sha: the formulas of
-kintera@c55b13b2204997d2d09e04498558ab9495d8ee77 and snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
-line; deck: the check itself; run: `python3 kinetics_check.py`, numpy and sympy, double].
-:::
+[^kin-c]: `python3 src/snapy_report/ch10/kinetics_check.py`, output `kinetics_check.out`, lines `[C1]`–`[C4]`; a
+    numpy and sympy port of kintera's `evolve_implicit_cell` and `EvaporationImpl::forward` at
+    `c55b13b2204997d2d09e04498558ab9495d8ee77` and of the species update of `examples/run_hydro.cpp` at the snapy
+    pin, double precision.
 
 ### Numerical method
 
@@ -82,13 +80,19 @@ The block runs once per accepted or attempted step, after the stages and before 
 It first recomputes `hydro_w` from `hydro_u`, so the rates see the saturation-adjusted state
 ({{< code examples/run_hydro.cpp main >}}).
 It acts on the whole array, ghosts included, with no exchange; the next stage's boundary fill and exchange restore
-consistency. No conserved limiter runs between the update and `check_redo`, so a negative species produced by the
-kinetics shows up as a limiter repair, and possibly a redo, at the next step. @fig-ch10-kinetics-extent compares
-the extent law with the earlier law $K-\tilde c_A\tilde c_B$.
+consistency. No conserved limiter writes `hydro_u` between the update and `check_redo`. With `limiter: true` the
+floor test of `check_redo` converts a copy of the state with the equation of state, and that conversion runs the
+conserved limiter on the copy (`_cons2prim` of each moist equation of state calls `apply_conserved_limiter_`), so a
+negative species the kinetics produced is repaired on the copy, sets the limiter mark if the repair is above
+round-off, and redoes the step with cause 4 in the same check
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). Without the limiter the negative
+species stays in the state. @fig-ch10-kinetics-extent compares
+the extent law with the plain law $K-\tilde c_A\tilde c_B$, the drive `eta` that kintera forms for every
+reaction before it replaces the two-product ones by the extent.
 
 ```{python}
 #| label: fig-ch10-kinetics-extent
-#| fig-cap: "Evaporation drive of a two-product condensate against the saturation ratio, each curve divided by its value at zero saturation. Green: the extent law, solid for equal gas concentrations, dashed for one gas ten times the other; blue dotted: the earlier law $K-\\tilde c_A\\tilde c_B$. The extent law falls faster near zero saturation, and depends on how the product is split between the gases."
+#| fig-cap: "Evaporation drive of a two-product condensate against the saturation ratio, each curve divided by its value at zero saturation. Green: the extent law, solid for equal gas concentrations, dashed for one gas ten times the other; blue dotted: the plain law $K-\\tilde c_A\\tilde c_B$ for the same gases. The extent law falls faster near zero saturation, and depends on how the product is split between the gases."
 #| fig-alt: "Three decreasing curves from 1 at saturation ratio 0 to 0 at ratio 1; the two extent curves lie below the straight dotted line."
 #| echo: false
 from snapy_report.ch10.fig_kinetics_extent import make_fig
@@ -107,12 +111,12 @@ make_fig()
 
 : Code map of the driver-level kinetics. {#tbl-ch10-kinetics-code}
 
-1. Refresh the primitives from the adjusted conserved state ({{< code examples/run_hydro.cpp main >}}, `hydro_w`).
-2. Form temperature, pressure and concentrations ({{< code examples/run_hydro.cpp main >}}, `conc`).
-3. Evaluate rates and Jacobian ({{< code examples/run_hydro.cpp main >}}, `jacobian`).
-4. Take the implicit step and convert to densities ({{< code examples/run_hydro.cpp main >}}, `del_rho`).
-5. Add to the species rows ({{< code examples/run_hydro.cpp main >}}, `hydro_u`).
-6. Accept, redo or terminate ({{< code examples/run_hydro.cpp main >}}, `check_redo`).
+1. Refresh the primitives from the adjusted conserved state, `hydro_w` ({{< code examples/run_hydro.cpp main >}}).
+2. Form temperature, pressure and concentrations, `conc` ({{< code examples/run_hydro.cpp main >}}).
+3. Evaluate rates and Jacobian, `jacobian` ({{< code examples/run_hydro.cpp main >}}).
+4. Take the implicit step and convert to densities, `del_rho` ({{< code examples/run_hydro.cpp main >}}).
+5. Add to the species rows of `hydro_u` ({{< code examples/run_hydro.cpp main >}}).
+6. Accept, redo or terminate, `check_redo` ({{< code examples/run_hydro.cpp main >}}).
 
 ### Tests
 
@@ -124,11 +128,13 @@ make_fig()
 
 `UranusLate.column_reaches_cycle_40` runs `run_hydro` on a Uranus column and requires exit code 0, no "Redoing the
 step" and no "Terminating abnormally" in the log
-({{< code tests/test_uranus_cycle1_abort.cpp UranusLate.column_reaches_cycle_40 >}}, `column_reaches_cycle_40`).
+({{< code tests/test_uranus_cycle1_abort.cpp UranusLate.column_reaches_cycle_40 >}}).
 Its ctest, `test_uranus_cycle1_abort.release`, is the only snapy test that runs the kinetics block. Its two other
 cases run `run_hydro` as well and check only how the run ends: `UranusCycle1.column_finishes_the_two_cycles` on a
 Uranus deck with nucleation, coagulation and evaporation reactions, and `abnormal_termination_exits_nonzero` on a
-floor deck (`run_deck`, [`test_uranus_cycle1_abort.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_uranus_cycle1_abort.cpp#L85-L104)). There is no snapy test of one kinetics step's mass and
+floor deck ({{< code tests/test_uranus_cycle1_abort.cpp UranusCycle1.column_finishes_the_two_cycles >}},
+{{< code tests/test_uranus_cycle1_abort.cpp UranusCycle1.abnormal_termination_exits_nonzero >}}; both through
+`run_deck`, {{< code tests/test_uranus_cycle1_abort.cpp run_deck >}}). There is no snapy test of one kinetics step's mass and
 energy budget, of the evaporation rate or of `jupiter_evap_precip_1d`: **missing evidence** on the snapy side; the
 rate law is tested in kintera. CPU only; no CUDA or multi-rank arm.
 
@@ -139,9 +145,10 @@ Kinetics exists only in drivers that implement it. A user driver that calls only
 :::
 
 - First order in time, operator-split from the dynamics; the split error is not measured.
-- No conserved limiter between the update and `check_redo` (`run_hydro.cpp:191-193`), so negative species from
-  kinetics surface as a limiter repair at the next step ([chengcli/snapy#256](https://github.com/chengcli/snapy/issues/256),
-  #263).
+- No conserved limiter writes the state between the update and `check_redo`. With the limiter on, a negative
+  species from the kinetics is caught on the copy the floor test converts and redoes the step (cause 4); a repair
+  of round-off size is not marked and so is not redone. With the limiter off it stays in the state.
 - The update covers ghosts without an exchange.
-- The evaporation note's status line ("not landed") is superseded: the extent law is present at the kintera pin.
+- `sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md` describes the extent law as not yet in kintera; it is
+  present at the kintera pin (@eq-ch10-kinetics-extent).
 - Not in the switch coverage matrix (@sec-ch12-matrix).

@@ -1,8 +1,9 @@
 ## Passive tracers per dry air, with an optional upper bound (`scalar`) {#sec-ch10-tracer}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 10.7; code links below; sources/canoe__tracer_seam_TECH_REPORT.md
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 10.7; src/scalar/scalar.cpp, src/scalar/scalar_options.cpp, src/hydro/hydro_forward.cpp,
+         src/mesh/meshblock.cpp and the tests below at the pin; sources/canoe__tracer_seam_TECH_REPORT.md
 status: draft
 -->
 
@@ -26,15 +27,18 @@ the second limiter that bounds the ratio from above, and the conditions under wh
 A tracer measured per unit total mass would change its ratio whenever water condenses, evaporates or settles out of
 a cell, although no tracer moved. Per unit dry mass the ratio changes only when dry air moves, which every moist
 operator of this chapter leaves alone: the saturation adjustment, the borrow, the column repair and the kinetics write
-species rows only, and sedimentation moves condensate, not dry air. Aliases: the dry-air convention is PR #220.
+species rows only, and sedimentation moves condensate, not dry air.
 
 ### Derivation
 
 Write $\rho_{\mathrm d}r_n$ for the tracer density, so the code's `r = u / rho` with `rho` the dry density is $r_n$
-({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `r`).
-The transport flux is $F_n=F_{\mathrm d}\,r_n^{\mathrm{up}}$ with the upwind ratio, so a uniform ratio stays uniform
-under transport; under the implicit dry transfer the tracer increment is $r_n$ times the dry increment (check line
-`[C3]`), so it stays uniform there too.
+({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). The $x_1$ transport flux is
+$F_n=F_{\mathrm d}\,r_n^{\mathrm{up}}$ with the upwind ratio, so a uniform ratio stays uniform under it; under the
+implicit dry transfer the tracer increment is $r_n$ times the dry increment (`[C3]`),[^trc-c] so it stays uniform
+there too. On $x_2$ and $x_3$ faces the face-flux covariance, on by default, changes the flux: the scalar is
+upwinded with the dry-mass flux less its covariance row and adds its own tracer row, the row of a hydro species with
+the same mass fraction, `scalar_flux_covariance`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}; @sec-ch04-fluxcov).
 
 The upper bound uses the complement. If $r_n\le b$ then $b\rho_{\mathrm d}-\rho_{\mathrm d}r_n\ge0$, and that
 quantity is transported by the flux $G=bF_{\mathrm d}-F_n$. Its non-negativity is exactly what the positivity limiter
@@ -45,8 +49,9 @@ $$
 F_n \leftarrow F_n + (1-\Theta)\,\big(bF_{\mathrm d}-F_n\big) = \Theta F_n + (1-\Theta)\,bF_{\mathrm d}.
 $$ {#eq-ch10-tracer-bound}
 
-@eq-ch10-tracer-bound is applied as `h - g` in `ScalarImpl::forward`
-({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `upper_bound`).
+@eq-ch10-tracer-bound is applied as `h - g` in `ScalarImpl::forward` when `upper_bound` is positive
+({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). This section is the home of that bound's derivation;
+@sec-ch08-scalar covers the call of the positivity limiter it reuses.
 The second form shows the limited flux is a blend between the tracer's own flux and the flux of a tracer sitting
 at the bound, so a plateau at $b$ keeps advecting (`[C1]`, symbolic). Adding the change rather than recomputing
 $bF_{\mathrm d}-G$ leaves $F_n$ bitwise unchanged on every face where $\Theta=1$; recomputing perturbs nearly every
@@ -55,19 +60,17 @@ it holds while the mass Courant number stays below one and $\rho_{\mathrm d}$ ch
 divergence. The implicit vertical correction and any forcing that writes the dry row break that premise, as the code
 comment states.
 
-::: {.callout-important title="Check"}
-`src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out` [sha: the formulas of
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the check itself; run:
-`python3 tracer_check.py`, numpy and sympy, double and float32].
-:::
+[^trc-c]: `python3 src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out`, lines `[C1]`–`[C4]`; a numpy
+    and sympy port of the complement bound in `ScalarImpl::forward` and of the implicit tracer transfer in
+    `MeshBlockImpl::advance_local` at the pin, double and float32.
 
 ### Numerical method
 
 The ratio is reconstructed with the scalar block's own `reconstruct` and upwinded with the hydro dry-mass flux
-`flux1[IDN]` (and `flux2`, `flux3`); the Riemann solver must be `upwind`. With the EOS limiter on, the positivity
-limiter scales the tracer fluxes first; the complement limiter, if `upper-bound` > 0, scales them second. The
-divergence then gives the stage tendency on interior cells only
-({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `divergence`).
+`flux1[IDN]` (and `flux2`, `flux3`, with the covariance rows above); the Riemann solver must be `upwind`. With the
+EOS limiter on, or whenever the scalar carries its covariance row, the positivity limiter scales the tracer fluxes
+first; the complement limiter, if `upper-bound` > 0, scales them second. The `divergence` then gives the stage
+tendency on interior cells only ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 The implicit dry transfer and the dry-source carry follow, as in @sec-ch01-stage. @fig-ch10-tracer-face shows the
 donor choice of that transfer.
 
@@ -93,12 +96,14 @@ make_fig()
 : Code map of the dry-air tracers; @sec-ch01 holds the rest of the scalar
 path (@tbl-ch01-scalar-code). {#tbl-ch10-tracer-code}
 
-1. Parse the keys; `upper-bound` defaults to $-1$ ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}, `upper_bound`).
-2. Refuse a solver other than `upwind`, a bound of 0, and a bound without the limiter ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}, `TORCH_CHECK`).
-3. Form the ratio per dry air ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `rho`).
-4. Limit for positivity ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `theta`).
-5. Limit the complement and add the change ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `flux_positivity_scale_`).
-6. Take the divergence on interior cells ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `divergence`).
+1. Parse the keys; `upper_bound` defaults to $-1$ ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}).
+2. Refuse a solver other than `upwind`, a bound of 0, and a bound without the limiter, `TORCH_CHECK`
+   ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}).
+3. Form the ratio per dry air, `rho` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+4. Limit for positivity, `theta` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+5. Limit the complement and add the change, `flux_positivity_scale_`
+   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+6. Take the `divergence` on interior cells ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
 Setup messages a user can hit: "[Scalar] Passive scalars currently require the upwind solver", the refusal of
 `upper-bound: 0`, and "[Scalar] upper-bound needs the eos limiter".
@@ -116,12 +121,15 @@ Setup messages a user can hit: "[Scalar] Passive scalars currently require the u
 
 `scalar_upper_bound_holds_both_sides` advects 12 steps with the bound at 1 and requires
 $r_n\le1+10^{-12}$ and $\rho_{\mathrm d}r_n\ge-10^{-12}$ in float64 ($10^{-5}$ in float32)
-({{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}}, `tol`).
+({{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}}).
 `test_tracer_dry_convention` uses `TOL` $=10^{-12}$ and also requires each arm's signal to exceed 1000 times `TOL`, so
-a pass is not vacuous
-({{< code tests/test_tracer_dry_convention.py TOL >}}, `TOL`).
+a pass is not vacuous ({{< code tests/test_tracer_dry_convention.py TOL >}}).
+`test_scalar_flux_covariance_python` carries one tracer both as a scalar and as a hydro species and requires the
+two to agree to `TOL` $=10^{-12}$ relative after 10 steps, with the covariance on and off
+({{< code tests/test_scalar_flux_covariance.py >}}); `test_scalar_cov_x1_split_python` requires four in-process
+$x_1$ blocks to match one block to $10^{-13}$ ({{< code tests/test_scalar_cov_x1_split.py >}}).
 `test_stage_forcing_dry_tracer_python` and `test_flux_positivity_cubedsphere_python` (seams) are also registered.
-Measured results at the pin are **missing evidence** (the verification catalogue's entry for this chapter).
+Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
 
 ### Limits
 

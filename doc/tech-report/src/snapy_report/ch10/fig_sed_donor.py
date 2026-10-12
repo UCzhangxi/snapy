@@ -1,4 +1,4 @@
-"""Donor cells and sealing of the sedimentation flux in one x1 column; snapy@e894700ff7aee30b52882e5202b16461413780b0.
+"""Donor cells and sealing of the sedimentation flux in one x1 column; snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 
 Cartoon of sedimentation_upwind (src/sedimentation/sed_hydro_dispatch.hpp:12-24) and the bounds of
 SedHydroImpl::forward (src/sedimentation/sed_hydro.cpp:79-83); no measured data.

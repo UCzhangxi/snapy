@@ -1,8 +1,8 @@
 """Executable check of the moist redo causes (chapter 10, _redo.qmd).
 
-What is checked: MeshBlockImpl::reduce_redo_flags (src/mesh/meshblock.cpp:1288-1300), the cause names
+What is checked: MeshBlockImpl::reduce_redo_flags (src/mesh/meshblock.cpp:1341-1353), the cause names
 of apply_redo (:1237-1240) and its termination rule (:1241-1247, :1261-1267) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below. Claims C1-C3.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C3.
 
 Run: python3 redo_check.py   (numpy only; exits with the number of failed claims)
 """
@@ -19,7 +19,7 @@ def report(tag, ok, label, numbers):
     return ok
 
 
-def reduce_flags(per_rank):  # meshblock.cpp:1288-1300; allreduce MAX over ranks of 0/1 doubles
+def reduce_flags(per_rank):  # meshblock.cpp:1341-1353; allreduce MAX over ranks of 0/1 doubles
     glob = np.max(np.array(per_rank, dtype=float), axis=0)
     causes = 0
     for i in range(6):
@@ -27,11 +27,11 @@ def reduce_flags(per_rank):  # meshblock.cpp:1288-1300; allreduce MAX over ranks
     return causes
 
 
-def names(causes):  # meshblock.cpp:1237-1240
+def names(causes):  # meshblock.cpp:1246-1249
     return [n for i, n in enumerate(NAMES) if causes & (1 << i)]
 
 
-def decide(causes, current_redo, max_redo):  # meshblock.cpp:1241-1270; returns (action, restored)
+def decide(causes, current_redo, max_redo):  # meshblock.cpp:1250-1279; returns (action, restored)
     if not causes:
         return "accept", False
     current_redo += 1
