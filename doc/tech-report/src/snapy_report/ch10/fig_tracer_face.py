@@ -1,6 +1,6 @@
 """Donor choice of the implicit tracer transfer at one x1 face; snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 
-Cartoon of src/mesh/meshblock.cpp:661-676 (claims C3-C4 of tracer_check.py); no measured data.
+Cartoon of src/mesh/meshblock.cpp:661-676 (claim C3 of tracer_check.py); no measured data.
 """
 import matplotlib.pyplot as plt
 

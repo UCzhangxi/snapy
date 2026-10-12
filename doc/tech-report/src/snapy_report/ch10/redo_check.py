@@ -1,7 +1,7 @@
 """Executable check of the moist redo causes (chapter 10, _redo.qmd).
 
-What is checked: MeshBlockImpl::reduce_redo_flags (src/mesh/meshblock.cpp:1341-1353), the cause names
-of apply_redo (:1237-1240) and its termination rule (:1241-1247, :1261-1267) at
+What is checked: MeshBlockImpl::reduce_redo_flags, the cause names of MeshBlockImpl::apply_redo and its
+termination rule (all in src/mesh/meshblock.cpp) at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C3.
 
 Run: python3 redo_check.py   (numpy only; exits with the number of failed claims)
