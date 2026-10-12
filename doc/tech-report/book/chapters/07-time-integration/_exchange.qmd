@@ -1,7 +1,7 @@
 ## Ghost exchange within a stage: before the stage for a MeshBlock, after it for a Mesh (driver API) {#sec-ch07-exchange}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 7.2; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; examples/run_hydro.cpp
 status: draft
 -->
@@ -57,7 +57,7 @@ make_fig()
    ({{< code examples/run_hydro.cpp main >}}).
 2. `MeshImpl::forward` with one block calls `advance_local` and then `exchange_ghost_zones`; with several it runs
    `advance_local` for every block, applies the gravity-work fixer of @sec-ch06 across the blocks at the last
-   stage, and then exchanges every block ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}).
+   stage and refills each block's physical boundaries after it, and then exchanges every block ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}).
 
 The exchange itself (what is filled, in which order, and across which seams) is in @sec-ch03; the physical
 boundary fill at the end of each stage is in the boundary-conditions chapter.
@@ -82,12 +82,13 @@ boundary fill at the end of each stage is in the boundary-conditions chapter.
 : Tests of the exchange placement. {#tbl-ch07-exchange-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the two call orders of snapy@e894700ff7aee30b52882e5202b16461413780b0, modelled
-on a two-block upwind problem; deck: the check itself; run: `python3 exchange_check.py`, numpy 2.4.6]. ctest
+**Evidence.** Check numbers come from `exchange_check.py`, which ports, from the code at the pin, the two call orders, on a two-block upwind model; deck: the check itself.[^ch07-exchange-run] ctest
 case: **pending: pinned ctest run**.
 **Coverage.** CPU, 2 ranks. No ctest compares the two drivers on the same problem; the check compares them on a
 model only.
 :::
+
+[^ch07-exchange-run]: Run: `python3 src/snapy_report/ch07/exchange_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/exchange_check.out`.
 
 ### Limits
 

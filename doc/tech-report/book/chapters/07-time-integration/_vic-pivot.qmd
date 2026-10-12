@@ -1,7 +1,7 @@
 ## LU pivot tolerance: refuse a pivot within $8N\epsilon$ of its row (`ludcmp`) {#sec-ch07-vic-pivot}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 7.10; src/math/ludcmp.h; docs/derivations/290-lu-pivot-tolerance.md; tests/test_lu_failure.cpp
 status: draft
 -->
@@ -29,14 +29,16 @@ $$
 \frac{|p_j|}{s_j} \le \tau_N , \quad \tau_N = 8N\epsilon_T ,
 $$ {#eq-ch07-vic-pivot}
 
-with $\epsilon_T$ the machine epsilon of the scalar type (`epsilon_T` in the note), the last pivot included. A dot product of length about
+with $\epsilon_T$ the machine epsilon of the scalar type (`epsilon_T` in the note), the last pivot included; in the
+code the threshold is `tolerance` in `ludcmp` ({{< code src/math/ludcmp.h ludcmp >}}). A dot product of length about
 $2N$ accumulates a relative rounding error of about $N\epsilon_T$. The factor 8 is a guard band around that
-scale, as the derivation note argues with `epsilon_T`
-([`290-lu-pivot-tolerance.md:18-26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/docs/derivations/290-lu-pivot-tolerance.md#L18-L26)).
+scale, as the derivation note argues with `epsilon_T`.[^ch07-pivot-note]
 The values are $2.861\times10^{-6}$ and $4.768\times10^{-6}$ in float, and $5.329\times10^{-15}$ and
 $8.882\times10^{-15}$ in double, for $N=3$ and 5 [check `src/snapy_report/ch07/vic_pivot_check.py`, output
 `vic_pivot_check.out`, `[C1]`]. A ratio $0.99\,\tau_3$ is refused and $1.01\,\tau_3$ accepted, in both types
 (`[C2]`).
+
+[^ch07-pivot-note]: `docs/derivations/290-lu-pivot-tolerance.md@6fbb39750f62b83df096058a4746e77d0a634bc5`, opening section.
 
 Because $p_j$ and $s_j$ scale together, the decision does not depend on the units of a row. With power-of-two
 row factors, which are exact in floating point, no decision of 400 random matrices changes. With decimal factors
@@ -84,11 +86,12 @@ nonfinite factor ({{< code src/math/ludcmp.h ludcmp >}}).
 : Tests of the LU pivot tolerance. {#tbl-ch07-vic-pivot-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: `ludcmp` of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported for float32
-and float64; deck: the check itself; run: `python3 vic_pivot_check.py`, numpy 2.4.6]. ctest cases: **pending:
+**Evidence.** Check numbers come from `vic_pivot_check.py`, which ports, from the code at the pin, `ludcmp` for float32 and float64; deck: the check itself.[^ch07-vic-pivot-run] ctest cases: **pending:
 pinned ctest run**.
 **Coverage.** CPU and CUDA share the header.
 :::
+
+[^ch07-vic-pivot-run]: Run: `python3 src/snapy_report/ch07/vic_pivot_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/vic_pivot_check.out`.
 
 ### Limits
 
@@ -99,7 +102,9 @@ conditioned, and acceptance does not mean an accurate step.
 
 1. **Float32.** The guard is about $5\times10^8$ times stricter in `float32`. The derivation note records an independent
    probe of random 3 x 3 matrices: 166 of 5000 refused at condition number $10^6$ and 4915 of 5000 at $10^8$ in
-   `float32`, none from $10^4$ to $10^{14}$ in double
-   ([`290-lu-pivot-tolerance.md:58-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/docs/derivations/290-lu-pivot-tolerance.md#L58-L71)).
-   A smaller step need not cure such a column; use float64.
+   `float32`, none from $10^4$ to $10^{14}$ in double.[^ch07-pivot-probe] A smaller step need not cure such a column;
+   use float64.
+
+[^ch07-pivot-probe]: `docs/derivations/290-lu-pivot-tolerance.md@6fbb39750f62b83df096058a4746e77d0a634bc5`, "Float32 VIC conditioning limitation",
+    which credits the probe to an independent review.
 2. **Fixed factor.** The factor 8 is a choice, not a derived bound.
