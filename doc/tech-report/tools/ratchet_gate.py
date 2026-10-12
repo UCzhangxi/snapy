@@ -27,10 +27,11 @@ and it may rise only together with a move of that pin:
     target branch: a higher count there fails unless `code_pin.yml` differs between `<ref>` and the head, so a
     baseline raised by hand fails too.
 
-OWNERS (`tools/chapter-owners.tsv`): one row per chapter, `chapter owner github`, the single owner of the
-chapter's rewrite (the lock) and the owner its counts are charged to in the per-owner burn-down table that
-`counts` and `check` print. That table also gives each owner's figures and tables (distinct `fig-`/`tbl-`
-labels in their chapters), which are not ratcheted. `check` fails when a chapter has no owner or more than one.
+OWNERS (`tools/chapter-owners.tsv`): one row per chapter, `chapter owner`, the owner given by GitHub handle only:
+the single owner of the chapter's rewrite (the lock) and the owner its counts are charged to in the per-owner
+burn-down table that `counts` and `check` print. That table also gives each owner's figures and tables (distinct
+`fig-`/`tbl-` labels in their chapters), which are not ratcheted. `check` fails when a chapter has no owner or more
+than one.
 
 REVIEW RECORD (`reviews/review-record.tsv`, tab-separated, one line per event, newest last):
 
@@ -357,18 +358,18 @@ def count(root: pathlib.Path = ROOT, verbose: bool = False) -> dict[str, dict[st
     return dict(sorted(table.items()))
 
 
-def read_owners(root: pathlib.Path) -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
-    """{chapter: [(owner, github), ...]} from tools/chapter-owners.tsv, and the problems of the file itself."""
+def read_owners(root: pathlib.Path) -> tuple[dict[str, list[str]], list[str]]:
+    """{chapter: [GitHub handle, ...]} from tools/chapter-owners.tsv, and the problems of the file itself."""
     path = root / "tools" / "chapter-owners.tsv"
-    owners: dict[str, list[tuple[str, str]]] = {}
+    owners: dict[str, list[str]] = {}
     if not path.exists():
         return owners, ["tools/chapter-owners.tsv is missing"]
     lines = [l for l in path.read_text().split("\n") if l.strip() and not l.startswith("#")]
     for line in lines[1:]:
         f = line.split("\t")
-        if len(f) < 3:
-            return owners, [f"tools/chapter-owners.tsv: malformed row {line!r}"]
-        owners.setdefault(f[0], []).append((f[1], f[2]))
+        if len(f) != 2 or not f[1].strip():
+            return owners, [f"tools/chapter-owners.tsv: malformed row {line!r} (want: chapter, handle)"]
+        owners.setdefault(f[0], []).append(f[1].strip())
     return owners, []
 
 
@@ -458,7 +459,7 @@ def print_table(counts, owners=None, sizes=None) -> None:
     size: dict[str, dict[str, int]] = {}
     chapters: dict[str, list[str]] = {}
     for ch, c in counts.items():
-        who = owners.get(ch, [("(no owner)", "")])[0][0]
+        who = owners.get(ch, ["(no owner)"])[0]
         row = per.setdefault(who, dict.fromkeys(CHECKS, 0))
         chapters.setdefault(who, []).append(ch)
         for k in CHECKS:

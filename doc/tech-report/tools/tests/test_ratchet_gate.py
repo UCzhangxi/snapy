@@ -14,7 +14,7 @@ import ratchet_gate as rg  # noqa: E402
 PIN = "6fbb39750f62b83df096058a4746e77d0a634bc5"
 OTHER = "e894700ff7aee30b52882e5202b16461413780b0"
 RECORD_HEAD = "file\tkind\treviewer\tauthor\tpin\tsha256\tdate\tnote\n"
-OWNERS = "chapter\towner\tgithub\npreface\tEd\ted\nch01\tAlice\talice\nch02\tBob\tbob\n"
+OWNERS = "chapter\towner\npreface\ted\nch01\talice\nch02\tbob\n"
 
 CH01 = """# Overview {#sec-ch01}
 
@@ -351,10 +351,10 @@ def test_owner_lock(tmp_path, capsys):
     root = make(tmp_path)
     assert rg.main(["--root", str(root), "update"]) == 0
     assert check(root) == 0
-    assert "| Alice | ch01 |" in capsys.readouterr().out          # the per-owner burn-down table
-    (root / "tools" / "chapter-owners.tsv").write_text(OWNERS.replace("ch02\tBob\tbob\n", ""))
+    assert "| alice | ch01 |" in capsys.readouterr().out          # the per-owner burn-down table
+    (root / "tools" / "chapter-owners.tsv").write_text(OWNERS.replace("ch02\tbob\n", ""))
     assert check(root) == 1                                     # a chapter without an owner
-    (root / "tools" / "chapter-owners.tsv").write_text(OWNERS + "ch01\tBob\tbob\n")
+    (root / "tools" / "chapter-owners.tsv").write_text(OWNERS + "ch01\tbob\n")
     assert check(root) == 1                                     # two owners of one chapter
     (root / "tools" / "chapter-owners.tsv").unlink()
     assert check(root) == 1                                     # no owner file
@@ -369,7 +369,7 @@ def test_owner_table_counts_figures_and_tables(tmp_path, capsys):
     assert rg.main(["--root", str(root), "counts"]) == 0
     out = capsys.readouterr().out
     assert "| owner | chapters | figures | tables | history | offpin | status | xref | total |" in out
-    assert "| Alice | ch01 | 2 | 1 |" in out and "| Bob | ch02 | 0 | 1 |" in out and "| Ed | preface | 0 | 0 |" in out
+    assert "| alice | ch01 | 2 | 1 |" in out and "| bob | ch02 | 0 | 1 |" in out and "| ed | preface | 0 | 0 |" in out
 
 
 def test_chapter_of():
