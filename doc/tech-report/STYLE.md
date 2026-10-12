@@ -712,8 +712,10 @@ files, so every construct below must work in both. When in doubt, render both an
   never an abbreviation to a bare `:lines`. Where a walk-through cites the same file many times, the numbered
   list of section 10.7 carries one citation per step.
 - Code excerpts: only when the text discusses the lines, at most 15 lines, in a fenced block with its language
-  (`cpp`, `python`, `yaml`) and the citation link in the sentence before it. No line numbers inside the block;
-  the link carries them.
+  (`cpp`, `python`, `yaml`) and **the citation in the sentence before it** — the shortcode for snapy, a link
+  for a package with no code pin. Never put line numbers inside the block: for snapy the citation carries no
+  line numbers at all, because the shortcode resolves a symbol rather than a range, and the reader follows the
+  citation to the lines; for a package with no code pin the link's own range carries them.
 - Pull requests and issues, **in a PROVENANCE block or a source footnote only** and never in prose
   (section 3.2): `[chengcli/snapy#296](https://github.com/chengcli/snapy/issues/296)`.
 
