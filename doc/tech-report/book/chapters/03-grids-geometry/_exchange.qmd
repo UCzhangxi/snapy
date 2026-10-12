@@ -13,11 +13,17 @@ first interior column and row next to the corner.
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: for each neighbour across a face, copies the neighbour's interior slab of width $n_g$ into this block's
-ghost slab, then synthesises each $x_2$-$x_3$ ghost corner as the mean of the two adjacent ghost strips. **Switch**:
-`SyncOptions` (`type`, `skip_corner`, `interpolate`, `dim`, phase flags). **Default**: conserved variables, corners
-skipped and synthesised, no interpolation. **Requires**: nothing. **Order**: exact copy; the corner is a
-convention. **Defining equation**: @eq-ch03-exchange-corner.
+**Purpose.** For each neighbour across a face, copy its interior slab of width $n_g$ into this block's ghost slab,
+then synthesise each $x_2$-$x_3$ ghost corner as the mean of the two adjacent ghost strips (@eq-ch03-exchange-corner).
+**Data.** In: the neighbour's interior cells. Out: ghost slabs and corners, in the units of the synced variables
+(conserved by default).
+**Placement.** Every block sync: the per-stage conserved sync, the primitive and scalar syncs.
+**Activation.** `SyncOptions` (`type`, `skip_corner`, `interpolate`, `dim`, phase flags); default conserved
+variables, corners skipped and synthesised, no interpolation.
+**Guarantee / limits.** Face copies are exact; the synthesised corner is a convention, exact on a constant and first
+order on a gradient.
+**Evidence.** `test_exchange`, `test_mesh_exchange_python`, `test_cubed_sphere_vertical_velocity_exchange_python`;
+check `[C15]`; the ctest entries were not run for this chapter at the pin (missing evidence).
 :::
 
 Every ghost that is not at a physical face (@sec-ch03-physfaces) is filled by an exchange. A sync packs, for each
@@ -44,7 +50,7 @@ gradient it is a first-order fill, because both terms are read up to $n_g$ cells
 check evaluates @eq-ch03-exchange-corner on every corner ghost of an $n_g = 3$ block: a constant field is
 reproduced to exactly zero, and on $q = \alpha + \beta x_2 + \gamma x_3$ the error halves at each refinement
 (measured order 1.00, 1.00) and stays under the closed-form bound
-$n_g h(|\beta| + |\gamma|)/2$ (`[C15]`).[^exc-c15] The tests below cover the face copies.
+$n_g(\Delta x_2|\beta| + \Delta x_3|\gamma|)/2$, with $\Delta x_2 = \Delta x_3$ on the check's grid (`[C15]`).[^exc-c15] The tests below cover the face copies.
 
 [^exc-c15]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
     line `[C15]`; a numpy port of `LayoutImpl::fill_corners` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

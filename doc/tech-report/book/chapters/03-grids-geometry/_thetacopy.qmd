@@ -12,11 +12,17 @@ Local symbols (flagged to the editor): $\mathcal F_f$ the requested species flux
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: the positivity limiter's donor factor $\Theta$ is exchanged into the ghost cells as a raw, index-matched
-copy, never interpolated, so both blocks that share a face scale its flux by the donor's own factor. **Switch**:
-`dynamics.equation-of-state.limiter` with at least one species (hydro), and the same setting for scalars.
-**Default**: on whenever the limiter is on. **Requires**: nothing. **Order**: exact copy. **Defining equation**:
-@eq-ch03-thetacopy-face.
+**Purpose.** The positivity limiter's donor factor $\Theta$ is exchanged into ghost cells as a raw, index-matched copy,
+never interpolated, so both blocks sharing a face scale its flux by the donor's own factor
+(@eq-ch03-thetacopy-face).
+**Data.** In/out: $\Theta\in[0,1]$ [-] per cell and species, ghosts included; the species enthalpy is recomputed
+from the ghost state, not exchanged.
+**Placement.** Each stage, after `flux_positivity_theta` and before the limited fluxes are applied.
+**Activation.** At least one species (`ny` > 0) and either `dynamics.equation-of-state.limiter` on, or face-flux
+covariance rows on the $x_2$ or $x_3$ faces (`cov2`, `cov3`; the scalar's `cov`); same rule for scalars.
+**Guarantee / limits.** Exact copy; species mass conserved across seams.
+**Evidence.** `test_flux_positivity_cubedsphere_python`, `test_flux_positivity_cubedsphere_moist_python`,
+`test_sedimentation_cubed_seam`; check `[C12]`; the ctest entries were not run for this chapter at the pin (missing evidence).
 :::
 
 The tracer flux positivity limiter of @sec-ch08-theta computes, per cell and species, a factor $\Theta\in[0,1]$ and scales

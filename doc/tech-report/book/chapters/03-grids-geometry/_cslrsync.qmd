@@ -9,10 +9,14 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: before the $x_2$ and $x_3$ Riemann solves, the reconstructed left and right states at panel-edge faces are
-exchanged as raw copies, one face deep, so that both panels solve the same Riemann problem at a shared face.
-**Switch**: none. **Default**: always on with `layout: cubed-sphere`. **Requires**: the direction-suffixed keys
-`*_wl:+` and `*_wr:-`. **Order**: exact copy. **Defining rule**: the suffix rule of the Derivation layer.
+**Purpose.** The reconstructed left and right states at panel-edge faces are exchanged as raw copies, one face deep,
+so both panels solve the same Riemann problem at a shared face; a rule, the suffix rule of the Derivation layer.
+**Data.** In/out: the $x_2$ and $x_3$ face states under the keys `*_wl:+` and `*_wr:-`, primitive units.
+**Placement.** Inside each stage, after the $x_2$ and $x_3$ reconstruction and before the Riemann solves.
+**Activation.** No switch; always on with `layout: cubed-sphere`.
+**Guarantee / limits.** Exact copy; one face deep only.
+**Evidence.** `test_flux_covariance_seams_python` ($10^{-12}$ relative drift) and
+`test_flux_positivity_cubedsphere_python` ($10^{-13}$ drift); both were not run for this chapter at the pin (missing evidence).
 :::
 
 At a face between two panels, each panel reconstructs the state on its own side from its interior and the state on
@@ -88,7 +92,7 @@ In step order (@tbl-ch03-cslrsync-code):
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_flux_covariance_seams_python` | six panels with the face-flux covariance on conserve mass, vapour and $E+\mathrm{PE}$ over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
+| `test_flux_covariance_seams_python` | six panels with the face-flux covariance on conserve mass, vapour and the integrated total energy plus potential energy, $E_{\mathrm{tot}}+\mathrm{PE}$ with $E_{\mathrm{tot}}=\sum_iE_iV_i$, over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
 | `test_flux_positivity_cubedsphere_python` | tracer mass is conserved across seams and the hat stays in $[0,1]$ | $10^{-13}$ drift | `DRIFT_TOL`, @sec-ch03-thetacopy |
 
 : Tests that exercise the face-state sync. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cslrsync-tests}

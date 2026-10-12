@@ -10,19 +10,25 @@ status: draft
 -->
 
 Local symbols (flagged to the editor): $x^{\mathrm{A}}_{1,i}$ the $x_1$ centroid of an $x_2$ or $x_3$ face of cell $i$
-on the face's own measure [$\mathrm{m}$]; $(\sigma^{\mathrm{A}}_i)^2$ the second central moment of $x_1$ on that
-measure [$\mathrm{m^2}$]; $\delta^{\mathrm{A}}_i = x_{1,i} - x^{\mathrm{A}}_{1,i}$ the face-centroid shift
-[$\mathrm{m}$]; $I_n$ the integral $\int_{r_-}^{r_+} r^n\,\mathrm{d}r$ [$\mathrm{m}^{n+1}$].
+on the face's own measure [$\mathrm{m}$]; $\mathtt{face\_moment2\_x1}_i$ the second central moment of $x_1$ on that measure
+[$\mathrm{m^2}$] and $\mathtt{face\_centroid\_shift\_x1}_i = x_{1,i} - x^{\mathrm{A}}_{1,i}$ the face-centroid shift [$\mathrm{m}$],
+written with the code's names because they live on the face measure, not the cell measure of $\sigma_i^2$ and
+$\delta_i$; $I_n$ the integral $\int_{r_-}^{r_+} r^n\,\mathrm{d}r$ [$\mathrm{m}^{n+1}$].
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: the exact $x_1$ second moment of an $x_2$/$x_3$ face and the exact distance between a cell's volume
-centroid and that face's centroid, in a cancellation-free form, plus a per-type flag saying the shift is
-identically zero. **Switch**: read by the face-flux covariance, `SNAP_FLUX_COVARIANCE`
-(@sec-ch12-flux-covariance). **Default**: the covariance is on unless `SNAP_FLUX_COVARIANCE` is set to
-`0`/`false`/`off`/`no`; the helpers exist on every grid. **Requires**: nothing. **Order**: exact. **Defining
-equations**: @eq-ch03-facemoments-moment, @eq-ch03-facemoments-shift.
+**Purpose.** The exact $x_1$ second moment of an $x_2$/$x_3$ face and the exact offset between a cell's volume centroid
+and that face's centroid, in cancellation-free form (@eq-ch03-facemoments-moment, @eq-ch03-facemoments-shift), plus a
+per-type flag that the shift is identically zero.
+**Data.** In: radial faces $r_\pm$ [m]. Out: `face_moment2_x1` [m$^2$] and `face_centroid_shift_x1` [m] per cell,
+on the face's own area measure, distinct from the cell measure of $\sigma_i^2$ and $\delta_i$.
+**Placement.** Evaluated when the face-flux covariance reads them, in each stage's $x_2$/$x_3$ flux.
+**Activation.** Read by `SNAP_FLUX_COVARIANCE` (@sec-ch12-flux-covariance), on unless set to
+`0`/`false`/`off`/`no`; the helpers exist on every grid.
+**Guarantee / limits.** Exact, not truncated; zero shift on Cartesian.
+**Evidence.** `test_radial_face_moments`, `test_coordinate`; checks `[C1]` to `[C3]` (sympy, exact); the ctest
+entries were not run for this chapter at the pin (missing evidence).
 :::
 
 The flux through an $x_2$ or $x_3$ face is a face average, weighted by the face's own area measure. On a Cartesian
@@ -41,12 +47,12 @@ test keeps the flag equal to the shift for every coordinate type.
 The derivation is in {{< code docs/derivations/289-covariance-x3-curved.md >}}
 §2.7 (the moment) and §2A.1 (the two centroids); it is rewritten here in the report's notation. The angular factor
 of an $x_2$/$x_3$ face does not vary along $x_1$ on one face, so it cancels in every average and the face weight is
-$w(r) = r$. With $h = h_i$ and $x^{\mathrm{m}} = x^{\mathrm{m}}_{1,i} = \tfrac12(r_- + r_+)$,
+$w(r) = r$. With $\Delta x_1 = \Delta x_{1,i}$ and $x^{\mathrm{m}} = x^{\mathrm{m}}_{1,i} = \tfrac12(r_- + r_+)$,
 
 $$
 \begin{aligned}
-x^{\mathrm{A}}_{1,i} &= \frac{I_2}{I_1} = \frac{12(x^{\mathrm{m}})^2 + h^2}{12\,x^{\mathrm{m}}}, \\
-x_{1,i} &= \frac{I_3}{I_2} = \frac{3x^{\mathrm{m}}\left(4(x^{\mathrm{m}})^2 + h^2\right)}{12(x^{\mathrm{m}})^2 + h^2},
+x^{\mathrm{A}}_{1,i} &= \frac{I_2}{I_1} = \frac{12(x^{\mathrm{m}})^2 + \Delta x_1^2}{12\,x^{\mathrm{m}}}, \\
+x_{1,i} &= \frac{I_3}{I_2} = \frac{3x^{\mathrm{m}}\left(4(x^{\mathrm{m}})^2 + \Delta x_1^2\right)}{12(x^{\mathrm{m}})^2 + \Delta x_1^2},
 \end{aligned}
 $$
 
@@ -54,21 +60,21 @@ the second being the spherical-polar volume centroid of @eq-ch03-sphpolar-centro
 face measure is $(I_3 - 2x^{\mathrm{A}}I_2 + (x^{\mathrm{A}})^2I_1)/I_1$, which simplifies to
 
 $$
-(\sigma^{\mathrm{A}}_i)^2 = \frac{h^2}{12}\left(1 - \frac{h^2}{12(x^{\mathrm{m}})^2}\right).
+\mathtt{face\_moment2\_x1}_i = \frac{\Delta x_1^2}{12}\left(1 - \frac{\Delta x_1^2}{12(x^{\mathrm{m}})^2}\right).
 $$ {#eq-ch03-facemoments-moment}
 
 @eq-ch03-facemoments-moment is `radial_face_moment2_` ({{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_moment2_ >}}). Subtracting the two
 centroids directly would cancel, because both are close to $x^{\mathrm{m}}$; doing the algebra first gives the exact
 
 $$
-\delta^{\mathrm{A}}_i = \frac{h^2\left(12(x^{\mathrm{m}})^2 - h^2\right)}{12\,x^{\mathrm{m}}\left(12(x^{\mathrm{m}})^2 + h^2\right)}
-= \frac{h^2}{12\,x^{\mathrm{m}}} + O\!\left(\frac{h^4}{(x^{\mathrm{m}})^3}\right).
+\mathtt{face\_centroid\_shift\_x1}_i = \frac{\Delta x_1^2\left(12(x^{\mathrm{m}})^2 - \Delta x_1^2\right)}{12\,x^{\mathrm{m}}\left(12(x^{\mathrm{m}})^2 + \Delta x_1^2\right)}
+= \frac{\Delta x_1^2}{12\,x^{\mathrm{m}}} + O\!\left(\frac{\Delta x_1^4}{(x^{\mathrm{m}})^3}\right).
 $$ {#eq-ch03-facemoments-shift}
 
 @eq-ch03-facemoments-shift is `radial_face_centroid_shift_` ({{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_centroid_shift_ >}}). On a Cartesian grid
-the two measures are the same uniform weight, so the moment is $h^2/12$ and the shift is zero; these are the base-class
+the two measures are the same uniform weight, so the moment is $\Delta x_1^2/12$ and the shift is zero; these are the base-class
 values `face_moment2_x1` and `face_centroid_shift_x1` ({{< code src/coord/coordinate.cpp CoordinateImpl::face_centroid_shift_x1 >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_moment2_x1 >}}). Both formulas are exact,
-not truncated; @eq-ch03-facemoments-moment recovers $h^2/12$ as $h/x^{\mathrm{m}}\to0$.
+not truncated; @eq-ch03-facemoments-moment recovers $\Delta x_1^2/12$ as $\Delta x_1/x^{\mathrm{m}}\to0$.
 
 ::: {.callout-important title="Check"}
 The centroids, the moment and the shift are checked against the exact integrals in sympy (`[C1]` to `[C3]`).[^fm-c]
@@ -82,12 +88,12 @@ The centroids, the moment and the shift are checked against the exact integrals 
 ### Numerical method
 
 Both helpers return one value per $x_1$ cell, ghosts included, shaped like `dx1f`, from the face array alone. A face
-with $x^{\mathrm{m}}\le h/2$ (an $x_1$ ghost that reaches $r\le0$) is degenerate: the moment's curvature correction
+with $x^{\mathrm{m}}\le \Delta x_1/2$ (an $x_1$ ghost that reaches $r\le0$) is degenerate: the moment's curvature correction
 and the shift are set to zero there, and the divisors are clamped to $10^{-300}$ so the masked branch never divides by
 zero. Spherical-polar and gnomonic grids override the virtual methods to call the radial forms; on the gnomonic grid
 the cell volume is the same $r^2$ integral times the solid angle (@sec-ch03-gnomonic), so the same shift applies even
 though its `x1v` is the midpoint. They are evaluated when the covariance correction asks for them, in the stage, before
-the $x_2$/$x_3$ fluxes. @fig-ch03-facemoments-ratio plots both against $h/x^{\mathrm{m}}$.
+the $x_2$/$x_3$ fluxes. @fig-ch03-facemoments-ratio plots both against $\Delta x_1/x^{\mathrm{m}}$.
 
 *The zero-shift flag.* On the base measure `face_centroid_shift_x1` returns `zeros_like(dx1f)` unconditionally
 ({{< code src/coord/coordinate.cpp CoordinateImpl::face_centroid_shift_x1 >}}), so every centroid part of the covariance
@@ -111,7 +117,7 @@ any bit of a Cartesian run is **not measured at the pin**: no committed check co
 
 ```{python}
 #| label: fig-ch03-facemoments-ratio
-#| fig-cap: "The radial face moment divided by its Cartesian value $h^2/12$ (solid) and the face-centroid shift divided by its leading term $h^2/(12x^{\\mathrm{m}})$ (dashed), against the relative cell width $h/x^{\\mathrm{m}}$. Both are dimensionless and tend to $1$ as the cell becomes thin; the moment is the Cartesian one to within $h^2/(12(x^{\\mathrm{m}})^2)$."
+#| fig-cap: "The radial face moment divided by its Cartesian value $\\Delta x_1^2/12$ (solid) and the face-centroid shift divided by its leading term $\\Delta x_1^2/(12x^{\\mathrm{m}})$ (dashed), against the relative cell width $\\Delta x_1/x^{\\mathrm{m}}$. Both are dimensionless and tend to $1$ as the cell becomes thin; the moment is the Cartesian one to within $\\Delta x_1^2/(12(x^{\\mathrm{m}})^2)$."
 #| fig-alt: "Two curves starting at 1 at zero relative width and bending down as the width grows."
 #| echo: false
 from snapy_report.ch03.fig_facemoments_ratio import make_fig
@@ -141,7 +147,7 @@ In step order (@tbl-ch03-facemoments-code):
 1. The caller asks the coordinate for `face_moment2_x1` and `face_centroid_shift_x1`; virtual dispatch picks the
    grid's form ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_centroid_shift_x1 >}},
    {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_moment2_x1 >}}).
-2. `radial_face_moment2_` forms $h$ and $x^{\mathrm{m}}$ from the faces and masks the degenerate cells with
+2. `radial_face_moment2_` forms $\Delta x_1$ and $x^{\mathrm{m}}$ from the faces and masks the degenerate cells with
    `torch::where` ({{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_moment2_ >}}).
 3. `radial_face_centroid_shift_` evaluates the cancellation-free quotient and masks the same cells
    ({{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_centroid_shift_ >}}).
