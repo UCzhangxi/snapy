@@ -21,7 +21,7 @@ $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ in cells and $\rho_{\mathrm{sf}}$ at f
 **Guarantee / limits.** $p_{\mathrm{sf}}$ exact up to one column constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ on
 uniform grids, the log-mean (exact only for isothermal cells) otherwise; $\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
 **Evidence.** `test_hydro_ref_x1`, `test_hydro_options` pass at the pin (CPU); check claims `[C1]`–`[C3]`, `[C9]`,
-`[C10]`, `[C13]`, `[C14]`, `[C20]`.
+`[C10]`, `[C13]`, `[C14]`, `[C20]` of `wbref_check.py`.
 :::
 
 The kernel is the reference of @eq-ch05-wbx1-split. Its face pressures are the discrete hydrostatic balance itself,
@@ -29,7 +29,7 @@ summed from an anchor at the top of the column, so the rest balance of the well-
 identically. Its cell pressure is the cell average of a quintic through six face pressures, which matches the
 cell average of a smooth hydrostatic pressure to sixth order up to the same column constant; on a non-uniform grid it
 is a log-mean instead, exact only for an isothermal cell. Its density reference is the cell pressure times a
-smoothed $\rho/p$: smoothed, because an unsmoothed ratio makes the density perturbation a copy of the pressure
+smoothed $\chi$: smoothed, because an unsmoothed ratio makes the density perturbation a copy of the pressure
 perturbation and the entropy mode would bypass the reconstruction.
 
 The kernel has a C++ implementation shared by the CPU and CUDA paths and a tensor implementation for MPS. The wall
@@ -42,8 +42,8 @@ is @sec-ch05-seam; the fourth-order replacement of the density reference is @sec
 
 ### Derivation
 
-Units as in @sec-ch05-wbx1; $g=-g_1>0$ [m s$^{-2}$] is the downward magnitude the kernel takes; $\chi=\rho/p$
-[s$^2$ m$^{-2}$]. Cell $i$ spans $[x_{1,i-1/2},x_{1,i+1/2}]$, and $\Delta x_{1,i}$ is its width.
+Units as in @sec-ch05-wbx1; $g=-g_1>0$ [$\mathrm{m\,s^{-2}}$] is the downward magnitude the kernel takes; $\chi=\rho/p$
+[$\mathrm{s^2\,m^{-2}}$]. Cell $i$ spans $[x_{1,i-1/2},x_{1,i+1/2}]$, and $\Delta x_{1,i}$ is its width.
 
 #### Face pressures
 
@@ -244,13 +244,13 @@ at rest to round-off only after `balance_column`.
    them, and the reconstruction weights are uniform-spacing on every grid. A stretched-grid rest residual is
    reported, the same for every density form; it is not measured at the pin.[^ch05-ref-stretch] The face
    interpolation uses the fixed rationals only on a uniform block and the log-mean otherwise.
-2. **No positivity guard on $\rho/p$.** The ratio divides by the cell pressure without a guard.[^ch05-ref-guard] Not
+2. **No positivity guard on $\chi$.** The ratio divides by the cell pressure without a guard.[^ch05-ref-guard] Not
    measured at the pin.
+3. **One classification per block.** A grid uniform over part of the column gives different operators to different
+   blocks; `balance_column` must make the same choice (@sec-ch05-balcol).
+4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
 
 [^ch05-ref-stretch]: $7.37\times10^{-4}$, reported in chengcli/snapy#250 (`sources/gh__ISSUE_THREADS_138-250.md`) on
     code before the pin and tracked in chengcli/snapy#280.
 
 [^ch05-ref-guard]: Noted in chengcli/snapy#250 §2.
-3. **One classification per block.** A grid uniform over part of the column gives different operators to different
-   blocks; `balance_column` must make the same choice (@sec-ch05-balcol).
-4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

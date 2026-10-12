@@ -20,7 +20,7 @@ the cells instead of their $r^2$ means, and replaces the radial pressure source 
 `SNAP_WB_REF4`. Requires $n_g\ge3$. Acts on `spherical-polar` only; nothing on cubed-sphere grids.
 **Guarantee / limits.** Conversion exact to degree 4; rest exact for densities of degree $\le4$; the Favre velocity and
 other ratios of means keep an $O(\Delta x_1^2/R)$ remainder (@sec-ch05-oneoverr).
-**Evidence.** `test_x1_centroid_rest` and the seam arms pass at the pin (CPU); check claims `[C16]`–`[C18]`.
+**Evidence.** `test_x1_centroid_rest` and the seam arms pass at the pin (CPU); check claims `[C16]`–`[C18]` of `wbref_check.py`.
 :::
 
 A finite-volume cell on a spherical-polar grid holds the $r^2$ mean of a quantity, whose centroid sits
@@ -110,7 +110,8 @@ is exact and the column is balanced exactly, which is the oracle of the test.
 
 *Exact and truncated.* Exact: the conversion for degree 4, both source identities, rest for degree $\le4$. For a
 smooth column the curvature part of the residual is $O(\Delta x_1^6/r)$; what remains is the truncation of the reference itself.
-Ratios of means (the Favre velocity, $T=p/\rho$, $\rho/p$ inside $F$) are not made exact (@sec-ch05-oneoverr).
+Ratios of means (the Favre velocity, $T=p/\rho$, $\chi$ inside $F$) are not made exact (@sec-ch05-oneoverr); for the
+velocity, `SNAP_X1_MASS_COVARIANCE` subtracts the covariance part (@sec-ch04-x1masscov).
 
 ### Numerical method
 
@@ -204,13 +205,14 @@ The switch does nothing on cubed-sphere grids. Under it `balance_column` balance
 `geometry='cartesian'`.
 :::
 
-1. **Ratios of means.** The Favre velocity, $T$ and $\rho/p$ are still treated as means; the $O(\Delta x_1^2/R)$ remainder
+1. **Ratios of means.** The Favre velocity, $T$ and $\chi$ are still treated as means (the velocity's covariance part is
+   subtracted under `SNAP_X1_MASS_COVARIANCE`); the $O(\Delta x_1^2/R)$ remainder
    is @sec-ch05-oneoverr.
 2. **Cubed sphere.** Not implemented: the gnomonic grids store the mid-radius as $x_{1v}$ and would need the
    conversion with their own radial measure.
 3. **The source copy differs from the code.** The copy of the derivation in the report's sources says the switch
    leaves the reference unchanged;[^ch05-x1c-copy] at the pin it implies `SNAP_WB_REF4` and seam ghosts are
    exchanged.
+4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
 
 [^ch05-x1c-copy]: `sources/deriv__x1-centroid-spherical.md`.
-4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

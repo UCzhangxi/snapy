@@ -33,9 +33,9 @@ def make_fig():
         ax.set_xticks([-2, -1, 0, 1, 2])
         ax.set_xticklabels(["$-2$", "$-1$", "$0$", "$1$", "$2$"])
         ax.set_xlabel("cell index from the wall [-]")
-    axes[0].set_ylabel("$\\rho/p$ [-]")
-    axes[0].set_title("$r_1 > r_0$: ln-linear", fontsize=fs.SMALL_PT)
-    axes[1].set_title("$r_1 \\leq r_0$: linear", fontsize=fs.SMALL_PT)
+    axes[0].set_ylabel("$\\chi$ [-]")
+    axes[0].set_title("$\\chi_1 > \\chi_0$: ln-linear", fontsize=fs.SMALL_PT)
+    axes[1].set_title("$\\chi_1 \\leq \\chi_0$: linear", fontsize=fs.SMALL_PT)
     axes[1].legend(loc="upper right")
     fs.panel_labels(axes)
     return fig
