@@ -69,9 +69,12 @@ stops at the render itself; say so in the PR body and let CI be the render's wor
 
 - **Every number you publish comes from a check output at the `code_pin.yml` pin, cited inline, and every
   claim names its test.** No test yet? Mark it **missing evidence** — do not let it stand on your word.
-- **A freeze anchor compares a number against its stated tolerance; it never byte-compares an output file.**
-  `cellface_check`, `fixvapor_check` and `kinetics_check` drift on this project's own machines with no code
-  change, so a byte comparison asserts the host, not the physics (STYLE.md 11.1).
+- **A quoted number is held against its stated tolerance, not against one host's digits.** The shipped harness
+  does byte-compare `stdout` with the committed `.out` (`src/tests/test_ch06.py:51`, `test_ch02_checks.py:13`,
+  `test_ch10_checks.py:13`) and that stays legal — but when such a test fails only in a round-off digit, the
+  stale thing is the fixture, not the claim: `cellface_check`, `fixvapor_check` and `kinetics_check` drift on
+  this project's own machines with no code change. Never hand-write a byte comparison of rendered prose,
+  tables or figures (STYLE.md 11.1).
 - **A pending Tests layer is a to-do you own, not a finished section.** 37 scheme files currently have a
   Tests layer saying "pending" and 30 say "missing evidence"; if one is in your chapter, produce the test or
   retract the claim.
