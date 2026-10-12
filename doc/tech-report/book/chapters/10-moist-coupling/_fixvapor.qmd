@@ -78,8 +78,9 @@ vapour is repaired second and must succeed
 When the call comes from the stage update and $x_1$ is split over several blocks (`pz` > 1), every block gathers
 the full column with the dry density and the volumes, repairs it and keeps its own slice
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
-Failures are counted with `std::atomic` on CPU and `atomicAdd` on CUDA, and read back once per kernel call, which
-costs one device synchronisation; a limiter call with parentless clouds runs the kernel twice
+Failures are counted with `std::atomic` on CPU on every call. On CUDA they are counted with `atomicAdd` and read
+back, one device synchronisation, only when the caller needs the count, that is when it requires success (`count`);
+otherwise no counter is allocated and nothing is read. A limiter call with parentless clouds runs the kernel twice
 (`nerr`, {{< code src/eos/eos_dispatch.cu call_fix_vapor_cuda >}}). @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
 
 ```{python}
