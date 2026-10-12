@@ -10,8 +10,8 @@ status: draft
 
 ::: {.callout-note title="At a glance"}
 - Passive scalars get the same limiter as the hydro species, from the same function.
-- Switch: the same limiter switch; the scalar module runs its own call. Since chengcli/snapy#307 it also runs
-  whenever the scalar added its own covariance row (@sec-ch04-fluxcov).
+- Switch: the same limiter switch; the scalar module runs its own call, which also runs whenever the scalar
+  added its own covariance row (@sec-ch04-fluxcov).
 - The factors are exchanged as a raw copy, never interpolated, for the same reason as the hydro ones.
 - A scalar bounded above by its complement needs a second constraint, which is noted here, not derived.
 :::
@@ -45,7 +45,7 @@ synchronisation is the lambda at `theta_opts` ({{< code src/scalar/scalar.cpp Sc
 map, exchanges them with interpolation switched off, and applies the physical boundary functions, which
 is exactly the fill the limiter's contract requires.
 
-*Main after chengcli/snapy#307* (snapy@ae61e392e8766ba2d25caabc478143102ee74e77). The call runs when `limiter` is set or `cov` is
+The call runs when `limiter` is set or `cov` is
 ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}); the scalar sets `cov` when it added its own covariance row
 ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), because that row can export tracer a cell does not hold, as for the hydro species
 (@sec-ch08-theta).
@@ -56,7 +56,7 @@ is exactly the fill the limiter's contract requires.
 |---|---|---|---|
 | the scalar limiter call | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `flux_positivity_theta` | limiter on |
 | the factor exchange | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | |
-| the gate, with the scalar's covariance row (main after chengcli/snapy#307) | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `cov` | `limiter` or the scalar's row |
+| the gate, with the scalar's covariance row | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `cov` | `limiter` or the scalar's row |
 | the complement bound, as intent | {{< code src/scalar/scalar.cpp ScalarImpl::reset >}} | `positivity` | |
 
 : Code map of the passive-scalar limiter. {#tbl-ch08-scalar-code}
@@ -64,8 +64,8 @@ is exactly the fill the limiter's contract requires.
 ### Tests
 
 No test in the repository selects the passive-scalar limiter on its own. Its behaviour follows from
-@sec-ch08-theta, whose checks cover the shared function. At the pin the scalar call path itself was covered by
-nothing. Since chengcli/snapy#307, `test_scalar_flux_covariance` and `test_scalar_cov_x1_split`
+@sec-ch08-theta, whose checks cover the shared function. `test_scalar_flux_covariance` and
+`test_scalar_cov_x1_split`
 ({{< code tests/CMakeLists.txt >}}) run passive scalars with `limiter: false` and the covariance on
 (`limiter` in {{< code tests/test_scalar_flux_covariance.py config >}}), so their
 covariance-on arms go through this call; they assert the scalar against the species and the split, not the
@@ -78,6 +78,5 @@ limiter's counters (@sec-ch04-fluxcov).
   it below its complement, and the code comment describes that as the intent rather than the behaviour.
 :::
 
-1. **Untested path.** At the pin the scalar call, its counters and its exchange were exercised by no test.
-   Since chengcli/snapy#307 the two scalar covariance tests run the call, but no test asserts on its counters or
-   its exchange, so those are written from reading alone.
+1. **Untested path.** The two scalar covariance tests run the call, but no test asserts on its counters or its
+   exchange, so those are written from reading alone.
