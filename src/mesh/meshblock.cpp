@@ -1119,26 +1119,48 @@ void print_cycle_diagnostics(
   auto print = [&](char const *name, double value) {
     SINFO() << std::scientific << std::setprecision(precision) << name << value;
   };
+  // every printed value, read with one device-to-host copy
+  std::vector<torch::Tensor> vals;
+  auto push = [&](torch::Tensor const &t) {
+    // a copy: mass below is a view that is added to after it is pushed
+    vals.push_back(t.reshape({1}).to(torch::kFloat64).clone());
+    return static_cast<int>(vals.size()) - 1;
+  };
   auto mass = conserved[IDN];
-  print(" mass0=", mass.item<double>());
+  int i_mass0 = push(mass);
+  int i_masst = -1;
   if (conserved.size(0) > ICY) {
     for (int n = ICY; n < conserved.size(0); ++n) mass += conserved[n];
-    print(" masst=", mass.item<double>());
+    i_masst = push(mass);
   }
-  if (ke_sum.defined()) print(" ke=", ke_sum[0].item<double>());
-  if (root->phydro->peos->nvar() > IPR)
-    print(energy_label, conserved[IPR].item<double>());
-  if (pe_sum.defined()) print(" pe=", pe_sum[0].item<double>());
+  int i_ke = ke_sum.defined() ? push(ke_sum[0]) : -1;
+  int i_ie = root->phydro->peos->nvar() > IPR ? push(conserved[IPR]) : -1;
+  int i_pe = pe_sum.defined() ? push(pe_sum[0]) : -1;
+  int i_meters = push(meters[0]);
+  push(meters[1]);
+  push(meters[2]);
+  int i_theta = push(theta_min[0]);
+  int i_vic = vic_max.defined() ? push(vic_max[0]) : -1;
+  // global: every block holds it
+  int i_fix = root->phydro->gravity_work_fixer()
+                  ? push(root->phydro->gravity_work_fix()[0])
+                  : -1;
+  auto host = torch::cat(vals).cpu();
+  auto a = host.accessor<double, 1>();
+
+  print(" mass0=", a[i_mass0]);
+  if (i_masst >= 0) print(" masst=", a[i_masst]);
+  if (i_ke >= 0) print(" ke=", a[i_ke]);
+  if (i_ie >= 0) print(energy_label, a[i_ie]);
+  if (i_pe >= 0) print(" pe=", a[i_pe]);
 
   SINFO() << " run-to-date:";
-  double total = meters[1].item<double>();
-  if (total > 0.) print(" limcut=", meters[0].item<double>() / total);
-  print(" thetamin=", theta_min[0].item<double>());
-  SINFO() << " thetasevere="
-          << static_cast<long long>(meters[2].item<double>());
-  if (vic_max.defined()) print(" vicclamp=", vic_max[0].item<double>());
-  if (root->phydro->gravity_work_fixer())  // global: every block holds it
-    print(" fixgrav=", root->phydro->gravity_work_fix()[0].item<double>());
+  double total = a[i_meters + 1];
+  if (total > 0.) print(" limcut=", a[i_meters] / total);
+  print(" thetamin=", a[i_theta]);
+  SINFO() << " thetasevere=" << static_cast<long long>(a[i_meters + 2]);
+  if (i_vic >= 0) print(" vicclamp=", a[i_vic]);
+  if (i_fix >= 0) print(" fixgrav=", a[i_fix]);
   SINFO() << std::endl;
 }
 
