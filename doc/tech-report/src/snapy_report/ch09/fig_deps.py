@@ -4,7 +4,6 @@ Logical relations read from the code cited in each scheme file (the forcing loop
 registration in HydroImpl::_register_forcings_module, the tracer carry of MeshBlockImpl::advance_local, the wall
 test MeshBlockOptionsImpl::is_wall_boundary and RelaxBotCompImpl::reset); no measured data.
 """
-import matplotlib.pyplot as plt
 
 from snapy_report import figstyle as fs
 
@@ -32,9 +31,8 @@ EDGES = [  # solid: is part of; dashed: hands its dry-air increment to; dotted: 
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 3.0))
-    ax.set(xlim=(-0.04, 1.04), ylim=(-0.12, 1.02))
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.0)
+    ax.set(xlim=(-0.04, 1.04), ylim=(-0.24, 1.02))
     ax.axis("off")
     boxes = {}
     for key, (x, y, label) in NODES.items():
@@ -48,7 +46,6 @@ def make_fig():
                     arrowprops=dict(arrowstyle="-|>", color=fs.BLACK, ls=ls, lw=1.0,
                                     connectionstyle="arc3,rad=%g" % rad,
                                     patchA=boxes[a].get_bbox_patch(), patchB=boxes[b].get_bbox_patch()))
-    ax.text(-0.03, 0.06, "solid: is part of\ndashed: hands its dry-air\nincrement to\ndotted: needs",
-            fontsize=fs.SMALL_PT, va="center")
-    fig.tight_layout()
+    ax.text(0.5, -0.19, "solid: is part of;   dashed: hands its dry-air increment to;   dotted: needs",
+            fontsize=fs.SMALL_PT, ha="center", va="center")
     return fig

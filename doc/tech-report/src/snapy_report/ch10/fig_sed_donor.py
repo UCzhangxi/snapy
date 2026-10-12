@@ -3,14 +3,12 @@
 Cartoon of sedimentation_upwind (src/sedimentation/sed_hydro_dispatch.hpp:12-24) and the bounds of
 SedHydroImpl::forward (src/sedimentation/sed_hydro.cpp:79-83); no measured data.
 """
-import matplotlib.pyplot as plt
 
 from snapy_report import figstyle as fs
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.SINGLE, 3.6))
+    fig, ax = fs.new_figure(fs.SINGLE, 3.6)
     ax.set(xlim=(0, 3.4), ylim=(-0.2, 6.2))
     ax.axis("off")
     for k in range(6):
@@ -21,9 +19,8 @@ def make_fig():
     for y in (2, 3, 4):
         ax.annotate("", xy=(1.5, y - 0.3), xytext=(1.5, y + 0.3),
                     arrowprops=dict(arrowstyle="->", color=fs.ORANGE, lw=1.4))
-        ax.text(2.3, y, "from cell above\n(settling)", fontsize=7, va="center")
-    ax.text(2.3, 1, "physical wall:\nsealed", fontsize=7, va="center")
-    ax.text(2.3, 5, "physical wall:\nsealed", fontsize=7, va="center")
-    ax.text(0.1, 3, "interior\ncells", fontsize=7, va="center")
-    fig.tight_layout()
+        ax.text(2.3, y, "from cell above\n(settling)", fontsize=fs.SMALL_PT, va="center")
+    ax.text(2.3, 1, "physical wall:\nsealed", fontsize=fs.SMALL_PT, va="center")
+    ax.text(2.3, 5, "physical wall:\nsealed", fontsize=fs.SMALL_PT, va="center")
+    ax.text(0.1, 3, "interior\ncells", fontsize=fs.SMALL_PT, va="center")
     return fig

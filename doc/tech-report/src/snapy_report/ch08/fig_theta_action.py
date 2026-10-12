@@ -7,15 +7,13 @@ import json
 import os
 
 from snapy_report import figstyle as fs
-import matplotlib.pyplot as plt
 
 
 def make_fig():
-    fs.apply()
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "data", "theta_action.json")) as fh:
         d = json.load(fh)
-    fig, axes = plt.subplots(1, 2, figsize=(fs.DOUBLE, 2.7))
+    fig, axes = fs.new_figure(fs.DOUBLE, 2.7, 1, 2)
     ax = axes[0]
     ax.semilogx(d["dt"], d["unlimited_min"], "-o", color=fs.VERMILLION,
                 label="unlimited", mfc="white")
@@ -35,5 +33,4 @@ def make_fig():
     ax.set_ylabel("cells with $\\theta<1$ [%]")
     ax.set_title("(b) how hard it works", loc="left")
     ax.grid(True, which="major", color="#DDDDDD", lw=0.5)
-    fig.tight_layout()
     return fig

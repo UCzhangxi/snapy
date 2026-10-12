@@ -23,22 +23,21 @@ ROWS = [  # test, {column: tolerance text}
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 3.4))
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.4)
     ax.set_axis_off()
-    x0, w = 3.9, 0.75
+    x0, w = 3.65, 0.86
     for j, c in enumerate(COLS):
-        ax.text(x0 + w * j + w / 2, len(ROWS) + 0.3, c, ha="center", fontsize=7.5, weight="bold")
+        ax.text(x0 + w * j + w / 2, len(ROWS) + 0.3, c, ha="center", fontsize=fs.SMALL_PT, weight="bold")
     for i, (name, cells) in enumerate(ROWS):
         y = len(ROWS) - 1 - i
         grey = name.endswith("*")
-        ax.text(0.0, y + 0.4, name, fontsize=6.5, family="monospace", va="center",
+        ax.text(0.0, y + 0.4, name, fontsize=fs.SMALL_PT, family=fs.MONO, va="center",
                 color=fs.GREY if grey else fs.BLACK)
         for j, c in enumerate(COLS):
             if c in cells:
                 ax.add_patch(plt.Rectangle((x0 + w * j + 0.04, y + 0.06), w - 0.08, 0.68,
                                            fc=fs.GREY if grey else fs.GREEN, ec="none", alpha=0.75))
-                ax.text(x0 + w * j + w / 2, y + 0.4, cells[c], ha="center", va="center", fontsize=6.5)
+                ax.text(x0 + w * j + w / 2, y + 0.4, cells[c], ha="center", va="center", fontsize=fs.SMALL_PT)
             else:
                 ax.add_patch(plt.Rectangle((x0 + w * j + 0.04, y + 0.06), w - 0.08, 0.68, fc="none",
                                            ec="#DDDDDD", lw=0.5))

@@ -8,7 +8,7 @@ import os
 
 import numpy as np
 
-from snapy_report.ch09._style import BLUE, GREEN, ORANGE, SINGLE, new_figure
+from snapy_report.figstyle import BLUE, GREEN, ORANGE, SINGLE, new_figure
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "sponge_profile.csv")
 

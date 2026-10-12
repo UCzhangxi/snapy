@@ -2,7 +2,6 @@
 
 Logical relations read from the code cited in each scheme file; no measured data.
 """
-import matplotlib.pyplot as plt
 
 from snapy_report import figstyle as fs
 
@@ -26,13 +25,12 @@ EDGES = [  # solid: requires or is part of; dashed: raises a redo cause; dotted:
 
 
 def make_fig():
-    fs.apply()
-    fig, ax = plt.subplots(figsize=(fs.DOUBLE, 3.0))
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.0)
     ax.set(xlim=(-0.04, 1.04), ylim=(-0.12, 0.98))
     ax.axis("off")
     boxes = {}
     for key, (x, y, label) in NODES.items():
-        boxes[key] = ax.text(x, y, label, ha="center", va="center", fontsize=8,
+        boxes[key] = ax.text(x, y, label, ha="center", va="center", fontsize=fs.SMALL_PT,
                              bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor=fs.GREEN))
     fig.canvas.draw()  # the box outlines exist only after a draw; arrows are clipped to them
     for a, b, ls in EDGES:
@@ -42,6 +40,5 @@ def make_fig():
                     arrowprops=dict(arrowstyle="-|>", color=fs.BLACK, ls=ls, lw=1.0,
                                     patchA=boxes[a].get_bbox_patch(), patchB=boxes[b].get_bbox_patch()))
     ax.text(-0.03, 0.06, "solid: requires / is part of\ndashed: raises a redo cause\ndotted: needs it switched on",
-            fontsize=7, va="center")
-    fig.tight_layout()
+            fontsize=fs.SMALL_PT, va="center")
     return fig

@@ -12,14 +12,16 @@ House style (STYLE 6.2), for new and ported figures:
 
 `new_figure` applies `RC`: DejaVu Sans, 9 pt labels (`LABEL_PT`), 8 pt ticks, legends and annotations (`SMALL_PT`,
 also the floor `MIN_PT`), matplotlib's default (DejaVu Sans) mathtext, fonts embedded as TrueType, and the two
-widths of STYLE 6.2, `DOUBLE` = 6.2 in (the PDF text width) and `SINGLE` = 3.05 in. Colours are the Okabe-Ito
-palette with the meanings of STYLE 6.2.
+widths of STYLE 6.2, `DOUBLE` = 6.2 in (the PDF text width) and `SINGLE` = 3.05 in; `MONO` is the family for code
+words and log lines. Colours are the Okabe-Ito palette with the meanings of STYLE 6.2.
 
 This module also holds, unchanged, the names its first version exported (`apply`, `cell_box`, `cell_value`,
-`face_value`, `wall`, `slope_guide`, `save`, `DPI`, `GREY`), so that no existing figure changes until it is
-ported: `apply()` still sets the 9 pt serif/STIX text of that version. The house API folds in the chapter 5 and
-chapter 9 shims (`snapy_report/ch05/_style.py`, `snapy_report/ch09/_style.py`) and the planning tree's
-`chapters/common/figstyle.py`; their helpers keep their drawing, at the STYLE widths. Where a shim's helper had a
+`face_value`, `wall`, `slope_guide`, `save`, `DPI`, `GREY`), so that no figure changes until it is ported:
+`apply()` still sets the 9 pt serif/STIX text of that version. The figures of chapters 1-3, 6, 8-10, 13 and
+appendix E are ported (they call `new_figure`, never `apply`); chapters 4, 5, 7, 11 and 12 still use the legacy
+names. The house API folds in the chapter 5 and chapter 9 shims (`snapy_report/ch05/_style.py`; the chapter 9 one
+is gone with its port) and the planning tree's `chapters/common/figstyle.py`; their helpers keep their drawing, at
+the STYLE widths. Where a shim's helper had a
 name this module already used with another signature, the house helper has a new name:
 
     ch05 _style.cell_value(ax, x, y)   -> cell_marker(ax, x, y)
@@ -28,8 +30,9 @@ name this module already used with another signature, the house helper has a new
     ch09 _style.save(fig, path)        -> save_to(fig, path)
     ch09 _style.new_figure(w, h, n)    -> new_figure(w, h, ncols=n)  (returns a Figure not held by pyplot)
 
-The shims and the legacy names are removed when the figure scripts are ported, a change checked on a contact
-sheet of the rendered figures before and after.
+The last shim and the legacy names are removed when the remaining figure scripts are ported, a change checked on a
+contact sheet of the figures before and after (`tools/contact_sheet.py`) and by the figure-output gate
+(`tools/check_fig_output.py`).
 """
 import logging
 import os
@@ -63,6 +66,7 @@ ALLOWED_WIDTHS = (SINGLE, DOUBLE)  # STYLE 6.2; heights are free
 DPI = 200
 
 FONT = "DejaVu Sans"
+MONO = "DejaVu Sans Mono"  # code words and log lines inside a figure
 LABEL_PT = 9   # axis labels, titles, panel letters
 SMALL_PT = 8   # ticks, legends, annotations
 MIN_PT = 8     # no text smaller than this at print size (STYLE 6.2)

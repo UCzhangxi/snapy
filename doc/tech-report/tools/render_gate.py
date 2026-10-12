@@ -1157,6 +1157,42 @@ def _report(name, hits, where=()):
     return 0 if REPORT_ONLY else len(hits)
 
 
+def gate_fig_output(book):
+    """The drawn figures against STYLE 6.2 (house width, nothing wider than the text, no text under 8 pt, at most
+    four panels, no overlapping texts, an identical redraw, no warning); per-chapter counts may only shrink
+    (tools/check_fig_output.py). Needs the figure code importable, as the render does."""
+    report = book.parent
+    baseline = report / "tools" / "figoutput-baseline.json"
+    if not baseline.exists():
+        print("\n[figure-output gate] no tools/figoutput-baseline.json next to the book: skipped")
+        return 0
+    import check_fig_output
+    status, msgs = check_fig_output.check(report, baseline)
+    print("\n[figure-output gate] " + ("every chapter at its baseline of drawn-figure findings"
+                                       if status == 0 else f"{len(msgs)} count(s) differ from the baseline"))
+    for m in msgs:
+        print(f"  ✗ {m}")
+    return len(msgs)
+
+
+def gate_tables(book):
+    """Pipe tables against STYLE 10.5 and the Code/Tests headers of STYLE 2 (at most 5 columns, a labelled caption,
+    the fixed headers, one table per Code or Tests layer); per-chapter counts may only shrink
+    (tools/check_tables.py)."""
+    report = book.parent
+    baseline = report / "tools" / "table-baseline.json"
+    if not baseline.exists():
+        print("\n[table gate] no tools/table-baseline.json next to the book: skipped")
+        return 0
+    import check_tables
+    status, msgs = check_tables.check(report, baseline)
+    print("\n[table gate] " + ("every chapter at its baseline of table findings"
+                               if status == 0 else f"{len(msgs)} count(s) differ from the baseline"))
+    for m in msgs:
+        print(f"  ✗ {m}")
+    return len(msgs)
+
+
 def gate_hand_typed_chapters(book):
     """A chapter named by a hand-typed number ("Chapter 7", "chapter 12") instead of a cross-ref
     (@sec-chNN) or, for a chapter not written yet, its name in words (STYLE 10.1)."""
@@ -1269,6 +1305,7 @@ def main(argv):
                     ("freeze tracked", gate_freeze_is_tracked),
                     ("chapter list", gate_chapter_list),
                     ("figstyle", gate_figstyle),
+                    ("tables", gate_tables),
                     ("hand-typed chapter", gate_hand_typed_chapters))
     for name, gate in source_gates:
         record(name, gate(book))
@@ -1282,6 +1319,8 @@ def main(argv):
 
     if "--labels-only" in argv:
         return _verdict(results, release, expected)
+    # runs the figure code, so not a source gate: in every full run, before the render
+    record("figure output", gate_fig_output(book))
 
     env = pending_render_env(pending) if do_render else None
     rc, out = (0, "") if not do_render else render(book, env)

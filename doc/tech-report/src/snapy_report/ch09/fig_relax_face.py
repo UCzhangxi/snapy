@@ -7,7 +7,7 @@ reads no data.
 """
 from matplotlib.patches import Rectangle
 
-from snapy_report.ch09._style import BLACK, BLUE, CELL_FILL, GREEN, SKY, SINGLE, new_figure
+from snapy_report.figstyle import BLACK, BLUE, CELL_FILL, GREEN, SINGLE, SKY, SMALL_PT, new_figure
 
 
 def make_fig():
@@ -19,10 +19,10 @@ def make_fig():
     ax.plot([0., 1.5], [1.5 * T0 - 0.5 * T1, T1], color=GREEN, ls="--", lw=0.9)
     ax.plot([0.], [1.5 * T0 - 0.5 * T1], "D", color=GREEN, ms=5, mec=BLACK, mew=0.5)
     ax.axhline(298., color=BLUE, lw=1.0, ls=":")
-    ax.text(1.05, 298.5, "btemp", color=BLUE, fontsize=8)
+    ax.text(1.05, 298.5, "btemp", color=BLUE, fontsize=SMALL_PT)
     ax.axvline(0., color=BLACK, lw=2.5)
-    ax.text(0.5, 281., "$i_l$", ha="center", fontsize=8)
-    ax.text(1.5, 281., "$i_l+1$", ha="center", fontsize=8)
+    ax.text(0.5, 281., "$i_l$", ha="center", fontsize=SMALL_PT)
+    ax.text(1.5, 281., "$i_l+1$", ha="center", fontsize=SMALL_PT)
     ax.set_xlabel("$(x_1 - x_{1,\\mathrm{bot}})/\\Delta x_1$ [-]")
     ax.set_ylabel("$T$ [K]")
     ax.set_xlim(-0.2, 2.05)

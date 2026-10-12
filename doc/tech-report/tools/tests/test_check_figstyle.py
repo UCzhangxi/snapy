@@ -90,3 +90,16 @@ def test_chapter_names():
 def test_the_report_is_at_its_committed_baseline():
     status, msgs = check_figstyle.check()
     assert status == 0, msgs
+
+
+def test_a_name_imported_from_figstyle_is_a_figstyle_value(tmp_path):
+    f = tmp_path / "fig_named.py"
+    f.write_text("from snapy_report.figstyle import SMALL_PT, new_figure\n"
+                 "SIZE = 7\n"
+                 "def make_fig():\n"
+                 "    fig, ax = new_figure('single', 2.0)\n"
+                 "    ax.text(0, 0, 'a', fontsize=SMALL_PT)\n"
+                 "    ax.text(0, 1, 'b', fontsize=SIZE)\n"
+                 "    return fig\n")
+    assert [(line, kind) for line, kind, _ in check_figstyle.scan_file(f, "src/snapy_report/ch01/fig_named.py")] \
+        == [(6, "font")]
