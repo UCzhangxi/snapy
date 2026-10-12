@@ -10,13 +10,17 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Turns each key of the YAML block `forcing:` into one module that adds $\Delta t\,\mathbf S$ to the
-stage increment $\Delta\mathbf U$, after the flux divergence.
-**Switch.** The presence of each key; no key, no module. Default: no forcing.
-**Requires.** Nothing; each module has its own requirements (the sections below).
-**Order.** Each module is first order in time within a stage; the Runge–Kutta average makes the sum of the
-stages as accurate as the integrator.
-**Defining equation.** @eq-ch09-framework-stage.
+**Purpose.** Turns each key of the YAML block `forcing:` into one module that adds $\Delta t\,\mathbf S$ to the stage
+increment $\Delta\mathbf U$; @eq-ch09-framework-stage.
+**Data.** In: the stage primitives $\mathbf W$ and the temperature $T$, cell averages. Out: the stage increment, and,
+when the block carries passive scalars, the modules' dry-density increment `_forcing_dry`.
+**Placement.** Every RK stage, in `HydroImpl::forward`, after the flux divergence and before the gravity-work
+bookkeeping and the vertical implicit correction; modules in a fixed registration order.
+**Activation.** The presence of each key; no key, no module. Default: no forcing.
+**Guarantee / limits.** The sum does not depend on the module order, up to round-off; each module is first order in
+time within a stage.
+**Evidence.** `test_hydro_options.release`, `test_forcing.release`, `test_yaml_keys.release` and
+`framework_check.py` `[C1]`–`[C3]`; the ctests were not run at the pin.
 :::
 
 snapy treats every source term other than the flux divergence as a *forcing*: a module that reads the

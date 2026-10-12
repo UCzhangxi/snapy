@@ -15,12 +15,17 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Multiplies the kinematic `nu_iso` and/or `kappa_iso` by a positive profile in $x_1$, and takes
-the $x_1$ face coefficient as the mean of the two cells' products.
-**Switch.** YAML `forcing/diffusion/nu_scale_x1: {x1: [...], scale: [...]}` and `kappa_scale_x1`; Python
+**Purpose.** Multiplies the kinematic `nu_iso` and/or `kappa_iso` by a positive profile in $x_1$, and takes the
+$x_1$ face coefficient as the mean of the two cells' products; @eq-ch09-x1profile-mp.
+**Data.** In: a table of knots in $x_1$, or one value per $x_1$ cell centre of a block. Out: the face coefficients
+of @sec-ch09-viscosity.
+**Placement.** Built once with the block; read by the diffusion module every stage.
+**Activation.** YAML `forcing/diffusion/nu_scale_x1: {x1: [...], scale: [...]}` and `kappa_scale_x1`; Python
 `nu_scale_x1` / `kappa_scale_x1` (per cell) or `..._table`. Default: no profile. Refused with `dynamic: true`.
-**Order.** Second order in the face flux; exact for a coefficient that is constant in $x_1$.
-**Defining equation.** @eq-ch09-x1profile-mp.
+**Guarantee / limits.** Zero tendency for a constant product; second-order face flux; a per-cell profile is refused
+when $x_1$ is split; a profile changed after construction is refused.
+**Evidence.** `test_diffusion_x1_scale.release`, `test_diffusion_x1_scale_python` and `x1profile_check.py`
+`[C1]`–`[C5]`; the ctests were not run at the pin.
 :::
 
 Convection decks often want a dynamic viscosity or conductivity that is constant in height over a strongly
@@ -70,8 +75,7 @@ $c^{\mathrm{MP}}$ gives $|\dot E|<10^{-12}F_0/h$ at $n_1$ = 16 to 128, and $c^{\
 (`[C2]`).
 
 *A smooth product.* $c^{\mathrm{MP}}$ is the trapezoidal average of $c$ across the face and differs from
-$c(x_{1,i-1/2})$ by $O(h^2)$; $c^{\mathrm{PM}}$ differs from it by $\tfrac14\varsigma'q'h^2$, with the prime the
-$x_1$ derivative. Both give a second-order face flux (`[C3]`: orders 1.98 and 1.98 from $n_1$ = 128 to 256). The
+$c(x_{1,i-1/2})$ by $O(h^2)$; $c^{\mathrm{PM}}$ differs from it by $\tfrac14\,\partial_1\varsigma\,\partial_1q\,h^2$. Both give a second-order face flux (`[C3]`: orders 1.98 and 1.98 from $n_1$ = 128 to 256). The
 two forms differ only where a balance should be exact.
 
 *$x_2$ and $x_3$ faces.* Both cells of such a face share one $x_1$, so the two cells' $\varsigma$ are equal and the

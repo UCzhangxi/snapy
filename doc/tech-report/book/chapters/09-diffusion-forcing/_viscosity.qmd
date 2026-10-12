@@ -10,15 +10,18 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Adds the Newtonian viscous stress, its work, and a Fourier heat flux as face fluxes whose
-divergence enters the stage increment.
-**Switch.** `forcing/diffusion: {nu_iso, kappa_iso, dynamic, nu_scale_x1, kappa_scale_x1}`; defaults 0, 0,
-`false`, none, none. Off unless the key is present; it acts only through a positive coefficient.
-**Requires.** A `cartesian` grid; $n_{\mathrm{ghost}}\ge2$ for viscosity; an equation of state with a positive
-reference $c_v$ for conduction.
-**Order.** Second order in space in the interior; first order in the kernel of the wall normal stress; explicit,
-with a parabolic time-step bound.
-**Defining equation.** @eq-ch09-viscosity-flux.
+**Purpose.** Adds the Newtonian viscous stress, its work, and a Fourier heat flux as face fluxes whose divergence
+enters the stage increment; @eq-ch09-viscosity-flux.
+**Data.** In: the cell-centre velocity, temperature, density and $c_v$. Out: the momentum and energy rows of the
+increment, as $-\Delta t$ times the divergence of the face fluxes.
+**Placement.** Every RK stage, third in the forcing loop; its time-step bound joins the hyperbolic one.
+**Activation.** `forcing/diffusion: {nu_iso, kappa_iso, dynamic, nu_scale_x1, kappa_scale_x1}`; defaults 0, 0,
+`false`, none, none. Acts only through a positive coefficient. Requires a `cartesian` grid,
+$n_{\mathrm{ghost}}\ge2$ for viscosity, and a positive reference $c_v$ for conduction.
+**Guarantee / limits.** Momentum and total energy conserved; second order in the interior, first order in the wall
+normal-stress kernel; conduction acts on $T$, not on the potential temperature.
+**Evidence.** `test_diffusion.release`, `test_diffusion_moist.release` and `viscosity_check.py` `[C1]`–`[C8]`; the
+ctests were not run at the pin.
 :::
 
 The diffusion module is snapy's only closure for sub-grid momentum and heat transport: constant isotropic
@@ -30,7 +33,7 @@ $\kappa$ but in $\mathrm{W\,m^{-1}\,K^{-1}}$ (NOTATION.md §8), and no density e
 temperature, not on the potential temperature, so a resting adiabatic column, which is neutrally stable, is heated
 in the interior and at the walls (Limits).
 
-The module adds its own time-step bound, $\Delta t\le h_{\min}^2/(2n_{\mathrm{dim}}K)$, which the solver takes
+The module adds its own time-step bound, $\Delta t\le \Delta x_{\min}^2/(2n_{\mathrm{dim}}K)$, with $\Delta x_{\min}$ the smallest cell width over the active directions, which the solver takes
 together with the hyperbolic bound before the Courant factor is applied (@sec-ch07-cfl). The YAML parser refuses
 the keys `K` and `type`.
 
@@ -67,8 +70,8 @@ On the face $i-\tfrac12$ normal to $x_1$, between cells $i-1$ and $i$, the code 
 
 $$
 \begin{aligned}
-\partial_1q\big|_{i-1/2} &= \frac{q_i-q_{i-1}}{h_1}, \\
-\partial_bq\big|_{i-1/2} &= \tfrac12\Big[\frac{q_{i,j+1}-q_{i,j-1}}{2h_b} + \frac{q_{i-1,j+1}-q_{i-1,j-1}}{2h_b}\Big], \\
+\partial_1q\big|_{i-1/2} &= \frac{q_i-q_{i-1}}{\Delta x_1}, \\
+\partial_bq\big|_{i-1/2} &= \tfrac12\Big[\frac{q_{i,j+1}-q_{i,j-1}}{2\Delta x_b} + \frac{q_{i-1,j+1}-q_{i-1,j-1}}{2\Delta x_b}\Big], \\
 \overline{q}_{i-1/2} &= \tfrac12(q_{i-1}+q_i) ,
 \end{aligned}
 $$ {#eq-ch09-viscosity-stencil}
@@ -107,7 +110,7 @@ Forward Euler on the $n_{\mathrm{dim}}$-dimensional three-point Laplacian with c
 checkerboard mode by $G = 1 - 4n_{\mathrm{dim}}K\Delta t/h^2$, so $|G|\le1$ requires
 
 $$
-\Delta t \le \frac{h_{\min}^2}{2n_{\mathrm{dim}}K},
+\Delta t \le \frac{\Delta x_{\min}^2}{2n_{\mathrm{dim}}K},
 $$ {#eq-ch09-viscosity-dt}
 
 with $K=\max(\nu\varsigma_{\max}^{\nu},\kappa\varsigma_{\max}^{\kappa})$ in the default form ($\varsigma_{\max}$ the
@@ -121,7 +124,7 @@ so the diffusive step runs at `cfl` times its limit.
 
 #### What `kappa_iso` diffuses
 
-The energy row receives $\nabla\cdot(\kappa\rho c_v\nabla T)$. At fixed density the internal energy is $\rho c_vT$,
+The energy row receives $\nabla\cdot(\kappa\rho c_v\nabla T)$. At fixed density the internal energy density is $\rho c_vT$,
 so $\partial_tT = \kappa\nabla^2T$: `kappa_iso` is the thermal diffusivity of $T$. At fixed pressure the heat goes
 into enthalpy, $\rho c_p\partial_tT = \kappa\rho c_v\nabla^2T$, and $T$ diffuses at $\kappa/\gamma$, 0.714286 of
 $\kappa$ for $\gamma=1.4$ (`[C7]`). A run sits between the two, depending on how fast the pressure adjusts.

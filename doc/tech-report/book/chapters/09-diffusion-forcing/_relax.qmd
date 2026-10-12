@@ -13,13 +13,19 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Nudges the first interior cell row above the physical lower $x_1$ boundary toward a target
-temperature, velocity, or composition with a time scale $\tau$.
-**Switch.** `relax-bot-temp: {tau, btemp, at-face}` (`btemp` required, `at-face` default `false`);
+**Purpose.** Nudges the first interior cell row above the physical lower $x_1$ boundary toward a target
+temperature, velocity, or composition with a time scale $\tau$; @eq-ch09-relax-temp, @eq-ch09-relax-velo and
+@eq-ch09-relax-comp.
+**Data.** In: the bottom row's state and, for `at-face`, the row above it. Out: the energy, momentum or species and
+dry rows of the bottom row.
+**Placement.** Every RK stage, in the forcing loop, only on the block that owns the physical lower $x_1$ boundary.
+**Activation.** `relax-bot-temp: {tau, btemp, at-face}` (`btemp` required, `at-face` default `false`);
 `relax-bot-velo: {tau, bvx, bvy, bvz}` (targets default 0); `relax-bot-comp: {tau, species, xfrac}`
 ($\sum$`xfrac` $\le1$). $\tau>0$ [$\mathrm{s}$] for all three. Each off unless its key is present.
-**Order.** Explicit relaxation, first order in time per stage; the at-face target is exact for a linear $T$.
-**Defining equation.** @eq-ch09-relax-temp, @eq-ch09-relax-velo and @eq-ch09-relax-comp.
+**Guarantee / limits.** First order in time; the at-face target is exact for a linear $T$; `relax-bot-comp` keeps
+the total density.
+**Evidence.** `test_forcing.release`, `test_tracer_dry_convention_python` and `relax_check.py` `[C1]`–`[C4]`; the
+ctests were not run at the pin.
 :::
 
 The three modules stand in for a surface layer that the grid does not resolve. Each acts only in the bottom row of
@@ -30,7 +36,7 @@ the face. `relax-bot-velo` adds a momentum drag toward the target velocity, lowe
 cubed sphere. `relax-bot-comp` exchanges mass between dry air and the named species at fixed density and
 temperature, with the internal-energy change computed by kintera.
 
-`relax-bot-velo` leaves the total energy $E$ untouched, so the kinetic energy it removes becomes internal energy, as
+`relax-bot-velo` leaves the total energy $E$ untouched, so the kinetic energy it removes becomes internal energy density, as
 for the sponges (@sec-ch09-sponge).
 
 ### Derivation
@@ -73,7 +79,7 @@ $$
 $$ {#eq-ch09-relax-velo}
 
 where $g_{ab}$ lowers the index; it is the identity on orthogonal grids and on the cubed sphere has
-$g_{23}=\cos\theta_{jk}$. The force is lowered with `coord_vec_lower_` in `RelaxBotVeloImpl::forward`
+$g_{23}=\cos\psi$, the cosine of the angle between the panel axes (`cosine_cell_kj`, @sec-ch03-gnomonic). The force is lowered with `coord_vec_lower_` in `RelaxBotVeloImpl::forward`
 ({{< code src/forcing/relax_bot_velo.cpp RelaxBotVeloImpl::forward >}}), whose kernel is `coord_vec_lower_impl`
 ({{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The argument for lowering is the one of
 @sec-ch09-sponge: the stored momenta are covariant, and an unlowered force rotates the wind instead of braking it.
