@@ -51,7 +51,8 @@ make_fig()
 Each rank sets its six flags in `local_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}}). They are reduced with
 MAX and packed into the mask by `reduce_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}}). `apply_redo` prints the
 cause list and the two terminal messages ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}). A Mesh with several local blocks
-ORs their flags first, through `local_redo_flags` ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). `finalize` writes the final
+ORs their flags first: each block's six flags stay on the device (`local_redo_flag_tensor`), and the blocks on a
+common device are combined and read back in one copy ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). `finalize` writes the final
 output, prints the stop reason with the final `time`, `cycle`, `tlim` and `nlim`, and returns the status
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}). The example driver returns that status from `main` as `status`, so a shell
 or a test harness sees it as the exit code ({{< code examples/run_hydro.cpp main >}}).
@@ -63,7 +64,7 @@ or a test harness sees it as the exit code ({{< code examples/run_hydro.cpp main
 | local flags | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}} | `local_redo_flags` | |
 | mask | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}} | `reduce_redo_flags` | |
 | cause list, terminal messages | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `apply_redo` | `max_redo` |
-| Mesh flags | {{< code src/mesh/mesh.cpp MeshImpl::check_redo >}} | `local_redo_flags` | |
+| Mesh flags | {{< code src/mesh/mesh.cpp MeshImpl::check_redo >}} | `local_redo_flag_tensor` | |
 | stop reason and status | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}} | `finalize` | `tlim`, `nlim` |
 
 : Code map of the redo causes and termination status. {#tbl-ch13-redo-view-code}

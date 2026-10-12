@@ -29,10 +29,12 @@ None: the switches select schemes whose derivations are in the chapters listed i
 
 The five numerics switches go through `get_env` ({{< code src/layout/layout.hpp get_env >}}), which returns the default only when the
 variable is absent. Each accessor lower-cases the value, compares it with `0`, `false`, `off` and `no`, and keeps
-the result in a function-local static, so the first call fixes the choice for every block of the process. For the
-four switches that default to off, an empty value is also off; for `SNAP_GRAVITY_WORK_RADIAL_EXACT` an empty value
-is on, and the switch acts only where `radial_exact_work` ({{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}}) finds face gravity work on a Cartesian
-or spherical-polar grid. `SNAP_WB_REF4` is also on whenever `SNAP_X1_CENTROID_EXACT` is, through
+the result in a function-local static, so the first call fixes the choice for every block of the process. Three
+switches default to off (`SNAP_X1_CENTROID_EXACT`, `SNAP_WB_REF4`, `SNAP_X1_MASS_COVARIANCE`), and for them an empty
+value is also off. Two default to on: `SNAP_FLUX_COVARIANCE`, which an empty value turns off, and
+`SNAP_GRAVITY_WORK_RADIAL_EXACT`, which an empty value leaves on; the latter acts only where `radial_exact_work`
+({{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}}) finds face gravity work on a grid with an $x_1$ measure,
+Cartesian, spherical-polar or gnomonic-equiangle. `SNAP_WB_REF4` is also on whenever `SNAP_X1_CENTROID_EXACT` is, through
 `x1_centroid_exact_enabled` ({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}).
 
 The launch variables are read each time layout options are constructed, and again for `BACKEND` and `DEVICE` when
@@ -46,7 +48,7 @@ unset and only in a build with UCX; they are listed because they change the proc
 |------------------|--------------------|----------------|--------------------------|--------------|
 | `SNAP_X1_CENTROID_EXACT` | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | off (`"0"`) | spherical-polar $r^2$-average $x_1$ cell-to-plain-mean formulas; turns `SNAP_WB_REF4` on as well | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11; full: @sec-ch12-centroid |
 | `SNAP_WB_REF4` | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | off (`"0"`) | fourth-order, cell/face-consistent $x_1$ well-balanced reference | @sec-ch03, @sec-ch05, @sec-ch06, @sec-ch10, @sec-ch11, @sec-ch15; full: @sec-ch12-wb-reference |
-| `SNAP_FLUX_COVARIANCE` | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | on (`"1"`) since chengcli/snapy#307 (off, `"0"`, before), `get_env` {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | lateral ($x_2$, $x_3$) face-flux covariance and centroid terms | @sec-ch01, @sec-ch03, @sec-ch04, @sec-ch05, @sec-ch06; full: @sec-ch12-flux-covariance |
+| `SNAP_FLUX_COVARIANCE` | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | on (`"1"`) | lateral ($x_2$, $x_3$) face-flux covariance and centroid terms | @sec-ch01, @sec-ch03, @sec-ch04, @sec-ch05, @sec-ch06; full: @sec-ch12-flux-covariance |
 | `SNAP_X1_MASS_COVARIANCE` | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | off (`"0"`) | $x_1$ mass-flux covariance (radial velocity mean correction) | @sec-ch04, @sec-ch05, @sec-ch06, @sec-ch11; full: @sec-ch12-mass-covariance |
 | `SNAP_GRAVITY_WORK_RADIAL_EXACT` | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}} | on (`"1"`) | corrected potential-energy face gravity work; acts only with `gravity-work: face`, nonzero `grav1`, Cartesian or spherical-polar | @sec-ch03, @sec-ch05, @sec-ch06; full: @sec-ch12-radial-exact |
 
