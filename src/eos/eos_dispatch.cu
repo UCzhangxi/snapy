@@ -54,8 +54,11 @@ int call_fix_vapor_cuda(at::TensorIterator& iter, bool count) {
 
   // count failures on the device (a host int captured by value never reported)
   // only when the caller reads them: the read synchronises the device
-  auto nerr = count ? at::zeros({1}, at::TensorOptions().dtype(at::kInt).device(iter.device()))
-                    : at::Tensor();
+  // SNAP_DEVICE_FIX_VAPOR: count into the running device total, no read here
+  bool deferred = count && snap::device_fix_vapor();
+  auto nerr = deferred ? snap::fix_vapor_failures(iter.device())
+              : count  ? at::zeros({1}, at::TensorOptions().dtype(at::kInt).device(iter.device()))
+                       : at::Tensor();
   int* nerr_ptr = count ? nerr.data_ptr<int>() : nullptr;
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_fix_vapor_cuda", [&] {
@@ -71,7 +74,7 @@ int call_fix_vapor_cuda(at::TensorIterator& iter, bool count) {
         });
   });
 
-  return count ? nerr.item<int>() : 0;
+  return count && !deferred ? nerr.item<int>() : 0;
 }
 
 }  // namespace snap

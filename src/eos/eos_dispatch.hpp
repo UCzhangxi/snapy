@@ -14,3 +14,17 @@ DECLARE_DISPATCH(ideal_gas_fn, ideal_gas_cons2prim);
 DECLARE_DISPATCH(fix_vapor_fn, call_fix_vapor);
 
 }  // namespace at::native
+
+namespace snap {
+
+//! SNAP_DEVICE_FIX_VAPOR=1 (perf study, default off): on CUDA the vapor
+//! repair's failure count is not read back after every call (one host sync
+//! per conserved-limiter call with species); it accumulates in
+//! fix_vapor_failures() and MeshBlock::check_redo reads it with its one
+//! device-to-host copy, raising the same error there
+bool device_fix_vapor();
+
+//! running failure count of the vapor repair on `device` (0-d int32)
+at::Tensor& fix_vapor_failures(c10::Device device);
+
+}  // namespace snap

@@ -1,3 +1,7 @@
+#include <cstdlib>
+#include <string>
+#include <mutex>
+#include <map>
 // C/C++
 #include <atomic>
 
@@ -98,6 +102,25 @@ int call_fix_vapor_cpu(at::TensorIterator& iter, bool /*count*/) {
   });
 
   return all_err.load();
+}
+
+bool device_fix_vapor() {
+  static bool const on = [] {
+    char const* v = std::getenv("SNAP_DEVICE_FIX_VAPOR");
+    std::string s = v ? v : "0";
+    return s == "1" || s == "true" || s == "on" || s == "yes";
+  }();
+  return on;
+}
+
+at::Tensor& fix_vapor_failures(c10::Device device) {
+  static std::mutex m;
+  static std::map<std::string, at::Tensor> counts;
+  std::lock_guard<std::mutex> lock(m);
+  auto& t = counts[device.str()];
+  if (!t.defined())
+    t = at::zeros({}, at::TensorOptions().dtype(at::kInt).device(device));
+  return t;
 }
 
 }  // namespace snap

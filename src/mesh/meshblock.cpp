@@ -10,6 +10,7 @@
 
 // snap
 #include <snap/coord/coord_utils.hpp>
+#include <snap/eos/eos_dispatch.hpp>
 #include <snap/hydro/flux_positivity.hpp>
 #include <snap/hydro/gravity_work_radial.hpp>
 #include <snap/input/read_restart_file.hpp>
@@ -1342,13 +1343,27 @@ torch::Tensor MeshBlockImpl::local_redo_flag_tensor(Variables const &vars) {
   if (phydro->picorr && phydro->picorr->solve_failed_tensor().defined())
     solve_flag = torch::maximum(
         solve_flag, phydro->picorr->solve_failed_tensor().to(opts));
-  return torch::stack({floor.to(opts), clamp, marks[0], marks[1], sat,
-                       solve_flag});
+  std::vector<torch::Tensor> flags = {floor.to(opts), clamp,    marks[0],
+                                      marks[1],       sat,      solve_flag};
+  // SNAP_DEVICE_FIX_VAPOR: the vapor repair's deferred failures, a 7th entry
+  // that read_redo_flags turns into the limiter's error
+  if (snap::device_fix_vapor() && hydro_u.is_cuda()) {
+    auto& nfv = snap::fix_vapor_failures(hydro_u.device());
+    flags.push_back((nfv > 0).to(opts));
+    auto out = torch::stack(flags);
+    nfv.zero_();  // after the stack has read it, in stream order
+    return out;
+  }
+  return torch::stack(flags);
 }
 
 std::array<bool, 6> MeshBlockImpl::read_redo_flags(torch::Tensor const &flags) {
   auto c = flags.to(torch::kCPU);  // the one device-to-host read
   auto a = c.accessor<double, 1>();
+  TORCH_CHECK(c.size(0) <= 6 || !(a[6] > 0.),
+              "[EquationOfState] apply_conserved_limiter_: "
+              "Failed to fix vapor mass fractions (counted on the device under "
+              "SNAP_DEVICE_FIX_VAPOR, reported at check_redo).");
   std::array<bool, 6> out;
   for (size_t i = 0; i < out.size(); ++i) out[i] = a[i] > 0.;
   return out;
