@@ -1,9 +1,9 @@
 ## $r^2$-exact $x_1$ maps on spherical-polar grids (`SNAP_X1_CENTROID_EXACT`) {#sec-ch05-x1cent}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 5.8; src/coord/x1_centroid.cpp; src/coord/spherical_polar.cpp; src/hydro/hydro_forward.cpp;
-         src/hydro/hydro.cpp; docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0 §§1-5, 7;
+         src/hydro/hydro.cpp; docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §§1-5, 7;
          sources/study__next-1overR_README.md §§0-3
 status: draft
 -->
@@ -31,14 +31,17 @@ reference on plain means is then the Cartesian one, and the switch implies `SNAP
 On Cartesian blocks the switch only implies `SNAP_WB_REF4`; on cubed-sphere blocks it does nothing (their $x_{1v}$ is
 the mid-radius). `balance_column` balances only a column declared Cartesian under it.
 
-*Aliases.* #289 legs (i)-(iii) in comments; "the centroid switch".
+*Aliases.* "the centroid switch"; legs (i)-(iii) in code comments.[^ch05-x1c-alias]
+
+[^ch05-x1c-alias]: The legs are those of chengcli/snapy#289.
 
 ### Derivation
 
 Units: $r$ and $h$ [m]; $A_{i\pm1/2}=r_{i\pm1/2}^2$ and $V_i=(r_{i+1/2}^3-r_{i-1/2}^3)/3$ are per unit solid angle, as the
 code forms them. $\langle q\rangle_i=V_i^{-1}\int r^2q\,\mathrm{d}r$ is the $r^2$ mean, $\overline q_i=h_i^{-1}\int q\,\mathrm{d}r$ the plain
-mean, and $x=(r-\overline r_i)/h_i$ the local coordinate. Re-written from
-`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §§1-5.
+mean, and $x=(r-\overline r_i)/h_i$ the local coordinate. Re-written from the derivation note.[^ch05-x1c-note]
+
+[^ch05-x1c-note]: `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §§1-5.
 
 #### The defect
 
@@ -174,17 +177,20 @@ a non-Cartesian geometry under it. A block too thin for the stencils (`usable` f
 | 1000 | 0 | 1 | $6.510\times10^{-10}$ / $6.984\times10^{-10}$ | $2.421\times10^{-14}$ / $3.261\times10^{-14}$ |
 | 1000 | 1 | 0 | $1.403\times10^{-12}$ / $1.022\times10^{-11}$ | $8.888\times10^{-15}$ / $8.469\times10^{-15}$ |
 
-: Rest force $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)$ after one RK3 step, five of the eight cases the test prints.
-Evidence: sha `e894700ff7aee30b52882e5202b16461413780b0`; deck `tests/test_x1_centroid_rest.py`; run `python
-tests/test_x1_centroid_rest.py` against the pin's build, 2026-10-10, CPU, double, 1 rank. {#tbl-ch05-x1cent-rest}
+: Rest force $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)$ after one RK3 step, five of the eight cases the test prints,
+from an earlier run; not measured at the pin. {#tbl-ch05-x1cent-rest}
 
 ::: {.callout-important title="Test"}
-**Evidence.** @tbl-ch05-x1cent-rest: with the switch the rest force is at round-off in every case; without it the
-$r_0/H=5$ column feels $2.4\times10^{-5}$. The seam arm prints a split-against-one-block gap of 0 in both modes, and
-the 2-rank arm 0 against both two blocks and one block [same sha; decks the test files; run `ctest -V`, 2026-10-10,
-CPU, double, 1 and 2 ranks].
+**Evidence.** Check numbers come from `wbref_check.py` (`[C16]`–`[C18]`). The tests were not run at the pin
+(**pending: a pinned ctest run**). In the earlier run of @tbl-ch05-x1cent-rest the rest force with the switch is at
+round-off in every case and without it the $r_0/H=5$ column feels $2.4\times10^{-5}$.[^ch05-x1c-run]
 **Coverage.** CPU; the CUDA twins were not run (**pending: a CUDA run at the pin**).
 :::
+
+[^ch05-x1c-run]: `python tests/test_x1_centroid_rest.py` and `ctest -V` against a build of snapy@e894700ff7aee30b52882e5202b16461413780b0,
+    2026-10-10, CPU, double, 1 and 2 ranks. The seam arm printed a split-against-one-block gap of 0 in both modes, and
+    the 2-rank arm 0 against both two blocks and one block. The force is zero at rest, so the default-on flux
+    covariance of the pin does not enter these numbers; the run is still not repeated at the pin.
 
 ### Limits
 
@@ -197,7 +203,9 @@ The switch does nothing on cubed-sphere grids. Under it `balance_column` balance
    is @sec-ch05-oneoverr.
 2. **Cubed sphere.** Not implemented: the gnomonic grids store the mid-radius as $x_{1v}$ and would need the
    conversion with their own radial measure.
-3. **Note history.** The copy of the derivation in `sources/deriv__x1-centroid-spherical.md` predates the seam
-   exchange and says the switch leaves the reference unchanged; at the pin it implies `SNAP_WB_REF4` and seam ghosts
-   are exchanged.
+3. **The source copy differs from the code.** The copy of the derivation in the report's sources says the switch
+   leaves the reference unchanged;[^ch05-x1c-copy] at the pin it implies `SNAP_WB_REF4` and seam ghosts are
+   exchanged.
+
+[^ch05-x1c-copy]: `sources/deriv__x1-centroid-spherical.md`.
 4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

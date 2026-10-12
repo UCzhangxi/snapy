@@ -1,9 +1,9 @@
 ## Hydrostatic reference kernel: face-pressure scan, cell pressure and density reference (with the WB path) {#sec-ch05-refkernel}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 5.2; src/hydro/hydro_ref_x1_impl.h; src/hydro/hydro.cpp; src/hydro/hydro_dispatch.cpp;
-         src/hydro/hydro_dispatch.cu; docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0 §§1, 2, 6;
+         src/hydro/hydro_dispatch.cu; docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §§1, 2, 6;
          sources/canoe__tall_column_instability_TECH_REPORT.md §§3d, 4-5
 status: draft
 -->
@@ -32,8 +32,9 @@ The kernel has a C++ implementation shared by the CPU and CUDA paths and a tenso
 closure of the smoothed ratio and of the six-face rows is @sec-ch05-wallclamp; the anchor relay across $x_1$ seams
 is @sec-ch05-seam; the fourth-order replacement of the density reference is @sec-ch05-wbref4.
 
-*Aliases.* "smooth5" (the five-point binomial) and "the base reference" in
-`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1.
+*Aliases.* "smooth5" (the five-point binomial) and "the base reference" in the derivation note.[^ch05-ref-alias]
+
+[^ch05-ref-alias]: `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §1.
 
 ### Derivation
 
@@ -122,13 +123,14 @@ $\rho'/\overline\rho=p'/\overline p$ in every cell: the density perturbation car
 perturbation does not, and an entropy (buoyancy) anomaly is not reconstructed as a density perturbation at all. The
 binomial keeps the reference on the large scales of the column only. It has unit sum, zero first moment and second
 moment 1 in cells, and zero response at the grid scale (`[C3]`), so $r^{s}_i=r_i+\tfrac{\Delta x_1^2}{2}r''+O(\Delta
-x_1^4)$. This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smooth`; the measurements behind
-it are in `sources/canoe__tall_column_instability_TECH_REPORT.md` §§3d, 4-5.
+x_1^4)$. This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smooth`.[^ch05-ref-degen]
+
+[^ch05-ref-degen]: The measurements behind it are in `sources/canoe__tall_column_instability_TECH_REPORT.md` §§3d, 4-5.
 
 *Face-density offset.* What the solver uses is $\rho_{\mathrm{sf}}+\mathcal R[\overline\rho-\rho_{\mathrm{ref}}]
 =\mathcal R[\overline\rho]+\delta\rho_f$ with $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]$. Expanding
-the ratio of averages, the binomial bias, the two-cell mean and the cell pressure,
-`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §2 obtains
+the ratio of averages, the binomial bias, the two-cell mean and the cell pressure, the derivation note[^ch05-ref-off]
+obtains
 
 $$
 \delta\rho_f = \frac{\Delta x_1^2}{12}\big(p'R'+2pR''\big) + O(\Delta x_1^4),
@@ -137,6 +139,8 @@ $$ {#eq-ch05-refkernel-offset}
 with $R=\rho/p$ the point ratio and primes $x_1$ derivatives (this paragraph only). `[C14]` measures $\delta\rho_f$ at
 the middle face of a polytrope against fifth-order linear reconstruction and finds the ratio
 to @eq-ch05-refkernel-offset 1.0022, 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
+
+[^ch05-ref-off]: `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §2.
 
 *Exact and truncated.* Exact: the scan step, hence the rest balance. $O(\Delta x_1^6)$: the uniform cell pressure.
 $O(\Delta x_1^2)$: the log-mean on non-isothermal cells, the smoothed ratio and the face density reference.
@@ -212,14 +216,18 @@ the one-sided rows unusable (`fits` false), and the face mean is kept.
 : Tests of the reference kernel. {#tbl-ch05-refkernel-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** `test_hydro_ref_x1.release` (6 passed, `cuda_matches_cpu` skipped) and `test_hydro_options.release`
-(11 passed, the `_cuda` case skipped) pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the
-test files; run: `ctest -V`, Release build, 2026-10-10, CPU, double, 1 rank]. Check numbers: [sha: the formulas of
-snapy@e894700ff7aee30b52882e5202b16461413780b0, rebuilt from this section's equations; deck: the check itself; run:
-`python3 wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double].
+**Evidence.** Check numbers come from `wbref_check.py`, which rebuilds the reference from this section's equations,
+the kernels being the same at the pin; deck: the check itself.[^ch05-ref-chk] The ctest entries were not run at the
+pin (**pending: a pinned ctest run**).[^ch05-ref-run]
 **Coverage.** CPU in the run above; CUDA cases exist but were not run (**pending: a CUDA run at the pin**); the MPS
 path itself is compared only through its CPU execution; multi-rank through @sec-ch05-seam.
 :::
+
+[^ch05-ref-chk]: Run: `python3 src/snapy_report/ch05/wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double; output
+    `src/snapy_report/ch05/wbref_check.out`.
+
+[^ch05-ref-run]: `test_hydro_ref_x1.release` (6 passed, `cuda_matches_cpu` skipped) and `test_hydro_options.release`
+    (11 passed, the `_cuda` case skipped) passed in a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank; the kernels they exercise are unchanged at the pin.
 
 ### Limits
 
@@ -229,13 +237,16 @@ at rest to round-off only after `balance_column`.
 :::
 
 1. **Non-uniform grids.** The log-mean is a different operator from the six-face rows, not a lower-order version of
-   them, and the reconstruction weights are uniform-spacing on every grid. A stretched-grid rest residual of
-   $7.37\times10^{-4}$, the same for every density form, is reported in chengcli/snapy#250
-   (`sources/gh__ISSUE_THREADS_138-250.md`; measured before the pin, not re-run here); chengcli/snapy#280 tracks it.
-   chengcli/snapy#280 also states that the face interpolation uses fixed rationals on stretched grids; at the pin the
-   rationals are used only on a uniform block and the log-mean otherwise.
-2. **No positivity guard on $\rho/p$.** The ratio divides by the cell pressure without a guard (chengcli/snapy#250
-   §2). Not measured at the pin.
+   them, and the reconstruction weights are uniform-spacing on every grid. A stretched-grid rest residual is
+   reported, the same for every density form; it is not measured at the pin.[^ch05-ref-stretch] The face
+   interpolation uses the fixed rationals only on a uniform block and the log-mean otherwise.
+2. **No positivity guard on $\rho/p$.** The ratio divides by the cell pressure without a guard.[^ch05-ref-guard] Not
+   measured at the pin.
+
+[^ch05-ref-stretch]: $7.37\times10^{-4}$, reported in chengcli/snapy#250 (`sources/gh__ISSUE_THREADS_138-250.md`) on
+    code before the pin and tracked in chengcli/snapy#280.
+
+[^ch05-ref-guard]: Noted in chengcli/snapy#250 §2.
 3. **One classification per block.** A grid uniform over part of the column gives different operators to different
    blocks; `balance_column` must make the same choice (@sec-ch05-balcol).
 4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
