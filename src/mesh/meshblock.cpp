@@ -1113,6 +1113,55 @@ void print_cycle_diagnostics(
   auto print = [&](char const *name, double value) {
     SINFO() << std::scientific << std::setprecision(precision) << name << value;
   };
+  // SNAP_BATCH_PRINT=1 (perf study, default off): the same values, read with
+  // one device-to-host copy instead of one .item() each
+  static bool const batch = [] {
+    auto v = get_env("SNAP_BATCH_PRINT", "0");
+    return v == "1" || v == "true" || v == "on" || v == "yes";
+  }();
+  if (batch) {
+    std::vector<torch::Tensor> vals;
+    auto push = [&](torch::Tensor const &t) {
+      // a copy: mass below is a view that is added to after it is pushed
+      vals.push_back(t.reshape({1}).to(torch::kFloat64).clone());
+      return static_cast<int>(vals.size()) - 1;
+    };
+    auto mass = conserved[IDN];
+    int i_mass0 = push(mass);
+    int i_masst = -1;
+    if (conserved.size(0) > ICY) {
+      for (int n = ICY; n < conserved.size(0); ++n) mass += conserved[n];
+      i_masst = push(mass);
+    }
+    int i_ke = ke_sum.defined() ? push(ke_sum[0]) : -1;
+    int i_ie =
+        root->phydro->peos->nvar() > IPR ? push(conserved[IPR]) : -1;
+    int i_pe = pe_sum.defined() ? push(pe_sum[0]) : -1;
+    int i_m = push(meters[0]);
+    push(meters[1]);
+    push(meters[2]);
+    int i_th = push(theta_min[0]);
+    int i_vic = vic_max.defined() ? push(vic_max[0]) : -1;
+    int i_fix = root->phydro->gravity_work_fixer()
+                    ? push(root->phydro->gravity_work_fix()[0])
+                    : -1;
+    auto h = torch::cat(vals).cpu();
+    auto a = h.accessor<double, 1>();
+    print(" mass0=", a[i_mass0]);
+    if (i_masst >= 0) print(" masst=", a[i_masst]);
+    if (i_ke >= 0) print(" ke=", a[i_ke]);
+    if (i_ie >= 0) print(energy_label, a[i_ie]);
+    if (i_pe >= 0) print(" pe=", a[i_pe]);
+    SINFO() << " run-to-date:";
+    double total = a[i_m + 1];
+    if (total > 0.) print(" limcut=", a[i_m] / total);
+    print(" thetamin=", a[i_th]);
+    SINFO() << " thetasevere=" << static_cast<long long>(a[i_m + 2]);
+    if (i_vic >= 0) print(" vicclamp=", a[i_vic]);
+    if (i_fix >= 0) print(" fixgrav=", a[i_fix]);
+    SINFO() << std::endl;
+    return;
+  }
   auto mass = conserved[IDN];
   print(" mass0=", mass.item<double>());
   if (conserved.size(0) > ICY) {
