@@ -13,10 +13,16 @@ $f^{(a)}_{i\pm1/2}$ the $x_1$ face flux of the momentum component $m_a$ (`flux1[
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: the exact $r^2\sin\theta$ measures of a spherical-polar cell, volume centroids for the cell centres, and the
-curvature source terms of the momentum equations. **Switch**: YAML `geometry.type: spherical-polar`. **Default**:
-off. **Requires**: $x_2$ inside $[0,\pi]$. **Order**: the metric is exact; the source terms are second order.
-**Defining equation**: @eq-ch03-sphpolar-metric.
+**Purpose.** The exact $r^2\sin\theta$ measures of a spherical-polar cell (@eq-ch03-sphpolar-metric), volume
+centroids for the cell centres, and the curvature sources of the momentum equations.
+**Data.** In: global faces in $r$ [m], $\theta$, $\varphi$ [rad]. Out: areas [m$^2$], volumes [m$^3$], centres
+`x1v`, `x2v`, source coefficients.
+**Placement.** Metric at setup (`reset`); sources in every stage.
+**Activation.** YAML `geometry.type: spherical-polar`; off by default. Requires $x_2$ inside $[0,\pi]$.
+**Guarantee / limits.** Metric exact; source terms second order. Centres are volume centroids in $r$ and $\theta$,
+except that with a single $x_2$ cell `x2v` is the midpoint; $x_{3,k}$ is always the midpoint.
+**Evidence.** `test_coordinate`, `test_x1_centroid_rest_python`; checks `[C4]`, `[C5]`; the ctest entries were
+not run for this chapter at the pin (missing evidence).
 :::
 
 On a spherical-polar grid $(x_1, x_2, x_3) = (r, \theta, \varphi)$ every face area and volume is the exact integral of
@@ -85,18 +91,18 @@ $$ {#eq-ch03-sphpolar-src1}
 
 computed in `forward` as `src1` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}), which is subtracted from the divergence
 row of $m_1$. The approximation is the replacement of the cell average of a product by the product of cell values,
-an $O(h^2)$ error.
+an error of $O(\Delta x_a^2)$ in each direction $a$.
 
 When the Riemann solver returns the face pressures $p_{i\pm1/2}$ and they are inside the $m_1$ flux, the code
 replaces $2p_i\langle r^{-1}\rangle_{V_i}$ by
 
 $$
-S^{p}_i = \frac{A_{i+1/2}\,p_{i+1/2} - A_{i-1/2}\,p_{i-1/2}}{V_i} - \frac{p_{i+1/2} - p_{i-1/2}}{h_i}.
+S^{p}_i = \frac{A_{i+1/2}\,p_{i+1/2} - A_{i-1/2}\,p_{i-1/2}}{V_i} - \frac{p_{i+1/2} - p_{i-1/2}}{\Delta x_{1,i}}.
 $$ {#eq-ch03-sphpolar-facep}
 
 @eq-ch03-sphpolar-facep is the `pressure_gradient` branch ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}). Its
 first term cancels the pressure part of the flux divergence exactly, so the net pressure force on $m_1$ is
-$-(p_{i+1/2} - p_{i-1/2})/h_i$, the plain face difference. For a uniform $p$ it equals $p\,(A_{i+1/2} -
+$-(p_{i+1/2} - p_{i-1/2})/\Delta x_{1,i}$, the plain face difference. For a uniform $p$ it equals $p\,(A_{i+1/2} -
 A_{i-1/2})/V_i = 2p\,\langle r^{-1}\rangle_{V_i}$ by @eq-ch03-sphpolar-metric, so it agrees with
 @eq-ch03-sphpolar-src1 in that limit. Under `SNAP_X1_CENTROID_EXACT` the face difference is replaced by `x1_pressure_source`,
 the $r^2$-weighted moment of a quintic through six faces ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}); @sec-ch05 derives it.
@@ -113,7 +119,7 @@ $$
 \end{aligned}
 $$ {#eq-ch03-sphpolar-angmom}
 
-with $c_i = h_i/[(r_- + r_+)V_i]$. The identity follows from $1 \pm h_i/(r_-+r_+) = 2r_\pm/(r_-+r_+)$. The right side
+with $c_i = \Delta x_{1,i}/[(r_- + r_+)V_i]$. The identity follows from $1 \pm \Delta x_{1,i}/(r_-+r_+) = 2r_\pm/(r_-+r_+)$. The right side
 is a difference of face quantities divided by $x^{\mathrm{m}}_{1,i}V_i$, so $\sum_i x^{\mathrm{m}}_{1,i}V_i m_{2,i}$
 changes only through the domain-end faces: the $x_1$ fluxes conserve this discrete angular momentum. The same form is
 used for $m_3$, and for $m_3$ along $x_2$ with $\sin\theta$ in place of $r$. The code coefficient is `coord_src2_i`
@@ -122,7 +128,7 @@ used for $m_3$, and for $m_3$ along $x_2$ with $\sin\theta$ in place of $r$. The
 differs from @eq-ch03-sphpolar-angmom.
 
 What is exact: the measures, the centroids, the coefficient averages and the telescoping identity. What is truncated:
-the product averages in @eq-ch03-sphpolar-src1, at $O(h^2)$. The tests cited below check the measures, the centroids, the
+the product averages in @eq-ch03-sphpolar-src1, at $O(\Delta x_a^2)$ in each direction $a$. The tests cited below check the measures, the centroids, the
 coefficients and the face-pressure form in the code.
 
 ::: {.callout-important title="Check"}
@@ -205,7 +211,7 @@ The reference-formula case is `geometry_matches_athena_reference_formulas`
 `spherical_polar_radial_source_preserves_face_pressure_gradient` and
 `spherical_polar_radial_source_uses_face_pressure_in_x1_momentum` ({{< code tests/test_coordinate.cpp DeviceTest.spherical_polar_radial_source_uses_face_pressure_in_x1_momentum >}}, {{< code tests/test_coordinate.cpp DeviceTest.spherical_polar_radial_source_preserves_face_pressure_gradient >}}); the first
 sets the face pressure to the face radius and checks that the $m_1$ row equals
-$(p_{i+1/2}-p_{i-1/2})/h_i$, the second checks that two cell pressures give the same $m_1$ row once face pressures
+$(p_{i+1/2}-p_{i-1/2})/\Delta x_{1,i}$, the second checks that two cell pressures give the same $m_1$ row once face pressures
 are given. The face-pressure cases run on CPU and, through the `DeviceTest` parameter, on CUDA when it is built; the
 reference-formula case runs on CPU only. All are one block, one rank. No case checks the $m_2$ and $m_3$ source
 terms. They were not run for this chapter at the pin (missing evidence).

@@ -15,9 +15,9 @@ def make_fig():
     q = np.linspace(0.0, 1.6, 200)  # h / x^m, below the degenerate limit 2
     moment = 1.0 - q**2 / 12.0
     shift = (12.0 - q**2) / (12.0 + q**2)
-    ax.plot(q, moment, color=fs.GREEN, ls="-", label=r"$(\sigma^{\mathrm{A}})^2/(h^2/12)$")
-    ax.plot(q, shift, color=fs.BLUE, ls="--", label=r"$\delta^{\mathrm{A}}/(h^2/(12x^{\mathrm{m}}))$")
-    ax.set_xlabel(r"$h/x^{\mathrm{m}}$ [-]")
+    ax.plot(q, moment, color=fs.GREEN, ls="-", label=r"$\mathtt{face\_moment2\_x1}/(\Delta x_1^2/12)$")
+    ax.plot(q, shift, color=fs.BLUE, ls="--", label=r"$\mathtt{face\_centroid\_shift\_x1}/(\Delta x_1^2/(12x^{\mathrm{m}}))$")
+    ax.set_xlabel(r"$\Delta x_1/x^{\mathrm{m}}$ [-]")
     ax.set_ylabel("ratio [-]")
     ax.set_ylim(0.5, 1.05)
     ax.legend(loc="lower left", frameon=False)

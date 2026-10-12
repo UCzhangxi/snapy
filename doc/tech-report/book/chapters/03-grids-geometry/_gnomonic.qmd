@@ -7,17 +7,25 @@ status: draft
 -->
 
 Local symbols (flagged to the editor): $X = \tan\xi$, $Y = \tan\eta$ [-]; $C = \sqrt{1+X^2}$, $D = \sqrt{1+Y^2}$,
-$\delta = \sqrt{1+X^2+Y^2}$ [-]; $\psi$ the angle between the $\xi$ and $\eta$ coordinate lines on the sphere [rad]
-(the code calls its cosine `cosine_cell_kj`); $\hat{\mathbf u}$ the unit position vector on the sphere [-].
+$\delta = \sqrt{1+X^2+Y^2}$ [-]; $\psi$ the angle between the $\xi$ and $\eta$ coordinate lines on the sphere [rad],
+whose cosine is the named panel metric `cosine_cell_kj` at cell centres (`cosine_face2_kj`, `cosine_face3_kj` at
+$x_2$, $x_3$ faces) and whose sine is `sine_cell_kj` (`sine_face2_kj`, `sine_face3_kj`); $\cos\psi$ is a
+geometric quantity only, unrelated to any temperature; $\hat{\mathbf u}$ the unit position vector on the sphere [-].
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: the six-panel gnomonic equiangular grid $(r, \xi, \eta)$ with exact solid angles, exact volumes and
-great-circle widths, a non-orthogonal velocity frame, and the curvature sources. **Switch**: YAML
-`geometry.type: gnomonic-equiangle`, with `distribute.layout: cubed-sphere`. **Default**: off. **Requires**:
-`nx2 == nx3`, `interp_order: 2`. **Order**: exact measures; second-order sources. **Defining equation**:
-@eq-ch03-gnomonic-solidangle.
+**Purpose.** The six-panel gnomonic equiangular grid $(r, \xi, \eta)$: exact solid angles
+(@eq-ch03-gnomonic-solidangle), exact volumes and great-circle widths, a non-orthogonal velocity frame, curvature
+sources.
+**Data.** In: global faces in $r$ [m], $\xi$, $\eta$ [rad]. Out: solid angles [sr], areas [m$^2$], volumes
+[m$^3$], `cosine_cell_kj`, `sine_cell_kj` and their face values [-], source coefficients.
+**Placement.** Metric at setup (`reset`); sources and frame changes in every stage.
+**Activation.** YAML `geometry.type: gnomonic-equiangle` with `distribute.layout: cubed-sphere`; off by default.
+Requires `nx2 == nx3` and `interp_order: 2`.
+**Guarantee / limits.** Measures exact; source terms second order.
+**Evidence.** `test_coordinate`, `test_cubed_sphere_cell_volume_python`; checks `[C6]`, `[C7]`, `[C9]`; the ctest
+entries were not run for this chapter at the pin (missing evidence).
 :::
 
 Each panel of the cubed sphere covers $\xi, \eta \in [-\pi/4, \pi/4]$; a point of the panel is the unit vector
@@ -50,8 +58,8 @@ $$
 \cos\psi = -\frac{XY}{CD}, \qquad \sin\psi = \frac{\delta}{CD}.
 $$ {#eq-ch03-gnomonic-angle}
 
-@eq-ch03-gnomonic-angle is evaluated at cell centres and at $x_2$ and $x_3$ faces as `cosine_cell_kj` and
-`sine_cell_kj` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}). $\cos\psi$ vanishes on the centre lines $X = 0$ or
+@eq-ch03-gnomonic-angle is evaluated at cell centres as `cosine_cell_kj` and `sine_cell_kj`, and at $x_2$ and $x_3$ faces
+as `cosine_face2_kj`, `sine_face2_kj`, `cosine_face3_kj` and `sine_face3_kj` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}). $\cos\psi$ vanishes on the centre lines $X = 0$ or
 $Y = 0$ and is $-\tfrac12$ at the panel corners, where $X^2 = Y^2 = 1$.
 
 **Solid angle.** The area element of the unit sphere is
@@ -72,7 +80,7 @@ corner sums telescope to $4\arctan(1/\sqrt3) = 2\pi/3$, and six panels give $4\p
 $$
 \begin{aligned}
 A_{i\pm1/2} &= r_\pm^2\,\varpi_{jk}, \\
-V_i &= \tfrac13 h_i\left(r_+^2 + r_+r_- + r_-^2\right)\varpi_{jk} = \tfrac13\left(r_+^3 - r_-^3\right)\varpi_{jk},
+V_i &= \tfrac13 \Delta x_{1,i}\left(r_+^2 + r_+r_- + r_-^2\right)\varpi_{jk} = \tfrac13\left(r_+^3 - r_-^3\right)\varpi_{jk},
 \end{aligned}
 $$ {#eq-ch03-gnomonic-volume}
 
@@ -112,7 +120,7 @@ metric terms; they are stated from the code and are not re-derived in this draft
 equation the face-pressure form of @sec-ch03-sphpolar is used whenever face pressures exist.
 
 What is exact: @eq-ch03-gnomonic-angle to @eq-ch03-gnomonic-lower and the uniform-pressure balance. What is
-truncated: the products of cell values in the velocity source terms, at $O(h^2)$.
+truncated: the products of cell values in the velocity source terms, at $O(\Delta x_a^2)$ in each direction $a$.
 
 ::: {.callout-important title="Check"}
 The angle, the solid angle, lowering and raising, and the uniform-pressure flux are checked against tolerances of
@@ -224,6 +232,6 @@ The radial centre `x1v` is the midpoint, so a cell value is not stored at the vo
 the
 curved-face corrections of @sec-ch04 rely on `x1v` times `dx1f` being $\tfrac12(r_+^2 - r_-^2)$. On a block with a
 single $x_1$ cell there are no face pressures and the radial pressure source is $2p/r$ at the midpoint, which differs
-from $\Delta_i[A]p/V_i = 2p\langle r^{-1}\rangle_{V_i}$ by the relative factor $1/(1 + h_i^2/(12(x^{\mathrm{m}}_{1,i})^2))$
+from $\Delta_i[A]p/V_i = 2p\langle r^{-1}\rangle_{V_i}$ by the relative factor $1/(1 + \Delta x_{1,i}^2/(12(x^{\mathrm{m}}_{1,i})^2))$
 (algebra from @eq-ch03-gnomonic-volume; not measured). The velocity source terms are not re-derived here. The switch
 combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.

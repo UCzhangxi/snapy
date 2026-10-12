@@ -12,11 +12,16 @@ global spherical frame at one ghost position [-].
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What**: says which variables each sync carries and how their velocities are treated across a cubed-sphere panel
-edge: conserved momenta are covariant (raised before the rotation, lowered after), primitive velocities are
-contravariant (rotated only), scalars are not rotated. **Switch**: `SyncOptions.type` (`kConserved`, `kPrimitive`,
-`kScalar`). **Default**: `kConserved`. **Requires**: nothing. **Order**: exact (a change of basis).
-**Defining equation**: @eq-ch03-synctype-matrix.
+**Purpose.** Say which variables each sync carries and how velocities cross a cubed-sphere panel edge: conserved
+momenta covariant (raised, rotated, lowered), primitive velocities contravariant (rotated), scalars not rotated
+(@eq-ch03-synctype-matrix).
+**Data.** In/out: ghost strips of conserved, primitive or scalar variables, in their own units; the per-ghost
+matrix [-].
+**Placement.** Every sync across a panel edge.
+**Activation.** `SyncOptions.type` (`kConserved`, `kPrimitive`, `kScalar`); default `kConserved`.
+**Guarantee / limits.** Exact up to round-off (a change of basis), away from a pole.
+**Evidence.** `test_coordinate`, `test_cubed_sphere_vertical_velocity_exchange_python`; check `[C14]`; the ctest
+entries were not run for this chapter at the pin (missing evidence).
 :::
 
 The stage update exchanges conserved variables, `hydro_u` and `scalar_s`, and rebuilds the scalar primitive from them
@@ -48,7 +53,7 @@ builds $\mathsf G$ from the gnomonic angle at four ghost positions and $\mathsf 
 forms both matrices of @eq-ch03-synctype-matrix: the round trip
 $\mathsf M^{\to\mathrm{panel}}\mathsf M^{\to\mathrm{sph}}$ departs from the identity by round-off only, for the
 conserved and for the primitive strip, which leaves $\mathsf G$ out, within the check's threshold, and
-$\det\mathsf G - \sin^2\psi$ is exactly zero, so $\mathsf G$ is invertible away from a pole (`[C14]`).[^st-c14]
+$\det\mathsf G - \sin^2\psi$ (with $\sin\psi$ the panel metric `sine_cell_kj` of @sec-ch03-gnomonic) is exactly zero, so $\mathsf G$ is invertible away from a pole (`[C14]`).[^st-c14]
 
 [^st-c14]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
     line `[C14]`; a numpy port of `cs_velocity_transform_matrix` at the pin, CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0. The two round-trip deviations
