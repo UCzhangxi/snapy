@@ -9,13 +9,17 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Adds the Coriolis force $-2\boldsymbol\Omega\times\rho\mathbf v$ to the momentum.
-**Switch.** `forcing/coriolis: {type, omega1, omega2, omega3, traditional}`; defaults `xyz`, 0, 0, 0, `false`.
+**Purpose.** Adds the Coriolis force $-2\boldsymbol\Omega\times\rho\mathbf v$ to the momentum;
+@eq-ch09-coriolis-force.
+**Data.** In: the cell-centre density and velocity and $\boldsymbol\Omega$, given in the cell frame (`123`) or as
+a Cartesian vector projected onto the cell frame (`xyz`). Out: the three momentum rows; the energy row is not touched.
+**Placement.** Every RK stage, second in the forcing loop (@sec-ch09-framework).
+**Activation.** `forcing/coriolis: {type, omega1, omega2, omega3, traditional}`; defaults `xyz`, 0, 0, 0, `false`.
 Off unless the key is present.
-**Forms.** `123`: $\boldsymbol\Omega$ given in the cell's coordinate frame. `xyz`: a Cartesian rotation vector,
-projected onto the cell's frame (Cartesian, cylindrical, spherical-polar, gnomonic cubed sphere).
-**Order.** Exact pointwise; explicit, first order in time per stage.
-**Defining equation.** @eq-ch09-coriolis-force.
+**Guarantee / limits.** Exact pointwise for the cell-centre state; no work on an orthogonal frame; `123` with
+$n_3 = 1$ drops the $x_3$ row; `traditional` acts only on the cubed sphere.
+**Evidence.** `test_forcing.release` (cubed sphere, $10^{-12}$) and `coriolis_check.py` `[C1]`–`[C5]`; the ctests
+were not run at the pin.
 :::
 
 The module adds the Coriolis force evaluated at the cell centre from the stage-entry density and velocity. With

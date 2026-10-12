@@ -14,18 +14,23 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Damps all three velocity components toward zero in a layer of given width at the top or bottom of
-the domain, with a $\sin^2$ ramp.
-**Switch.** `top-sponge-lyr: {tau, width}`, `bot-sponge-lyr: {tau, width}`, both $>0$ [$\mathrm{s}$, $\mathrm{m}$].
-Off unless the key is present.
-**Order.** Explicit relaxation, first order in time per stage.
-**Defining equation.** @eq-ch09-sponge-drag.
+**Purpose.** Damps all three velocity components toward zero in a layer of given width at the top or bottom of the
+domain, with a $\sin^2$ ramp; @eq-ch09-sponge-drag.
+**Data.** In: the cell density and velocity and the lower-face position of each cell. Out: the three momentum rows,
+lowered to covariant components on the cubed sphere; the energy row is not touched.
+**Placement.** Every RK stage, in the forcing loop, only on the block that owns the physical boundary.
+**Activation.** `top-sponge-lyr: {tau, width}`, `bot-sponge-lyr: {tau, width}`, both $>0$ [$\mathrm{s}$,
+$\mathrm{m}$]. Off unless the key is present.
+**Guarantee / limits.** First order in time; the removed kinetic energy becomes internal energy density; a `width`
+taller than the boundary block is cut off at its other face.
+**Evidence.** `test_forcing.release` (drag direction on the cubed sphere, $10^{-12}$) and `sponge_check.py`
+`[C1]`–`[C4]`; no test of the drag magnitude; the ctests were not run at the pin.
 :::
 
 A sponge layer absorbs waves that would otherwise reflect from the top or bottom boundary. snapy's sponges are a
 Rayleigh drag $-\rho\mathbf v/\tau$ multiplied by a profile that is 1 at the boundary and falls to 0 at `width`
 away from it as $\sin^2$. The drag acts on the momentum only; the total energy is untouched, so the kinetic energy
-it removes becomes internal energy in the same cell. On the cubed sphere the drag is lowered to covariant
+it removes becomes internal energy density in the same cell. On the cubed sphere the drag is lowered to covariant
 components so that it brakes the wind instead of rotating it.
 
 ### Derivation
@@ -47,20 +52,20 @@ $$ {#eq-ch09-sponge-drag}
 to the three momentum rows and nothing to the energy (`force` in `TopSpongeLyrImpl::forward`,
 {{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}}). Because the distance is measured from each
 cell's *lower* face, the bottom cell of a bottom sponge has $\zeta=1$, while the top cell of a top sponge has
-$\zeta = 1 - h/w$: scale 0.8536 for $h/w=0.25$.[^spg-c]
+$\zeta = 1 - \Delta x_1/w$, with $\Delta x_1$ the cell's $x_1$ width: scale 0.8536 for $\Delta x_1/w=0.25$.[^spg-c]
 
-*Heating.* With $a = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy of the cell rises by the
+*Heating.* With $a = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy density of the cell rises by the
 kinetic energy removed, $\tfrac12\rho|\mathbf v|^2[1-(1-a)^2]$, which is positive for $0<a<2$ (`[C2]`). The sponge
 is therefore an energy-conserving drag with frictional heating, not a sink of total energy.
 
 *Covariant lowering.* The primitive velocities $v^b$ are contravariant and the stored momenta $m_a$ covariant. On
-the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\theta_{jk}\ne0$, and
-`coord_vec_lower_impl` forms $f_2 = f^2 + \cos\theta\,f^3$, $f_3 = f^3 + \cos\theta\,f^2$
+the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\psi\ne0$, with $\psi$ the angle between the panel axes (`cosine_cell_kj`, @sec-ch03-gnomonic), and
+`coord_vec_lower_impl` forms $f_2 = f^2 + \cos\psi\,f^3$, $f_3 = f^3 + \cos\psi\,f^2$
 ({{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The lowered drag is antiparallel to the covariant
-momentum and its power $v^af_a = -\rho a\,g_{ab}v^av^b$ is negative for $|\cos\theta|<1$ (`[C3]`). Without the
-lowering the cross product of force and covariant momentum is $\cos\theta\,(v_3^2-v_2^2)$ per unit $\rho a$,
-non-zero away from the panel centres: 0.455 at a corner with $\cos\theta=-\tfrac12$, $\mathbf v=(1, 0.3)$ (`[C4]`).
-On an orthogonal grid $\cos\theta=0$ and the lowering is the identity bit for bit.
+momentum and its power $v^af_a = -\rho a\,g_{ab}v^av^b$ is negative for $|\cos\psi|<1$ (`[C3]`). Without the
+lowering the cross product of force and covariant momentum is $\cos\psi\,(v_3^2-v_2^2)$ per unit $\rho a$,
+non-zero away from the panel centres: 0.455 at a corner with $\cos\psi=-\tfrac12$, $\mathbf v=(1, 0.3)$ (`[C4]`).
+On an orthogonal grid $\cos\psi=0$ and the lowering is the identity bit for bit.
 
 *Exact and truncated.* The profile is exact as defined; the drag is explicit, first order in $\Delta t/\tau$.
 

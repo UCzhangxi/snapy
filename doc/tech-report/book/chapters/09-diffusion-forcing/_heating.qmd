@@ -6,17 +6,25 @@ sources: OUTLINE.md 9.7; src/forcing/body_heat.cpp, top_cool.cpp, bot_heat.cpp, 
 status: draft
 -->
 
+<!-- Local symbols: $E_{\mathrm{tot}} = \sum_iE_iV_i$, the integrated total energy of a column, with cell $E$ the
+     total energy density (book map row 15). NOTATION.md has no entry for it yet. -->
+
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** `body-heat` heats every interior cell whose pressure lies in a band at a fixed rate of
-temperature change at constant volume; `top-cool` and `bot-heat` remove or add a fixed energy flux, spread evenly
-over the top or bottom `depth` cells.
-**Switch.** `forcing/body-heat: {dTdt, pmin, pmax}`, defaults 0, 0, 1 [$\mathrm{K\,s^{-1}}$, $\mathrm{Pa}$,
+**Purpose.** `body-heat` heats every interior cell whose pressure lies in a band at a fixed rate of temperature
+change at constant volume; `top-cool` and `bot-heat` remove or add a fixed energy flux, spread evenly over the top
+or bottom `depth` cells; @eq-ch09-heating-body and @eq-ch09-heating-flux.
+**Data.** In: the cell density, pressure and mixture $c_v$; the flux $F$ [$\mathrm{W\,m^{-2}}$] and the boundary
+cell's width. Out: the energy row of the increment only.
+**Placement.** Every RK stage, in the forcing loop; `top-cool` and `bot-heat` only on the block that owns the
+physical $x_1$ boundary.
+**Activation.** `forcing/body-heat: {dTdt, pmin, pmax}`, defaults 0, 0, 1 [$\mathrm{K\,s^{-1}}$, $\mathrm{Pa}$,
 $\mathrm{Pa}$]; `top-cool: {flux, depth}`, `flux` $\le0$, defaults 0 and 1; `bot-heat: {flux, depth}`, `flux`
 $\ge0$, defaults 0 and 1 [$\mathrm{W\,m^{-2}}$, cells]. Each off unless its key is present.
-**Order.** Exact sources; explicit, first order in time per stage.
-**Defining equation.** @eq-ch09-heating-body and @eq-ch09-heating-flux.
+**Guarantee / limits.** Exact pointwise sources; the column receives exactly $F$ only on uniform cells and not on
+curved grids; the default `pmax` of 1 $\mathrm{Pa}$ heats almost nothing.
+**Evidence.** `test_forcing.release` and `heating_check.py` `[C1]`–`[C3]`; the ctests were not run at the pin.
 :::
 
 These three modules are prescribed heat sources for idealised convection. They touch only the total energy, so
@@ -29,7 +37,7 @@ $0\le p\le1$ $\mathrm{Pa}$, which in most decks is none.
 
 ### Derivation
 
-*Body heating.* At constant volume the internal energy changes by $\rho c_v\,\mathrm{d}T$, so a heating rate
+*Body heating.* At constant volume the internal energy density changes by $\rho c_v\,\mathrm{d}T$, so a heating rate
 $\dot T$ adds, in one stage and in every interior cell with $p_{\min}\le p_i\le p_{\max}$,
 
 $$
@@ -44,15 +52,17 @@ $T$ by exactly $\dot T\Delta t$;[^heat-c3] a $c_v$ that depends on $T$ makes it 
 each of those cells as a uniform volumetric rate
 
 $$
-\Delta E_i = \Delta t\,\frac{F}{h_{\mathrm b}\,d} ,
+\Delta E_i = \Delta t\,\frac{F}{\Delta x_{1,\mathrm b}\,d} ,
 $$ {#eq-ch09-heating-flux}
 
-with $h_{\mathrm b}$ the width of the boundary cell, `dz`, in `TopCoolImpl::forward`
+with $\Delta x_{1,\mathrm b}$ the $x_1$ width of the boundary cell, `dz`, in `TopCoolImpl::forward`
 ({{< code src/forcing/top_cool.cpp TopCoolImpl::forward >}}) and `BotHeatImpl::forward`
-({{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}}). The energy delivered to a column of unit horizontal area
-is $\sum_i\Delta E_ih_i = \Delta t\,F\,\bar h/h_{\mathrm b}$, with $\bar h$ the mean width of the $d$ cells: exactly
-$F$ per unit time on uniform cells, and $F$ times $\bar h/h_{\mathrm b}$ otherwise, 0.872 for cells growing upward
-by 10 % with $d=4$.[^heat-c12] On a spherical-polar grid the cell volume is not $h$ times a fixed area, so the
+({{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}}). The integrated total energy
+$E_{\mathrm{tot}} = \sum_iE_iV_i$ of the column changes, per unit horizontal area, by
+$\sum_i\Delta E_i\,\Delta x_{1,i} = \Delta t\,F\,\overline{\Delta x_1}/\Delta x_{1,\mathrm b}$, with $\overline{\Delta x_1}$ the
+mean $x_1$ width of the $d$ cells: exactly $F$ per unit time on uniform cells, and $F$ times
+$\overline{\Delta x_1}/\Delta x_{1,\mathrm b}$ otherwise, 0.872 for cells growing upward
+by 10 % with $d=4$.[^heat-c12] On a spherical-polar grid the cell volume is not $\Delta x_1$ times a fixed area, so the
 delivered power is not $F$ either; not measured.
 
 *Exact and truncated.* Both sources are exact pointwise for the stage-entry state; nothing is truncated in space.
