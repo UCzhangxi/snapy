@@ -5,6 +5,8 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
 - `sources/`: inputs to draw from. These are existing notes, derivations, PR bodies and issue threads, cleaned for this use. They are inputs, not the report.
 - `BRIEF_C0.md`: the brief for the architect/editor. `ISSUES.md`: known gaps in the sources. `STATUS.md`: progress log.
 - `STYLE.md`: the binding style guide, covering the six-layer template, citations, evidence, figures and checks.
+- `AUTHOR-CHECKLIST.md`: the gates to run before opening a chapter PR, with the command for each and what it must say, and what belongs in the PR body. `REVIEW-RECORD.md`: the template a reviewer fills (head/tree/base shas with read times, the gate table against the base, the render run, findings, verdict).
+- `code_pin.yml`: the one commit every `{{< code >}}` citation resolves at. It is the single source of truth for the snapy pin; no other file restates that sha.
 - `NOTATION.md`: every symbol, with one meaning each.
 - `OUTLINE.md`: the plan, chapter by chapter and scheme by scheme.
 - `chapters/NN-slug/`: Markdown with LaTeX, with `figures/` (scripts and PNGs) and `checks/` (sympy/numpy scripts and their output). The one figure style is `src/snapy_report/figstyle.py` (`from snapy_report import figstyle as fs`); `chapters/common/figstyle.py` and the chapter shims `src/snapy_report/ch05/_style.py` and `ch09/_style.py` are folded into it and go when their figures are ported. The worked example is `chapters/06-gravity-energy/D_face_work_pe.md`.
