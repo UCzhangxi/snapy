@@ -17,11 +17,15 @@ in @sec-ch07-redo, which restores the step input and halves the step.
 **Purpose.** When any column of a block cannot be solved, or any value around the solve is not finite, undoes the
 correction for the whole block, skips the solve in the remaining stages, and asks for the step to be redone; N/A as
 an equation, the guards are listed in the Derivation.
-**Data.** In: the solve's inputs and results. Out: the restored increment and the solve-failure latch.
+**Data.** In: the solve's inputs, the solved increment and the correction of every column of the block,
+and the stage index. Out: the restored `du` and primitives, a zero correction for the whole block, and the solve
+latch read by the redo check. Check cases: each of the four guards, a failure at stage 0, one failed column of 4.
 **Placement.** Every stage with a VIC, around the solve.
 **Activation.** None; always on with the VIC.
 **Guarantee / limits.** The whole block is rejected, never a single column.
-**Evidence.** `test_lu_failure.release` and `vic_reject_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests: a refused column restores the step and the retry solves again,
+{{< code tests/test_lu_failure.cpp lu_failure.partial_retry_restores_step >}}, and the full, stop and assembly
+variants; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/vic_reject_check.py`, output `vic_reject_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 ### Derivation

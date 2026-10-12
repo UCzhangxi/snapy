@@ -18,12 +18,14 @@ marks the whole column as failed.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Solves the block-tridiagonal system of @eq-ch07-vic-blocks for one column: a forward elimination from the
 first layer to the last, then a back substitution; @eq-ch07-vic-sweep.
-**Data.** In: the blocks and the right-hand side $\Delta\mathbf U^{(0)}/\Delta t$ of the column. Out: $\boldsymbol\delta$
-for every layer, or NaN for a failed column.
+**Data.** In: the blocks of every layer of the column and the right-hand side $\Delta\mathbf U^{(0)}/\Delta t$.
+Out: $\boldsymbol\delta$ for every layer, or NaN in every layer of a failed column. Check cases: 60-layer columns with
+$N = 3$ and $5$, $\Delta t$ from $10^{-9}$ to $10^3$, a singular block at layer 12 of 20.
 **Placement.** Every stage with a VIC, after the assembly.
 **Activation.** As for the assembly; $N=3$ or $N=5$.
 **Guarantee / limits.** A direct solve, exact up to round-off; no pivoting between blocks.
-**Evidence.** `test_lu_failure.release` and `vic_sweep_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests: for float and double, $N = 3$ and $5$, identity blocks and failing columns sweep as stated,
+{{< code tests/test_lu_failure.cpp lu_failure.current_float_three >}} and its siblings; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, the round-off values printed differ in their last digits from the committed file, each still inside its stated threshold (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 The right-hand side is the explicit increment of the stage over the step. So the sweep returns the corrected

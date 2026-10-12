@@ -17,11 +17,15 @@ the solve and leaves the explicit tendency at the full step.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Hands the VIC the step $\Delta t_c = w_2^{(s)}\Delta t$ of the current Runge-Kutta stage instead of the
 full $\Delta t$, so that the implicit operator matches the increment the stage actually takes; @eq-ch07-vic-stage.
-**Data.** In: $\Delta\mathbf U^{(0)}$ and the stage weight. Out: the solved increment $\boldsymbol\delta$.
+**Data.** In: the explicit increment $\Delta\mathbf U^{(0)}$ of the stage and the stage weight $w_2^{(s)}$
+of the integrator. Out: $\Delta t_c$ handed to the solve and the solved increment $\boldsymbol\delta$. Check cases:
+rk1, rk2, rk3, rk3s4 on a stiff mode $z = 10^8$ and on $z$ from $10^{-3}$ to $10^8$.
 **Placement.** Every stage with a VIC, after the explicit increment.
 **Activation.** None; it applies when the integrator has three stages (`rk3`).
 **Guarantee / limits.** The order is not changed by the weighting; the correction is a linearised backward Euler.
-**Evidence.** `test_forcing.release` (CUDA twin) and `vic_stage_check.py`; the ctests were not run at the pin.
+**Evidence.** Test: at every rk3 stage the column's mechanical energy closes with the weighted step,
+{{< code tests/test_forcing.cpp forcing.implicit_gravity_work_holds_under_rk3_stage_weighting >}} (and a CUDA twin);
+the ctest was not run at the pin. Check: `python3 src/snapy_report/ch07/vic_stage_check.py`, output `vic_stage_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, the round-off values printed differ in their last digits from the committed file, each still inside its stated threshold (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 A stage of @eq-ch07-rk-stage adds $w_2\Delta t\,\mathcal L$. The VIC solves a linear system whose diagonal holds

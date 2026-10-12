@@ -18,12 +18,18 @@ positivity limiter of @sec-ch08, the stage keeps under the same limit scaled by 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Advances the conserved state over one step in $s$ stages, each a convex combination of the step-start
 state, the current stage state and one full-step increment; @eq-ch07-rk-stage.
-**Data.** In: $\mathbf U^n$, the current stage state and the full-step increment $\Delta t\,\mathcal L$. Out: the next
-stage state; the passive scalars follow the same formula.
+**Data.** In: the step-start state $\mathbf U^n$, the current stage state and the full-step increment
+$\Delta t\,\mathcal L$, all conserved cell averages (total-mass basis) with ghosts; the pyharp stage weights
+$w_0^{(s)}, w_1^{(s)}, w_2^{(s)}$ of `integration/type`. Out: the next stage state, and the same average for the
+passive scalars. Check cases: $u' = \lambda u$, a nonlinear ODE at 40, 80, 160 steps, a nonnegativity test up to
+$\Delta t = C$.
 **Placement.** The whole step: stage 0 saves the step-start state; each stage ends with the average.
 **Activation.** `integration/type`: `rk1` (or `euler`), `rk2`, `rk3`, `rk3s4`; default `rk3`. Read by pyharp.
 **Guarantee / limits.** Order 1, 2, 3, 3 in time; strong-stability-preserving with coefficient 1, 1, 1, 2.
-**Evidence.** `test_forcing.release`, `test_straka` and `rk_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests: a dry source in stage $s$ changes the density by $w_2^{(s)}$ times it,
+{{< code tests/test_forcing.cpp forcing.native_dry_source_uses_each_rk_stage_weight >}}; the stage index reaches
+`advance_local`, {{< code tests/test_forcing.cpp forcing.rk3_stage_is_published_by_block_step >}} (exact); the
+Straka density current on 2 ranks (`test_straka`); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/rk_check.py`, output `rk_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 The type is read from YAML with default `rk3`; an unknown type throws. The step-start registers and the stage

@@ -18,12 +18,17 @@ face work) are part of @sec-ch06 and are not described here.
 **Purpose.** For every cell of a column, builds the three blocks $a_i$, $b_i$, $c_i$ of the implicit system: the
 linearisation of the $x_1$ flux divergence, with Roe upwind dissipation frozen at the current state;
 @eq-ch07-vic-blocks.
-**Data.** In: the stage primitives of the column. Out: the $N\times N$ blocks of every layer.
+**Data.** In: the stage primitives of the $x_1$ column (density, $v_1$, $v_2$, $v_3$, pressure, mass
+fractions) at cell centres, the face areas and cell volumes, and the stage step; solid cells from the solid mask.
+Out: the $N\times N$ blocks $a_i, b_i, c_i$ of every layer. Check cases: 200 Roe states and pairs, a spherical shell
+column, $v_2 = 0$ and $50$ $\mathrm{m\,s^{-1}}$, a solid cell.
 **Placement.** Every stage with a VIC, after the explicit increment and before the sweep.
 **Activation.** `integration/implicit-scheme` 1 (3 x 3) or 9 (5 x 5).
 **Guarantee / limits.** A linearisation about the stage state; `vic-partial` is exact only when $v_2=v_3=0$.
-**Evidence.** `test_backward_substitution.release` and `vic_assembly_check.py`; no ctest compares the blocks with a
-difference quotient; the ctests were not run at the pin.
+**Evidence.** Test: the copied face primitives keep the mixture density after species relabelling,
+{{< code tests/test_backward_substitution.cpp vic_flux_decomposition.species_relabeling_preserves_mixture_density >}};
+the ctest was not run at the pin. No ctest compares the blocks with a difference quotient. Check:
+`python3 src/snapy_report/ch07/vic_assembly_check.py`, output `vic_assembly_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, the round-off values printed differ in their last digits from the committed file, each still inside its stated threshold (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 ### Derivation
