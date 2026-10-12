@@ -872,6 +872,9 @@ torch::Tensor MeshBlockImpl::gravity_work_fixer_sums(
   bool solve_failure = phydro->picorr && phydro->picorr->solve_failed();
   auto const &marks = phydro->peos->limiter_marks();
   auto redo = torch::full_like(mwall, solve_failure ? 1. : 0.);
+  if (phydro->picorr && phydro->picorr->solve_failed_tensor().defined())
+    redo = torch::maximum(redo,
+                          phydro->picorr->solve_failed_tensor().to(redo));
   if (marks.defined()) redo = torch::maximum(redo, marks.any().to(redo));
   return torch::stack({phydro->gravity_work_defect()[0],
                        mv.sum().to(torch::kFloat64),
@@ -1334,8 +1337,13 @@ torch::Tensor MeshBlockImpl::local_redo_flag_tensor(Variables const &vars) {
   }
 
   bool solve = phydro->picorr && phydro->picorr->solve_failed();
+  auto solve_flag = torch::full({}, solve ? 1. : 0., opts);
+  // SNAP_DEVICE_SCREENS: the VIC latch is a device tensor, read here
+  if (phydro->picorr && phydro->picorr->solve_failed_tensor().defined())
+    solve_flag = torch::maximum(
+        solve_flag, phydro->picorr->solve_failed_tensor().to(opts));
   return torch::stack({floor.to(opts), clamp, marks[0], marks[1], sat,
-                       torch::full({}, solve ? 1. : 0., opts)});
+                       solve_flag});
 }
 
 std::array<bool, 6> MeshBlockImpl::read_redo_flags(torch::Tensor const &flags) {

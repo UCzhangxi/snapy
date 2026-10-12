@@ -95,11 +95,22 @@ class ImplicitHydroImpl : public torch::nn::Cloneable<ImplicitHydroImpl> {
 
   //! Latched until the next step, including later RK stages.
   bool solve_failed() const { return _solve_failed; }
-  void reset_solve_failure() { _solve_failed = false; }
+  void reset_solve_failure() {
+    _solve_failed = false;
+    if (_failed_dev.defined()) _failed_dev.zero_();
+  }
+
+  //! SNAP_DEVICE_SCREENS=1 (perf study, default off): the finiteness screens
+  //! stay on the device. A rejected solve is undone with masks instead of a
+  //! host branch, and the latch is this 0-d bool tensor, which check_redo reads
+  //! with its one device-to-host copy. Undefined when the switch is off.
+  static bool device_screens();
+  torch::Tensor solve_failed_tensor() const { return _failed_dev; }
 
  private:
   void ensure_workspace(torch::Tensor const& w);
   bool _solve_failed = false;
+  torch::Tensor _failed_dev;
 
   torch::Tensor _a, _b, _c, _delta, _du0, _corr, _mass_corr, _clamp_residual,
       _dry_clamp_step;

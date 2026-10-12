@@ -152,6 +152,14 @@ void ImplicitHydroImpl::ensure_workspace(torch::Tensor const& w) {
   maybe_resize(_mass_corr, w.sizes().vec());
 }
 
+bool ImplicitHydroImpl::device_screens() {
+  static bool const on = [] {
+    auto v = get_env("SNAP_DEVICE_SCREENS", "0");
+    return v == "1" || v == "true" || v == "on" || v == "yes";
+  }();
+  return on;
+}
+
 torch::Tensor ImplicitHydroImpl::forward(torch::Tensor du, torch::Tensor w,
                                          torch::Tensor gamma, double dt) {
   return forward_masked(du, w, gamma, dt, torch::Tensor());
@@ -171,6 +179,12 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
     }
     return _corr;
   }
+
+  // SNAP_DEVICE_SCREENS: the latch lives on the device, every stage solves,
+  // and a failed step is undone by the masks at the end
+  bool dev = device_screens();
+  if (dev && (!_failed_dev.defined() || _failed_dev.device() != du.device()))
+    _failed_dev = torch::zeros({}, du.options().dtype(torch::kBool));
 
   // Once a stage fails, later stages cannot turn the step into a success.
   if (_solve_failed) {
@@ -375,7 +389,10 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
   // Both dispatches share the same rejection sentinel. This also catches
   // nonfinite backward-substitution results, before redistribution sees them.
   screen.push_back(_delta.sum());
-  if (!std::isfinite(torch::stack(screen).sum().item<double>())) {
+  torch::Tensor bad;  // SNAP_DEVICE_SCREENS: this stage's rejection, 0-d bool
+  if (dev) {
+    bad = torch::isfinite(torch::stack(screen).sum()).logical_not();
+  } else if (!std::isfinite(torch::stack(screen).sum().item<double>())) {
     auto w_in = w.clone();  // the inputs, then the solve
     w_in.narrow(0, IVY, 2).copy_(w0);
     auto bad_inputs =
@@ -409,11 +426,18 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
                              ? std::numeric_limits<float>::min()
                              : 1.e-300;
     auto scale = torch::maximum(Ml.abs(), Mu.abs()).clamp_min(floor);
-    _clamp_residual.copy_(torch::maximum(
-        _clamp_residual, ((lhs - rhs).abs() / scale).max().detach()));
+    auto next = torch::maximum(_clamp_residual,
+                               ((lhs - rhs).abs() / scale).max().detach());
+    // a rejected solve (device screens) leaves the meter as it was
+    _clamp_residual.copy_(dev ? torch::where(bad, _clamp_residual, next)
+                              : next);
   }
-  _dry_clamp_step.copy_(
-      torch::maximum(_dry_clamp_step, _mass_corr[IPR].max().detach()));
+  {
+    auto next =
+        torch::maximum(_dry_clamp_step, _mass_corr[IPR].max().detach());
+    _dry_clamp_step.copy_(dev ? torch::where(bad, _dry_clamp_step, next)
+                              : next);
+  }
 
   if (face_work || diffusive_work) {
     int is = pcoord->il(), ie = pcoord->iu() + 1;
@@ -514,6 +538,18 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
   auto results =
       torch::stack({du.index(interior).sum(), _mass_corr.index(interior).sum(),
                     _corr.index(interior).sum()});
+  if (dev) {
+    // this stage failed, or an earlier one did: the step input stays, as
+    // reject() and the early return leave it (no host read)
+    auto fail = _failed_dev.logical_or(bad).logical_or(
+        torch::isfinite(results.sum()).logical_not());
+    _failed_dev.copy_(fail);
+    du.copy_(torch::where(fail, _du0, du));
+    w.narrow(0, IVY, 2).copy_(torch::where(fail, w0, w.narrow(0, IVY, 2)));
+    _corr.masked_fill_(fail, 0.);
+    _mass_corr.masked_fill_(fail, 0.);
+    return _corr;
+  }
   if (!std::isfinite(results.sum().item<double>())) {
     // reject() resets _corr
     auto bad_results =
