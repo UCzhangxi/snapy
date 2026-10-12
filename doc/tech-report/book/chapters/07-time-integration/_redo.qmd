@@ -18,14 +18,18 @@ accepted step resets the halving. After `max_redo` retries the run stops and exi
 ::: {.callout-note title="At a glance"}
 **Purpose.** After the last stage and any step-end sources, decides whether the step is kept, redone from its start
 at half the step, or the run stops; @eq-ch07-redo-dt.
-**Data.** In: six failure flags per block, reduced over blocks and ranks into one cause word. Out: accept, redo with
-the saved state restored, or stop.
+**Data.** In: per block, the floor test of the primitives recomputed from `hydro_u` (against `density-floor`
+and `pressure-floor`), the VIC dry-clamp mark, the limiter marks, the saturation counter and the VIC solve latch;
+`max_redo` and the redo count. Out: one cause word for all ranks and the accept, redo or stop decision; on redo
+the restored state. Check cases: per-rank flag sets, a step that always fails, a retry after acceptance.
 **Placement.** Once per step, after the stages and any step-end sources, in `check_redo`.
 **Activation.** None for the decision; `max_redo` (pyharp, default 5, not a YAML key); the floors
 `equation-of-state/density-floor`, `pressure-floor` feed the first cause.
 **Guarantee / limits.** One decision on every rank; a policy, not a discretisation.
-**Evidence.** `test_check_redo_floor_python`, `test_check_redo_parallel.release` (2 ranks),
-`test_check_redo_saturation_python` and `redo_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests: a floor planted in `hydro_u`, a NaN with the limiter off and one floored block of six each redo,
+{{< code tests/test_check_redo_floor.py main >}}; one decision across 2 ranks,
+{{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} (exact); the saturation
+cause alone, {{< code tests/test_check_redo_saturation.py main >}}; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/redo_check.py`, output `redo_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 ### Derivation

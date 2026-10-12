@@ -18,12 +18,16 @@ the unique set of face transfers that produces it, and the constituents ride on 
 **Purpose.** Turns the solved change of total density into mass transfers through the faces of the column, then moves
 dry gas, each species and the passive scalars through those faces from the upwind cell, never more than the donor
 holds; @eq-ch07-vic-faces.
-**Data.** In: the solved increment and the column's masses. Out: the final tendencies of density, species and
-scalars.
+**Data.** In: the solved increment of the column (its first entry the total-density change),
+the explicit density increment, the cell masses $m_i$ and volumes $V_i$, the dry, species and scalar densities.
+Out: the face mass transfers and the final tendencies of density, species and scalars, and the dry-clamp mark.
+Check cases: 50 random columns, a face asking for more than its donor holds, the margin in both precisions.
 **Placement.** Every stage with a VIC, after the sweep.
 **Activation.** None; always on with the VIC.
 **Guarantee / limits.** Conservative; donor-upwind, first order in the composition.
-**Evidence.** `test_backward_substitution.release` and `vic_redist_check.py`; the ctests were not run at the pin.
+**Evidence.** Test: column totals of each constituent are kept, face transfers are single-valued and final masses are
+non-negative, {{< code tests/test_backward_substitution.cpp vic_redistribution.conserves_constituent_column_tendencies >}};
+the ctest was not run at the pin. Check: `python3 src/snapy_report/ch07/vic_redist_check.py`, output `vic_redist_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 ### Derivation
