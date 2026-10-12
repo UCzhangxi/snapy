@@ -55,12 +55,16 @@ make_fig()
 
 The latch is `_solve_failed` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). Its accessors are
 `reset_solve_failure` and `solve_failed` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl >}}). On entry the module copies
-`du` into `_du0` and clones `w` into `w0` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The refusal is the
+`du` into `_du0` and clones into `w0` the two rows of `w` (from `IVY`) that the solve changes in place, the frame
+projection ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The refusal is the
 lambda `reject` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The guards are `bad_inputs`
 ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}), `bad_columns` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}),
 `bad_results` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}) and `bad_correction`
-({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The guards are block-wide reductions. On a GPU each costs a device
-to host transfer of one flag.
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The guards keep their order but are screened first: each checked
+tensor contributes one interior sum, and two totals are read back per stage, one for the inputs and the solve before
+the redistribution and one for the results and the correction at the end. Only a non-finite total runs the per-column
+guards, at their usual point and in their usual order, so the rejected columns and the messages are those of the
+guards themselves; a finite stage costs two device-to-host reads.
 
 The step-acceptance flags read the latch as `solve_failure` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). Stage 0 of
 every step attempt calls `reset_solve_failure` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). A VIC failure is the one
