@@ -18,8 +18,9 @@ never interpolated, so both blocks sharing a face scale its flux by the donor's 
 **Data.** In/out: $\Theta\in[0,1]$ [-] per cell and species, ghosts included; the species enthalpy is recomputed
 from the ghost state, not exchanged.
 **Placement.** Each stage, after `flux_positivity_theta` and before the limited fluxes are applied.
-**Activation.** At least one species (`ny` > 0) and either `dynamics.equation-of-state.limiter` on, or face-flux
-covariance rows on the $x_2$ or $x_3$ faces (`cov2`, `cov3`; the scalar's `cov`); same rule for scalars.
+**Activation.** Hydro: at least one species (`ny` > 0) and either `dynamics.equation-of-state.limiter` on or
+face-flux covariance rows on the $x_2$ or $x_3$ faces (`cov2`, `cov3`). Scalars: the limiter on or the scalar's own
+covariance row (`cov`), with no species condition.
 **Guarantee / limits.** Exact copy; species mass conserved across seams.
 **Evidence.** `test_flux_positivity_cubedsphere_python`, `test_flux_positivity_cubedsphere_moist_python`,
 `test_sedimentation_cubed_seam`; check `[C12]`; the ctest entries were not run for this chapter at the pin (missing evidence).
@@ -34,26 +35,20 @@ mass carries is recomputed from the ghost state instead of being exchanged.
 
 ### Derivation
 
-The argument is `sources/canoe__theta_seam_TECH_REPORT.md` §1 and §6. With the limited flux of face $f$ written as
+See @sec-ch08-theta for donor scaling and its conservation requirement. This section needs only its interface, as
+in `sources/canoe__theta_seam_TECH_REPORT.md` §1 and §6: the limited flux of face $f$ is
 
 $$
 \mathcal F^{\Theta}_f = \Theta_{d(f)}\,\mathcal F_f,
 $$ {#eq-ch03-thetacopy-face}
 
-the two blocks sharing $f$ each evaluate $\Theta_{d(f)}$, one from its interior and one from its ghost. If the ghost
-holds a different number $\tilde\Theta$, the face carries $\Theta\mathcal F_f$ out of one cell and
-$\tilde\Theta\mathcal F_f$ into the other, and $(\Theta - \tilde\Theta)\mathcal F_f A_f\Delta t$ of species mass is
-created or destroyed per stage. Equality needs the ghost to be the donor's value bit for bit. A raw copy delivers
-exactly the neighbour's interior cell that occupies the ghost position, after the same reverse, flip and transpose
-relabelling as every cubed-sphere strip; within a panel and across $x_1$ seams the ghost is the same cell anyway. The
-scaling @eq-ch03-thetacopy-face is `flux_positivity_scale_`, called after the copy
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Nothing is approximated.
-
-The check confirms the two halves of that statement (`[C12]`).[^tc-c12] The closed form
-$(\Theta - \tilde\Theta)\mathcal F_f A_f\Delta t$ is exact in sympy; and over $2\times10^5$ random faces a copied
-$\Theta$ leaves a column residual of exactly zero at every one of them, while moving the ghost's value a single ulp
-away leaves a non-zero residual at 160 213 of them. Bit equality is the whole requirement: nothing weaker closes
-the seam.
+and the two blocks sharing $f$ each evaluate $\Theta_{d(f)}$, one from its interior and one from its ghost, so the
+ghost must hold the donor's value bit for bit. A raw copy delivers exactly the neighbour's interior cell that occupies
+the ghost position, after the same reverse, flip and transpose relabelling as every cubed-sphere strip; within a panel
+and across $x_1$ seams the ghost is the same cell anyway. The scaling @eq-ch03-thetacopy-face is
+`flux_positivity_scale_`, called after the copy ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+Nothing is approximated. The check confirms the copy (`[C12]`): over $2\times10^5$ random faces a copied $\Theta$
+leaves a column residual of exactly zero at every one of them.[^tc-c12]
 
 [^tc-c12]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
     line `[C12]`; a numpy and sympy port of the donor-factor exchange and `flux_positivity_scale_` in
@@ -64,17 +59,7 @@ the seam.
 $\Theta$ is a cell quantity per species, computed in each stage after the $x_1$ seam fluxes are made single-valued
 (@sec-ch03-x1seams) and before the fluxes are scaled. Its ghosts are filled like conserved-variable ghosts: the
 exchange at internal faces (with corners synthesised as usual), then every installed bfunc in scalar mode at physical
-faces. The scalar module does the same for its tracers. @fig-ch03-thetacopy-seam shows the leak an interpolated factor
-would cause.
-
-```{python}
-#| label: fig-ch03-thetacopy-seam
-#| fig-cap: "A face on a panel seam with its donor cell on panel A. With a raw copy (top) panel B's ghost holds $\\Theta_A$ and both sides scale the flux by it. With an interpolated ghost (bottom) panel B scales by a blend $\\tilde\\Theta$, and the difference $(\\Theta_A - \\tilde\\Theta)\\mathcal F_f$ leaks at the face."
-#| fig-alt: "Two rows of two cells across a seam; the top row has equal factors on both sides, the bottom row shows unequal factors and a leak arrow."
-#| echo: false
-from snapy_report.ch03.fig_thetacopy_seam import make_fig
-make_fig()
-```
+faces. The scalar module does the same for its tracers.
 
 ### Code
 
