@@ -11,13 +11,17 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Builds, per column and per call, the face pressures $p_{\mathrm{sf}}$ by a top-down hydrostatic
-scan, the cell pressure $p_{\mathrm{ref}}$ from them, and the density references $\rho_{\mathrm{ref}}$ and
-$\rho_{\mathrm{sf}}$ from a smoothed $\rho/p$.
-**Switch.** None: always with the well-balanced path (@sec-ch05-wbx1).
-**Order.** $p_{\mathrm{sf}}$ exact up to one column constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ on uniform grids;
-$\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
-**Defining equation.** @eq-ch05-refkernel-scan.
+**Purpose.** Builds, per column and per call, the face pressures $p_{\mathrm{sf}}$ by a top-down hydrostatic scan
+(@eq-ch05-refkernel-scan), the cell pressure $p_{\mathrm{ref}}$ from them, and the density references
+$\rho_{\mathrm{ref}}$ and $\rho_{\mathrm{sf}}$ from a smoothed $\chi=\rho/p$.
+**Data.** In: $\overline p$, $\overline\rho$ of the column and the $x_1$ face positions; out: $p_{\mathrm{sf}}$ at faces,
+$p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ in cells and $\rho_{\mathrm{sf}}$ at faces, all per unit volume.
+**Placement.** Inside `HydroImpl::_hydro_ref_x1`, called by the well-balanced $x_1$ sweep in every stage.
+**Activation.** No switch: always with the well-balanced path (@sec-ch05-wbx1).
+**Guarantee / limits.** $p_{\mathrm{sf}}$ exact up to one column constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ on
+uniform grids, the log-mean (exact only for isothermal cells) otherwise; $\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
+**Evidence.** `test_hydro_ref_x1`, `test_hydro_options` pass at the pin (CPU); check claims `[C1]`–`[C3]`, `[C9]`,
+`[C10]`, `[C13]`, `[C14]`, `[C20]`.
 :::
 
 The kernel is the reference of @eq-ch05-wbx1-split. Its face pressures are the discrete hydrostatic balance itself,
@@ -38,7 +42,7 @@ is @sec-ch05-seam; the fourth-order replacement of the density reference is @sec
 
 ### Derivation
 
-Units as in @sec-ch05-wbx1; $g=-g_1>0$ [m s$^{-2}$] is the downward magnitude the kernel takes; $r=\rho/p$
+Units as in @sec-ch05-wbx1; $g=-g_1>0$ [m s$^{-2}$] is the downward magnitude the kernel takes; $\chi=\rho/p$
 [s$^2$ m$^{-2}$]. Cell $i$ spans $[x_{1,i-1/2},x_{1,i+1/2}]$, and $\Delta x_{1,i}$ is its width.
 
 #### Face pressures
@@ -101,13 +105,13 @@ polytrope it is $O(\Delta x_1^2)$ (`[C9]`: relative error $1.5\times10^{-4}$ at 
 
 #### Density references
 
-With $r_i=\overline\rho_i/\overline p_i$, the smoothed ratio is the binomial $r^{s}_i=\tfrac1{16}(r_{i-2}+4r_{i-1}+6r_i+4r_{i+1}+r_{i+2})$,
+With $\chi_i=\overline\rho_i/\overline p_i$, the smoothed ratio is the binomial $\chi^{s}_i=\tfrac1{16}(\chi_{i-2}+4\chi_{i-1}+6\chi_i+4\chi_{i+1}+\chi_{i+2})$,
 and the references are
 
 $$
 \begin{aligned}
-\rho_{\mathrm{ref},i} &= p_{\mathrm{ref},i}\,r^{s}_i, \\
-\rho_{\mathrm{sf},i-1/2} &= p_{\mathrm{sf},i-1/2}\,\tfrac12\big(r^{s}_{i-1}+r^{s}_i\big),
+\rho_{\mathrm{ref},i} &= p_{\mathrm{ref},i}\,\chi^{s}_i, \\
+\rho_{\mathrm{sf},i-1/2} &= p_{\mathrm{sf},i-1/2}\,\tfrac12\big(\chi^{s}_{i-1}+\chi^{s}_i\big),
 \end{aligned}
 $$ {#eq-ch05-refkernel-dens}
 
@@ -115,28 +119,28 @@ coded as `dref` and `dsf`
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
 with the binomial in `hydro_ref_x1_rop_smooth`
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}).
-At array index 0 the face density uses $r^s_0$ alone.
+At array index 0 the face density uses $\chi^s_0$ alone.
 
 *Why smoothed.* Take the unsmoothed ratio instead, $\rho_{\mathrm{ref},i}=p_{\mathrm{ref},i}\overline\rho_i/\overline p_i$.
 Then $\rho'_i=\overline\rho_i-p_{\mathrm{ref},i}\overline\rho_i/\overline p_i=\overline\rho_i\,p'_i/\overline p_i$, so
 $\rho'/\overline\rho=p'/\overline p$ in every cell: the density perturbation carries no information the pressure
 perturbation does not, and an entropy (buoyancy) anomaly is not reconstructed as a density perturbation at all. The
 binomial keeps the reference on the large scales of the column only. It has unit sum, zero first moment and second
-moment 1 in cells, and zero response at the grid scale (`[C3]`), so $r^{s}_i=r_i+\tfrac{\Delta x_1^2}{2}r''+O(\Delta
+moment 1 in cells, and zero response at the grid scale (`[C3]`), so $\chi^{s}_i=\chi_i+\tfrac{\Delta x_1^2}{2}\partial_1^2\chi+O(\Delta
 x_1^4)$. This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smooth`.[^ch05-ref-degen]
 
 [^ch05-ref-degen]: The measurements behind it are in `sources/canoe__tall_column_instability_TECH_REPORT.md` §§3d, 4-5.
 
-*Face-density offset.* What the solver uses is $\rho_{\mathrm{sf}}+\mathcal R[\overline\rho-\rho_{\mathrm{ref}}]
-=\mathcal R[\overline\rho]+\delta\rho_f$ with $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]$. Expanding
+*Face-density offset.* What the solver uses is $\rho_{\mathrm{sf}}+\mathcal W[\overline\rho-\rho_{\mathrm{ref}}]
+=\mathcal W[\overline\rho]+\delta\rho_f$ with $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]$. Expanding
 the ratio of averages, the binomial bias, the two-cell mean and the cell pressure, the derivation note[^ch05-ref-off]
 obtains
 
 $$
-\delta\rho_f = \frac{\Delta x_1^2}{12}\big(p'R'+2pR''\big) + O(\Delta x_1^4),
+\delta\rho_f = \frac{\Delta x_1^2}{12}\big(\partial_1p\,\partial_1\chi+2p\,\partial_1^2\chi\big) + O(\Delta x_1^4),
 $$ {#eq-ch05-refkernel-offset}
 
-with $R=\rho/p$ the point ratio and primes $x_1$ derivatives (this paragraph only). `[C14]` measures $\delta\rho_f$ at
+with $\chi=\rho/p$ the point ratio. `[C14]` measures $\delta\rho_f$ at
 the middle face of a polytrope against fifth-order linear reconstruction and finds the ratio
 to @eq-ch05-refkernel-offset 1.0022, 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
 

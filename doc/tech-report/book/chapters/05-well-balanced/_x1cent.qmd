@@ -11,18 +11,21 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** On spherical-polar blocks, feeds every $x_1$ map (reconstruction, scan, reference) the plain means
-of the cells instead of their $r^2$ means, and replaces the radial pressure source by the $r$-moment of a quintic, so a
-hydrostatic column of $r^2$ means is balanced to round-off.
-**Switch.** Environment variable `SNAP_X1_CENTROID_EXACT`, read once per process, default off. Implies `SNAP_WB_REF4`.
-Requires $n_g\ge3$. Acts on `spherical-polar` only.
-**Order.** Conversion exact to degree 4; rest exact for densities of degree $\le4$.
-**Defining equation.** @eq-ch05-x1cent-source.
+**Purpose.** On spherical-polar blocks, feeds every $x_1$ map (reconstruction, scan, reference) the plain means of
+the cells instead of their $r^2$ means, and replaces the radial pressure source by the $r$-moment of a quintic
+(@eq-ch05-x1cent-source).
+**Data.** In: $r^2$ means of the state; out: plain means for the $x_1$ maps and the radial pressure source $S_i$.
+**Placement.** In the $x_1$ sweep of `HydroImpl::forward` and the spherical-polar source, every stage.
+**Activation.** Environment variable `SNAP_X1_CENTROID_EXACT`, read once per process, default off. Implies
+`SNAP_WB_REF4`. Requires $n_g\ge3$. Acts on `spherical-polar` only; nothing on cubed-sphere grids.
+**Guarantee / limits.** Conversion exact to degree 4; rest exact for densities of degree $\le4$; the Favre velocity and
+other ratios of means keep an $O(\Delta x_1^2/R)$ remainder (@sec-ch05-oneoverr).
+**Evidence.** `test_x1_centroid_rest` and the seam arms pass at the pin (CPU); check claims `[C16]`–`[C18]`.
 :::
 
 A finite-volume cell on a spherical-polar grid holds the $r^2$ mean of a quantity, whose centroid sits
-$h^2/(6\overline r)$ above the mid-radius. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
-scan and the six-face cell pressure, is a formula for plain means. Fed $r^2$ means they are off by $O(h^2/r)$: the face
+$\Delta x_1^2/(6\overline r)$ above the mid-radius. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
+scan and the six-face cell pressure, is a formula for plain means. Fed $r^2$ means they are off by $O(\Delta x_1^2/r)$: the face
 values, the scan step, and the pressure force, whose plain difference balances gravity only against the wrong scan.
 The switch converts the inputs of the maps, for the maps only, to plain means with a five-cell stencil exact to degree
 4, and makes the radial pressure force the $r^2$ mean of the gradient of a quintic through six face pressures. The
@@ -37,9 +40,9 @@ the mid-radius). `balance_column` balances only a column declared Cartesian unde
 
 ### Derivation
 
-Units: $r$ and $h$ [m]; $A_{i\pm1/2}=r_{i\pm1/2}^2$ and $V_i=(r_{i+1/2}^3-r_{i-1/2}^3)/3$ are per unit solid angle, as the
-code forms them. $\langle q\rangle_i=V_i^{-1}\int r^2q\,\mathrm{d}r$ is the $r^2$ mean, $\overline q_i=h_i^{-1}\int q\,\mathrm{d}r$ the plain
-mean, and $x=(r-\overline r_i)/h_i$ the local coordinate. Re-written from the derivation note.[^ch05-x1c-note]
+Units: $r$ and $\Delta x_1$ [m]; $A_{i\pm1/2}=r_{i\pm1/2}^2$ and $V_i=(r_{i+1/2}^3-r_{i-1/2}^3)/3$ are per unit solid angle, as the
+code forms them. $\langle q\rangle_i=V_i^{-1}\int r^2q\,\mathrm{d}r$ is the $r^2$ mean, $\overline q_i=\Delta x_{1,i}^{-1}\int q\,\mathrm{d}r$ the plain
+mean, and $x=(r-\overline r_i)/\Delta x_{1,i}$ the local coordinate. Re-written from the derivation note.[^ch05-x1c-note]
 
 [^ch05-x1c-note]: `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §§1-5.
 
@@ -49,14 +52,14 @@ Expanding $q$ about the mid-radius,
 
 $$
 \begin{aligned}
-\langle q\rangle_i &= \overline q_i + \delta_i\,q'(\overline r_i) + O(h^4/\overline r^2), \\
-\delta_i &= \frac{2h_i^2\,\overline r_i}{h_i^2 + 12\,\overline r_i^2} = \frac{h_i^2}{6\overline r_i} - \frac{h_i^4}{72\,\overline r_i^3} + \cdots
+\langle q\rangle_i &= \overline q_i + \delta_i\,\partial_1 q(\overline r_i) + O(\Delta x_1^4/\overline r^2), \\
+\delta_i &= \frac{2\Delta x_{1,i}^2\,\overline r_i}{\Delta x_{1,i}^2 + 12\,\overline r_i^2} = \frac{\Delta x_{1,i}^2}{6\overline r_i} - \frac{\Delta x_{1,i}^4}{72\,\overline r_i^3} + \cdots
 \end{aligned}
 $$ {#eq-ch05-x1cent-defect}
 
-(`[C18]`, exact). Each uniform-measure map fed $\langle q\rangle$ is off by $\delta q'=O(h^2/r)$; in particular the scan
-step becomes $gh\langle\rho\rangle$ instead of $g\int\rho\,\mathrm{d}r=gh\overline\rho$, and the perturbation of a resting
-column is $O(h^2/r)$ instead of a constant.
+(`[C18]`, exact). Each uniform-measure map fed $\langle q\rangle$ is off by $\delta \partial_1 q=O(\Delta x_1^2/r)$; in particular the scan
+step becomes $g\Delta x_1\langle\rho\rangle$ instead of $g\int\rho\,\mathrm{d}r=g\Delta x_1\overline\rho$, and the perturbation of a resting
+column is $O(\Delta x_1^2/r)$ instead of a constant.
 
 #### Plain means
 
@@ -100,13 +103,13 @@ The hydrostatic mode takes the same operator (@sec-ch05-hsmode).
 
 #### Rest balance
 
-On a hydrostatic column of $r^2$ means: the conversion gives $\overline\rho$ to $O(h^6/r)$; the scan then gives the
+On a hydrostatic column of $r^2$ means: the conversion gives $\overline\rho$ to $O(\Delta x_1^6/r)$; the scan then gives the
 exact face pressures plus one constant; the reference on plain means is the Cartesian fourth-order one; and the net
 force $-V^{-1}\int r^2(\tilde p'+g\rho)\,\mathrm{d}r$ has the constant drop out. For a density of degree $\le4$ every step
 is exact and the column is balanced exactly, which is the oracle of the test.
 
 *Exact and truncated.* Exact: the conversion for degree 4, both source identities, rest for degree $\le4$. For a
-smooth column the curvature part of the residual is $O(h^6/r)$; what remains is the truncation of the reference itself.
+smooth column the curvature part of the residual is $O(\Delta x_1^6/r)$; what remains is the truncation of the reference itself.
 Ratios of means (the Favre velocity, $T=p/\rho$, $\rho/p$ inside $F$) are not made exact (@sec-ch05-oneoverr).
 
 ### Numerical method
@@ -119,7 +122,7 @@ explicitly; the stencils are built once per block in double precision.
 
 ```{python}
 #| label: fig-ch05-x1cent-window
-#| fig-cap: "The maps of `SNAP_X1_CENTROID_EXACT`, $x_1 = r$ to the right. Top: a radial cell, its mid-radius $\\overline{r}_i$ (dotted) and its $r^2$ centroid $x_{1v}$ (bluish-green line) $h^2/(6\\overline{r}_i)$ [m] further out. Middle: the five-cell window that converts $r^2$ means to the plain mean of cell $i$, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
+#| fig-cap: "The maps of `SNAP_X1_CENTROID_EXACT`, $x_1 = r$ to the right. Top: a radial cell, its mid-radius $\\overline{r}_i$ (dotted) and its $r^2$ centroid $x_{1v}$ (bluish-green line) $\\Delta x_1^2/(6\\overline{r}_i)$ [m] further out. Middle: the five-cell window that converts $r^2$ means to the plain mean of cell $i$, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
 #| fig-alt: "A single wide cell with two vertical lines inside, below it a row of nine cells with brackets over five cells, and a third row of cells with a dashed seam and six triangles crossing it."
 #| echo: false
 from snapy_report.ch05.fig_x1cent_window import make_fig
@@ -161,15 +164,15 @@ a non-Cartesian geometry under it. A block too thin for the stencils (`usable` f
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |----------------|-------------|-----|-----|
-| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | linear-density column of $r^2$ means, $r_0/H$ = 5 and 1000, explicit and vertically implicit, $n_h$ = 1 and 0: on, $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)<10^{-10}$ in interior and wall cells; off, $>10^{-8}$ at $r_0/H=5$ | `TOL_ON 1e-10`, `TOL_OFF 1e-8` | round-off margin; an ignored switch fails |
-| `tests/test_x1_seam_split.cpp` (`test_x1_seam_split_x1_centroid.release`), `centroid_exact_split_matches_one_block` | split equals one block after 20 steps, $n_h$ = 1 and 0 | $10^{-13}$ | round-off |
+| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | linear-density column of $r^2$ means, $r_0/H$ = 5 and 1000, explicit and vertically implicit, $\alpha_{\mathrm{nh}}$ = 1 and 0: on, $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)<10^{-10}$ in interior and wall cells; off, $>10^{-8}$ at $r_0/H=5$ | `TOL_ON 1e-10`, `TOL_OFF 1e-8` | round-off margin; an ignored switch fails |
+| `tests/test_x1_seam_split.cpp` (`test_x1_seam_split_x1_centroid.release`), `centroid_exact_split_matches_one_block` | split equals one block after 20 steps, $\alpha_{\mathrm{nh}}$ = 1 and 0 | $10^{-13}$ | round-off |
 | `test_x1_seam_split_mp_x1_centroid` (2 ranks) | two ranks equal two blocks and one block | $10^{-13}$ | round-off |
 | `test_balance_column_x1_centroid`, `test_face_floor_x1_centroid` | the balance and floor tests with the switch | as in their sections | as there |
 | this chapter's check | `[C16]`–`[C18]` | per claim | stated in the check |
 
 : Tests of `SNAP_X1_CENTROID_EXACT`. {#tbl-ch05-x1cent-tests}
 
-| $r_0/H$ | implicit | $n_h$ | off, interior / wall | on, interior / wall |
+| $r_0/H$ | implicit | $\alpha_{\mathrm{nh}}$ | off, interior / wall | on, interior / wall |
 |---|---|---|---|---|
 | 5 | 0 | 1 | $2.377\times10^{-5}$ / $2.699\times10^{-5}$ | $2.447\times10^{-14}$ / $2.127\times10^{-14}$ |
 | 5 | 0 | 0 | $5.997\times10^{-8}$ / $7.447\times10^{-7}$ | $1.156\times10^{-14}$ / $1.168\times10^{-14}$ |
@@ -201,7 +204,7 @@ The switch does nothing on cubed-sphere grids. Under it `balance_column` balance
 `geometry='cartesian'`.
 :::
 
-1. **Ratios of means.** The Favre velocity, $T$ and $\rho/p$ are still treated as means; the $O(h^2/R)$ remainder
+1. **Ratios of means.** The Favre velocity, $T$ and $\rho/p$ are still treated as means; the $O(\Delta x_1^2/R)$ remainder
    is @sec-ch05-oneoverr.
 2. **Cubed sphere.** Not implemented: the gnomonic grids store the mid-radius as $x_{1v}$ and would need the
    conversion with their own radial measure.
