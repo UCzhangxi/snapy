@@ -88,8 +88,12 @@ In step order (@tbl-ch03-exchange-code):
 
 1. `exchange_ghost_zones` syncs `hydro_u` as conserved with interpolation on, then `scalar_s` as scalar
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
-2. `exchange` takes the two-phase branch on a subdivided cubed sphere, otherwise calls `_exchange_once`, which is
-   `begin_exchange`, `launch_exchange`, `finalize_exchange` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_exchange >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::_exchange_once >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::begin_exchange >}}, {{< code src/mesh/meshblock.cpp MeshBlockImpl::launch_exchange >}}).
+2. `exchange` takes the two-phase branch on a subdivided cubed sphere
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange >}}), otherwise it calls `_exchange_once`
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::_exchange_once >}}). That runs the three phases in turn:
+   `begin_exchange` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::begin_exchange >}}), `launch_exchange`
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::launch_exchange >}}) and `finalize_exchange`
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_exchange >}}).
 3. `serialize` copies each interior slab into the cached send buffer of its `get_buffer_id`
    ({{< code src/layout/layout.cpp LayoutImpl::serialize >}}).
 4. `finalize` waits on the messages, calls `deserialize` and then `fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::finalize >}}).
