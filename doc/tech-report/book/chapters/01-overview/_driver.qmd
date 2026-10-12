@@ -9,10 +9,12 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-The driver chooses the time step, executes every stage, checks rejection, and writes accepted states.
-Caller supplied; integration defaults belong to pyharp.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A (a code map): the driver chooses the time step, executes every stage, checks for rejection and writes accepted states; there is no main time loop inside a block.
+**Data.** In: a block or mesh, the integration limits and the output schedule. Out: accepted states written by `make_outputs`, the final write and the exit reason.
+**Placement.** The outermost loop of a run: `max_time_step`, the stages, `check_redo`, `make_outputs`, `finalize`.
+**Activation.** Caller supplied; the integration defaults belong to pyharp.
+**Guarantee / limits.** A map; no convergence order. The example applies kinetics after all dynamics stages and before the rejection decision.
+**Evidence.** `test_restart_cycle_limit` (resume cycle and logged values, absolute $10^{-12}$, time $10^{-9}$); `test_check_redo_parallel.release` (collective redo and rollback, exact); `driver_check.py` `[C1]`-`[C3]` (clock, step halving and stop, on a port of the loop).
 :::
 
 The driver chooses the time step, executes every stage, checks rejection, and writes accepted states. There is no main

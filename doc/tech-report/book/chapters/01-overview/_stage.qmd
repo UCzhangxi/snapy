@@ -15,11 +15,12 @@ These transfer symbols are proposed in the @sec-ch01 item in `ISSUES.md`.
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-`advance_local` publishes the stage, saves the initial state on stage zero, assembles hydro and scalar increments,
-applies user increments, combines the stage and enforces the conserved limiter.
-No callbacks unless installed; integrator stages are external.
-Order: code map; no independent measured convergence order.
-Defining identities: @eq-ch01-stage-weight, @eq-ch01-stage-transfer and @eq-ch01-stage-dry.
+**Purpose.** `advance_local` publishes the stage, saves the step-start state on stage zero, assembles the hydro and scalar increments, applies user increments, combines the stage and enforces the conserved limiter (@eq-ch01-stage-weight, @eq-ch01-stage-transfer, @eq-ch01-stage-dry).
+**Data.** In: the conserved state, the stage weights and any installed increments. Out: the stage-combined state; last-stage thermodynamic adjustment and the gravity-work fixer precede the final physical boundary fill.
+**Placement.** Once per RK stage, inside the block's advance.
+**Activation.** User increments only when callbacks are installed (`user_stage_forcings`); the integrator stages are external.
+**Guarantee / limits.** The combine is an affine recurrence in the stage weights, exact in arithmetic; no spatial order applies.
+**Evidence.** `test_user_output.release` (ordered hydro/scalar increments, rtol = atol = $10^{-12}$; shared callback and bad keys throw); `test_jit_user_forcing_python` (`assert_close` defaults); `stage_check.py` `[C1]` (the three-stage affine recurrence, symbolic).
 :::
 
 `advance_local` publishes the stage, saves the initial state on stage zero, assembles hydro and scalar increments,
@@ -59,7 +60,8 @@ of supplied increments, not a linearization of their nonlinear state dependence.
 is at {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}; the actual integrator coefficients are external, so this chapter does not assert them
 from a snapy call site. Check `[C1]` expands a generic three-stage affine recurrence symbolically.
 
-For implicit tracer transfer, start with the conservative passive-tracer law in a fixed cell:
+The tracer transfer and its dry-source complement are derived in @sec-ch10-tracer; this section keeps the call interface
+and the identities it relies on. For implicit tracer transfer, start with the conservative passive-tracer law in a fixed cell:
 
 $$
 \frac{\mathrm{d}}{\mathrm{d}t}\int_{V_i}\rho_n\,\mathrm{d}V
