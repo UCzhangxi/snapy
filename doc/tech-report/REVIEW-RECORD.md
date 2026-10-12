@@ -9,7 +9,7 @@ not a verdict, and neither is a recommendation: only one of the three forms belo
 
 ---
 
-```markdown
+````markdown
 SIGN-OFF #<PR> <sha> approve
 
 ## Review record
@@ -88,7 +88,7 @@ rule broken), **note** (observation, no action needed).
 
 **Verdict, in prose** — one sentence giving the single strongest reason, below the record. This does not
 replace the sign-off line at the top; that line is the verdict of record and this is its justification.
-```
+````
 
 ---
 

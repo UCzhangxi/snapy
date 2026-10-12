@@ -106,7 +106,11 @@ stops at the render itself; say so in the PR body and let CI be the render's wor
 - A hand-written line number, in a link or in `path:lines@sha` form (STYLE.md 3.1).
 - A sha restating the pin. Read it from `code_pin.yml`.
 - Change history: "since `#NNN`", "main after ...", "checked at `<sha>`", or a PR number in prose
-  (STYLE.md 3.2). Provenance goes in the PROVENANCE block or a `[source: ...]` footnote.
+  (STYLE.md 3.2). Provenance goes in the PROVENANCE block, a `[source: ...]` or `[sha: ...]` footnote, or a
+  markdown `[^label]:` footnote definition — all three are legal and a PR number may appear in any of them.
+- A sha in body prose. A sha belongs in exactly four places: `code_pin.yml`, a PROVENANCE block, a provenance
+  footnote, or STYLE's own change-history table (STYLE.md 3.1). A link for a package with no code pin carries
+  its sha in the URL, which is the link form, not prose.
 - A measured number without its command and the versions behind it (STYLE.md 4).
 
 ## 4. What to ask the editor instead of deciding
