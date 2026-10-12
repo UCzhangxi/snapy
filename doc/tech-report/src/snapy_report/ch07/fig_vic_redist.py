@@ -19,7 +19,7 @@ def make_fig():
     phi = (d0 - du.sum(1)) * vol
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(fs.DOUBLE, 2.5), sharey=True)
     k = np.arange(n)
-    a1.barh(k, phi, height=0.6, color=fs.SKY, label=r"$\phi_i$ (cell)")
+    a1.barh(k, phi, height=0.6, color=fs.SKY, label=r"$(\delta\rho_i-\Delta\mathbf{U}^{(0)}_{i,0})V_i$ (cell)")
     a1.plot(np.append(M, top), np.arange(n + 1) - 0.5, color=fs.ORANGE, marker="o", ms=3,
             label=r"$M_{i-1/2}$ (face)")
     a1.axvline(0, color=fs.BLACK, lw=0.5)

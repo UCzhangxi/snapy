@@ -72,7 +72,7 @@ all $N_y$ species and excludes dry air.
 | $\hat h$ | specific enthalpy $e + p/\rho$ (source notes: $h$ (not used: $h$ is the cell width)) | [J kg$^{-1}$] | @sec-ch02-moist-mixture |  |
 | $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$; excludes potential energy (source notes: $E$) | [J m$^{-3}$] | @sec-ch02-laws | conserved `u[IPR]` |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | vector | @sec-ch01-stage | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` |
-| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch09-framework | `hydro_w` |
+| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch07-vic-reject | `hydro_w` |
 | $c_{v,n}, c_{p,n}$ | specific heats of species $n$ at constant volume and pressure, **per unit mass of that species**; $c_{v,n} = c^{\mathrm{ref}}_n R_n$ with $c^{\mathrm{ref}}_n$ the dimensionless table value. $n=\mathrm{d}$ is dry air: $c_{v,\mathrm{d}}, c_{p,\mathrm{d}}$ | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `cref_R` |
 | $c_v, c_p$ | mixture specific heats **per unit total mass**, $c_v = \sum_n y_n c_{v,n}$ over dry air and every species; a chapter that needs the per-dry-mass form writes it out and says so | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `"VT->cv"` |
 | $\gamma$ | mixture ratio of specific heats $c_p/c_v$, local, varies with composition; $\gamma_{\mathrm{d}}$ is the dry value | [-] | @sec-ch02-ideal-gas | `gamma`, `"W->A"` |
@@ -203,10 +203,10 @@ $p_{\mathrm{ref}}$ for $10^5$ Pa.
 | $\Delta\mathbf U^{(0)}$ | the explicit stage increment handed to the implicit solve |  | @sec-ch01-stage | `du0` |
 | $\Delta t_c$ | the time step handed to the implicit solve: $w_{2,s}\Delta t$ under rk3, $\Delta t$ otherwise |  | @sec-ch06-dwork | `dt_corr` |
 | $\boldsymbol\delta_i$ | the implicit solve's unknown in cell $i$ (total mass, normal momentum, [tangential momenta], energy) | vector | @sec-ch06-dwork | `delta` |
-| $\delta\rho_i$, $\delta E_i$ | the total-mass and energy components of $\boldsymbol\delta_i$ |  | — | `delta[...][0]`, `delta[...][m-1]` |
+| $\delta\rho_i$, $\delta E_i$ | the total-mass and energy components of $\boldsymbol\delta_i$ |  | @sec-ch07-vic-redistribute | `delta[...][0]`, `delta[...][m-1]` |
 | $\Delta\rho_i$ | the total density change solved by the implicit step, after redistribution and clamps; never the plain stage change, which is $\Delta^{\mathrm{stg}}\rho_i$ |  | @sec-ch06-dwork | `du[IDN] + sum du[ICY..]` |
 | $\mathsf A_i, \mathsf B_i, \mathsf C_i$ | the diagonal, lower and upper blocks of row $i$ of the block-tridiagonal system | matrix | @sec-ch06-dwork | `_a`, `_b`, `_c` |
-| $\mathsf A^{\pm}$ | the Roe dissipation matrices $\mathsf R\lvert\Lambda\rvert\mathsf R^{-1}$ at faces $i\pm\tfrac12$ | matrix | — | `Ap`, `Am` |
+| $\mathsf A^{\pm}$ | the Roe dissipation matrices $\mathsf R\lvert\Lambda\rvert\mathsf R^{-1}$ at faces $i\pm\tfrac12$ | matrix | @sec-ch07-vic-assembly | `Ap`, `Am` |
 | $\partial\mathbf F/\partial\mathbf U$ | flux Jacobian |  | — | `dfdq_*` |
 | $\Phi$ | the gravity source Jacobian; upright, not sans-serif like the other matrices, because the math font has no sans-serif Greek and `\mathsf` drops the glyph in the PDF |  | @sec-ch06-vic | `Phi` |
 | $\omega^{\mathrm{lo}}_i, \omega^{\mathrm{hi}}_i$ | the implicit face-work weights $\tfrac12A_{i\mp1/2}\lvert x_{1,i}-x_{1,i\mp1/2}\rvert/V_i$ |  | @sec-ch06-vic | `work_lo`, `work_hi` |

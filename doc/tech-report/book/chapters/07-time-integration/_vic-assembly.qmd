@@ -15,14 +15,13 @@ correction is one linear block-tridiagonal solve per column. The gravity rows of
 face work) are part of @sec-ch06 and are not described here.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** For every cell of a column, builds the three blocks $a_i$, $b_i$, $c_i$ of the implicit system: the
+**Purpose.** For every cell of a column, builds the three blocks $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$ of the implicit system: the
 linearisation of the $x_1$ flux divergence, with Roe upwind dissipation frozen at the current state;
 @eq-ch07-vic-blocks.
 **Data.** In: the stage primitives of each $x_1$ column at the cell centres, total density $\rho$ [kg m$^{-3}$],
 $v_1$, $v_2$, $v_3$ [m s$^{-1}$], pressure [Pa] and mass fractions $y_n$ [-] (total-mass basis); the face areas
 $A_i$ [m$^2$] at the $x_1$ faces and cell volumes $V_i$ [m$^3$]; the stage step $\Delta t_c$ [s]; solid cells from
-the solid mask. Out: the $N\times N$ blocks $a_i, b_i, c_i$ of every layer $i$, acting on the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$]; their
-entries are in s$^{-1}$ where row and column are the same variable (@eq-ch07-vic-blocks). Check cases: 200 Roe
+the solid mask. Out: the $N\times N$ blocks $\mathsf A_i, \mathsf B_i, \mathsf C_i$ of every layer $i$, acting on the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$]; entry $(k,l)$ of a block is in [unit of solved variable $k$]/([unit of variable $l$] s), so s$^{-1}$ on its diagonal (@eq-ch07-vic-blocks). Check cases: 200 Roe
 states and pairs, a spherical shell column, $v_2 = 0$ and $50$ m s$^{-1}$, a solid cell.
 **Placement.** Every stage with a VIC, after the explicit increment and before the sweep.
 **Activation.** `integration/implicit-scheme` 1 (3 x 3) or 9 (5 x 5).
@@ -32,25 +31,30 @@ states and pairs, a spherical shell column, $v_2 = 0$ and $50$ m s$^{-1}$, a sol
 (`EXPECT_DOUBLE_EQ`, 4 ulp); not run at the pin. No ctest compares the blocks with a difference quotient: **missing evidence** for the blocks themselves. Check: `python3 src/snapy_report/ch07/vic_assembly_check.py`, output `vic_assembly_check.out` lines `[C1]`–`[C5]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
 :::
 
+The VIC replaces the explicit $x_1$ flux divergence by an implicit one. It does not re-solve the Riemann
+problem. It linearises a Roe flux about the current state, holding the dissipation matrices $\mathsf A^{\pm}$ fixed, so the
+correction is one linear block-tridiagonal solve per column. The gravity rows of the operator ($\Phi$ and the
+face work) are part of @sec-ch06 and are not described here.
+
 ### Derivation
 
 Write the Roe flux at face $i+\tfrac12$ as
-$\hat F_{i+1/2} = \tfrac12(F_i + F_{i+1}) - \tfrac12\lvert\hat A\rvert_{i+1/2}(\mathbf q_{i+1}-\mathbf q_i)$, with
-$\lvert\hat A\rvert = R\lvert\Lambda\rvert R^{-1}$ at the Roe average of the two cells. The update of cell $i$ with face areas $A_i$,
+$\hat F_{i+1/2} = \tfrac12(F_i + F_{i+1}) - \tfrac12\mathsf A^+(\mathbf q_{i+1}-\mathbf q_i)$, with
+$\mathsf A^{\pm} = \mathsf R\lvert\Lambda\rvert\mathsf R^{-1}$ at the Roe average of the two cells. The update of cell $i$ with face areas $A_i$,
 $A_{i+1}$ and volume $V_i$ is $\mathbf q_i/\Delta t + (A_{i+1}\hat F_{i+1/2} - A_i\hat F_{i-1/2})/V_i$.
-Differentiating with $\lvert\hat A\rvert$ frozen and writing $J_i = \partial F/\partial\mathbf q$ at cell $i$ gives the three
+Differentiating with $\mathsf A^{\pm}$ frozen and writing $J_i = \partial F/\partial\mathbf q$ at cell $i$ gives the three
 blocks of row $i$:
 
 $$
 \begin{aligned}
-a_i &= \frac{1}{2V_i}\Big(A_i\lvert\hat A\rvert_{i-1/2} + A_{i+1}\lvert\hat A\rvert_{i+1/2} + (A_{i+1}-A_i)J_i\Big) + \frac{I}{\Delta t}, \\
-b_i &= -\frac{A_i}{2V_i}\big(\lvert\hat A\rvert_{i-1/2} + J_{i-1}\big), \\
-c_i &= -\frac{A_{i+1}}{2V_i}\big(\lvert\hat A\rvert_{i+1/2} - J_{i+1}\big).
+\mathsf A_i &= \frac{1}{2V_i}\Big(A_i\mathsf A^- + A_{i+1}\mathsf A^+ + (A_{i+1}-A_i)J_i\Big) + \frac{\mathsf I}{\Delta t}, \\
+\mathsf B_i &= -\frac{A_i}{2V_i}\big(\mathsf A^- + J_{i-1}\big), \\
+\mathsf C_i &= -\frac{A_{i+1}}{2V_i}\big(\mathsf A^+ - J_{i+1}\big).
 \end{aligned}
 $$ {#eq-ch07-vic-blocks}
 
 The check builds these from the ported kernels on a spherical shell and compares them with central differences
-of the frozen-$\lvert\hat A\rvert$ residual. They agree to $8\times10^{-9}$ of the block size [check
+of the frozen-$\mathsf A^{\pm}$ residual. They agree to $8\times10^{-9}$ of the block size [check
 `src/snapy_report/ch07/vic_assembly_check.py`, output `vic_assembly_check.out`, `[C3]`]. Three properties carry
 the construction:
 
@@ -69,7 +73,7 @@ See @fig-ch07-vic-stencil for the block row.
 
 ```{python}
 #| label: fig-ch07-vic-stencil
-#| fig-cap: "The block row of cell $i$. The Roe dissipation matrices $\\lvert\\hat A\\rvert$ sit on the two faces (orange) with the face areas $A_i$, $A_{i+1}$; the flux Jacobians $J$ sit in the three cells (blue). The coefficients $a_i$, $b_i$, $c_i$ combine them as in @eq-ch07-vic-blocks. The gravity block $\\Phi$ belongs to the gravity chapter."
+#| fig-cap: "The block row of cell $i$. The Roe dissipation matrices $\\mathsf A^{\\pm}$ sit on the two faces (orange) with the face areas $A_i$, $A_{i+1}$; the flux Jacobians $J$ sit in the three cells (blue). The coefficients $\\mathsf A_i$, $\\mathsf B_i$, $\\mathsf C_i$ combine them as in @eq-ch07-vic-blocks. The gravity block $\\Phi$ belongs to the gravity chapter."
 #| fig-alt: "Three cells in a row with orange faces between them, labelled with the Roe matrices and face areas, and the formulas for b, c and a underneath."
 #| echo: false
 from snapy_report.ch07.fig_vic_stencil import make_fig
@@ -81,13 +85,13 @@ enthalpy ({{< code src/implicit/flux_decomposition_impl.h RoeAverage >}}); the c
 `Eigenvalue` returns $|v_1-c_s|$, $|v_1|$, $|v_1+c_s|$, $|v_1|$, $|v_1|$ ({{< code src/implicit/flux_decomposition_impl.h Eigenvalue >}}).
 `Eigenvector` writes out the eigenvectors and their inverse by hand
 ({{< code src/implicit/flux_decomposition_impl.h Eigenvector >}}), and `FluxJacobian` the Euler flux Jacobian in conserved
-variables ({{< code src/implicit/flux_decomposition_impl.h FluxJacobian >}}). The full kernel forms $\lvert\hat A\rvert$ as `Am` and `Ap`
+variables ({{< code src/implicit/flux_decomposition_impl.h FluxJacobian >}}). The full kernel forms $\mathsf A^{\pm}$ as `Am` and `Ap`
 at the lower and upper face ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}) and then the blocks, with `half_inv_vol` $=1/(2V_i)$ ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}). The partial kernel copies
 the $(\rho, \rho v_1, E)$ rows and columns out of the same 5 x 5 matrices into `Am2` and `Ap2`
 ({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}).
 
 On the CPU the assembly runs the columns in parallel and fills each cell independently. A solid cell gets
-$a=I/\Delta t$, $b=c=0$, and its fluid neighbour sees a mirror of itself instead of the solid's state; both are
+$\mathsf A_i=\mathsf I/\Delta t$, $\mathsf B_i=\mathsf C_i=0$, and its fluid neighbour sees a mirror of itself instead of the solid's state; both are
 in `vic_assemble_full_cpu` ({{< code src/implicit/implicit_dispatch.cpp vic_assemble_full_cpu >}}), as the check confirms (`[C5]`). Before the assembly, the host
 removes the EOS reference energy from the energy tendency and takes $\gamma$ from the EOS, through
 `internal_energy_offset` ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}). It also rotates the velocity into the local orthonormal frame, through
@@ -130,7 +134,7 @@ removes the EOS reference energy from the energy tendency and takes $\gamma$ fro
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The operator is a linearisation with $\lvert\hat A\rvert$ frozen. It is not the Jacobian of the explicit Riemann solver
+The operator is a linearisation with $\mathsf A^{\pm}$ frozen. It is not the Jacobian of the explicit Riemann solver
 the stage used, so the implicit and explicit fluxes are not the same function.
 :::
 

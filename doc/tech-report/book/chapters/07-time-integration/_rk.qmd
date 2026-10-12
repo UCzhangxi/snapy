@@ -22,7 +22,7 @@ state, the current stage state and one full-step increment; @eq-ch07-rk-stage.
 $\Delta t\,\mathcal L$, cell averages with ghosts of $\mathbf U$: $\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$] (total-mass basis); the passive-scalar densities
 $\rho_{\mathrm d}r_n$ [kg m$^{-3}$] (dry-mass basis); the pyharp stage weights $w_0^{(s)}, w_1^{(s)}, w_2^{(s)}$
 [-] of `integration/type`. Out: the next stage state and scalars, cell averages, same units and bases. Check cases:
-$u' = \lambda u$, a nonlinear ODE at 40, 80, 160 steps, a nonnegativity test up to $\Delta t = C$.
+$\mathrm du/\mathrm dt = \lambda u$, a nonlinear ODE at 40, 80, 160 steps, a nonnegativity test up to $\Delta t = C$.
 **Placement.** The whole step: stage 0 saves the step-start state; each stage ends with the average.
 **Activation.** `integration/type`: `rk1` (or `euler`), `rk2`, `rk3`, `rk3s4`; default `rk3`. Read by pyharp.
 **Guarantee / limits.** Order 1, 2, 3, 3 in time; strong-stability-preserving with coefficient 1, 1, 1, 2.
@@ -47,7 +47,7 @@ $$ {#eq-ch07-rk-stage}
 
 implemented as `pintg->forward(stage, _hydro_u0, hydro_u, fut_hydro_du)`
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), whose body is the linear combination of `IntegratorImpl::forward`
-([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)). The weights $(w_0,w_1,w_2)$ of each stage are set in the
+([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)). The weights $(w_0^{(s)},w_1^{(s)},w_2^{(s)})$ of each stage are set in the
 `IntegratorImpl` constructor ([`pyharp integrator.cpp:33-85`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L85)):
 
 | type | stage 1 | stage 2 | stage 3 | stage 4 |
@@ -66,18 +66,18 @@ to $z^3$ and its $z^4$ coefficient is $1/48$, not $1/24$, so it is third order. 
 fitted orders are 1.01, 2.01, 3.02 and 3.01 [check `src/snapy_report/ch07/rk_check.py`, output
 `rk_check.out`, `[C1]` and `[C2]`].
 
-*Strong stability.* In every tableau $w_0+w_1=1$ with $w_0,w_1\ge0$, so
+*Strong stability.* In every tableau $w_0^{(s)}+w_1^{(s)}=1$ with $w_0^{(s)},w_1^{(s)}\ge0$, so
 
 $$
 \mathbf U^{(s+1)} = w_0^{(s)}\,\mathbf U^n + w_1^{(s)}\Big(\mathbf U^{(s)} + \frac{w_2^{(s)}}{w_1^{(s)}}\,\Delta t\,\mathcal L(\mathbf U^{(s)})\Big)
 $$
 
-is a convex combination of $\mathbf U^n$ and a forward-Euler step of size $(w_2/w_1)\Delta t$. At the first
-stage $\mathbf U^{(0)}=\mathbf U^n$, so the step there has size $w_2\Delta t/(w_0+w_1)$. A convex functional
+is a convex combination of $\mathbf U^n$ and a forward-Euler step of size $(w_2^{(s)}/w_1^{(s)})\Delta t$. At the first
+stage $\mathbf U^{(0)}=\mathbf U^n$, so the step there has size $w_2^{(s)}\Delta t/(w_0^{(s)}+w_1^{(s)})$. A convex functional
 that a forward-Euler step does not increase for $\Delta t\le\Delta t_{\mathrm{FE}}$ is therefore not increased by
 the scheme for $\Delta t\le C\,\Delta t_{\mathrm{FE}}$, with $C$ the smallest ratio over the stages: 1 for `rk1`,
-`rk2` and `rk3`, and 2 for `rk3s4` (`[C3]`). On $u'=-u$, where forward Euler keeps $u\ge0$ for $\Delta t\le1$,
-`rk3` keeps it up to 1 and `rk3s4` up to 2 (`[C4]`).[^ch07-rk-ssp] $w_2\le w_1$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ({{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}}).
+`rk2` and `rk3`, and 2 for `rk3s4` (`[C3]`). On $\mathrm du/\mathrm dt=-u$, where forward Euler keeps $u\ge0$ for $\Delta t\le1$,
+`rk3` keeps it up to 1 and `rk3s4` up to 2 (`[C4]`).[^ch07-rk-ssp] $w_2^{(s)}\le w_1^{(s)}$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ({{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}}).
 
 [^ch07-rk-ssp]: The argument is that of `sources/canoe__POSITIVITY_TECH_REPORT.md` §3, written out here.
 
@@ -90,7 +90,7 @@ See @fig-ch07-rk-stages for the three stages of `rk3`.
 
 ```{python}
 #| label: fig-ch07-rk-stages
-#| fig-cap: "The three stages of rk3. Sky-blue boxes are the stored states $\\mathbf U^n$, $\\mathbf U^{(1)}$, $\\mathbf U^{(2)}$ and $\\mathbf U^{n+1}$; each black arrow is one stage, labelled with its weights $w_0$, $w_1$, $w_2$ (green) and its full-step increment $w_2\\,\\Delta t\\,\\mathcal L$ (orange). The dashed grey arcs show the step-start state re-entering stages 2 and 3 with weight $w_0$."
+#| fig-cap: "The three stages of rk3. Sky-blue boxes are the stored states $\\mathbf U^n$, $\\mathbf U^{(1)}$, $\\mathbf U^{(2)}$ and $\\mathbf U^{n+1}$; each black arrow is one stage, labelled with its weights $w_0^{(s)}$, $w_1^{(s)}$, $w_2^{(s)}$ (green) and its full-step increment $w_2^{(s)}\\,\\Delta t\\,\\mathcal L$ (orange). The dashed grey arcs show the step-start state re-entering stages 2 and 3 with weight $w_0^{(s)}$."
 #| fig-alt: "Four boxes in a row joined by three arrows with weight labels, and two dashed arcs from the first box to the third and fourth."
 #| echo: false
 from snapy_report.ch07.fig_rk_stages import make_fig
@@ -156,7 +156,7 @@ and the exchange. Nothing is fused: the dispatch path `call_average3` is comment
    ([`pyharp integrator.cpp:20-31`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L20-L31)), so YAML runs keep the default `max_redo` of 5
    ([`pyharp integrator.hpp:58`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.hpp#L58)).
 2. **pyharp is not pinned by snapy's build.** The weights cited here are those of the pyharp commit the report
-   cites;[^ch07-rk-pyharp] the property $w_2\le w_1$ that the positivity limiter relies on holds for all four
+   cites;[^ch07-rk-pyharp] the property $w_2^{(s)}\le w_1^{(s)}$ that the positivity limiter relies on holds for all four
    tableaux there and must be re-checked against the pyharp a build links.
 3. **SSP coefficient of `rk3s4`.** Per operator evaluation it is $2/4$, against $1/3$ for `rk3`, so `rk3s4` could
    take a step about 1.5 times longer for the same SSP guarantee. The time-step bound does not use this: it applies

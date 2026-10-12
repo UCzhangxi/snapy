@@ -18,9 +18,9 @@ the unique set of face transfers that produces it, and the constituents ride on 
 **Purpose.** Turns the solved change of the total density $\rho$ into mass transfers through the faces of the column, then moves
 dry gas, each species and the passive scalars through those faces from the upwind cell, never more than the donor
 holds; @eq-ch07-vic-faces.
-**Data.** In, per cell $i$ of the column: the solved increment, its first entry $\delta_{i,0}$ the change of the
+**Data.** In, per cell $i$ of the column: the solved increment, its total-mass component $\delta\rho_i$ the change of the
 total density $\rho$ [kg m$^{-3}$]; the first entry $\Delta\mathbf U^{(0)}_{i,0}$ [kg m$^{-3}$] of the explicit
-increment; the cell mass $m_i$ [kg] and volume $V_i$ [m$^3$]; the dry and species densities [kg m$^{-3}$]
+increment; the cell mass $\rho_iV_i$ [kg] and volume $V_i$ [m$^3$]; the dry and species densities [kg m$^{-3}$]
 (total-mass basis) and scalar densities $\rho_{\mathrm d}r_n$ [kg m$^{-3}$] (dry-mass basis). Out: the face mass
 transfers $M_{i+1/2}$ [kg] at the $x_1$ faces and the final tendencies of density, species and scalars [kg m$^{-3}$]
 per cell, and the dry-clamp mark. Check cases: 50 random columns, a face asking for more than its donor holds, the
@@ -40,13 +40,13 @@ the unique set of face transfers that produces it, and the constituents ride on 
 
 ### Derivation
 
-Let $\phi_i = (\delta_{i,0} - \Delta\mathbf U^{(0)}_{i,0})V_i$ be the mass the solve adds to cell $i$ beyond the
-explicit increment, with $\delta_{i,0}$ and $\Delta\mathbf U^{(0)}_{i,0}$ the first entries, the total density, of the
-solved and of the explicit increment. Let $m_i = \rho_iV_i$, and let
-$R = \sum_i\phi_i$ be the part with no closed-face representation. The face transfers, positive upward, are
+The mass the solve adds to cell $i$ beyond the explicit increment is $(\delta\rho_i - \Delta\mathbf U^{(0)}_{i,0})V_i$, with
+$\delta\rho_i$ the total-mass component of $\boldsymbol\delta_i$ and $\Delta\mathbf U^{(0)}_{i,0}$ the first entry, the total density, of
+the explicit increment. Let $R = \sum_i(\delta\rho_i - \Delta\mathbf U^{(0)}_{i,0})V_i$ be the part with no closed-face
+representation. The face transfers, positive upward, are
 
 $$
-M_{-1/2} = 0 , \quad M_{i+1/2} = M_{i-1/2} - \Big(\phi_i - R\,\frac{m_i}{\sum_k m_k}\Big) ,
+M_{-1/2} = 0 , \quad M_{i+1/2} = M_{i-1/2} - \Big((\delta\rho_i - \Delta\mathbf U^{(0)}_{i,0})V_i - R\,\frac{\rho_iV_i}{\sum_{\mathrm{col}}\rho V}\Big) ,
 $$ {#eq-ch07-vic-faces}
 
 and they telescope: $M$ at the top face is zero up to round-off, $10^{-15}$ of the largest transfer in the check
@@ -69,14 +69,14 @@ See @fig-ch07-vic-redistribute for one column of the check.
 
 ```{python}
 #| label: fig-ch07-vic-redistribute
-#| fig-cap: "One column of the check. Left: the cell mass changes $\\phi_i$ (sky blue) and the face transfers $M_{i-1/2}$ (orange) built from them by @eq-ch07-vic-faces, zero at the bottom and the top. Right: the resulting dry-gas (green) and species (purple, magnified 20 times) changes of each layer, moved donor-upwind."
+#| fig-cap: "One column of the check. Left: the cell mass changes $(\\delta\\rho_i - \\Delta\\mathbf U^{(0)}_{i,0})V_i$ (sky blue) and the face transfers $M_{i-1/2}$ (orange) built from them by @eq-ch07-vic-faces, zero at the bottom and the top. Right: the resulting dry-gas (green) and species (purple, magnified 20 times) changes of each layer, moved donor-upwind."
 #| fig-alt: "Two horizontal bar charts against layer number: on the left cell bars with a zig-zag line of face transfers starting and ending at zero; on the right paired green and purple bars."
 #| echo: false
 from snapy_report.ch07.fig_vic_redist import make_fig
 make_fig()
 ```
 
-Pass 1 forms $\phi_i$, $R$ and $\sum m$, through `explicit_total` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
+Pass 1 forms the cell mass changes, $R$ and $\sum_{\mathrm{col}}\rho V$, through `explicit_total` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
 Pass 2 is the prefix sum of @eq-ch07-vic-faces into `MASS` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
 Pass 3a moves the dry gas with the dry fraction of the donor, carrying `dryfrac` upward
 ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}). Where it clamps, it sets the mark that becomes the VIC clamp
@@ -112,7 +112,7 @@ move with the clamped dry-gas transfer from their donor cell, through `mass_corr
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `tests/test_backward_substitution.cpp` (`test_backward_substitution.release`), `conserves_constituent_column_tendencies` | column totals of each constituent, the face transfers, non-negative final masses, and cell totals equal to $\delta_{i,0}$ | $10^{-12}$ absolute | round-off on values of order 1 |
+| `tests/test_backward_substitution.cpp` (`test_backward_substitution.release`), `conserves_constituent_column_tendencies` | column totals of each constituent, the face transfers, non-negative final masses, and cell totals equal to $\delta\rho_i$ | $10^{-12}$ absolute | round-off on values of order 1 |
 | same file, `dry_only_transport_is_conservative_and_clamped` | a dry-only transfer of 2 is clamped to 0.25, empties the donor and sets the mark | $10^{-12}$; exact for the mark | round-off; contract |
 | same file, `a_drained_species_donor_stays_non_negative`, `a_drained_float_species_donor_stays_non_negative` | a drained species donor keeps at least $4000\epsilon_{\mathrm{m}}\rho y$ | as stated | the 4096-ulp margin |
 | this section's check, `vic_redist_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
