@@ -11,11 +11,16 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** After each step, combines six failure flags over every block and rank into one cause word, then
-accepts the step or restores it and redoes it with a smaller time step.
-**Switch.** Integrator `max_redo`, default 5. **Moist causes.** Species repair by the limiter (4) and a cell the
-saturation adjustment left unadjusted (16).
-**Defining equation.** None: a decision rule, listed in @tbl-ch10-redo-code and checked by `redo_check.py`.
+**Purpose.** The two moist causes of a step rejection: a limiter species repair above round-off (cause 4) and a cell
+the saturation adjustment left unadjusted (cause 16). The general decision rule is @sec-ch07-redo; N/A here.
+**Data.** In: the limiter marks and kintera's failure count of the block. Out: their two bits in the cause word.
+**Placement.** The saturation counter is drained at stage 0 and again once after the step, in `check_redo`.
+**Activation.** Cause 4 with `limiter: true`; cause 16 whenever the thermo has a ThermoY. Integrator `max_redo`,
+default 5.
+**Guarantee / limits.** Either cause on any rank rejects the step everywhere; past `max_redo` a moist failure ends
+the run without restoring.
+**Evidence.** `test_check_redo_saturation_python`, `test_forcing.release` and `redo_check.py` `[C1]`–`[C3]`; the
+ctests were not run at the pin.
 :::
 
 The redo machinery itself (how $\Delta t$ is halved, what the driver does with the return value) belongs to
@@ -26,19 +31,17 @@ parts of the rule that matter to them. A species repair by the conserved limiter
 cause 16. Either one, on any rank, rejects the step everywhere.
 
 The saturation cause is always on when the thermo has a ThermoY; the limiter cause is on with `limiter: true`.
-The redo restores `hydro_u`, recomputes `hydro_w`, restores the scalars, drops the gravity-work fixer's count of
-the rejected step and decrements the cycle.
+What a redo restores, and how the step is retried, is @sec-ch07-redo.
 
 ### Derivation
 
 No derivation: the scheme is a decision rule, not a discretization.
 
 ::: {.callout-important title="Check"}
-Three properties that the rest of the chapter relies on are checked against a line-for-line port of the rule.[^redo-c]
-The six flags map to the bits 1, 2, 4, 8, 16, 32 in the order floor, clamp, limiter, nan, saturation, vic-solve
-(`[C1]`). The maximum over ranks of 0/1 flags is the bitwise OR of every rank's cause word, so one rank's failure is
-every rank's (`[C2]`, all 4096 two-rank combinations). Past `max_redo`, a step with a moist cause terminates without
-restoring; only the VIC solve cause (32) restores the state first (`[C3]`).
+The rule, its six flags and their reduction over ranks are @sec-ch07-redo. A line-for-line port of the rule checks
+the three points the moist causes rely on:[^redo-c] the limiter and saturation flags are bits 4 and 16 of the cause
+word (`[C1]`); one rank's moist failure is every rank's (`[C2]`, all 4096 two-rank combinations); and past
+`max_redo` a step with a moist cause terminates without restoring (`[C3]`).
 :::
 
 [^redo-c]: `python3 src/snapy_report/ch10/redo_check.py`, output `redo_check.out`, lines `[C1]`–`[C3]`; a numpy
@@ -49,12 +52,10 @@ restoring; only the VIC solve cause (32) restores the state first (`[C3]`).
 @fig-ch10-redo-flow shows the decision. The saturation counter is drained once at the start of every step, so a
 failure counted by a ThermoY call between steps (a diagnostic from Python, say) is not charged to the next step,
 `saturation_failures` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). After the step,
-`local_redo_flag_tensor` forms the floor test first, then reads the limiter marks the floor test's conversion may
-have set, then drains the saturation counter exactly once; the six flags are stacked on the device
-({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}) and `read_redo_flags` reads them back
-together, one device-to-host copy on CUDA ({{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}}). A
-`Mesh` with several local blocks on one device takes the element-wise maximum of their flag tensors and reads it
-once, before the one collective reduction ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}).
+`local_redo_flag_tensor` reads the limiter marks after the floor test's conversion, so a repair that conversion
+makes counts as cause 4, and drains the saturation counter exactly once for cause 16
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). How the flags are read back and reduced
+over blocks and ranks is @sec-ch07-redo.
 
 ```{python}
 #| label: fig-ch10-redo-flow
