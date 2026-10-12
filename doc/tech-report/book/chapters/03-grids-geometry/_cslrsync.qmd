@@ -49,8 +49,10 @@ ordered pair. Nothing is approximated.
 
 The sync runs inside each stage, after the $x_2$ and $x_3$ reconstruction and before the solves. Both directions are
 begun, launched and finalised together. The options are `cross_panel_only(true)`, `interpolate(false)` and
-`type(kPrimitive)`, with `dim` set to the direction, so only the one face layer at panel edges moves; the
-velocity frame rotation of @sec-ch03-csinterp is applied to the states, the reverse flag reorders the strip along the
+`type(kPrimitive)`, with `dim` set to the direction, so only the one face layer at panel edges moves; along $x_1$
+the strip also carries the ghost rows of that layer (`extend_x1` by the ghost depth, whenever the block has more than
+one $x_1$ cell), because the $x_1$ differences of the face-flux covariance read the cross-panel face states in the
+cells next to the radial walls. The velocity frame rotation of @sec-ch03-csinterp is applied to the states, the reverse flag reorders the strip along the
 edge, and the flip and transpose flags are no-ops on a strip one face deep. The scalar runs the same sync with
 `type(kScalar)` before its own solves. @fig-ch03-cslrsync-roles draws the roles at a same-orientation edge.
 
@@ -69,7 +71,7 @@ make_fig()
 |---|---|---|---|
 | hydro $x_2$, $x_3$ face-state sync | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `send_vars2` | `layout: cubed-sphere` |
 | scalar face-state sync | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `send_vars2` | `layout: cubed-sphere` |
-| one-face strip | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::serialize >}} | `part_opts` | `dim` |
+| one-face strip, with its $x_1$ ghost rows | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::serialize >}} | `part_opts` | `dim` |
 | suffix rule, pack | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::serialize >}} | `suffix` | none |
 | suffix rule, unpack | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}} | `suffix` | none |
 
