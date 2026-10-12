@@ -12,16 +12,20 @@ status: draft
 ::: {.callout-note title="At a glance"}
 **Purpose.** Calls user TorchScript modules once per Runge–Kutta stage and adds what they return to the hydro and
 scalar increments; @eq-ch09-user-add.
-**Data.** In: one dictionary of the block's buffers and stage variables, $\Delta t$ and the stage index. Out:
-`hydro_du` and/or `scalar_ds`, increments over the full step, of the increments' shapes.
+**Data.** In: one dictionary of every named block buffer and the stage variables (stage variables win), the
+full step $\Delta t$ [$\mathrm{s}$] and the stage index. Out: `hydro_du` (the shape of the hydro increment,
+total-mass basis, per unit volume) and/or `scalar_ds` (the shape of the scalar increment), each an increment over the
+full step. Check case: three toy modules, and the rk1, rk2, rk3, rk3s4 stage weights of pyharp.
 **Placement.** Every RK stage, in `MeshBlockImpl::advance_local`, after the native forcings, the vertical implicit
 correction and the scalar update, before the RK average.
 **Activation.** The call `MeshBlockImpl::set_user_stage_forcings(filenames)`; no YAML key. Default: none.
 `scalar_ds` needs passive scalars.
 **Guarantee / limits.** The return value is added as it is, not multiplied by $\Delta t$; a wrong shape or an
 unknown key is refused.
-**Evidence.** `test_jit_user_forcing_python`, `test_stage_forcing_dry_tracer_python` ($10^{-12}$) and
-`user_check.py` `[C1]`–`[C3]`; the ctests were not run at the pin.
+**Evidence.** Tests: a scripted module adds $0.25\cdot1+0.5$ to the dry density in one stage,
+{{< code tests/test_jit_user_forcing.py main >}} (`assert_close` defaults); a user dry increment changes the density by
+$w_2^{(s)}$ times it for every integrator, {{< code tests/test_stage_forcing_dry_tracer.py main >}} ($10^{-12}$
+absolute); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/user_check.py`, output `user_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 A user stage forcing is a source term written in Python, compiled with `torch.jit.script`, saved, and loaded by

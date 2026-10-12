@@ -16,15 +16,19 @@ status: draft
 ::: {.callout-note title="At a glance"}
 **Purpose.** Damps all three velocity components toward zero in a layer of given width at the top or bottom of the
 domain, with a $\sin^2$ ramp; @eq-ch09-sponge-drag.
-**Data.** In: the cell density and velocity and the lower-face position of each cell. Out: the three momentum rows,
-lowered to covariant components on the cubed sphere; the energy row is not touched.
+**Data.** In: the cell density $\rho$ and contravariant velocity of every cell of the boundary block, ghosts
+included, the lower-face position of each cell, `width` [$\mathrm{m}$] and $\tau$ [$\mathrm{s}$]; `cosine_cell_kj` on the
+cubed sphere. Out: the three momentum rows, covariant; the energy row is not touched. Check cases: 20 cells of
+$0.5$ $\mathrm m$ with a width of $2$ $\mathrm m$, and 1000 random draws on a panel corner.
 **Placement.** Every RK stage, in the forcing loop, only on the block that owns the physical boundary.
 **Activation.** `top-sponge-lyr: {tau, width}`, `bot-sponge-lyr: {tau, width}`, both $>0$ [$\mathrm{s}$,
 $\mathrm{m}$]. Off unless the key is present.
 **Guarantee / limits.** First order in time; the removed kinetic energy becomes internal energy density; a `width`
 taller than the boundary block is cut off at its other face.
-**Evidence.** `test_forcing.release` (drag direction on the cubed sphere, $10^{-12}$) and `sponge_check.py`
-`[C1]`–`[C4]`; no test of the drag magnitude; the ctests were not run at the pin.
+**Evidence.** Test: on six panels the top sponge, the bottom sponge and `relax-bot-velo` give a drag antiparallel to the
+covariant momentum, {{< code tests/test_forcing.cpp forcing.cubed_sphere_sponge_drag_is_covariant >}} ($10^{-12}$ of the
+larger product); the ctest was not run at the pin. No test of the drag magnitude or of the profile. Check:
+`python3 src/snapy_report/ch09/sponge_check.py`, output `sponge_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
 A sponge layer absorbs waves that would otherwise reflect from the top or bottom boundary. snapy's sponges are a
