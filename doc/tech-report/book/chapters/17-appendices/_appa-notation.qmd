@@ -53,24 +53,24 @@ all $N_y$ species and excludes dry air.
 
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
-| $\rho$ | total density, dry plus every species that carries mass | [kg m$^{-3}$] | @sec-ch01-stage | primitive `w[IDN]`; conserved `u[IDN]` $+\sum$ `u[ICY+n-1]` |
-| $\rho_{\mathrm{d}}$ | dry-air density | [kg m$^{-3}$] | @sec-ch02-laws | conserved `u[IDN]` |
-| $y_n$ | mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$; this is snapy's composition variable and the only one the state vector carries (source notes: $q_n$) | [-] | @sec-ch02-ideal-moist | primitive `w[ICY+n-1]` |
+| $\rho$ | total density, dry plus every species that carries mass | [kg m$^{-3}$] | @sec-ch01-initialization | primitive `w[IDN]`; conserved `u[IDN]` $+\sum$ `u[ICY+n-1]` |
+| $\rho_{\mathrm{d}}$ | dry-air density | [kg m$^{-3}$] | @sec-ch01-initialization | conserved `u[IDN]` |
+| $y_n$ | mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$; this is snapy's composition variable and the only one the state vector carries (source notes: $q_n$) | [-] | @sec-ch01-initialization | primitive `w[ICY+n-1]` |
 | $r_n$ | mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1) | [-] | @sec-ch01-stage | `s/rho_d` in `src/scalar` |
-| $\rho_n$ | partial density of species $n$, $\rho y_n$ | [kg m$^{-3}$] | @sec-ch01-stage | conserved `u[ICY+n-1]` |
+| $\rho_n$ | partial density of species $n$, $\rho y_n$ | [kg m$^{-3}$] | @sec-ch01-initialization | conserved `u[ICY+n-1]` |
 | $\mathcal V, \mathcal C$ | the vapour and condensate index sets; $n\in\mathcal V$ runs $1..N_v$ and $n\in\mathcal C$ runs $N_v+1..N_y$, in that order, as the rows are stored |  | @sec-ch02-ideal-moist | `vapor_ids`, `cloud_ids` |
 | $N_v, N_c, N_y$ | the number of vapours, of condensates, and of species rows, $N_y=N_v+N_c$ | count | — | `nvapor`, `ncloud`, `ny` |
-| $\mathbf v = (v_1,v_2,v_3)$ | velocity (source notes: $u, w$) | [m s$^{-1}$] | @sec-ch01-stage | `w[IVX]`, `w[IVY]`, `w[IVZ]` |
+| $\mathbf v = (v_1,v_2,v_3)$ | velocity (source notes: $u, w$) | [m s$^{-1}$] | @sec-ch01-initialization | `w[IVX]`, `w[IVY]`, `w[IVZ]` |
 | $m_1, m_2, m_3$ | momentum density $\rho v_a$ (source notes: $m$) |  | @sec-ch03-sphpolar | `u[IVX]`.. |
 | $p$ | pressure | [Pa] | @sec-ch02-laws | `w[IPR]` |
 | $T$ | temperature | [K] | @sec-ch02-ideal-moist | `"W->T"` |
 | $e$ | specific internal energy | [J kg$^{-1}$] | @sec-ch02-ideal-gas |  |
-| $u^{\star}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{\star}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$; the energy zero of each species, not a fitted constant. The star, not a superscript $(0)$, because $(0)$ is the explicit RK increment (§7) | [J kg$^{-1}$] | @sec-ch10-satadj | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) |
+| $u^{\star}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{\star}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$; the energy zero of each species, not a fitted constant. The star, not a superscript $(0)$, because $(0)$ is the explicit RK increment (§7) | [J kg$^{-1}$] | @sec-ch02-ideal-moist | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) |
 | $L_{n\to m}$ | latent heat of the phase change from species $n$ to species $m$ at the reference state, $L_{n\to m} = u^{\star}_n - u^{\star}_m$ (plus the $\mathcal R T/\mu$ term where the vapour side is a gas); snapy stores no latent heat, only the $u^{\star}_n$ it is a difference of | [J kg$^{-1}$] | — | (derived) |
 | $\hat s_n$ | specific entropy of species $n$; the hat distinguishes it from the centroid slope $s_i$ of §4, which is never a thermodynamic quantity | [J kg$^{-1}$ K$^{-1}$] | — |  |
 | $s^{\star}_n$ | reference specific entropy of species $n$ at the thermodynamic reference state, $s^{\star}_n = s^{\mathrm{ref}}_n\mathcal R/\mu_n$; starred for the same reason as $u^{\star}_n$ | [J kg$^{-1}$ K$^{-1}$] | — | `sref_R` |
-| $\hat h$ | specific enthalpy $e + p/\rho$ (source notes: $h$ (not used: $h$ is the cell width)) | [J kg$^{-1}$] | @sec-ch02-moist-mixture |  |
-| $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$; excludes potential energy (source notes: $E$) | [J m$^{-3}$] | @sec-ch02-laws | conserved `u[IPR]` |
+| $\hat h$ | specific enthalpy $e + p/\rho$ (source notes: $h$ (not used: $h$ is the cell width)) | [J kg$^{-1}$] | @sec-ch02-ideal-moist |  |
+| $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$; excludes potential energy (source notes: $E$) | [J m$^{-3}$] | @sec-ch01-initialization | conserved `u[IPR]` |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | vector | @sec-ch01-stage | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` |
 | $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch09-framework | `hydro_w` |
 | $c_{v,n}, c_{p,n}$ | specific heats of species $n$ at constant volume and pressure, **per unit mass of that species**; $c_{v,n} = c^{\mathrm{ref}}_n R_n$ with $c^{\mathrm{ref}}_n$ the dimensionless table value. $n=\mathrm{d}$ is dry air: $c_{v,\mathrm{d}}, c_{p,\mathrm{d}}$ | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `cref_R` |
@@ -108,7 +108,7 @@ the symbol in math, and never let the two touch.
 | $K_k$ | equilibrium constant of reaction $k$; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3) | [units stated per reaction] | — |  |
 | $Z_n$ | compressibility factor of gas species $n$, $p_n = Z_n\rho_nR_nT$; $Z_n=1$ at the pin, because kintera's `func2` registry is empty. Capital, because $z$ is the Cartesian height (§1) | [-] | @sec-ch02-moist-mixture | `czh` |
 | $\tilde c_n$ | molar concentration of species $n$; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$ | [mol m$^{-3}$] | @sec-ch02-moist-mixture | kintera state `V` |
-| $\hat h_n$ | specific enthalpy of species $n$, $\hat h_n = u^{\star}_n + c_{p,n}T$ for a gas and without the $R_nT$ term for a condensate; always with the hat, because $h$ is the cell width (§1) | [J kg$^{-1}$] | @sec-ch02-moist-mixture | `species_enthalpy` |
+| $\hat h_n$ | specific enthalpy of species $n$, $\hat h_n = u^{\star}_n + c_{p,n}T$ for a gas and without the $R_nT$ term for a condensate; always with the hat, because $h$ is the cell width (§1) | [J kg$^{-1}$] | @sec-ch02-ideal-moist | `species_enthalpy` |
 | $c_T$ | isothermal sound speed, $c_s = \sqrt{\gamma}\,c_T$ | [m s$^{-1}$] | @sec-ch02-moist-mixture | `_isothermal_sound_speed` |
 
 : Species thermodynamics, phase change and reactions. {#tbl-appa-2a}

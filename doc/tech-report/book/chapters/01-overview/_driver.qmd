@@ -10,11 +10,11 @@ status: draft
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** N/A (a code map): the driver chooses the time step, executes every stage, checks for rejection and writes accepted states; there is no main time loop inside a block.
-**Data.** In: a block or mesh, the integration limits and the output schedule. Out: accepted states written by `make_outputs`, the final write and the exit reason.
+**Data.** In: a block or mesh, the integration limits (`tlim` [s], `nlim`, a count) and the output schedule. Out: the accepted states written by `make_outputs` (files, @sec-ch14-schedule), the logged time [s] and cycle (a count), the final write and the exit reason; no field is transformed here.
 **Placement.** The outermost loop of a run: `max_time_step`, the stages, `check_redo`, `make_outputs`, `finalize`.
 **Activation.** Caller supplied; the integration defaults belong to pyharp.
 **Guarantee / limits.** A map; no convergence order. The example applies kinetics after all dynamics stages and before the rejection decision.
-**Evidence.** `test_restart_cycle_limit` (resume cycle and logged values, absolute $10^{-12}$, time $10^{-9}$); `test_check_redo_parallel.release` (collective redo and rollback, exact); `driver_check.py` `[C1]`-`[C3]` (clock, step halving and stop, on a port of the loop).
+**Evidence.** `test_restart_cycle_limit` asserts the resume cycle and the logged values (absolute $10^{-12}$, time $10^{-9}$); `test_check_redo_parallel.release` asserts the collective redo and rollback (exact); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `driver_check.py` `[C1]`-`[C3]` (clock, step halving and stop, on a port of the loop) is report-only, run with its committed output `src/snapy_report/ch01/driver_check.out`.
 :::
 
 The driver chooses the time step, executes every stage, checks rejection, and writes accepted states. There is no main
