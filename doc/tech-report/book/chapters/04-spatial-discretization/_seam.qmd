@@ -9,11 +9,11 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-- Two ranks sharing an $x_1$ face each compute their own flux there; both are replaced by the average.
+- See @sec-ch03-x1seams for x1 seam workflow.
 - Switch: none. Active whenever the $x_1$ axis is split across processes.
 - Restores the telescoping of @sec-ch04-divergence, which a two-valued face breaks.
-- A same-process seam is not averaged: after the ghost exchange the two sides already agree.
-- The face pressure and the background mass flux travel in the same message.
+- The face pressure and the background mass flux travel in the same message, so they stay consistent with
+  the flux they accompany.
 :::
 
 The conservation argument of @sec-ch04-divergence depends on every interior face carrying exactly one number,
@@ -23,39 +23,24 @@ agree bit for bit. The difference is a source or sink of mass, momentum and ener
 
 ### Derivation
 
-There is nothing to derive beyond the telescoping identity itself. If the two ranks book $F^{(0)}$ and
-$F^{(1)}$ on the same face, the pair of cells on either side exchange $A(F^{(0)} - F^{(1)})$ that no other cell
-balances, so the global sum is no longer the boundary flux. Setting both to any common value restores it, and
-the average is the choice that is symmetric in the two ranks. On a split column whose blocks disagree at the
-seam, the total misses exactly $A(F^{(0)}-F^{(1)})$ [check `src/snapy_report/ch04/seam_check.py`, output
-`seam_check.out`, `[C1]`]. With $\tfrac12$(mine + theirs) on both sides, the two booked values are bitwise equal
-and the total is the boundary flux to $4\times10^{-16}$ (`[C2]`).
+See @sec-ch03-x1seams for x1 seam workflow.
+
+What that workflow buys this chapter is measured here. On a split column whose blocks disagree at the seam, the
+total misses exactly $A(F^{(0)}-F^{(1)})$ [check `src/snapy_report/ch04/seam_check.py`, output
+`seam_check.out`, `[C1]`]; with the seam average on both sides the two booked values are bitwise equal and the
+total is the boundary flux to $4\times10^{-16}$ (`[C2]`).
 
 It is worth being precise about what this fixes and what it does not. It makes the scheme conservative; it does
 not make it *right*. If the two reconstructions disagree, the averaged flux is no better than either, and the
 disagreement has been hidden rather than removed. The size of that disagreement is not measured anywhere in the
 repository, and this section does not claim it is small.
 
-A same-process seam is handled differently: the reference ghost exchange has already given both sides the same
-inputs, so the two face states agree and no averaging is needed. That is an argument about the ghost exchange,
-recorded in the code comment at `playout` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), not a measurement.
-
 ### Numerical method
 
-```{python}
-#| label: fig-ch04-seam-average
-#| fig-cap: "A process seam in $x_1$. Both ranks own the face on the dashed reddish-purple seam line and each reconstructs its own flux there, the green and blue triangles. Each sends its slab to the other and both then set the face to the arithmetic average, so the two cells on either side book the same number and the sum telescopes."
-#| fig-alt: "Two cells side by side separated by a dashed vertical line, each with its own face flux marker, and a double-headed arrow beneath labelled exchange then average."
-#| echo: false
-from snapy_report.ch04.fig_seam_average import make_fig
-make_fig()
-```
+See @sec-ch03-x1seams for x1 seam workflow, including the exchange, its tags and the diagram.
 
-The exchange is at `_flux1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Two tags distinguish the two travel directions, at
-`kSeamFluxUpTag` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), so an upward and a downward payload on the same rank cannot be
-confused.
-
-Everything that lives on the seam face travels in one message rather than several. The packing at
+What this chapter adds is the payload rule: everything that lives on the seam face travels in one message
+rather than several. The packing at
 `pack` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) concatenates the flux rows with the face pressure and the background
 mass flux when those are present, and the unpacking at {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} takes them apart
 in the same order. That matters for correctness and not only for cost: the face pressure feeds the geometric
