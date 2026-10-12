@@ -18,11 +18,12 @@ accepted step resets the halving. After `max_redo` retries the run stops and exi
 ::: {.callout-note title="At a glance"}
 **Purpose.** After the last stage and any step-end sources, decides whether the step is kept, redone from its start
 at half the step, or the run stops; @eq-ch07-redo-dt.
-**Data.** In: per block, the floor test of the primitives recomputed from `hydro_u` (density [kg m$^{-3}$] against
-`density-floor`, pressure [Pa] against `pressure-floor`, at cell centres), the VIC dry-clamp mark, the limiter
-marks, the saturation counter and the VIC solve latch [flags and counts]; `max_redo` and the redo count [count].
-Out: one cause word [bit mask] for all ranks and the accept, redo or stop decision; on redo the restored conserved
-state (total-mass basis). Check cases: per-rank flag sets, a step that always fails, a retry after acceptance.
+**Data.** In: per block, the primitives recomputed from `hydro_u` at the interior cell centres, density [kg m$^{-3}$]
+against `density-floor` and pressure [Pa] against `pressure-floor`, and the per-block VIC dry-clamp mark, limiter
+marks, saturation counter and solve latch [flags, count]; `max_redo` and the redo count [count]. Out: one cause
+word [bit mask] for all ranks and the accept, redo or stop decision; on redo every block's restored conserved state
+$\mathbf U$: $\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$] (total-mass basis) and scalars (dry-mass basis). Check cases: per-rank flag sets, a step that always
+fails, a retry after acceptance.
 **Placement.** Once per step, after the stages and any step-end sources, in `check_redo`.
 **Activation.** None for the decision; `max_redo` (pyharp, default 5, not a YAML key); the floors
 `equation-of-state/density-floor`, `pressure-floor` feed the first cause.
@@ -30,7 +31,7 @@ state (total-mass basis). Check cases: per-rank flag sets, a step that always fa
 **Evidence.** Tests: a floor planted in `hydro_u`, a NaN with the limiter off and one floored block of six each redo,
 {{< code tests/test_check_redo_floor.py main >}} (exact restore; $10^{-12}$ relative on the halving); one decision
 across 2 ranks, {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} (exact);
-the saturation cause alone, {{< code tests/test_check_redo_saturation.py main >}} (logical); not run at the pin. Check: `python3 src/snapy_report/ch07/redo_check.py`, output `redo_check.out` lines `[C1]`–`[C4]`, tolerance per claim stated in each line; committed output: all 4 PASS; the check ports the code at the pin.
+the saturation cause alone, {{< code tests/test_check_redo_saturation.py main >}} (logical); not run at the pin. Check: `python3 src/snapy_report/ch07/redo_check.py`, output `redo_check.out` lines `[C1]`–`[C4]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
 :::
 
 ### Derivation

@@ -18,17 +18,16 @@ marks the whole column as failed.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Solves the block-tridiagonal system of @eq-ch07-vic-blocks for one column: a forward elimination from the
 first layer to the last, then a back substitution; @eq-ch07-vic-sweep.
-**Data.** In: the blocks of every layer of the column [units of @eq-ch07-vic-blocks] and the right-hand side
-$\Delta\mathbf U^{(0)}/\Delta t$ [units of $\mathbf U$ per s, in the solved variables with the total density $\rho$ first;
-total-mass basis]. Out:
-$\boldsymbol\delta$ for every layer [units of $\Delta\mathbf U^{(0)}$], or NaN in every layer of a failed column.
-Check cases: 60-layer columns with $N = 3$ and $5$, $\Delta t$ from $10^{-9}$ to $10^3$, a singular block at layer
-12 of 20.
+**Data.** In: the blocks $a_i, b_i, c_i$ of every layer $i$ of the column (entries in s$^{-1}$ where row and
+column are the same variable) and the right-hand side $r_i = \Delta\mathbf U^{(0)}_i/\Delta t$ per cell, in
+the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$] per s (total-mass basis). Out: $\boldsymbol\delta_i$ for every cell $i$, same units as
+$\Delta\mathbf U^{(0)}$, or NaN in every cell of a failed column. Check cases: 60-layer columns with $N = 3$ and
+$5$, $\Delta t$ from $10^{-9}$ to $10^3$, a singular block at layer 12 of 20.
 **Placement.** Every stage with a VIC, after the assembly.
 **Activation.** As for the assembly; $N=3$ or $N=5$.
 **Guarantee / limits.** A direct solve, exact up to round-off; no pivoting between blocks.
 **Evidence.** Tests: for float and double, $N = 3$ and $5$, identity blocks and failing columns sweep as stated,
-{{< code tests/test_lu_failure.cpp lu_failure.current_float_three >}} and its siblings (exact, logical); not run at the pin. Check: `python3 src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out` lines `[C1]`–`[C4]`, tolerance per claim stated in each line; committed output: all 4 PASS; the check ports the code at the pin.
+{{< code tests/test_lu_failure.cpp lu_failure.current_float_three >}} and its siblings (exact, logical); not run at the pin. Check: `python3 src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out` lines `[C1]`–`[C4]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
 :::
 
 The right-hand side is the explicit increment of the stage over the step. So the sweep returns the corrected
