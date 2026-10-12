@@ -1,9 +1,11 @@
 ## Gravity work inside the vertical implicit operator (`implicit-scheme`) {#sec-ch06-vic}
 
 <!-- PROVENANCE
-pin: snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 (main on chengcli/snapy, the #303 squash-merge)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (code_pin.yml)
 sources: OUTLINE.md 6.5; sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md sections 3.7, 5.2, 5.5; code links below
 status: draft
+author: Linfeng Li
+reviewer:
 -->
 
 Local symbols: $\mathbf e_m$ is the unit row vector of the normal-momentum unknown; $[\mathsf X]_\rho$ and
@@ -11,32 +13,54 @@ $[\mathsf X]_E$ are the mass and energy rows of a block $\mathsf X$. Tracked in 
 
 ### Summary
 
-This section describes main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, after chengcli/snapy#303, while the rest of the book is
-pinned at snapy@e894700ff7aee30b52882e5202b16461413780b0.
-
 ::: {.callout-note title="At a glance"}
-**What it does.** Puts the gravity work into the vertical implicit correction (VIC) so the solve sees the same
-energy the explicit stage books: the cell work with `gravity-work: cell`, the face work with `face`, and after
-the solve the work of the mass that was projected or clamped. **Switch.** `implicit-scheme` $\neq0$ with
-`const-gravity`. **Order.** A linearisation about the stage state. **Defining equation.** @eq-ch06-vic-rows.
+**Purpose.** Put the gravity work into the vertical implicit correction (VIC), @eq-ch06-vic-rows, so the solve sees
+the same energy the explicit stage books: the cell work with `gravity-work: cell`, the face work with `face`, and
+after the solve the work of the mass that was projected or clamped.
+**Data.** The gravity entries of the energy row (and, through $\boldsymbol\Phi$, of the momentum row) of each block
+row of the column system, in the VIC's reduced state (total density, normal momentum, energy; the tangential
+momenta with the full VIC); after the solve, energy corrections [J m$^{-3}$] in fluid cells.
+**Placement.** Once per stage per column, when the VIC rows are assembled at the stage state; the corrections after
+the solve and its redistribution.
+**Activation.** `implicit-scheme` $\neq0$ with `const-gravity`; the rows follow `gravity-work`.
+**Guarantee / limits.** A linearisation about the stage state; with the post-solve corrections the booked energy
+matches the mass actually moved.
+**Evidence.** `vicwork_check.py` `[C1]`-`[C4]`; `test_implicit_face_work_operator` and
+`test_implicit_stratified_solid`, read from the source, not run here.
 :::
 
 The VIC solves each $x_1$ column implicitly for the stage's changes of mass, normal momentum and energy (the
 time-integration chapter covers the solve). Gravity enters it twice. The momentum row's mass column and the
 energy row's momentum column hold the gravity source Jacobian $\boldsymbol\Phi$, the linearisation of the body force
 $\rho g_1$ and of the cell work $\rho v_1g_1$. With `gravity-work: face` the energy row is changed so that it
-books the face form of the mass the solve itself moves; booked after the solve instead, that work made a tall
-column blow up at acoustic Courant about 66 (chengcli/snapy#283). With `gravity-work: cell` the energy row adds
+books the face form of the mass the solve itself moves; booked after the solve instead, that work makes a tall
+column blow up at acoustic Courant about 66.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
 only the dissipative part of the face form. After the solve two corrections book the work of the mass that the
 solve's projection and its availability clamp moved differently from what the matrix assumed, so the booked
 energy matches the mass actually moved.
 
 Under `face-wallc` the face work stays outside the operator and is swapped in after the solve, with the wall cells
 keeping the cell work; setup warns about it. With the corrected-PE switch on, the energy row also carries part of
-that scheme's work (@sec-ch06-dwork). Aliases: chengcli/snapy#283 (face work in the operator), #285 (the
-projection and clamp work).
+that scheme's work (@sec-ch06-dwork).[^ch06-vic-src]
+
+[^ch06-vic-283]: The tall-column blow-up is recorded in chengcli/snapy#283.
+
+[^ch06-vic-src]: The face work in the operator came in with chengcli/snapy#283, the projection and clamp work with
+    chengcli/snapy#285.
 
 ### Derivation
+
+**The operator this section adds to.** The VIC works on a reduced state per cell, not on $\mathbf U$: the unknown
+of block row $i$ is $\mathbf q_i = (\rho, \rho u, E)_i$ with `implicit-scheme` 1 and
+$(\rho, \rho u, \rho v, \rho w, E)_i$ with 9 (@eq-ch07-vic-size), $u$ the $x_1$ velocity and $\rho$ the *total*
+density, dry air plus every species; the species ride on it and are redistributed after the solve
+(@sec-ch07-vic-redistribute). Each column is one block-tridiagonal system
+$\mathsf B_i\boldsymbol\delta_{i-1} + \mathsf A_i\boldsymbol\delta_i + \mathsf C_i\boldsymbol\delta_{i+1} = \mathbf r_i$
+for the stage increment $\boldsymbol\delta$ of $\mathbf q$. Its flux part is the Roe linearisation of
+@sec-ch07-vic-assembly, where the same blocks are written $b_i$, $a_i$, $c_i$ and the frozen dissipation matrices are
+$\lvert\hat A\rvert_{i\mp1/2}$; here $[\mathsf A^-]_\rho$ and $[\mathsf A^+]_\rho$ are the mass rows of those two
+matrices. This section adds only gravity entries: the source Jacobian $\boldsymbol\Phi$ and the energy-row work
+below. $[\mathsf X]_\rho$ and $[\mathsf X]_E$ are the mass and energy rows of a block $\mathsf X$.
 
 The face form @eq-ch06-dwork-face can be written with the weights
 $\omega^{\mathrm{lo}}_i = \tfrac12A_{i-1/2}(x_{1,i}-x_{1,i-1/2})/V_i$ and
@@ -68,8 +92,9 @@ After the solve the code books $\phi_i$ times the difference between the raw sol
 change and the mass the projection moved, and the potential-energy flux of the mass the availability clamp moved
 minus what was requested. The first vanishes when the solve is applied as solved; the second keeps
 $E+\mathrm{PE}_d$ over a closed column (`[C4]`). Checks: `src/snapy_report/ch06/vicwork_check.py`, output
-`vicwork_check.out` [sha: the formulas as they stand at the code pin, ported line for line; deck: the check
-itself; run: `python3 vicwork_check.py`, numpy, double].
+`vicwork_check.out` [sha: the code at the pin, ported line for line (the energy rows of
+`vic_assemble_full_impl`, `work_lo`/`work_hi` and the projection and clamp work, byte-identical at the pin to the
+lines the port was written from); deck: the check itself; run: `python3 vicwork_check.py`, numpy, double].
 
 ### Numerical method
 
@@ -123,9 +148,9 @@ make_fig()
 : Tests of the gravity work in the implicit operator; assertions read from the test sources at the pin, not run.
 {#tbl-ch06-vic-tests}
 
-`test_implicit_face_work_operator` puts the column of chengcli/snapy#283 into discrete balance and runs it with
+`test_implicit_face_work_operator` puts the tall column of the blow-up above into discrete balance and runs it with
 `gravity-work: face`, full and partial VIC, at acoustic Courant 65.6, 197 and 657, requiring `W_TOL` and `EPE_TOL`
-([`test_implicit_face_work_operator.py:40-41`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_implicit_face_work_operator.py#L40-L41)). The plain arms run with
+(module constants of {{< code tests/test_implicit_face_work_operator.py >}}). The plain arms run with
 `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`; the `_radial_exact_python` entries run the same scripts with it on and measure
 $E+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` also has a CUDA case. Measured values at the pin are
 **missing evidence**.
@@ -134,7 +159,7 @@ $E+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` also has a CUDA c
 
 ::: {.callout-warning title="Limits"}
 `face-wallc` with an implicit scheme books the face work after the solve; a tall column at acoustic Courant about
-66 blows up that way (chengcli/snapy#283).
+66 blows up that way.
 :::
 
 - The rows are a linearisation about the stage state.

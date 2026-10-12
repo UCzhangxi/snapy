@@ -1,10 +1,12 @@
 ## Face form of the gravity work (`gravity-work: face`, `face-wallc`) {#sec-ch06-face}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
-sources: OUTLINE.md 6.2; docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (code_pin.yml)
+sources: OUTLINE.md 6.2; docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5
          sections 1-4, 8.3; sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md sections 2.4, 3.4-3.5; code links below
 status: draft
+author: Linfeng Li
+reviewer:
 -->
 
 Local symbols: $m_i=\rho_iv_{1,i}$ is the $x_1$ mass flux density at cell $i$ (code `rhov`); $\mathcal K$ is the
@@ -13,13 +15,21 @@ curvature flux of NOTATION section 3. Tracked in ISSUES.md.
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Books the $x_1$ gravity work as the flux difference of potential energy across a cell's
-faces, so that $E+\mathrm{PE}_d$ is conserved exactly. **Switch.** `gravity-work: face` (or `face-wallc`, which
-keeps the cell work in the two $x_1$ wall cells); `face` is the default on main since chengcli/snapy#303
-(`gravity_work`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}),
-and was off at the pin of this section. **Turns off.** The gravity-work fixer.
-**Order.** Second order; fourth in the interior with the cp3/cp5/weno5 curvature flux, first in the wall cells.
-**Defining equation.** @eq-ch06-dwork-face.
+**Purpose.** Book the $x_1$ gravity work as the flux difference of potential energy across a cell's faces,
+@eq-ch06-dwork-face, so that $E+\mathrm{PE}_d$ is conserved exactly.
+**Data.** Reads the total $x_1$ mass flux $F$ [kg m$^{-2}$ s$^{-1}$] on the two faces of each cell (dry row plus the
+mass-carrying species rows), the face and centroid potentials, and with $\mathcal K$ the $m$ of three cells; writes
+the energy-row correction [W m$^{-3}$] of the interior cells.
+**Placement.** Each stage, after the $x_1$ flux is final (positivity limiter and sedimentation) and after the
+forcings; before the implicit solve when one runs with `face`, after it with `face-wallc`.
+**Activation.** `gravity-work: face`, the default (`gravity_work`,
+{{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}), or `face-wallc`, which keeps the cell
+work in the two $x_1$ wall cells. Turns off the gravity-work fixer; the corrected-PE work of @sec-ch06-dwork is on
+with it by default.
+**Guarantee / limits.** $E+\mathrm{PE}_d$ exact on a closed column; second order, fourth in the interior with the
+cp3/cp5/weno5 curvature flux, first in the wall cells.
+**Evidence.** `cellface_check.py` `[C1]`, `[C3]`-`[C5]`; `test_forcing` curvature case, read from the source, not
+run here.
 :::
 
 The face form books, in cell $i$, the work the scheme's own $x_1$ mass fluxes do against gravity: each face's
@@ -31,8 +41,9 @@ implicit operator to carry it when an implicit scheme is on.
 
 With `gravity-work: face` the corrected-PE work of @sec-ch06-dwork is on by default
 (`SNAP_GRAVITY_WORK_RADIAL_EXACT`); this section describes the face form with that switch off, which is how the
-plain face-form tests run. Aliases: the face form and the fixer are chengcli/snapy#283; the curvature flux is
-"$\mathcal K$" in the derivation note.
+plain face-form tests run. The curvature flux is "$\mathcal K$" in the derivation note.[^ch06-face-src]
+
+[^ch06-face-src]: The face form and the fixer came in with chengcli/snapy#283.
 
 ### Derivation
 
@@ -132,15 +143,17 @@ implicit operator" (also for `face` with `implicit-scheme: 0`).
 excess to equal $\Delta t\,\tfrac{h^2}{12}\cdot2\cdot0.04\cdot0.03$ for cp3 and five-point reconstructions
 and zero otherwise, to $10^{-9}$ absolute, as `expected` ({{< code tests/test_forcing.cpp vertical_gravity_work_removes_the_curvature_excess >}}). The
 plain face form is tested with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` set in the registration
-([`CMakeLists.txt:266-277`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L266-L277)). The curvature test also has a CUDA case.
+(`set_tests_properties` in {{< code tests/CMakeLists.txt >}}). The curvature test also has a CUDA case.
 Measured values at the pin are **missing evidence**.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 With an implicit scheme, the face work must be inside the implicit operator; `face-wallc` books it after the solve,
-and a tall column then blows up at acoustic Courant about 66 (chengcli/snapy#283).
+and a tall column then blows up at acoustic Courant about 66.[^ch06-face-283]
 :::
+
+[^ch06-face-283]: The tall-column blow-up is recorded in chengcli/snapy#283.
 
 - The work is $O(h^2)$ in every cell without $\mathcal K$, and first order in the wall cells with it.
 - `face-wallc` does not conserve $E+\mathrm{PE}_d$ in its two wall cells (`[C5]`).

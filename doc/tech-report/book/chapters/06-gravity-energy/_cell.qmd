@@ -1,9 +1,11 @@
 ## Constant gravity and the cell form of the gravity work (`gravity-work: cell`) {#sec-ch06-cell}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (code_pin.yml)
 sources: OUTLINE.md 6.1; sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md sections 2.1-2.4, 3.4-3.5; code links below
 status: draft
+author: Linfeng Li
+reviewer:
 -->
 
 Local symbols: $\rho^{\mathrm{hs}}_i$ is the hydrostatic-correction density of @sec-ch05 (code `rho_grav`).
@@ -12,12 +14,20 @@ Tracked in ISSUES.md.
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Applies constant gravity as a body force on the momenta and books the work $\rho v_1g_1$ into
-$E$ in the same cell; only the mass the positivity limiter and sedimentation add to the Riemann flux is booked in
-face form. **Switch.** YAML `forcing/const-gravity/gravity-work: cell`; the key defaults to `face`. **Implies.**
-The
-gravity-work fixer (@sec-ch06-fixer), on by default with it. **Order.** Second order against the exact work, but
-no exact energy invariant. **Defining equation.** @eq-ch06-cell-work.
+**Purpose.** Apply constant gravity as a body force on the momenta and book its work $\rho v_1g_1$ into $E$ in the
+same cell, @eq-ch06-cell-work; only the mass the positivity limiter and sedimentation add to the Riemann flux is
+booked in face form.
+**Data.** Reads the cell-average primitives of the stage start and the constant $(g_1,g_2,g_3)$ [m s$^{-2}$]; adds
+$\rho g_a$ to each momentum and $\rho v_ag_a$ [W m$^{-3}$] to the total energy, $\rho$ the total density, in every
+interior cell.
+**Placement.** Each stage, in the forcing loop of `HydroImpl::forward`; the face part after the $x_1$ flux is
+final, that is after the positivity limiter and sedimentation.
+**Activation.** YAML `forcing/const-gravity/gravity-work: cell`, set explicitly (the key defaults to `face`); it
+implies the gravity-work fixer (@sec-ch06-fixer), on by default with it.
+**Guarantee / limits.** Second order against the exact cell work, but no exact energy invariant: the defect
+@eq-ch06-cell-defect is left for the fixer.
+**Evidence.** `cellface_check.py` `[C2]`; the "cell, fixer false" arm of `test_gravity_work_fixer`, read from the
+source, not run here.
 :::
 
 `const-gravity` is the only gravity snapy has: a constant vector $(g_1, g_2, g_3)$ in m s$^{-2}$, read from the
@@ -73,8 +83,9 @@ which is not the face flux. `cellface_check.py` `[C2]` measures a defect of $1.6
 $\sum_iV_i\lvert W^{\mathrm{cell}}_i\rvert$ on a random closed column. Locally the cell form is as accurate as the
 face form, second order against the exact cell average of $\rho v_1g_1$; it is the budget, not the local error,
 that it gets wrong. Checks: `src/snapy_report/ch06/cellface_check.py`, output `cellface_check.out` [sha: the
-formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line; deck: the check itself; run:
-`python3 cellface_check.py`, numpy, double].
+code at the pin, ported line for line: the gravity-work block of `HydroImpl::forward` without the corrected-PE call,
+the cell work of `ConstGravityImpl::forward` and `radial_centers`, whose lines are byte-identical at the pin to
+those the port was written from; deck: the check itself; run: `python3 cellface_check.py`, numpy, double].
 
 ### Numerical method
 
