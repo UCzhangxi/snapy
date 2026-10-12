@@ -753,7 +753,19 @@ void MeshBlockImpl::advance_local(Variables &vars, double dt, int stage) {
 
   // -------- (4) multi-stage averaging --------
   hydro_u.set_(pintg->forward(stage, _hydro_u0, hydro_u, fut_hydro_du));
-  phydro->peos->apply_conserved_limiter_(hydro_u, /*whole_column=*/true);
+  // SNAP_SKIP_STAGE_LIMITER=1 (perf study, default off): before the last
+  // stage the next stage's U->W (HydroImpl::forward) applies the same limiter
+  // to the same interior right after the ghost exchange, so this call is
+  // skipped there. Exact when the limiter is idempotent (dry); with species
+  // the cloud repair can move rho after the energy clamp, so check bitwise.
+  // Not with scalars: set_scalar_primitive below reads hydro_u[IDN].
+  static bool const skip_stage_limiter = [] {
+    auto v = get_env("SNAP_SKIP_STAGE_LIMITER", "0");
+    return v == "1" || v == "true" || v == "on" || v == "yes";
+  }();
+  if (!(skip_stage_limiter && pscalar->nvar() == 0 &&
+        stage + 1 < static_cast<int>(pintg->stages.size())))
+    phydro->peos->apply_conserved_limiter_(hydro_u, /*whole_column=*/true);
 
   if (options->verbose()) {
     auto end = std::chrono::high_resolution_clock::now();
