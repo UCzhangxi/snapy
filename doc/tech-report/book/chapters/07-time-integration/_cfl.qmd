@@ -19,19 +19,20 @@ over all ranks and local blocks, multiplied by `cfl`, and halved for each redo o
 ::: {.callout-note title="At a glance"}
 **Purpose.** Sets the step as the Courant factor times the smallest of the per-direction bounds over all cells,
 ranks and local blocks, halved once per redo; @eq-ch07-cfl-dt.
-**Data.** In: the stage-start velocities $v_a$ [$\mathrm{m\,s^{-1}}$], sound speed $c_s$, cell widths $\Delta x_a$
-[$\mathrm{m}$] of every interior cell of every block and rank, the diffusive bound when `forcing/diffusion` is on, and
-the redo count. Out: one $\Delta t$ [$\mathrm{s}$] for the step. Check cases: `cfl` 0.5 and 0.9 with `advection-cfl`
-0.25 to 2.5, a column with $n_2=n_3=1$, a $6c_s$ shear reversal, redo counts 0 to 3.
+**Data.** In: the stage-start velocities $v_a$ [m s$^{-1}$] and sound speed $c_s$ [m s$^{-1}$] at the cell centres, the
+cell widths $\Delta x_a$ [m] of every interior cell of every block and rank, the diffusive bound $\tau_\nu$ [s] when
+`forcing/diffusion` is on, and the redo count [count]; no mass enters, so there is no mass basis. Out: one
+$\Delta t$ [s] for the step. Check cases: `cfl` 0.5 and 0.9 with `advection-cfl` 0.25 to 2.5, a column with
+$n_2=n_3=1$, a $6c_s$ shear reversal, redo counts 0 to 3.
 **Placement.** Once per step, before the first stage.
 **Activation.** `integration/cfl` (pyharp, default 0.9); `integration/implicit-advection-cfl` (default 1, $>0$) and
 `integration/shear-cfl` (default 0, off, $\ge0$), both only with `implicit-scheme`.
 **Guarantee / limits.** A stability bound, not a discretisation; the implicit $x_1$ direction is bounded by
 advection only.
 **Evidence.** Tests: the implicit $x_1$ step is $C_{\mathrm{adv}}\Delta x_1/|v_1|$,
-{{< code tests/test_implicit_advection_cfl.py main >}}; the shear bound binds and releases,
+{{< code tests/test_implicit_advection_cfl.py main >}} ($10^{-12}$ relative); the shear bound binds and releases,
 {{< code tests/test_shear_cfl.py main >}} ($10^{-9}$ relative); bad values are refused and the defaults are 1 and 0,
-{{< code tests/test_implicit_cfl.cpp implicit_cfl.rejects_non_numeric_and_keeps_the_ranges >}} (exact); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/cfl_check.py`, output `cfl_check.out` lines `[C1]`–`[C5]`; the check ports the code at the pin.
+{{< code tests/test_implicit_cfl.cpp implicit_cfl.rejects_non_numeric_and_keeps_the_ranges >}} (exact); not run at the pin. Check: `python3 src/snapy_report/ch07/cfl_check.py`, output `cfl_check.out` lines `[C1]`–`[C5]`, tolerance per claim stated in each line; committed output: all 5 PASS; the check ports the code at the pin.
 :::
 
 [^ch07-cfl-src]: Source and credit: the implicit-advective and shear bounds are those of chengcli/snapy#218
