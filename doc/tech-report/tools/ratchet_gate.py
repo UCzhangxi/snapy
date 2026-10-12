@@ -1,86 +1,119 @@
 #!/usr/bin/env python3
 """Ratchet gate for the report's chapter sources (README, "Ratchet gate").
 
-Four counts per chapter, compared with the committed baseline `tools/ratchet-baseline.json`:
+Four counts per chapter (and for the preface, `book/index.qmd`), compared with the committed baseline
+`tools/ratchet-baseline.json`:
 
-  history     change history in body text: PR/issue numbers and phrases such as "main after", "previously",
-              "now fixed" (HISTORY_PATTERNS). The body text is the chapter file without HTML comments
-              (PROVENANCE), fenced code, `{{< >}}` shortcodes and footnotes, so a source or credit footnote may
-              still carry a PR number.
-  offpin      a sha of a cited package that is not that package's pin: snapy's pin is `code_pin.yml`, the others
-              are `tools/package-pins.json`. Counted in body text, footnotes and link targets; not in PROVENANCE.
+  history     change history in body text: PR/issue numbers and phrases such as "main after", "squash-merged",
+              "the previous pin", "was removed in" (HISTORY_PATTERNS). The body text is the file without HTML
+              comments (PROVENANCE), fenced code, `{{< >}}` shortcodes and footnotes, so a source or credit
+              footnote may still carry a PR number.
+  offpin      a sha of a cited package that is not that package's one pin: snapy's pin is `code_pin.yml`, the
+              others are `tools/package-pins.json`. Counted everywhere in the file: body text, footnotes, link
+              targets, code comments and fenced code, and the plain fields of the PROVENANCE header. It catches
+              `<package>@<sha>`, `<path>@<sha>` (a file of the snapy tree), a GitHub blob/tree/commit URL of a
+              package, and any other full 40-character sha that is no package's pin. A shortcode carries no sha.
   status      a file whose PROVENANCE says `status: reviewed` or `approved` without a valid entry in
-              `reviews/review-record.tsv` (see REVIEW RECORD below).
+              `reviews/review-record.tsv` (REVIEW RECORD below).
   xref        a `@sec-`/`@eq-`/`@fig-`/`@tbl-` reference that resolves nowhere or that quarto cannot reach
               (render_gate's own resolution), plus every `sec-` label that no file of another chapter cites.
 
-The ratchet: `check` fails when any count differs from the baseline. A rise fails outright; a fall must lower
-the baseline in the same PR (`update`), so the baseline only ever shrinks. `update --allow-increase` exists for
-the one case where a rise is expected (a pin move), and that PR says why.
+THE RATCHET. `check` fails when any count differs from the committed baseline: a rise must be fixed, a fall must
+lower the baseline in the same pull request (`update`). The baseline records the snapy pin it was measured at,
+and it may rise only together with a move of that pin:
+  * `update` refuses to write a higher count unless `code_pin.yml` names another sha than the baseline's `pin`;
+  * `check --base-ref <ref>` (what CI runs) also compares the committed baseline with the one at `<ref>`, the
+    target branch: a higher count there fails unless `code_pin.yml` differs between `<ref>` and the head, so a
+    baseline raised by hand fails too.
+
+OWNERS (`tools/chapter-owners.tsv`): one row per chapter, `chapter owner github`, the single owner of the
+chapter's rewrite (the lock) and the owner its counts are charged to in the per-owner burn-down table that
+`counts` and `check` print. `check` fails when a chapter has no owner or more than one.
 
 REVIEW RECORD (`reviews/review-record.tsv`, tab-separated, one line per event, newest last):
 
   file    kind    reviewer    author    pin    sha256    date    note
 
   file      path under book/, e.g. chapters/06-gravity-energy/_dwork.qmd
-  kind      `review` (the reviewer read the file) or `restamp` (the same reviewer confirms an unchanged verdict
-            after an edit; the note says what changed, in one line)
-  pin       the full sha of code_pin.yml the review was made against
-  sha256    `python3 tools/ratchet_gate.py hash <file>`: the file's content without its PROVENANCE comment
+  kind      `review`: the reviewer read the file at this content and this pin and stands behind its status.
+            `restamp`: the same reviewer confirms that review after the file or the pin changed without changing
+            the verdict; the note says in one line what changed. Anyone else, or any change that alters the
+            verdict, needs a new `review`.
+  pin       the full sha of code_pin.yml at the time of the entry
+  sha256    the file's content without its PROVENANCE comment (`python3 tools/ratchet_gate.py hash <file>`)
 
 A reviewed/approved file passes when its newest entry has the file's current hash and the current pin, its
 reviewer differs from its author (and from the PROVENANCE `author:` when that is given), and, for a `restamp`,
-the reviewer is the one of the newest `review` entry and the note is not empty.
+the reviewer is the one of the newest `review` entry and the note is not empty. Entries are written with
+`record`, which fills in the hash, the pin and the date:
 
-    python3 tools/ratchet_gate.py counts            # the table, per chapter
-    python3 tools/ratchet_gate.py check             # CI: exit 1 if any count differs from the baseline
-    python3 tools/ratchet_gate.py update            # write the counts as the baseline (no rise allowed)
-    python3 tools/ratchet_gate.py hash <file>       # the content hash a review entry records
+    python3 tools/ratchet_gate.py counts [-v]                   # per chapter and per owner; -v lists instances
+    python3 tools/ratchet_gate.py check [--base-ref REF]        # CI: exit 1 on any difference or a raised baseline
+    python3 tools/ratchet_gate.py update                        # write the counts as the baseline
+    python3 tools/ratchet_gate.py hash <file>                   # the content hash a record entry carries
+    python3 tools/ratchet_gate.py record review <file> --reviewer R --author A [--note N]
+    python3 tools/ratchet_gate.py record restamp <file> --reviewer R --note N
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import json
 import pathlib
 import re
+import subprocess
 import sys
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 CHECKS = ("history", "offpin", "status", "xref")
+RECORD_HEAD = ("file", "kind", "reviewer", "author", "pin", "sha256", "date", "note")
 
-# Change history in body text. Built from STYLE.md (sections 1 and 3.2: history is past tense and PR numbers are
-# aliases) and the phrases the Q1 re-read removed ("main after", "since #NNN", "at the old pin", ...). Each match
-# counts once; matching is case-insensitive.
+# Change history in body text. Built from STYLE.md (sections 1 and 3.2) and the phrases the Q1 re-read and the
+# ch06 rewrite removed. Generic words that also describe physics ("no longer", "used to", "previously", "was
+# removed") count only in their history forms. Matching is case-insensitive; overlapping matches count once.
 HISTORY_PATTERNS = [
-    r"\b(?:chengcli|UCzhangxi|zoeyzyhu|happysky19)/[\w.-]+#\d+",  # owner/repo#NNN
-    r"(?<![\w/&#\[^{])#\d{2,5}\b",                                  # bare #NNN
-    r"\bmain after\b",
-    r"\bdescribes? main at\b",
-    r"\b(?:since|until|before|after|as of) (?:PR )?#\d+",
-    r"\bpreviously\b",
-    r"\bnow fixed\b",
-    r"\bno longer\b",
-    r"\bused to\b",
-    r"\b(?:at|from) the old pin\b",
-    r"\b(?:checked|re-read|pinned) at (?:snapy@|`?[0-9a-f]{7})",
+    r"\b(?:chengcli|UCzhangxi|zoeyzyhu|happysky19|jihenghu|XinyueWang05|gitlinffff)/[\w.-]+#\d+",  # owner/repo#N
+    r"(?<![\w/&#^{])#\d{2,5}\b",                                   # bare #NNN, also as link text [#NNN]
+    r"(?<![\w/])(?:snapy|kintera|pyharp|pydisort|commux)#\d+",     # repo#NNN without the owner
+    r"\bmain (?:after|at)\b",
+    r"\bdescribes? main\b",
+    r"\b(?:since|until|before|after|as of) (?:PR |pull request )?#\d+",
+    r"\bsquash[- ]merged?\b",
+    r"\bpull request\b",
+    r"\b(?:the |this |that )?(?:previous|old|earlier) pins?\b",
+    r"\b(?:before|after|since) (?:and after )?(?:the|this|that) (?:change|merge|pin move)\b",
+    r"\bbetween the (?:two )?pins\b",
+    r"\b(?:checked|re-read|pinned) (?:at|against) (?:main\b|snapy@|`?[0-9a-f]{7})",
     r"\bwhile the rest of the (?:book|section)\b",
-    r"\b(?:was|were|has been|have been) (?:changed|fixed|replaced|removed)\b",
+    r"\b(?:is|are) now\b",
+    r"\bnow (?:defaults?|the default)\b",
+    r"\bno longer (?:the )?default\b",
+    r"\bnow fixed\b",
+    r"\bused to be\b",
+    r"\b(?:was|were|has been|have been) (?:added|introduced|changed|fixed|replaced|removed|moved|renamed|dropped)"
+    r" (?:in|by)\b",
     r"\b(?:fixed|landed|merged) in\b",
 ]
 _HISTORY = [re.compile(p, re.I) for p in HISTORY_PATTERNS]
 
 PACKAGES = ("snapy", "kintera", "pyharp", "pydisort", "commux")
-_SHA_PATTERNS = [
-    re.compile(r"github\.com/[\w.-]+/(%s)/(?:blob|tree|commit)/([0-9a-f]{7,40})" % "|".join(PACKAGES)),
-    re.compile(r"(?<![\w/])(%s)@([0-9a-f]{7,40})\b" % "|".join(PACKAGES)),
+_SHA_PATTERNS = [  # (regex, package group or None, sha group)
+    (re.compile(r"github\.com/[\w.-]+/(%s)/(?:blob|tree|commit)/([0-9a-f]{7,40})" % "|".join(PACKAGES)), 1, 2),
+    (re.compile(r"(?<![\w/.-])(%s)@([0-9a-f]{7,40})\b" % "|".join(PACKAGES)), 1, 2),
+    # a file of the snapy tree at a sha, e.g. docs/derivations/note.md@<sha>
+    (re.compile(r"(?<![\w/])(?:docs|src|tests|python|examples|cmake)/[\w./-]+@([0-9a-f]{7,40})\b"), None, 1),
+    # any other full sha
+    (re.compile(r"(?<![0-9a-f])([0-9a-f]{40})(?![0-9a-f])"), None, 1),
 ]
 
 
 def chapter_of(rel: str) -> str:
-    """The chapter a source file belongs to: ch01..ch17 or appa..appe (files under book/)."""
+    """The chapter a source file belongs to: ch01..ch17, appa..appe, or `preface` (files under book/)."""
     parts = pathlib.PurePosixPath(rel).parts
+    if parts == ("index.qmd",):
+        return "preface"
     if len(parts) < 2 or parts[0] != "chapters":
         return "book"
     top = parts[1]
@@ -92,6 +125,14 @@ def chapter_of(rel: str) -> str:
             return m.group(1)
     m = re.match(r"(\d\d)-", top)
     return f"ch{m.group(1)}" if m else top
+
+
+def sources(book: pathlib.Path) -> list[pathlib.Path]:
+    """Every file the ratchet reads: the preface and every chapter and scheme file."""
+    out = sorted((book / "chapters").rglob("*.qmd"))
+    if (book / "index.qmd").exists():
+        out.insert(0, book / "index.qmd")
+    return out
 
 
 def _strip_footnotes(text: str) -> str:
@@ -120,16 +161,19 @@ def body_text(text: str, keep_links: bool = True) -> str:
     return text
 
 
-def history_hits(text: str) -> list[str]:
-    body = body_text(text, keep_links=False)
-    spans = sorted((m.start(), m.end()) for rx in _HISTORY for m in rx.finditer(body))
+def _merged(text: str, spans) -> list[str]:
     merged: list[list[int]] = []  # overlapping matches ("after #307" and "#307") count once
-    for a, b in spans:
+    for a, b in sorted(spans):
         if merged and a < merged[-1][1]:
             merged[-1][1] = max(merged[-1][1], b)
         else:
             merged.append([a, b])
-    return [body[a:b] for a, b in merged]
+    return [text[a:b] for a, b in merged]
+
+
+def history_hits(text: str) -> list[str]:
+    body = body_text(text, keep_links=False)
+    return _merged(body, [(m.start(), m.end()) for rx in _HISTORY for m in rx.finditer(body)])
 
 
 def pins(root: pathlib.Path) -> dict[str, str]:
@@ -146,16 +190,27 @@ def pins(root: pathlib.Path) -> dict[str, str]:
 
 
 def offpin_hits(text: str, pin: dict[str, str]) -> list[str]:
-    """Shas of a cited package other than its pin, in body text, footnotes and links (not PROVENANCE)."""
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
-    hits = []
-    for rx in _SHA_PATTERNS:
+    """Shas other than the package's pin, anywhere in the file except inside shortcodes."""
+    text = re.sub(r"\{\{<.*?>\}\}", "", text, flags=re.S)
+    pinned = set(pin.values())
+    spans = []
+    for rx, pkg_group, sha_group in _SHA_PATTERNS:
         for m in rx.finditer(text):
-            pkg, sha = m.group(1), m.group(2)
-            want = pin.get(pkg)
-            if want is None or not want.startswith(sha):
-                hits.append(f"{pkg}@{sha}")
-    return hits
+            sha = m.group(sha_group)
+            if pkg_group:
+                pkg = m.group(pkg_group)
+            elif rx is _SHA_PATTERNS[2][0]:
+                pkg = "snapy"  # a file of the snapy tree
+            else:
+                pkg = None
+            if pkg is None:  # a bare full sha: fine when it is any package's pin
+                ok = sha in pinned
+            else:
+                want = pin.get(pkg)
+                ok = want is not None and want.startswith(sha)
+            if not ok:
+                spans.append((m.start(sha_group), m.end(sha_group)))
+    return _merged(text, spans)
 
 
 def content_hash(text: str) -> str:
@@ -199,9 +254,9 @@ def status_problem(rel: str, text: str, record, pin: str) -> str | None:
         return f"status {status} without a review-record entry"
     last = rows[-1]
     if last.get("sha256") != content_hash(text):
-        return "content changed since the last record entry (re-review or re-stamp)"
+        return "content changed since the last record entry (new review, or the reviewer's re-stamp)"
     if last.get("pin") != pin:
-        return "record entry names another pin than code_pin.yml"
+        return "record entry names another pin than code_pin.yml (new review, or the reviewer's re-stamp)"
     author = last.get("author", "")
     reviewer = last.get("reviewer", "")
     if not reviewer or reviewer == author or reviewer == prov.get("author", "") != "":
@@ -209,7 +264,7 @@ def status_problem(rel: str, text: str, record, pin: str) -> str | None:
     if last.get("kind") == "restamp":
         reviews = [r for r in rows if r.get("kind") == "review"]
         if not reviews or reviews[-1].get("reviewer") != reviewer:
-            return "re-stamp by someone other than the reviewer"
+            return "re-stamp by someone other than the reviewer of the newest review"
         if not last.get("note", "").strip():
             return "re-stamp without a note"
     elif last.get("kind") != "review":
@@ -254,7 +309,7 @@ def count(root: pathlib.Path = ROOT, verbose: bool = False) -> dict[str, dict[st
     def add(ch, check, n=1):
         table.setdefault(ch, dict.fromkeys(CHECKS, 0))[check] += n
 
-    for q in sorted((book / "chapters").rglob("*.qmd")):
+    for q in sources(book):
         rel = str(q.relative_to(book))
         ch = chapter_of(rel)
         text = q.read_text()
@@ -281,6 +336,32 @@ def count(root: pathlib.Path = ROOT, verbose: bool = False) -> dict[str, dict[st
     return dict(sorted(table.items()))
 
 
+def read_owners(root: pathlib.Path) -> tuple[dict[str, list[tuple[str, str]]], list[str]]:
+    """{chapter: [(owner, github), ...]} from tools/chapter-owners.tsv, and the problems of the file itself."""
+    path = root / "tools" / "chapter-owners.tsv"
+    owners: dict[str, list[tuple[str, str]]] = {}
+    if not path.exists():
+        return owners, ["tools/chapter-owners.tsv is missing"]
+    lines = [l for l in path.read_text().split("\n") if l.strip() and not l.startswith("#")]
+    for line in lines[1:]:
+        f = line.split("\t")
+        if len(f) < 3:
+            return owners, [f"tools/chapter-owners.tsv: malformed row {line!r}"]
+        owners.setdefault(f[0], []).append((f[1], f[2]))
+    return owners, []
+
+
+def owner_problems(counts, owners) -> list[str]:
+    out = []
+    for ch in sorted(set(counts) | set(owners)):
+        rows = owners.get(ch, [])
+        if not rows:
+            out.append(f"{ch}: no owner in tools/chapter-owners.tsv")
+        elif len(rows) > 1:
+            out.append(f"{ch}: {len(rows)} owners in tools/chapter-owners.tsv; one owner per chapter")
+    return out
+
+
 def compare(counts, baseline) -> list[str]:
     problems = []
     for ch in sorted(set(counts) | set(baseline)):
@@ -295,7 +376,33 @@ def compare(counts, baseline) -> list[str]:
     return problems
 
 
-def print_table(counts) -> None:
+def _git_show(root: pathlib.Path, ref: str, rel: str) -> str | None:
+    """The content of `rel` (relative to doc/tech-report) at `ref`, or None if it is not there."""
+    prefix = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-prefix"], capture_output=True,
+                            text=True).stdout.strip()
+    r = subprocess.run(["git", "-C", str(root), "show", f"{ref}:{prefix}{rel}"], capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def baseline_raised(root: pathlib.Path, ref: str, baseline: dict) -> list[str]:
+    """Counts the committed baseline raises against the baseline at `ref`, when the pin did not move."""
+    old = _git_show(root, ref, "tools/ratchet-baseline.json")
+    if old is None:
+        return []  # no baseline at the target yet: this change introduces it
+    old_pin = re.search(r"^sha:\s*([0-9a-f]{40})", _git_show(root, ref, "code_pin.yml") or "", re.M)
+    if old_pin and old_pin.group(1) != pins(root).get("snapy"):
+        return []  # the pin moves in this change: a rise is allowed
+    old_chapters = json.loads(old)["chapters"]
+    out = []
+    for ch in sorted(set(baseline) | set(old_chapters)):
+        for check in CHECKS:
+            now, was = baseline.get(ch, {}).get(check, 0), old_chapters.get(ch, {}).get(check, 0)
+            if now > was:
+                out.append(f"{ch} {check}: the baseline rises {was} -> {now} against {ref} without a pin move")
+    return out
+
+
+def print_table(counts, owners=None) -> None:
     print("| chapter | " + " | ".join(CHECKS) + " |")
     print("|---|" + "---|" * len(CHECKS))
     tot = dict.fromkeys(CHECKS, 0)
@@ -304,44 +411,115 @@ def print_table(counts) -> None:
         for k in CHECKS:
             tot[k] += c[k]
     print("| **total** | " + " | ".join(f"**{tot[k]}**" for k in CHECKS) + " |")
+    if owners is None:
+        return
+    per: dict[str, dict[str, int]] = {}
+    chapters: dict[str, list[str]] = {}
+    for ch, c in counts.items():
+        who = owners.get(ch, [("(no owner)", "")])[0][0]
+        row = per.setdefault(who, dict.fromkeys(CHECKS, 0))
+        chapters.setdefault(who, []).append(ch)
+        for k in CHECKS:
+            row[k] += c[k]
+    print("\n| owner | chapters | " + " | ".join(CHECKS) + " | total |")
+    print("|---|---|" + "---|" * (len(CHECKS) + 1))
+    for who in sorted(per, key=lambda w: (-sum(per[w].values()), w)):
+        r = per[who]
+        print(f"| {who} | {', '.join(chapters[who])} | " + " | ".join(str(r[k]) for k in CHECKS)
+              + f" | {sum(r.values())} |")
+
+
+def record(root: pathlib.Path, kind: str, file: str, reviewer: str, author: str, note: str) -> int:
+    """Append a review or re-stamp entry with the file's current hash, the current pin and today's date."""
+    book = root / "book"
+    path = pathlib.Path(file)
+    rel = str(path.resolve().relative_to(book.resolve())) if path.is_absolute() or path.exists() else file
+    target = book / rel
+    if not target.exists():
+        print(f"record: {target} does not exist")
+        return 1
+    rec = read_record(root)
+    rows = rec.get(rel, [])
+    if kind == "restamp":
+        reviews = [r for r in rows if r.get("kind") == "review"]
+        if not reviews:
+            print(f"record: {rel} has no review to re-stamp; write a review")
+            return 1
+        if reviews[-1].get("reviewer") != reviewer:
+            print(f"record: only {reviews[-1].get('reviewer')}, who reviewed {rel}, can re-stamp it")
+            return 1
+        if not note.strip():
+            print("record: a re-stamp needs --note, one line on what changed")
+            return 1
+        author = author or reviews[-1].get("author", "")
+    if not reviewer or reviewer == author:
+        print("record: the reviewer must be named and differ from the author")
+        return 1
+    rec_path = root / "reviews" / "review-record.tsv"
+    if not rec_path.exists():
+        rec_path.write_text("\t".join(RECORD_HEAD) + "\n")
+    fields = [rel, kind, reviewer, author, pins(root).get("snapy", ""), content_hash(target.read_text()),
+              datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"), note.replace("\t", " ").strip()]
+    with rec_path.open("a") as f:
+        f.write("\t".join(fields) + "\n")
+    print(f"record: {kind} of {rel} by {reviewer} written")
+    return 0
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", type=pathlib.Path, default=ROOT, help="doc/tech-report (default: this tree)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("counts", help="print the per-chapter counts")
+    c = sub.add_parser("counts", help="print the per-chapter and per-owner counts")
     c.add_argument("-v", "--verbose", action="store_true", help="list every instance")
-    sub.add_parser("check", help="exit 1 if any count differs from the baseline")
-    u = sub.add_parser("update", help="write the counts as the new baseline")
-    u.add_argument("--allow-increase", action="store_true", help="only for a pin move; say why in the PR")
+    k = sub.add_parser("check", help="exit 1 if any count differs from the baseline or the baseline was raised")
+    k.add_argument("--base-ref", help="the target branch: its baseline may not be raised without a pin move")
+    sub.add_parser("update", help="write the counts as the new baseline")
     h = sub.add_parser("hash", help="content hash of a chapter file, for the review record")
     h.add_argument("file", type=pathlib.Path)
+    r = sub.add_parser("record", help="append a review or re-stamp entry to reviews/review-record.tsv")
+    r.add_argument("kind", choices=("review", "restamp"))
+    r.add_argument("file", help="the file, as a path or relative to book/")
+    r.add_argument("--reviewer", required=True)
+    r.add_argument("--author", default="", help="required for a review; a re-stamp takes the review's")
+    r.add_argument("--note", default="", help="required for a re-stamp: one line on what changed")
     a = ap.parse_args(argv)
     base_path = a.root / "tools" / "ratchet-baseline.json"
     if a.cmd == "hash":
         print(content_hash(a.file.read_text()))
         return 0
+    if a.cmd == "record":
+        return record(a.root, a.kind, a.file, a.reviewer, a.author, a.note)
     counts = count(a.root, verbose=getattr(a, "verbose", False))
+    owners, owner_file_problems = read_owners(a.root)
     if a.cmd == "counts":
-        print_table(counts)
+        print_table(counts, owners)
         return 0
-    baseline = json.loads(base_path.read_text())["chapters"] if base_path.exists() else {}
+    stored = json.loads(base_path.read_text()) if base_path.exists() else {}
+    baseline = stored.get("chapters", {})
+    pin = pins(a.root).get("snapy", "")
     if a.cmd == "update":
         rises = [p for p in compare(counts, baseline) if "a rise" in p]
-        if rises and baseline and not a.allow_increase:
-            print("ratchet: refusing to raise the baseline:\n  " + "\n  ".join(rises))
+        if rises and baseline and stored.get("pin") == pin:
+            print("ratchet: refusing to raise the baseline without a pin move:\n  " + "\n  ".join(rises))
             return 1
-        base_path.write_text(json.dumps({"chapters": counts}, indent=1, sort_keys=True) + "\n")
-        print(f"ratchet: baseline written ({len(counts)} chapters)")
+        base_path.write_text(json.dumps({"pin": pin, "chapters": counts}, indent=1, sort_keys=True) + "\n")
+        print(f"ratchet: baseline written ({len(counts)} chapters, pin {pin[:12]})")
         return 0
     problems = compare(counts, baseline)
+    if stored and stored.get("pin") != pin:
+        problems.append(f"the baseline was measured at pin {str(stored.get('pin'))[:12]}, code_pin.yml names "
+                        f"{pin[:12]}: run update in the pin move")
+    if a.base_ref:
+        problems += baseline_raised(a.root, a.base_ref, baseline)
+    problems += owner_file_problems + owner_problems(counts, owners)
+    print_table(counts, owners)
     if problems:
-        print("ratchet gate: FAIL\n  " + "\n  ".join(problems))
+        print("\nratchet gate: FAIL\n  " + "\n  ".join(problems))
         print("  (python3 tools/ratchet_gate.py counts -v lists every instance)")
         return 1
     tot = {k: sum(c[k] for c in counts.values()) for k in CHECKS}
-    print("ratchet gate: pass (" + ", ".join(f"{k} {v}" for k, v in tot.items()) + ", equal to the baseline)")
+    print("\nratchet gate: pass (" + ", ".join(f"{k} {v}" for k, v in tot.items()) + ", equal to the baseline)")
     return 0
 
 

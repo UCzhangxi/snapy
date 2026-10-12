@@ -1,7 +1,9 @@
 """tools/ratchet_gate.py: each check fails on a planted instance (RED) and passes once it is removed (GREEN),
-and the ratchet fails on a rise and on an unrecorded fall."""
+the ratchet fails on a rise, on an unrecorded fall and on a baseline raised without a pin move, and the owner
+lock and the review-record writer behave as documented."""
 import json
 import pathlib
+import subprocess
 import sys
 
 import pytest
@@ -12,11 +14,12 @@ import ratchet_gate as rg  # noqa: E402
 PIN = "6fbb39750f62b83df096058a4746e77d0a634bc5"
 OTHER = "e894700ff7aee30b52882e5202b16461413780b0"
 RECORD_HEAD = "file\tkind\treviewer\tauthor\tpin\tsha256\tdate\tnote\n"
+OWNERS = "chapter\towner\tgithub\npreface\tEd\ted\nch01\tAlice\talice\nch02\tBob\tbob\n"
 
 CH01 = """# Overview {#sec-ch01}
 
 <!-- PROVENANCE
-pin: snapy@%s (old pins in PROVENANCE are not counted)
+pin: snapy@%s
 status: %s
 author: Alice
 -->
@@ -31,16 +34,21 @@ CH02 = """# Second {#sec-ch02}
 
 It reads the state of @sec-ch01-one and @sec-ch01.%s
 """
+PREFACE = "# Preface {.unnumbered}\n\nThe code is cited at the pin.%s\n"
 
 
-def make(tmp_path, ch01_extra="", ch02_extra="", status="draft", record=""):
+def make(tmp_path, ch01_extra="", ch02_extra="", status="draft", record="", provenance_pin=PIN, preface="",
+         owners=OWNERS):
     root = tmp_path / "tr"
     (root / "book" / "chapters").mkdir(parents=True)
     (root / "tools").mkdir()
     (root / "reviews").mkdir()
     (root / "code_pin.yml").write_text(f"repo: chengcli/snapy\nsha: {PIN}\n")
     (root / "tools" / "package-pins.json").write_text(json.dumps({"kintera": "c55b13b2" + "0" * 32}))
-    (root / "book" / "chapters" / "01-overview.qmd").write_text(CH01 % (OTHER, status, ch01_extra))
+    if owners is not None:
+        (root / "tools" / "chapter-owners.tsv").write_text(owners)
+    (root / "book" / "index.qmd").write_text(PREFACE % preface)
+    (root / "book" / "chapters" / "01-overview.qmd").write_text(CH01 % (provenance_pin, status, ch01_extra))
     (root / "book" / "chapters" / "02-second.qmd").write_text(CH02 % ch02_extra)
     (root / "reviews" / "review-record.tsv").write_text(RECORD_HEAD + record)
     return root
@@ -51,11 +59,11 @@ def counts(root):
 
 
 def baseline_zero(root):
-    (root / "tools" / "ratchet-baseline.json").write_text(json.dumps({"chapters": {}}))
+    (root / "tools" / "ratchet-baseline.json").write_text(json.dumps({"pin": PIN, "chapters": {}}))
 
 
-def check(root):
-    return rg.main(["--root", str(root), "check"])
+def check(root, *extra):
+    return rg.main(["--root", str(root), "check", *extra])
 
 
 # ---- (a) history phrases ------------------------------------------------------------------------------------
@@ -63,15 +71,37 @@ def check(root):
 @pytest.mark.parametrize("text", [
     " Since chengcli/snapy#303 the slope is centred.",
     " This section describes main after the merge.",
-    " The flag previously defaulted to off.",
     " The bug is now fixed.",
     " See #307 for the change.",
+    # misses of the first version, found in the book
+    " It was checked against main at snapy@" + PIN + ".",
+    " The PR head was squash-merged as the pin.",
+    " At the previous pin the term was missing.",
+    " A consequence recorded in the pull request is the cost.",
+    " The default of `gravity-work` is now `face`.",
+    " The parent cache was introduced in PR 223.",
+    " Fixed upstream in snapy#303.",
+    " A run before and after that change does not agree bitwise.",
+    " The flag is no longer the default.",
+    " See [#303](https://example.org) for the change.",
 ])
 def test_history_red(tmp_path, text):
     root = make(tmp_path, ch01_extra=text)
     assert counts(root)["ch01"]["history"] >= 1
     baseline_zero(root)
     assert check(root) == 1
+
+
+@pytest.mark.parametrize("text", [
+    # false hits of the first version: the same words describing physics or code, found in the book
+    " The grid is no longer uniform after the faces move.",
+    " CMake generates the macro interface used to select compiled readers.",
+    " A source can make previously exchanged ghosts stale.",
+    " The mass that was removed from the cell is booked as heat.",
+])
+def test_history_green_for_physics_wording(tmp_path, text):
+    root = make(tmp_path, ch01_extra=text)
+    assert counts(root)["ch01"]["history"] == 0
 
 
 def test_history_green_exempts_footnotes_provenance_shortcodes(tmp_path):
@@ -88,13 +118,43 @@ def test_history_overlap_counts_once(tmp_path):
 
 # ---- (b) off-pin shas ---------------------------------------------------------------------------------------
 
-def test_offpin_red_and_green(tmp_path):
+def test_offpin_red_and_green_in_body(tmp_path):
     bad = f" [`a.cpp:1`](https://github.com/chengcli/snapy/blob/{OTHER}/src/a.cpp#L1) and snapy@{OTHER[:7]}."
     root = make(tmp_path, ch01_extra=bad)
     assert counts(root)["ch01"]["offpin"] == 2
     good = f" [`a.cpp`](https://github.com/chengcli/snapy/blob/{PIN}/src/a.cpp) and snapy@{PIN}."
     root2 = make(tmp_path / "g", ch01_extra=good)
-    assert counts(root2)["ch01"]["offpin"] == 0  # PROVENANCE's old pin is not counted either
+    assert counts(root2)["ch01"]["offpin"] == 0
+
+
+def test_offpin_red_in_provenance_header(tmp_path):
+    root = make(tmp_path, provenance_pin=OTHER)
+    assert counts(root)["ch01"]["offpin"] == 1
+    assert counts(make(tmp_path / "g"))["ch01"]["offpin"] == 0
+
+
+@pytest.mark.parametrize("extra", [
+    f"\n\n<!-- a comment: re-run at snapy@{OTHER} -->\n",
+    f"\n\n```python\n# ported from snapy@{OTHER}\nx = 1\n```\n",
+    f" The note is `docs/derivations/note.md@{OTHER}` §2.",
+    f" The run is recorded at `{OTHER}`.",
+])
+def test_offpin_red_in_comments_code_paths_and_bare_shas(tmp_path, extra):
+    root = make(tmp_path, ch01_extra=extra)
+    assert counts(root)["ch01"]["offpin"] == 1
+
+
+def test_offpin_red_in_preface(tmp_path):
+    root = make(tmp_path, preface=f" The pin is [`snapy`](https://github.com/chengcli/snapy/commit/{OTHER}).")
+    assert counts(root)["preface"]["offpin"] == 1
+    assert counts(make(tmp_path / "g"))["preface"]["offpin"] == 0
+
+
+def test_offpin_green_for_pinned_and_shortcodes(tmp_path):
+    extra = (f" `docs/derivations/note.md@{PIN}` §2; kintera@c55b13b2{'0' * 32}; "
+             "{{< code src/hydro/hydro.cpp HydroImpl::reset >}}.")
+    root = make(tmp_path, ch01_extra=extra)
+    assert counts(root)["ch01"]["offpin"] == 0
 
 
 def test_offpin_other_package(tmp_path):
@@ -154,12 +214,31 @@ def test_status_edit_keeps_hash():
     assert rg.content_hash(a) == rg.content_hash(b)
 
 
+def test_record_command_writes_review_and_restamp(tmp_path):
+    root = make(tmp_path, status="reviewed")
+    f = "chapters/01-overview.qmd"
+    assert counts(root)["ch01"]["status"] == 1
+    assert rg.main(["--root", str(root), "record", "review", f, "--reviewer", "Alice", "--author", "Alice"]) == 1
+    assert rg.main(["--root", str(root), "record", "review", f, "--reviewer", "Bob", "--author", "Alice"]) == 0
+    assert counts(root)["ch01"]["status"] == 0
+    p = root / "book" / f
+    p.write_text(p.read_text() + "\nA new sentence.\n")
+    assert counts(root)["ch01"]["status"] == 1
+    assert rg.main(["--root", str(root), "record", "restamp", f, "--reviewer", "Carol", "--note", "x"]) == 1
+    assert rg.main(["--root", str(root), "record", "restamp", f, "--reviewer", "Bob"]) == 1
+    assert rg.main(["--root", str(root), "record", "restamp", f, "--reviewer", "Bob",
+                    "--note", "one sentence added"]) == 0
+    assert counts(root)["ch01"]["status"] == 0
+    rows = rg.read_record(root)[f]
+    assert [r["kind"] for r in rows] == ["review", "restamp"]
+    assert rows[-1]["pin"] == PIN and rows[-1]["author"] == "Alice"
+
+
 # ---- (d) cross-references -----------------------------------------------------------------------------------
 
 def test_xref_green_when_cited_across(tmp_path):
     root = make(tmp_path, ch02_extra=" And @sec-ch02 itself.")
     c = counts(root)
-    # ch02's sections are cited from ch01 (sec-ch02-two) and ch02's own self-reference does not count
     assert c["ch01"]["xref"] == 0
     assert c["ch02"]["xref"] == 1  # sec-ch02 is cited only from inside ch02
 
@@ -179,10 +258,70 @@ def test_ratchet_rise_and_fall(tmp_path):
         (root / "book" / "chapters" / "01-overview.qmd").read_text() + " Since #303 too.\n")
     assert check(root) == 1                                   # a rise fails
     assert rg.main(["--root", str(root), "update"]) == 1      # and the baseline cannot be raised
-    (root / "book" / "chapters" / "01-overview.qmd").write_text(CH01 % (OTHER, "draft", ""))
+    (root / "book" / "chapters" / "01-overview.qmd").write_text(CH01 % (PIN, "draft", ""))
     assert check(root) == 1                                   # a fall fails until the baseline is lowered
     assert rg.main(["--root", str(root), "update"]) == 0
     assert check(root) == 0
+
+
+def test_update_raises_only_with_a_pin_move(tmp_path):
+    root = make(tmp_path)
+    assert rg.main(["--root", str(root), "update"]) == 0
+    p = root / "book" / "chapters" / "01-overview.qmd"
+    p.write_text(p.read_text() + f" Re-run at snapy@{OTHER}.\n")
+    assert rg.main(["--root", str(root), "update"]) == 1      # same pin: no rise
+    (root / "code_pin.yml").write_text(f"repo: chengcli/snapy\nsha: {'1' * 40}\n")
+    assert rg.main(["--root", str(root), "update"]) == 0      # the pin moves: the rise is allowed
+    assert json.loads((root / "tools" / "ratchet-baseline.json").read_text())["pin"] == "1" * 40
+
+
+def test_check_fails_on_a_stale_baseline_pin(tmp_path):
+    root = make(tmp_path)
+    assert rg.main(["--root", str(root), "update"]) == 0
+    (root / "code_pin.yml").write_text(f"repo: chengcli/snapy\nsha: {'1' * 40}\n")
+    assert check(root) == 1
+
+
+def git(root, *args):
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True,
+                   env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                        "GIT_COMMITTER_EMAIL": "t@t", "PATH": "/usr/bin:/bin"})
+
+
+def test_check_base_ref_rejects_a_hand_raised_baseline(tmp_path):
+    root = make(tmp_path)
+    assert rg.main(["--root", str(root), "update"]) == 0
+    git(root, "init", "-q")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "base")
+    git(root, "tag", "base")
+    # a new instance and the baseline edited by hand to match it: the plain check passes, the base-ref one fails
+    p = root / "book" / "chapters" / "01-overview.qmd"
+    p.write_text(p.read_text() + " Since #303 too.\n")
+    b = json.loads((root / "tools" / "ratchet-baseline.json").read_text())
+    b["chapters"]["ch01"]["history"] += 1
+    (root / "tools" / "ratchet-baseline.json").write_text(json.dumps(b))
+    assert check(root) == 0
+    assert check(root, "--base-ref", "base") == 1
+    # the same rise together with a pin move is allowed: update writes it, and the base-ref check passes
+    (root / "code_pin.yml").write_text(f"repo: chengcli/snapy\nsha: {'1' * 40}\n")
+    assert rg.main(["--root", str(root), "update"]) == 0
+    assert check(root, "--base-ref", "base") == 0
+
+
+# ---- owners -------------------------------------------------------------------------------------------------
+
+def test_owner_lock(tmp_path, capsys):
+    root = make(tmp_path)
+    assert rg.main(["--root", str(root), "update"]) == 0
+    assert check(root) == 0
+    assert "| Alice | ch01 |" in capsys.readouterr().out          # the per-owner burn-down table
+    (root / "tools" / "chapter-owners.tsv").write_text(OWNERS.replace("ch02\tBob\tbob\n", ""))
+    assert check(root) == 1                                     # a chapter without an owner
+    (root / "tools" / "chapter-owners.tsv").write_text(OWNERS + "ch01\tBob\tbob\n")
+    assert check(root) == 1                                     # two owners of one chapter
+    (root / "tools" / "chapter-owners.tsv").unlink()
+    assert check(root) == 1                                     # no owner file
 
 
 def test_chapter_of():
@@ -190,3 +329,10 @@ def test_chapter_of():
     assert rg.chapter_of("chapters/16-known-limits.qmd") == "ch16"
     assert rg.chapter_of("chapters/17-appendices/_appb-derivation-index.qmd") == "appb"
     assert rg.chapter_of("chapters/appd-switches/_switches.qmd") == "appd"
+    assert rg.chapter_of("index.qmd") == "preface"
+
+
+def test_the_repository_has_one_owner_per_chapter():
+    c = rg.count(rg.ROOT)
+    owners, problems = rg.read_owners(rg.ROOT)
+    assert problems == [] and rg.owner_problems(c, owners) == []
