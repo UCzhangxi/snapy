@@ -1,6 +1,6 @@
 """The block-tridiagonal matrix of one column and the two passes that solve it, ForwardSweep
 (src/implicit/forward_sweep_impl.h:25-139) and vic_backward_substitute (src/implicit/vic_redistribute_impl.h:27-36)
-at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 
@@ -24,7 +24,7 @@ def make_fig():
     ax.text(2.9, 2.2, "forward sweep, first row to last:", fontsize=8, color=fs.ORANGE)
     ax.text(2.9, 1.9, r"$a_i'=(a_i-b_ia_{i-1}')^{-1}c_i$", fontsize=8)
     ax.text(2.9, 1.6, r"$\delta_i=(a_i-b_ia_{i-1}')^{-1}(r_i-b_i\delta_{i-1})$", fontsize=8)
-    ax.text(2.9, 1.3, r"each block: ludcmp, refused if a pivot ratio $\leq 8N\epsilon$", fontsize=8, color=fs.VERMILLION)
+    ax.text(2.9, 1.3, r"each block: ludcmp, refused if a pivot ratio $\leq 8N\epsilon_{\mathrm{m}}$", fontsize=8, color=fs.VERMILLION)
     ax.annotate("", xy=(6.95, 2.35), xytext=(6.95, 0.05), arrowprops=dict(arrowstyle="->", color=fs.BLUE, lw=1.4))
     ax.text(2.9, 0.75, "back substitution, last row to first:", fontsize=8, color=fs.BLUE)
     ax.text(2.9, 0.45, r"$\delta_i\leftarrow\delta_i-a_i'\,\delta_{i+1}$", fontsize=8)

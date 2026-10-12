@@ -1,6 +1,6 @@
 """The four guards of ImplicitHydroImpl::forward_masked and what a refusal does
-(src/implicit/implicit_hydro.cpp:175-224, 350-351, 473-481 at snapy@e894700ff7aee30b52882e5202b16461413780b0).
-A cartoon; it reads no data.
+(src/implicit/implicit_hydro.cpp:176-229, 377-386, 511-526 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5): the input
+guard runs after the solve, behind the first screen. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
@@ -12,7 +12,7 @@ def make_fig():
     fs.apply()
     fig, ax = plt.subplots(figsize=(fs.DOUBLE, 2.0))
     ax.set_axis_off()
-    steps = [("latched?", fs.GREY), ("inputs\nfinite?", fs.ORANGE), ("assemble,\nsweep", fs.SKY),
+    steps = [("latched?", fs.GREY), ("assemble,\nsweep", fs.SKY), ("inputs\nfinite?", fs.ORANGE),
              ("NaN\nsentinel?", fs.ORANGE), ("redistribute", fs.SKY), ("results\nfinite?", fs.ORANGE),
              ("correction\nfinite?", fs.ORANGE)]
     x = 0.05
