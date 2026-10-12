@@ -133,13 +133,13 @@ it is skipped (@sec-ch03-facemoments). The scalar module calls it in `lateral`
 `flux_covariance_dry` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), and the row is added.
 
 *The $x_1$ split.* Next to an
-internal $x_1$ seam, the scalar's $x_1$ differences then read this block's ghost-row reconstruction, while the hydro
-rows read the neighbour's interior row. `scalar_flux_covariance` now passes the scalar face states through the
-`seam` lambda, which fills one row with `_x1_ghost_rows` ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}), as `x1_seam_rows`
-does for the hydro states. Unsplit columns, physical $x_1$ walls and covariance-off runs are unchanged
-[source: chengcli/snapy#307 body, commit 2]. On a Cartesian column split into four $x_1$ blocks in one process,
-with a step on the middle seam, this takes the scalar-versus-species difference from $5.885\times10^{-9}$ to
-$1.250\times10^{-15}$, and the scalar's four-block-versus-one difference from $5.885\times10^{-9}$ to 0 (Tests).
+internal $x_1$ seam the hydro rows read the neighbour's interior row, so a scalar $x_1$ difference taken from this
+block's own ghost-row reconstruction would not match them. `scalar_flux_covariance` therefore passes the scalar
+face states through the `seam` lambda, which fills one row with `_x1_ghost_rows` ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}), as
+`x1_seam_rows` does for the hydro states. The lambda does not fire on an unsplit column, at a physical $x_1$ wall
+or in a covariance-off run [source: chengcli/snapy#307 body, commit 2]. On a Cartesian column split into four
+$x_1$ blocks in one process, with a step on the middle seam, the scalar-versus-species difference is
+$1.250\times10^{-15}$ and the scalar's four-block-versus-one difference is 0 (Tests).
 
 ### Code
 
@@ -215,19 +215,16 @@ wants the correction off sets `SNAP_FLUX_COVARIANCE=0` in that arm. In the sourc
 output-combine step fails on that machine). No CUDA run of the scalar tests is reported there; that is
 **missing evidence**.
 
-**Lesson: the pre-B1 panel-seam artefact.** The scalar row was first written on a base without the B1 panel-seam
-fix. There, with the covariance on, the six-panel scalar drift of `test_flux_positivity_cubedsphere.py` was
-$5.0\times10^{-10}$ with the old flux ($r$ times the dry row), $1.4\times10^{-7}$ with the scalar's own, correct row,
-and $2.4\times10^{-15}$ with the dry row removed and no scalar row [source: commit message of snapy@ae61e392e8766ba2d25caabc478143102ee74e77,
-first part, "Open"]. The same message gives the cause: across cubed-sphere panel seams the covariance face rows
-were not single-valued (the B1 leak). The six-panel drift therefore measured the seam as much as the row, and the
-correct row looked like a regression. The row's own oracle is the one-block comparison with the same
-tracer carried as a hydro species, where no panel seam enters (@tbl-ch04-fluxcov-scalar). The seam was fixed
-separately and has its own covariance-on arm, `test_flux_positivity_cubedsphere_flux_covariance_python`
-({{< code tests/CMakeLists.txt >}}). In the source run that test and `test_flux_positivity_cubedsphere` pass with base and
-limited drift $2.420\times10^{-15}$ and $2.403\times10^{-15}$ against $10^{-13}$, a result the body marks as not
-pinned. The rule that follows: when a new face row raises a multi-block conservation error, test the row first
-where no seam enters, and check the seam faces are single-valued, before blaming the row.
+**Why the one-block oracle.** The six-panel scalar drift of `test_flux_positivity_cubedsphere.py` measures the
+cubed-sphere panel seams as much as it measures the scalar row: a covariance face row that is not single-valued
+across a panel seam breaks the telescoping of @sec-ch04-seam, and the drift then carries both. The row's own
+oracle is therefore the one-block comparison against the same tracer carried as a hydro species, where no panel
+seam enters (@tbl-ch04-fluxcov-scalar). The panel seam has a covariance-on arm of its own,
+`test_flux_positivity_cubedsphere_flux_covariance_python` ({{< code tests/CMakeLists.txt >}}). In the source run that
+test and `test_flux_positivity_cubedsphere` pass with base and limited drift $2.420\times10^{-15}$ and
+$2.403\times10^{-15}$ against $10^{-13}$, a result the source marks as not pinned. The rule that follows: when a
+face row raises a multi-block conservation error, measure the row where no seam enters and check that the seam
+faces are single-valued, before blaming the row.
 
 ::: {.callout-important title="Check"}
 The check is `src/snapy_report/ch04/covariance_check.py`, output
