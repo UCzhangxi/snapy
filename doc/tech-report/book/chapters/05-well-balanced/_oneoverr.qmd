@@ -11,16 +11,18 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it is.** The part of the $1/R$ error of a spherical column that survives `SNAP_FLUX_COVARIANCE` and
-`SNAP_X1_CENTROID_EXACT`: an $O(h^2/R)$ term from reconstructing the Favre velocity
-$\langle\rho w\rangle/\langle\rho\rangle$ as if it were a plain mean.
-**Switch.** None; a property of the scheme. The related switches are `SNAP_FLUX_COVARIANCE` (@sec-ch04),
-`SNAP_X1_CENTROID_EXACT` (@sec-ch05-x1cent) and `SNAP_GRAVITY_WORK_RADIAL_EXACT` (@sec-ch06).
-**Order.** $O(h^2/R)$.
-**Defining equation.** @eq-ch05-oneoverr-favre.
+**Purpose.** States the part of the $1/R$ error of a spherical column that survives `SNAP_FLUX_COVARIANCE` and
+`SNAP_X1_CENTROID_EXACT`: an $O(\Delta x_1^2/R)$ term from reconstructing the Favre velocity
+$\langle\rho v_1\rangle/\langle\rho\rangle$ as if it were a plain mean (@eq-ch05-oneoverr-favre).
+**Data.** N/A: a property of the scheme, measured as the $1/R$ content of the one-step effective stratification.
+**Placement.** N/A.
+**Activation.** None; the related switches are `SNAP_FLUX_COVARIANCE` (@sec-ch04), `SNAP_X1_CENTROID_EXACT`
+(@sec-ch05-x1cent) and `SNAP_GRAVITY_WORK_RADIAL_EXACT` (@sec-ch06).
+**Guarantee / limits.** $O(\Delta x_1^2/R)$; not removed by any switch.
+**Evidence.** The closure run `run_oneoverr_remainder.py` at the pin (CPU); no ctest asserts it; check claim `[C21]`.
 :::
 
-On a spherical-polar grid the $r^2$ cell measure adds terms of relative size $h/R$ to every cell-to-face map, and the
+On a spherical-polar grid the $r^2$ cell measure adds terms of relative size $\Delta x_1/R$ to every cell-to-face map, and the
 divergence adds a $2/r$ factor to every flux error. The covariance corrections of @sec-ch04 and the plain-mean maps
 of @sec-ch05-x1cent remove the leading such terms of the face fluxes, the reference and the pressure force. What remains
 is not a defect of any map but of an input: the $x_1$ velocity the maps reconstruct is a ratio of two $r^2$ means, not a
@@ -33,28 +35,29 @@ remainder, its signature, and what evidence exists for it; it has no code of its
 
 ### Derivation
 
-Notation as in @sec-ch05-x1cent; $R$ [m] is the radius of the column, $w=v_1$. The stored velocity of cell $i$ is the
-Favre mean $\tilde w_i=\langle\rho w\rangle_i/\langle\rho\rangle_i$. Expanding $\rho$ and $w$ about the mid-radius with the
+Notation as in @sec-ch05-x1cent; $R$ [m] is the radius of the column. The stored velocity of cell $i$ is the
+Favre mean $\tilde v_{1,i}=\langle\rho v_1\rangle_i/\langle\rho\rangle_i$. Expanding $\rho$ and $v_1$ about the mid-radius with the
 moments of @eq-ch05-x1cent-defect, and the plain mean likewise,
 
 $$
-\tilde w_i - \overline w_i = \frac{h_i^2}{12}\,\frac{\rho'\,w'}{\rho} + \delta_i\,w' + O(h^4) ,
+\tilde v_{1,i} - \overline v_{1,i} = \frac{\Delta x_{1,i}^2}{12}\,\frac{\partial_1\rho\,\partial_1 v_1}{\rho} + \delta_i\,\partial_1 v_1 + O(\Delta x_1^4) ,
 $$ {#eq-ch05-oneoverr-favre}
 
-where the first term is the Cartesian covariance of a density-weighted mean and the second the centroid offset of the
-$r^2$ measure (this paragraph only: primes are $r$-derivatives; derived for linear $\rho$ and $w$ in `[C21]`, exact in
-sympy). The conversion of @eq-ch05-x1cent-conv treats $\tilde w$ as an $r^2$ mean and so removes the $\delta_iw'$ part;
-the covariance part stays. Reconstructing the converted value with weights for plain means therefore leaves an $O(h^2)$
-face error, which the $2/r$ of the radial divergence turns into an $O(h^2/R)$ tendency. The
+where the first term is the Cartesian covariance of a density-weighted mean, whose identity is derived in
+@sec-ch04-x1masscov, and the second the centroid offset of the $r^2$ measure ($\partial_1$ is the radial derivative
+here, $x_1=r$; derived for linear $\rho$ and $v_1$ in `[C21]`, exact in sympy). The conversion of @eq-ch05-x1cent-conv
+treats $\tilde v_1$ as an $r^2$ mean and so removes the $\delta_i\partial_1 v_1$ part; the covariance part stays.
+Reconstructing the converted value with weights for plain means therefore leaves an $O(\Delta x_1^2)$ face error,
+which the $2/r$ of the radial divergence turns into an $O(\Delta x_1^2/R)$ tendency. The
 same holds for $T=p/\rho$ and for $\rho/p$ inside the reference filter. The remainder shows in the effective
-stratification with the signature $+g/(6c_pR)$, and the face fluxes are complete to $O(h^4)$ including
-$h^2/R$.[^ch05-1r-src]
+stratification with the signature $+g/(6c_pR)$, and the face fluxes are complete to $O(\Delta x_1^4)$ including
+$\Delta x_1^2/R$.[^ch05-1r-src]
 
 [^ch05-1r-src]: The expansion follows `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §6; the harness and the
     signature are in `sources/study__next-1overR_README.md` §§0-3; the completeness of the face fluxes is
     `sources/gw__ONEOVERR_split_RESULT.md` §§1-2.
 
-*Exact and truncated.* The remainder is $O(h^2/R)$ and vanishes for $R\to\infty$ (Cartesian).
+*Exact and truncated.* The remainder is $O(\Delta x_1^2/R)$ and vanishes for $R\to\infty$ (Cartesian).
 
 ### Numerical method
 
@@ -64,7 +67,7 @@ The effect in one cell is shown in @fig-ch05-oneoverr-favre. The terms involved 
 
 ```{python}
 #| label: fig-ch05-oneoverr-favre
-#| fig-cap: "Why a ratio of means is not a mean, in one radial cell. Black: a velocity profile $w(r)$ [m s$^{-1}$] across the cell; dashed blue: its plain mean $\\overline{w}_i$; dotted vermillion: the Favre mean $\\langle\\rho w\\rangle/\\langle\\rho\\rangle$ with density falling outward and the $r^2$ weight. The two means differ by $O(h^2)$, which the $x_1$ maps treat as if it were zero. Illustrative profiles."
+#| fig-cap: "Why a ratio of means is not a mean, in one radial cell. Black: a velocity profile $v_1(r)$ [m s$^{-1}$] across the cell; dashed blue: its plain mean $\\overline{v}_{1,i}$; dotted vermillion: the Favre mean $\\langle\\rho v_1\\rangle/\\langle\\rho\\rangle$ with density falling outward and the $r^2$ weight. The two means differ by $O(\\Delta x_1^2)$, which the $x_1$ maps treat as if it were zero. Illustrative profiles."
 #| fig-alt: "A rising curve across the cell with two horizontal lines at slightly different heights, a dashed one and a dotted one."
 #| echo: false
 from snapy_report.ch05.fig_oneoverr_favre import make_fig
@@ -73,12 +76,12 @@ make_fig()
 
 The remainder in @fig-ch05-oneoverr-remainder comes from a closure run in snapy at the pin.[^ch05-1r-run] The run is `src/snapy_report/ch05/run_oneoverr_remainder.py`, the
 spherical-polar counterpart of the Cartesian one-step harness `test_horizontal_flux_covariance`. It sets up an
-isentropic column of depth $H$ at radius $R$ with an anelastic roll in $\phi$, runs one RK3 step with cell gravity work
-and `SNAP_FLUX_COVARIANCE` on, and projects the entropy tendency on the seeded $w$ with unit weight per cell. The quantity
+isentropic column of depth $H$ at radius $R$ with an anelastic roll in the azimuth $\varphi$, runs one RK3 step with cell gravity work
+and `SNAP_FLUX_COVARIANCE` on, and projects the entropy tendency on the seeded $v_1$ with unit weight per cell. The quantity
 is $R[\varepsilon n_1^2(R)-\varepsilon n_1^2(\infty)]$, where $\varepsilon n_1^2(\infty)$ is the same column in
 Cartesian geometry with the same switches; the switch implies `SNAP_WB_REF4`, which acts in Cartesian too. With the
 switch on, the $1/R$ content is $+0.0004$ to $+0.0006$ for $R/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is
-constant in $R$, so the remainder is $O(1/R)$, and it changes little with $n_1$, so it is $O(h^2)$; it decreases slowly
+constant in $R$, so the remainder is $O(1/R)$, and it changes little with $n_1$, so it is $O(\Delta x_1^2)$; it decreases slowly
 toward $+0.0004$ as $n_1$ grows. With the switch off it is $-0.027$ to $-0.031$ for $R/H \ge 40$ and $n_1 \ge 64$,
 fifty to eighty times larger, and it shrinks at small $R/H$ through a term of higher order in $1/R$.
 
@@ -128,7 +131,7 @@ from commits not in snapy, are not used.
 
 ### Limits
 
-1. **Not removed.** The remainder is a known $O(h^2/R)$ term of the scheme; removing it would need the ratios
+1. **Not removed.** The remainder is a known $O(\Delta x_1^2/R)$ term of the scheme; removing it would need the ratios
    themselves made exact, which no switch does.
 2. **Metric of the harness.** The note reports column means with unit weight per cell; weighted by cell volume the
    metric carries its own $1/R$ across the column's error profile and does not measure the scheme's term (same note,

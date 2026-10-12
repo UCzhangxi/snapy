@@ -11,11 +11,18 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Keeps every reference stencil inside the owned cells at a physical $x_1$ wall: one-sided six-face
-rows for the two wall cells, and $\rho/p$ continued past the wall from the two owned cells next to it.
-**Switch.** YAML `dynamics/wb-wall-clamp`, default `true`.
-**Order.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 next to each wall (first order with the wall cell repeated).
-**Defining equation.** @eq-ch05-wallclamp-cont.
+**Purpose.** Keeps every reference stencil inside the owned cells at a physical $x_1$ wall: one-sided six-face
+rows for the two wall cells, and $\chi$ continued past the wall from the two owned cells next to it
+(@eq-ch05-wallclamp-cont).
+**Data.** In: $\chi$ and the face pressures of the owned cells next to the wall; out: $\rho_{\mathrm{sf}}$ at faces 0-2
+and $\rho_{\mathrm{ref}}$ at cells 0-1 next to each clamped wall.
+**Placement.** Inside the reference kernel, at the first and last cells of a column with a physical $x_1$ face.
+**Activation.** YAML `dynamics/wb-wall-clamp`, default `true`; with `SNAP_WB_REF4` the cubic wall values of
+@sec-ch05-wbref4 take over.
+**Guarantee / limits.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 next to each wall on a uniform grid (first order
+with the wall cell repeated); continuation in cell index, so stretched grids are not covered.
+**Evidence.** `test_wb_ref_wall` prints second-order wall faces at the pin (CPU); check claims `[C2]`, `[C4]`–`[C6]`,
+`[C11]`, `[C12]`.
 :::
 
 The ghost cells of a reflecting wall hold the mirror image of the interior, which is the right input for the
@@ -39,22 +46,22 @@ values. `balance_column` refuses to run with the clamp off.
 
 ### Derivation
 
-Notation as in @sec-ch05-refkernel; cells are counted from the wall, $j=0$ the wall cell, and $r_j=\overline\rho_j/\overline p_j$.
+Notation as in @sec-ch05-refkernel; cells are counted from the wall, $j=0$ the wall cell, and $\chi_j=\overline\rho_j/\overline p_j$.
 
 #### The repeated wall cell is first order
 
-Near the wall write $r_j=r_0+j\,a+O(\Delta x_1^2)$ with $a=r'\Delta x_1=O(\Delta x_1)$. Repeating $r_0$ for every
+Near the wall write $\chi_j=\chi_0+j\,a+O(\Delta x_1^2)$ with $a=\partial_1\chi\Delta x_1=O(\Delta x_1)$. Repeating $\chi_0$ for every
 $j<0$ gives
 
 $$
 \begin{aligned}
-r^{s}_0 - r_0 &= \tfrac38\,a, \\
-r^{s}_1 - r_1 &= \tfrac1{16}\,a,
+\chi^{s}_0 - \chi_0 &= \tfrac38\,a, \\
+\chi^{s}_1 - \chi_1 &= \tfrac1{16}\,a,
 \end{aligned}
 $$ {#eq-ch05-wallclamp-repeat}
 
-and errors $\tfrac{23}{32}a$, $\tfrac7{32}a$, $\tfrac1{32}a$ and $0$ in the face average $\tfrac12(r^s_{f-1}+r^s_f)$ at
-faces 0 to 3 (`[C4]`, exact). Relative to $r$ these are fixed multiples of $(r'/r)\Delta x_1$, so the face density
+and errors $\tfrac{23}{32}a$, $\tfrac7{32}a$, $\tfrac1{32}a$ and $0$ in the face average $\tfrac12(\chi^s_{f-1}+\chi^s_f)$ at
+faces 0 to 3 (`[C4]`, exact). Relative to $\chi$ these are fixed multiples of $(\partial_1\chi/\chi)\Delta x_1$, so the face density
 reference is first order at faces 0-2. The even-parity perturbation ghosts (@sec-ch05-wbx1) copy the bias of
 $\rho'=\overline\rho-\rho_{\mathrm{ref}}$ into the ghosts, so the solver's face densities there are first order too;
 the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is.[^ch05-wall-mirror]
@@ -66,26 +73,26 @@ the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is.[^ch05-wall-m
 Past a clamped wall the binomial reads, $k$ cells beyond the wall,
 
 $$
-r_{-k} =
+\chi_{-k} =
 \begin{cases}
-r_0 + k\,(r_0 - r_1), & r_1 \le r_0,\\
-r_0\,(r_0/r_1)^{k}, & r_1 > r_0,
+\chi_0 + k\,(\chi_0 - \chi_1), & \chi_1 \le \chi_0,\\
+\chi_0\,(\chi_0/\chi_1)^{k}, & \chi_1 > \chi_0,
 \end{cases}
 $$ {#eq-ch05-wallclamp-cont}
 
-and $r_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
+and $\chi_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
 `hydro_ref_x1_wall_rop`
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}).
 The binomial reproduces a linear profile exactly, so with the linear branch the $O(a)$ errors
 of @eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(a^2)$, errors
-$\tfrac{31}{32}a^2/r_0$, $\tfrac14a^2/r_0$, $\tfrac1{32}a^2/r_0$ (`[C5]`, exact series). Either way faces 0-2 keep
-the interior's $O(\Delta x_1^2)$, and for constant $r$ the linear branch returns $r_0$ exactly, so an isothermal
+$\tfrac{31}{32}a^2/\chi_0$, $\tfrac14a^2/\chi_0$, $\tfrac1{32}a^2/\chi_0$ (`[C5]`, exact series). Either way faces 0-2 keep
+the interior's $O(\Delta x_1^2)$, and for constant $\chi$ the linear branch returns $\chi_0$ exactly, so an isothermal
 column is unchanged bit for bit.
 
-Each branch is unbounded on one side: the linear one reaches zero when $r$ rises steeply away from the wall
-($r_{-3}=r_0(1-3d)$ with $d=(r_1-r_0)/r_0$), and the ln-linear one diverges when the neighbour is nearly empty. The
-code takes the branch that stays closer to $r_0$, so for $r_1\ge0$ the continuation lies in
-$[r_0(r_0/r_1)^k,\ r_0(1+k)]$ and is positive (`[C6]`, 60000 random samples, none outside).
+Each branch is unbounded on one side: the linear one reaches zero when $\chi$ rises steeply away from the wall
+($\chi_{-3}=\chi_0(1-3d)$ with $d=(\chi_1-\chi_0)/\chi_0$), and the ln-linear one diverges when the neighbour is nearly empty. The
+code takes the branch that stays closer to $\chi_0$, so for $\chi_1\ge0$ the continuation lies in
+$[\chi_0(\chi_0/\chi_1)^k,\ \chi_0(1+k)]$ and is positive (`[C6]`, 60000 random samples, none outside).
 
 #### The one-sided cell-pressure rows
 
@@ -94,7 +101,7 @@ derived exactly in `[C2]`: $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/
 $(-3/160, 637/1440, 511/720, -43/240, 77/1440, -11/1440)$ for the next. They keep the sixth order
 of @eq-ch05-refkernel-pref and read no ghost face.
 
-*Exact and truncated.* Exact: the continuation for linear $r$ (linear branch), the rows for a quintic. Second
+*Exact and truncated.* Exact: the continuation for linear $\chi$ (linear branch), the rows for a quintic. Second
 order: $\rho_{\mathrm{sf}}$ at faces 0-2. The independent rebuild of `[C12]` gives the face-1 error first order with
 the repeated wall cell (order 1.03) and second order with @eq-ch05-wallclamp-cont (order 2.01), $n_1$ = 32 to 256.
 

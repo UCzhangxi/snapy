@@ -10,16 +10,22 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Replaces the kernel's density reference by $p_{\mathrm{ref}}F(\rho/p)$ with a fourth-order filter
-$F$, and the face density by the face value of that same cell field, so the face-density offset is $O(\Delta x_1^4)$;
-on non-uniform grids it also replaces the cell pressure by a cubic average.
-**Switch.** Environment variable `SNAP_WB_REF4`, read once per process, default off; implied by
+**Purpose.** Replaces the kernel's density reference by $p_{\mathrm{ref}}F(\chi)$ with a fourth-order filter $F$, and
+the face density by the face value of that same cell field (@eq-ch05-wbref4-dref); on non-uniform grids it also
+replaces the cell pressure by a cubic average.
+**Data.** In: $\chi$, $p_{\mathrm{ref}}$ and $p_{\mathrm{sf}}$ of the kernel; out: $\rho_{\mathrm{ref}}$ in cells and
+$\rho_{\mathrm{sf}}$ at faces.
+**Placement.** Inside `HydroImpl::_hydro_ref_x1`: the cell part before the seam exchange, the face part after it.
+**Activation.** Environment variable `SNAP_WB_REF4`, read once per process, default off; implied by
 `SNAP_X1_CENTROID_EXACT`. Requires $n_g\ge3$ (checked at setup).
-**Order.** $\delta\rho_f=O(\Delta x_1^4)$; $p_{\mathrm{sf}}$ is never changed, so the rest balance is the kernel's.
-**Defining equation.** @eq-ch05-wbref4-dref.
+**Guarantee / limits.** $\delta\rho_f=O(\Delta x_1^4)$ where the guards do not fire; a guarded cell or face keeps the
+kernel's second-order value. $p_{\mathrm{sf}}$ is never changed, so the rest balance is the kernel's. Without the
+corrected-PE face work a third-order wall band remains.
+**Evidence.** `test_wb_ref4_order` (fourth order on, second off, at the pin, CPU) and the seam arms pass; check claims
+`[C3]`, `[C7]`, `[C8]`, `[C14]`.
 :::
 
-The kernel's density reference is second order: the binomial smoothing biases $\rho/p$ by $\tfrac{\Delta x_1^2}{2}r''$,
+The kernel's density reference is second order: the binomial smoothing biases $\chi=\rho/p$ by $\tfrac{\Delta x_1^2}{2}\partial_1^2\chi$,
 and its face density is not the face value of its own cell density, so the solver's face density carries the
 offset @eq-ch05-refkernel-offset. That offset enters the $x_1$ mass flux at linear order and, through it, the gravity work. The
 switch removes it with two operators: a five-point filter with zero second and third moments, which keeps the
@@ -39,7 +45,7 @@ converges at about fourth order with the switch and second order without it.
 
 ### Derivation
 
-Notation as in @sec-ch05-refkernel; indices are cell indices and $r_i=\overline\rho_i/\overline p_i$. The derivation is
+Notation as in @sec-ch05-refkernel; indices are cell indices and $\chi_i=\overline\rho_i/\overline p_i$. The derivation is
 that of the derivation note,[^ch05-wb4-note] re-written here and checked by `[C3]`, `[C7]`, `[C8]`, `[C14]`.
 
 [^ch05-wb4-note]: `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §§2-7.
@@ -48,7 +54,7 @@ that of the derivation note,[^ch05-wb4-note] re-written here and checked by `[C3
 
 $$
 \begin{aligned}
-\rho_{\mathrm{ref},i} &= p_{\mathrm{ref},i}\,(Fr)_i, \\
+\rho_{\mathrm{ref},i} &= p_{\mathrm{ref},i}\,(F\chi)_i, \\
 F &= \tfrac1{16}(-1,\,4,\,10,\,4,\,-1).
 \end{aligned}
 $$ {#eq-ch05-wbref4-dref}
@@ -56,31 +62,31 @@ $$ {#eq-ch05-wbref4-dref}
 $F$ has unit sum, zero first, second and third moments and fourth moment $-\tfrac32$ in cell units, and zero response
 at $k\Delta x_1=\pi$ (`[C3]`), so $Fq=q+O(\Delta x_1^4)$ and the two-cell mode is still removed; its reach, $\pm2$, is
 the binomial's, so ghost depth and seam exchange are unchanged. With $p_{\mathrm{ref}}=\overline p+c+O(\Delta x_1^6)$
-(@sec-ch05-refkernel) the cell reference is $\overline\rho+cR+O(\Delta x_1^4)$, and the smooth $cR$ is carried
+(@sec-ch05-refkernel) the cell reference is $\overline\rho+c\chi+O(\Delta x_1^4)$, and the smooth $c\chi$ is carried
 consistently by the face value below. @eq-ch05-wbref4-dref is built in `wb_ref4_stencils` as the filter row `F`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
 and applied in `wb_ref4_cells` as `fr`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_cells >}}).
 
 At a clamped wall the two values past the wall are cubic extrapolations of the four owned cells nearest it,
-$r_0..r_3$ counted from the wall:
+$\chi_0..\chi_3$ counted from the wall:
 
 $$
 \begin{aligned}
-r_{-1} &= 4r_0 - 6r_1 + 4r_2 - r_3, \\
-r_{-2} &= 10r_0 - 20r_1 + 15r_2 - 4r_3 .
+\chi_{-1} &= 4\chi_0 - 6\chi_1 + 4\chi_2 - \chi_3, \\
+\chi_{-2} &= 10\chi_0 - 20\chi_1 + 15\chi_2 - 4\chi_3 .
 \end{aligned}
 $$ {#eq-ch05-wbref4-cubic}
 
-All five stencil values of the first two cells then lie on one cubic, which $F$ reproduces, so $(Fr)_0=r_0$ and
-$(Fr)_1=r_1$ for any data (`[C7]`): filtering with these wall values and leaving the two end cells unfiltered are the
+All five stencil values of the first two cells then lie on one cubic, which $F$ reproduces, so $(F\chi)_0=\chi_0$ and
+$(F\chi)_1=\chi_1$ for any data (`[C7]`): filtering with these wall values and leaving the two end cells unfiltered are the
 same reference. Ghosts are never read.
 
 #### Face density
 
 $$
 \begin{aligned}
-\rho_{\mathrm{sf},f} &= P'(x_{1,f}), \\
+\rho_{\mathrm{sf},f} &= \partial_1 P(x_{1,f}), \\
 P(x_{1,s+j}) &= \sum_{k<j}\rho_{\mathrm{ref},s+k}\,\Delta x_{1,s+k},
 \end{aligned}
 $$ {#eq-ch05-wbref4-face}
@@ -88,7 +94,7 @@ $$ {#eq-ch05-wbref4-face}
 with $P$ the quartic through the primitive at the five faces $j=0..4$ (four cells), window $s=f-2$ kept inside the owned cells at a
 clamped wall, physical spacing. On a uniform grid the weights on $\rho_{\mathrm{ref},s..s+3}$ are $(-1,7,7,-1)/12$ in the
 interior, $(25,-23,13,-3)/12$ at the wall face and $(3,13,-5,1)/12$ at the next (`[C8]`). The face is exact for cubic
-point profiles on any grid, so $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
+point profiles on any grid, so $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
 mid-column offset $3.2\times10^{-12}$ to $2.8\times10^{-16}$ relative from $n_1$ = 32 to 256, fitted order 4.68, against
 order 2.00 for the kernel). @eq-ch05-wbref4-face is built as the weights `awt`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
@@ -113,7 +119,7 @@ six-face $p_{\mathrm{ref}}$ is kept.
 
 #### Guards and rest balance
 
-A cell whose $(Fr)_i$ lies outside $[\min,\max]$ of $r$ over cells $i-1..i+1$, with relative margin $10^{-10}$, keeps the
+A cell whose $(F\chi)_i$ lies outside $[\min,\max]$ of $\chi$ over cells $i-1..i+1$, with relative margin $10^{-10}$, keeps the
 kernel's ratio; a face outside its two neighbouring cell references keeps the kernel's face. A cell with
 $\lvert\ln(p_{\mathrm{sf},i-1/2}/p_{\mathrm{sf},i+1/2})\rvert>0.5$, fewer than two cells per pressure scale height, is
 flagged, the flag is dilated by two cells, and flagged cells and faces next to them keep the kernel's values; ghosts
@@ -136,7 +142,7 @@ four owned cells keeps the kernel's reference.
 
 ```{python}
 #| label: fig-ch05-wbref4-stencils
-#| fig-cap: "The `SNAP_WB_REF4` stencils at a bottom wall (thick black line), $x_1$ to the right. Top: the filter $F$ on the wall cell $i_s$ reads two values past the wall (bluish-green diamonds $E_1$, $E_2$), which are cubic extrapolations of the four owned cells nearest it (sky-blue circles), never the hatched ghosts; with them the filtered ratio equals $r$ in the end cell. Bottom: the face density at the wall face from the quartic primitive over the four owned cells next to the wall (orange triangles at the five faces); interior faces use the centred weights $(-1, 7, 7, -1)/12$."
+#| fig-cap: "The `SNAP_WB_REF4` stencils at a bottom wall (thick black line), $x_1$ to the right. Top: the filter $F$ on the wall cell $i_s$ reads two values past the wall (bluish-green diamonds $E_1$, $E_2$), which are cubic extrapolations of the four owned cells nearest it (sky-blue circles), never the hatched ghosts; with them the filtered ratio equals $\\chi$ in the end cell. Bottom: the face density at the wall face from the quartic primitive over the four owned cells next to the wall (orange triangles at the five faces); interior faces use the centred weights $(-1, 7, 7, -1)/12$."
 #| fig-alt: "Two rows of cells beside a wall with hatched ghosts; in the top row diamonds sit in two ghost cells and circles in four interior cells under a bracket of five cells; in the bottom row triangles mark five faces under a bracket of four cells."
 #| echo: false
 from snapy_report.ch05.fig_wbref4_stencils import make_fig
@@ -145,7 +151,7 @@ make_fig()
 
 **The oracle and the measured order.** The test drives a neutral polytrope ($\gamma=5/3$, $g=m+1$ with
 $m=1/(\gamma-1)$, $T_0=1+L_z-z$) seeded with a divergence-free overturning mode of amplitude $10^{-4}$, takes one RK3
-step, and measures $N^2_{\mathrm{eff}}=\tfrac g\gamma\sum_i(-\delta s_i)w_i/\sum_iw_i^2$ from the entropy tendency of the mode
+step, and measures $N^2_{\mathrm{eff}}=\tfrac g\gamma\sum_i(-\delta s_i)v_{1,i}/\sum_iv_{1,i}^2$ from the entropy tendency of the mode
 minus that of the rest state. For this column the exact cell-average tendencies vanish at linear order, so every
 $N^2_{\mathrm{eff}}$ is scheme error. @fig-ch05-wbref4-order shows the four arms at the pin.[^ch05-wb4-fig]
 
@@ -219,7 +225,7 @@ The only user-facing error is the ghost-depth check of step 2.
 **Evidence.** Check numbers come from `wbref_check.py` (`[C3]`, `[C7]`, `[C8]`, `[C14]`).[^ch05-wb4-chk] At the pin
 $N^2_{\mathrm{eff}}n_1^2$ at $n_1$ = 32, 64, 128 is, switch off, $+0.0719$, $+0.0656$, $+0.0640$ (1 e-fold) and
 $+0.6198$, $+0.5344$, $+0.5060$ (3 e-folds); on, $+0.0025$, $+0.0006$, $+0.0001$ and $+0.0407$, $+0.0111$, $+0.0029$
-(@fig-ch05-wbref4-order). The seam tests print gaps of $6.775\times10^{-15}$ and $1.675\times10^{-15}$ ($n_h$ = 1, 0)
+(@fig-ch05-wbref4-order). The seam tests print gaps of $6.775\times10^{-15}$ and $1.675\times10^{-15}$ ($\alpha_{\mathrm{nh}}$ = 1, 0)
 for the split and 0 for two ranks against two blocks, and every ctest entry of the table passes.[^ch05-wb4-run]
 **Coverage.** CPU; the CUDA twin `test_wb_ref4_order_cuda` and the `_cuda` seam arms were not run (**pending: a CUDA
 run at the pin**); 2 ranks through the `_mp` arm.

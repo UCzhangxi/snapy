@@ -10,12 +10,18 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Moves a column of cell averages, at fixed $p/\rho$ per cell, to the fixed point
-$\overline p=p_{\mathrm{ref}}(\overline p)+C$ of @eq-ch05-wbx1-rest, so that the solver starts it at rest.
-**Switch.** None: an API function, `balance_column` in C++ and in the Python package, called by initial-condition
-builders. Requires `wb-wall-clamp` on, at least five cells, positive $p$ and $\rho$.
-**Order.** Fixed point to a residual below `rtol` (default $10^{-10}$, at most 120 sweeps).
-**Defining equation.** @eq-ch05-balcol-iter.
+**Purpose.** Moves a column of cell averages, at fixed $1/\chi=p/\rho$ per cell, to the fixed point
+$\overline p=p_{\mathrm{ref}}(\overline p)+C$ of @eq-ch05-wbx1-rest, so that the solver starts it at rest
+(@eq-ch05-balcol-iter).
+**Data.** In: one column of $\overline p$, $\overline\rho$ and the face positions; out: the projected $\overline p$,
+$\overline\rho$.
+**Placement.** Before the run: an API function, `balance_column` in C++ and in the Python package, called by
+initial-condition builders.
+**Activation.** Called explicitly; requires `wb-wall-clamp` on, at least five cells, positive $p$ and $\rho$.
+**Guarantee / limits.** Fixed point to a residual below `rtol` (default $10^{-10}$, at most 120 sweeps); the result
+moves by a free constant $C$.
+**Evidence.** `test_balance_column` (three arms) and `test_bryan_balance_ic` pass at the pin (CPU); check claim
+`[C15]`.
 :::
 
 A column integrated from the continuum hydrostatic equation is balanced to the truncation error of that integration,
@@ -36,14 +42,14 @@ the solver then enforces. Under `SNAP_X1_CENTROID_EXACT` it balances only a colu
 ### Derivation
 
 Units as in @sec-ch05-wbx1. Let the column hold $n_1\ge5$ cells with no ghosts and both ends physical, and let
-$\theta_i=\overline p_i/\overline\rho_i$ be taken once from the input. One sweep evaluates the reference kernel on the
+$1/\chi_i=\overline p_i/\overline\rho_i$ be taken once from the input. One sweep evaluates the reference kernel on the
 whole column, reads the gauge at the top cell and updates
 
 $$
 \begin{aligned}
 C &= \overline{p}_{n_1-1} - p_{\mathrm{ref},n_1-1}, \\
 \overline{p}_i &\leftarrow p_{\mathrm{ref},i}(\overline{p},\overline{\rho}) + C, \\
-\overline{\rho}_i &\leftarrow \overline{p}_i/\theta_i ,
+\overline{\rho}_i &\leftarrow \overline{p}_i\,\chi_i ,
 \end{aligned}
 $$ {#eq-ch05-balcol-iter}
 
@@ -63,7 +69,7 @@ column comes back after zero updates. $\varepsilon$ bounds the residual accelera
 difference $\delta p'$ across a cell drives an acceleration $\delta p'/(\overline\rho\Delta x_1)$.
 
 The gauge is read at the top cell, where the pressure is lowest, so the column moves least where it is thinnest; the
-code comment records that a gauge at the bottom diverges on a deep column. Holding $\theta_i$ fixed holds the
+code comment records that a gauge at the bottom diverges on a deep column. Holding $\chi_i$ fixed holds the
 temperature fixed for `ideal-gas` and for `ideal-moist` at fixed mass fractions. No convergence proof exists; the
 sweep is a contraction in practice, and the check shows it on a column that is not balanced to begin with
 (`[C15]` of `wbref_check.py`: a $\beta=0.3$ polytrope with a $10^{-3}$ pressure bump at fixed $p/\rho$, $n_1=64$, residual
@@ -97,7 +103,7 @@ make_fig()
 A moist initial condition needs one more loop. The projection holds the mass fractions fixed, and the run's first
 saturation adjustment moves the column off the balance again. The bryan example's `balance-ic` therefore alternates
 saturation and projection until saturation no longer moves the projected column (relative density change at most
-$4\epsilon_{\mathrm{mach}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `balance-ic-passes`.
+$4\epsilon_{\mathrm{m}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `balance-ic-passes`.
 @fig-ch05-balcol-passes shows the passes at the pin.[^ch05-bal-fig]
 
 [^ch05-bal-fig]: Data `src/snapy_report/ch05/data/bryan_balance_ic.json`, from `ctest -V -R 'test_bryan_balance_ic'` in the build directory
@@ -130,7 +136,7 @@ make_fig()
 1. The arguments are checked: $g>0$, shape, matching widths, positive `rtol` and `max_iter`, the clamp, and the
    geometry under `SNAP_X1_CENTROID_EXACT`, each with a `TORCH_CHECK`
    ({{< code src/hydro/balance_column.cpp balance_column >}}).
-2. The column length `nc1` must be at least 5 and $p$, $\rho$ positive; $\theta_i$ is stored
+2. The column length `nc1` must be at least 5 and $p$, $\rho$ positive; $1/\chi_i$ is stored
    ({{< code src/hydro/balance_column.cpp balance_column >}}).
 3. Uniformity is decided and, for a switched non-uniform column, the stencils of @sec-ch05-wbref4 are built into
    the flag `ref4`

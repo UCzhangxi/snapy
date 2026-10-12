@@ -10,13 +10,19 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ instead of $p$ and
-$\rho$, then adds the reference face values back, so a discretely hydrostatic column produces no $x_1$ force.
-**Switch.** None. On whenever $g_1\neq0$, the state has a pressure row and the EOS is not `shallow-water`; also
-under an $x_1$ block split.
-**Requires.** The reference kernel (@sec-ch05-refkernel).
-**Order.** Exact rest balance; the face states keep the order of the reconstruction.
-**Defining equation.** @eq-ch05-wbx1-split.
+**Purpose.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ instead of $p$ and $\rho$, then
+adds the reference face values back, so a discretely hydrostatic column produces no $x_1$ force
+(@eq-ch05-wbx1-split).
+**Data.** In: cell averages $\overline p$, $\overline\rho$ and the reference of @sec-ch05-refkernel; out: left and right face
+states of $p$ [Pa] and $\rho$ [kg m$^{-3}$] at the $x_1$ faces.
+**Placement.** Every RK stage, in the $x_1$ sweep of `HydroImpl::forward`, before the Riemann solve.
+**Activation.** No switch: on whenever $g_1\neq0$, the state has a pressure row and the EOS is not `shallow-water`;
+also under an $x_1$ block split.
+**Guarantee / limits.** Exact rest balance for a column at the fixed point @eq-ch05-wbx1-rest. Away from rest the face
+states carry the reconstruction's error on the perturbation plus the density-reference offset, $O(\Delta x_1^2)$ for
+the default reference and $O(\Delta x_1^4)$ with @sec-ch05-wbref4. No well-balanced treatment in $x_2$, $x_3$.
+**Evidence.** `test_face_floor`, `test_wb_wall_corner`, `test_hydrostatic` pass at the pin (CPU); check claims
+`[C14]`, `[C19]`.
 :::
 
 A column in hydrostatic balance has pressure and density that fall by orders of magnitude along $x_1$. A high-order
@@ -59,12 +65,12 @@ $$
 \begin{aligned}
 p'_i &= \overline{p}_i - p_{\mathrm{ref},i}, \\
 \rho'_i &= \overline{\rho}_i - \rho_{\mathrm{ref},i}, \\
-p^{L,R}_{i-1/2} &= \mathcal R^{L,R}[p']_{i-1/2} + p_{\mathrm{sf},i-1/2}, \\
-\rho^{L,R}_{i-1/2} &= \mathcal R^{L,R}[\rho']_{i-1/2} + \rho_{\mathrm{sf},i-1/2},
+p^{L,R}_{i-1/2} &= \mathcal W^{L,R}[p']_{i-1/2} + p_{\mathrm{sf},i-1/2}, \\
+\rho^{L,R}_{i-1/2} &= \mathcal W^{L,R}[\rho']_{i-1/2} + \rho_{\mathrm{sf},i-1/2},
 \end{aligned}
 $$ {#eq-ch05-wbx1-split}
 
-with $\mathcal R^{L,R}$ the left and right face values of the configured $x_1$ reconstruction. The subtraction
+with $\mathcal W^{L,R}$ the left and right face values of the configured $x_1$ reconstruction. The subtraction
 in @eq-ch05-wbx1-split is done by `_hydro_ref_x1` and the two in-place updates that follow it
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 and the restore by `psf_lo` added back to both states
@@ -89,7 +95,7 @@ cancellation; the plain-mean form is @sec-ch05-x1cent.[^ch05-wbx1-deriv]
 
 *Exact and truncated.* The rest balance is exact for any column satisfying @eq-ch05-wbx1-rest. Away from rest the
 face states carry the reconstruction's truncation error on the perturbation plus the offset
-$\rho_{\mathrm{sf}}-\mathcal R[\rho_{\mathrm{ref}}]$ of the density reference, which is $O(\Delta x_1^2)$ for the
+$\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]$ of the density reference, which is $O(\Delta x_1^2)$ for the
 default reference (`[C14]`) and $O(\Delta x_1^4)$ with @sec-ch05-wbref4. The identity used in the cancellation,
 that the hydrostatic correction and the pressure force cancel at rest, is `[C19]`.
 
@@ -116,12 +122,9 @@ make_fig()
 
 **Floors.** The reconstruction of the perturbations is called with `floor=false`, because a perturbation is
 legitimately negative and the density and pressure floors would clamp it; the passive-species rows are still
-clamped at zero when the EOS limiter is on. After the restore, a non-positive face pressure is replaced by
-$p_{\mathrm{sf}}$; a non-positive left density at face $i-\tfrac12$ by $\overline\rho_{i-1}$ and a non-positive
-right density by $\overline\rho_i$, the cell on the same side. The adjacent cell, and not $\rho_{\mathrm{sf}}$, is
-used because a reference that overestimates the density aloft turns every floor event at a reflecting top wall into
-a large spurious impedance. The shift that builds $\overline\rho_{i-1}$ replicates the first cell instead of
-wrapping around the column. @sec-ch08 owns the positivity floors in general.
+clamped at zero when the EOS limiter is on (@sec-ch08-reconfloors). After the restore, a non-positive face pressure
+or density falls back to a positive value; that fallback rule, and why it uses the adjacent cell rather than
+$\rho_{\mathrm{sf}}$, is @sec-ch08-wbface.
 
 **Order.** In the interior the face states have the order of the reconstruction applied to a smooth perturbation,
 plus the density-reference offset above; at rest the result is exact in interior, wall and seam cells alike. A

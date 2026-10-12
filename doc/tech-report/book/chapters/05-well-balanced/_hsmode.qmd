@@ -10,19 +10,23 @@ status: draft
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Replaces the fraction $1-n_h$ of the $x_1$ gravity force $\rho g_1$ by the difference of the cell's
-own reconstructed face pressures, and books the same replacement in the energy.
-**Switch.** YAML `forcing/const-gravity/non-hydrostatic` $=n_h\in[0,1]$, default 1 (mode off).
-**Requires.** $g_1\neq0$. Under `SNAP_X1_CENTROID_EXACT` it uses the $r^2$ operator of @sec-ch05-x1cent.
-**Order.** Exact cancellation at rest; away from rest the force is the difference between Riemann and reconstructed
-face pressures.
-**Defining equation.** @eq-ch05-hsmode-force.
+**Purpose.** Replaces the fraction $1-\alpha_{\mathrm{nh}}$ of the $x_1$ gravity force $\rho g_1$ by the difference of
+the cell's own reconstructed face pressures, and books the same replacement in the total energy density
+(@eq-ch05-hsmode-force).
+**Data.** In: the reconstructed face pressures $p^{L}$, $p^{R}$ of the cell; out: momentum and total energy density
+increments of the cell.
+**Placement.** In the $x_1$ sweep of `HydroImpl::forward`, every stage, after the reconstruction.
+**Activation.** YAML `forcing/const-gravity/non-hydrostatic` $=\alpha_{\mathrm{nh}}\in[0,1]$, default 1 (mode off);
+needs $g_1\neq0$. Under `SNAP_X1_CENTROID_EXACT` it uses the $r^2$ operator of @sec-ch05-x1cent.
+**Guarantee / limits.** Exact cancellation at rest; away from rest the force is the difference between Riemann and
+reconstructed face pressures, not a hydrostatic model.
+**Evidence.** `test_hydrostatic`, `test_x1_centroid_rest` pass at the pin (CPU); check claim `[C19]`.
 :::
 
-In the default, non-hydrostatic mode ($n_h=1$) gravity enters as the body force $\overline\rho_ig_1$ of the constant
+In the default, non-hydrostatic mode ($\alpha_{\mathrm{nh}}=1$) gravity enters as the body force $\overline\rho_ig_1$ of the constant
 gravity forcing, and vertical motion responds to the imbalance between that force and the pressure fluxes. With
-$n_h<1$ part of the body force is replaced by $(p^L_{i+1/2}-p^R_{i-1/2})/\Delta x_1$, the pressure difference between
-the cell's own reconstructed states at its upper and lower face. At $n_h=0$ the vertical momentum of a cell then
+$\alpha_{\mathrm{nh}}<1$ part of the body force is replaced by $(p^L_{i+1/2}-p^R_{i-1/2})/\Delta x_1$, the pressure difference between
+the cell's own reconstructed states at its upper and lower face. At $\alpha_{\mathrm{nh}}=0$ the vertical momentum of a cell then
 changes only by the jumps $p^{*}-p^{L,R}$ that the Riemann solver introduces at its faces, which vanish in a column
 at rest whatever the column is.
 
@@ -34,14 +38,14 @@ of @eq-ch05-wbx1-split.
 
 ### Derivation
 
-Units as in @sec-ch05-wbx1. The constant gravity forcing adds $n_h\overline\rho_ig_1$ to the momentum and
-$n_h\overline\rho_i\overline v_{1,i}g_1$ to the energy. The hydrostatic mode adds, in Cartesian geometry,
+Units as in @sec-ch05-wbx1. The constant gravity forcing adds $\alpha_{\mathrm{nh}}\overline\rho_ig_1$ to the momentum and
+$\alpha_{\mathrm{nh}}\overline\rho_i\overline v_{1,i}g_1$ to the energy. The hydrostatic mode adds, in Cartesian geometry,
 
 $$
 \begin{aligned}
 G_i &= \frac{p^{L}_{i+1/2} - p^{R}_{i-1/2}}{\Delta x_{1,i}}, \\
-\Delta(\rho v_1)_i &= \Delta t\,(1-n_h)\,G_i, \\
-\Delta E_i &= \Delta t\,(1-n_h)\,\overline v_{1,i}\,G_i,
+\Delta(\rho v_1)_i &= \Delta t\,(1-\alpha_{\mathrm{nh}})\,G_i, \\
+\Delta E_i &= \Delta t\,(1-\alpha_{\mathrm{nh}})\,\overline v_{1,i}\,G_i,
 \end{aligned}
 $$ {#eq-ch05-hsmode-force}
 
@@ -50,7 +54,7 @@ belonging to cell $i$. $G$ is `rho_grav`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 applied by the increments that use `non_hydrostatic`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-At $n_h=0$ the momentum balance of cell $i$ becomes
+At $\alpha_{\mathrm{nh}}=0$ the momentum balance of cell $i$ becomes
 
 $$
 \frac{\mathrm{d}}{\mathrm{d}t}(\overline{\rho v_1})_i = -\frac{\Delta_i[\rho v_1^2]}{\Delta x_1}
@@ -59,7 +63,7 @@ $$
 
 so the cell's own pressure difference no longer drives it; only the face jumps do. At rest the two states of every
 face agree and $p^{*}=p^{L}=p^{R}$, so the force vanishes exactly for any column, balanced or not (`[C19]`). For
-$0<n_h<1$ the force is the blend of the two forms.
+$0<\alpha_{\mathrm{nh}}<1$ the force is the blend of the two forms.
 
 Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the pressure force is
 $-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i$ with the source $S_i$ of @eq-ch05-x1cent-source, and $G$ takes
@@ -83,7 +87,7 @@ gravity-work bookkeeping of @sec-ch06 counts the same term (`original_gravity_wo
 
 ```{python}
 #| label: fig-ch05-hsmode-cell
-#| fig-cap: "Hydrostatic mode in one cell, $x_1$ upward. Orange triangles: the cell's own reconstructed face pressures [Pa], the left state $p^{L}_{i+1/2}$ at its upper face and the right state $p^{R}_{i-1/2}$ at its lower face; orange arrows: the Riemann face pressures $p^{*}$ [Pa] at both faces. The vermillion arrow is the fraction $(1 - n_h)$ of the body force $\\overline{\\rho}_i g_1$ [N m$^{-3}$] that is removed, the bluish-green arrow the difference of the cell's own face pressures that replaces it."
+#| fig-cap: "Hydrostatic mode in one cell, $x_1$ upward. Orange triangles: the cell's own reconstructed face pressures [Pa], the left state $p^{L}_{i+1/2}$ at its upper face and the right state $p^{R}_{i-1/2}$ at its lower face; orange arrows: the Riemann face pressures $p^{*}$ [Pa] at both faces. The vermillion arrow is the fraction $(1 - \\alpha_{\\mathrm{nh}})$ of the body force $\\overline{\\rho}_i g_1$ [N m$^{-3}$] that is removed, the bluish-green arrow the difference of the cell's own face pressures that replaces it."
 #| fig-alt: "A single shaded cell with triangles at its top and bottom face, arrows through both faces, and two vertical arrows of opposite direction beside it."
 #| echo: false
 from snapy_report.ch05.fig_hsmode_cell import make_fig
@@ -96,7 +100,7 @@ make_fig()
 |--------|----------|----------|------|
 | the key, default and range | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `non_hydrostatic` | default 1 |
 | the remaining body force | {{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}} | `forward` | |
-| $G$, Cartesian form | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `rho_grav` | $n_h<1$ |
+| $G$, Cartesian form | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `rho_grav` | $\alpha_{\mathrm{nh}}<1$ |
 | $G$, $r^2$ form | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
 | work counted in the gravity-work budget | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `original_gravity_work` | |
 | momentum and energy increments | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `non_hydrostatic` | |
@@ -105,13 +109,13 @@ make_fig()
 
 1. The YAML value is read into `non_hydrostatic` with default 1 and checked to lie in $[0,1]$
    ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}).
-2. `ConstGravityImpl::forward` adds $n_h$ times the body force and its work
+2. `ConstGravityImpl::forward` adds $\alpha_{\mathrm{nh}}$ times the body force and its work
    ({{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}}).
 3. After the $x_1$ reconstruction, `rho_grav` is filled for the interior cells
    ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
    and overwritten by the $r^2$ form with `x1_pressure_source` when that switch acts
    ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-4. The increments are added with the weight $1-n_h$ read from `non_hydrostatic`
+4. The increments are added with the weight $1-\alpha_{\mathrm{nh}}$ read from `non_hydrostatic`
    ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 A value outside $[0,1]$ fails the `TORCH_CHECK` of step 1. There is no warning.
@@ -121,15 +125,15 @@ A value outside $[0,1]$ fails the `TORCH_CHECK` of step 1. There is no warning.
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |----------------|-------------|-----|-----|
 | `tests/test_hydrostatic.cpp` (`test_hydrostatic.release`), `cubed_sphere_remains_at_rest` | `non-hydrostatic: 0.`; a cubed-sphere hydrostatic atmosphere keeps its vertical velocity below the bound for 100 steps | $10^{-8}$ | round-off margin |
-| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | rest force at $n_h$ = 1 and 0, with and without the switch | $10^{-10}$ on, $>10^{-8}$ off | @sec-ch05-x1cent |
-| `tests/test_x1_seam_split.cpp`, `tests/test_x1_seam_split_mp.cpp` arms | split equals one block at $n_h$ = 1 and 0 | $10^{-13}$ | round-off |
+| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | rest force at $\alpha_{\mathrm{nh}}$ = 1 and 0, with and without the switch | $10^{-10}$ on, $>10^{-8}$ off | @sec-ch05-x1cent |
+| `tests/test_x1_seam_split.cpp`, `tests/test_x1_seam_split_mp.cpp` arms | split equals one block at $\alpha_{\mathrm{nh}}$ = 1 and 0 | $10^{-13}$ | round-off |
 | this chapter's check, `[C19]` | cancellation at rest, both forms | $10^{-12}$ | round-off |
 
 : Tests of the hydrostatic mode. {#tbl-ch05-hsmode-tests}
 
 ::: {.callout-important title="Test"}
 **Evidence.** At the pin, `test_hydrostatic` prints a maximum spurious vertical velocity after 100 steps of
-$6.82\times10^{-15}$, and the $n_h=0$ rows of `test_x1_centroid_rest` read, switch off and on, $6.0\times10^{-8}$ and
+$6.82\times10^{-15}$, and the $\alpha_{\mathrm{nh}}=0$ rows of `test_x1_centroid_rest` read, switch off and on, $6.0\times10^{-8}$ and
 $1.2\times10^{-14}$ (interior, $r_0/H=5$, explicit).[^ch05-hs-run] The cancellation at rest is checked by `[C19]`.
 **Coverage.** CPU; CUDA twins exist and were not run (**pending: a CUDA run at the pin**); 2 ranks through the seam
 tests. No test measures the mode away from rest.
@@ -140,7 +144,7 @@ tests. No test measures the mode away from rest.
 
 ### Limits
 
-1. **Not a hydrostatic model.** $n_h=0$ removes the cell's own pressure difference from the vertical momentum, but
+1. **Not a hydrostatic model.** $\alpha_{\mathrm{nh}}=0$ removes the cell's own pressure difference from the vertical momentum, but
    the vertical velocity is still prognostic; this is not a hydrostatic primitive-equation solver.
 2. **Gravity-work interplay.** The energy term enters the gravity-work bookkeeping of @sec-ch06 through
    `original_gravity_work`; its interaction with the face forms is described there.
