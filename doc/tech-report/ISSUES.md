@@ -88,3 +88,12 @@ symbol enters NOTATION.md.
 - NOTATION section 7 writes the gravity source Jacobian as $\mathsf\Phi$, but the PDF's sans-serif font has no
   sans capital Phi (U+1D6F7): the render drops the glyph. `_vic.qmd` writes it $\boldsymbol\Phi$ (STYLE 5, bold
   Greek); the editor should change the NOTATION entry to match.
+
+## Chapter 4 local symbols (draft)
+
+Owners: chapter 4 / editor. Each scheme file lists its symbols in a "Local symbols" line; remove that line when the
+symbol enters NOTATION.md.
+- `_fluxcov.qmd` (B3 subsection): $\mathcal B$, the compositional/thermal ratio of the covariance errors;
+  $\alpha_{\mathrm v}$, the density sensitivity to a vapour's mass fraction; $\mu_{\mathrm{mix}}$, the mixture molar
+  mass; $\Gamma$, the background lapse rate; $b$, the buoyancy; $m_{\mathrm z}$, a mode's vertical wavenumber;
+  the superscripts $\mathrm{err}$ (error rate of the uncorrected scheme) and $\mathrm{ex}$ (a parcel's excess).
