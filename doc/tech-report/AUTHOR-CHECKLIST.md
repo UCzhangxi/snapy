@@ -31,6 +31,40 @@ generated file.
 Quarto is not installed on every machine. Where it is missing, `render_gate.py` runs the source gates and then
 stops at the render itself; say so in the PR body and let CI be the render's word.
 
+## 1b. Citations and the pin
+
+- **Every code citation must resolve at the pin `code_pin.yml` names** — that is gate 1, and `0 unresolved` is
+  the only passing result. A citation that resolves at some other sha is not a citation; the pin is the one the
+  tools read, never one copied into prose.
+- **Where a cited symbol's name or spelling changed at the pin** — renamed, moved to another file, split —
+  **rewrite the citation to the symbol the code now has, keep the pin, and flag it in the PR body**: one line
+  per citation giving the old symbol, the new symbol, and whether the claim beside it changed. Never drop the
+  pin and never delete the citation to make the gate pass.
+
+  > **PROVISIONAL.** This clause is written as the working rule but the editor has not ruled on it. Follow it,
+  > and expect it to be replaced. It is marked provisional in STYLE.md 3.1 as well.
+
+- `python3 tools/code_anchors.py bump <sha>` is the only way the pin moves, and only the editor runs it.
+- Only snapy has an entry in `code_pin.yml`. kintera, pyharp, pydisort and commux have none, so their citations
+  are checked by hand; a first citation to pydisort or commux needs a pin agreed with the editor first
+  (STYLE.md 3.1, "Open slots").
+
+## 1c. Notation and the book map
+
+- **Write against the book map's notation table, not against a symbol you pick locally.** The map is the shared
+  register; a chapter that invents its own spelling for a symbol the map already carries is a review failure.
+- **Raise map questions to the editor rather than settling them in a chapter PR**: a notation conflict between
+  two chapters, a symbol with two meanings, which chapter is a mechanism's home, or a definition that belongs
+  somewhere other than where it sits. Those are the editor's to draft and Xi's to rule on.
+- **The generated notation index records first textual *use*, not first *definition*.** Appendix A comes from
+  `tools/gen_notation_index.py`, whose column is headed **"first used"**: the first scheme, in book order,
+  whose maths contains the symbol, matched exactly. It is a search result, not a definition audit — the
+  passage it names may use a symbol that chapter never defines, and 46 of the 153 rows have no candidate at
+  all (`—`). So **that column is not authoritative for where a symbol is defined**, whatever it is read as;
+  the editor's draft-1 map reports 55 rows with a use candidate but no verified definition.
+  Before relying on it, open the section it names and confirm the symbol is defined there. If it is not, tell
+  the editor rather than quietly adding a definition to make the row true.
+
 ## 2. What goes in the PR body
 
 - **Pins**: the base sha you branched from and the code pin, each with the command that read it
@@ -38,7 +72,7 @@ stops at the render itself; say so in the PR body and let CI be the render's wor
 - **One line per row or claim you touched**: what it was, what it is now, and why — or `kept`, with what you
   checked at the pin.
 - **Citations whose symbol changed at the pin**: old symbol, new symbol, and whether the claim changed
-  (STYLE.md 3.1, the provisional clause). A reviewer reads this list first.
+  (section 1b, provisional). A reviewer reads this list first; an empty list is stated, not omitted.
 - **Gate table, before and after**, with the numbers — not "gates pass".
 - **Anything you deliberately did not do**, with its count. "I left 58 of these and here is where" is a
   finding; silence is a trap for the next author.

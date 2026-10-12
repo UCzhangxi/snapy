@@ -145,29 +145,36 @@ This guide does not restate that sha, and neither does any other file. Read it f
 with `python3 tools/code_anchors.py bump <full-sha>`, which refuses to write a new pin until every citation
 resolves there and lists the symbols whose body changed so their claims can be re-read.
 
-A sha written anywhere else is a copy, and copies go stale. They had: at tech-report
-`f38085bb02c2043b7002bfeb85a47601f52cc2d7`, three files stated a snapy pin and all three disagreed with the
-one the tools use —
+A sha written anywhere else is a copy, and copies go stale. They had. Read at tech-report
+`f38085bb02c2043b7002bfeb85a47601f52cc2d7`, three files stated a snapy pin, and the two prose copies agreed
+with each other and disagreed with the one the tools use —
 
-| where | what it said |
+| where, at that sha | what it said |
 |---|---|
-| `code_pin.yml:4` | `6fbb39750f62b83df096058a4746e77d0a634bc5` — what every `{{< code >}}` actually resolves at |
-| `STYLE.md:138` (this section, before this revision) | `e894700ff7aee30b52882e5202b16461413780b0` |
-| `book/index.qmd:10` | `e894700ff7aee30b52882e5202b16461413780b0`, described as "reproduced" from this section |
+| `code_pin.yml:3-4` | `repo: chengcli/snapy`, `sha: 6fbb39750f62b83df096058a4746e77d0a634bc5` — what every `{{< code >}}` actually resolves at |
+| `STYLE.md:137-140` (this section, before this revision) | a four-row pin table: snapy base `aea71ed852effb09e6aa155dd26349f1210ef556`, snapy round `e894700ff7aee30b52882e5202b16461413780b0`, kintera `c55b13b2204997d2d09e04498558ab9495d8ee77`, pyharp `4721715855e937c1e8b218e964c0655f46e56e29`; no pydisort or commux row |
+| `book/index.qmd:9-10` | "Code is cited at the snapy main pin", then `e894700ff7aee30b52882e5202b16461413780b0`, described as "reproduced" from this section |
 
 - `index.qmd` names the pinned repository and links to `code_pin.yml`; it does not carry a sha.
 - A PROVENANCE block records the pin the section was written against (section 3.2). Those blocks are the one
   place a sha is written out per file, and they are the editor's to move with the pin.
-- **Known gap, for the editor.** `code_pin.yml` holds one `repo:`/`sha:` pair and `tools/code_anchors.py` reads
-  only those two fields, so kintera and pyharp have no entry and no gate. Until the file and the tool take one
-  pin per package, those two are pinned here and nowhere else, and a human has to check them:
+- **Open slots.** `code_pin.yml` holds one `repo:`/`sha:` pair and `tools/code_anchors.py` reads only those two
+  fields, so exactly one package can be pinned there today. **snapy has an entry; kintera, pyharp, pydisort and
+  commux have none**, so they have no gate either. These are open slots, not shas waiting to be copied in: where
+  a package has no entry, this guide says so rather than inventing one.
 
-  | package | pin | cited |
-  |---|---|---|
-  | kintera (`chengcli/kintera`) | `c55b13b2204997d2d09e04498558ab9495d8ee77` | 85 times in `book/**/*.qmd` |
-  | pyharp (`chengcli/pyharp`) | `4721715855e937c1e8b218e964c0655f46e56e29` | 32 times in `book/**/*.qmd` |
+  | package | entry in `code_pin.yml` | pin, until it has one | cited in `book/**/*.qmd` |
+  |---|---|---|---|
+  | snapy (`chengcli/snapy`) | **yes** | read it from `code_pin.yml` | 582 links in 100 files |
+  | kintera (`chengcli/kintera`) | **no** | `c55b13b2204997d2d09e04498558ab9495d8ee77`, stated here only | 41 links in 7 files |
+  | pyharp (`chengcli/pyharp`) | **no** | `4721715855e937c1e8b218e964c0655f46e56e29`, stated here only | 16 links in 6 files |
+  | pydisort (`zoeyzyhu/pydisort`) | **no** | **none recorded anywhere** | 0 |
+  | commux (`zoeyzyhu/commux`) | **no** | **none recorded anywhere** | 0 |
 
-  Extending `code_pin.yml` to a mapping of package to pin, and `code_anchors.py` with it, removes this exception.
+  kintera and pyharp are cited without a gate, so a human checks them; pydisort and commux are allowed to be
+  cited but are not cited yet, and the first citation to either needs a pin decided first. Extending
+  `code_pin.yml` to a mapping of package to pin, and `code_anchors.py` with it, closes all four slots and is the
+  concrete follow-up.
 - The repositories the report may cite, each from one owner only: snapy (`chengcli/snapy`), kintera
   (`chengcli/kintera`), pyharp (`chengcli/pyharp`), pydisort (`zoeyzyhu/pydisort`), commux (`zoeyzyhu/commux`).
   Any other repository, or a fork off that list, is a review failure. A sha from a fork resolves through the
