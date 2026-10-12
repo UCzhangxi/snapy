@@ -1,7 +1,7 @@
 ## Time-step bound: acoustic, implicit-advective, shear and diffusive (`integration/cfl`) {#sec-ch07-cfl}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: OUTLINE.md 7.3; src/hydro/hydro.cpp; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; src/implicit/implicit_hydro.cpp;
          sources/gh__PR_BODIES_202-219.md (#218)
 status: draft
@@ -23,9 +23,10 @@ $x_1$ direction of the VIC the sound waves are treated implicitly, so only advec
 an advective Courant number `implicit-advection-cfl` that does not depend on `cfl`. An optional shear bound limits
 the step where a horizontal wind jumps by more than the sound speed across an $x_1$ face, which the implicit
 column cannot see. The diffusion module adds its parabolic bound (@sec-ch09-viscosity). The minimum is reduced
-over all ranks and local blocks, multiplied by `cfl`, and halved for each redo of the step.
+over all ranks and local blocks, multiplied by `cfl`, and halved for each redo of the step.[^ch07-cfl-src]
 
-*Aliases.* chengcli/snapy#218 introduced the implicit-advective and shear bounds.
+[^ch07-cfl-src]: Source and credit: the implicit-advective and shear bounds are those of chengcli/snapy#218
+    (`sources/gh__PR_BODIES_202-219.md`).
 
 ### Derivation
 
@@ -64,8 +65,8 @@ A column with $n_2=n_3=1$ keeps the acoustic bound in $x_1$ even with an implici
 ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}).
 
 The acoustic bound is the usual one for a Riemann-flux finite-volume scheme with explicit stages; the
-implicit-advective bound and the shear bound are policies of chengcli/snapy#218, stated there as results only.
-Neither is derived from a stability analysis of the VIC in this draft.
+implicit-advective bound and the shear bound are policies, stated in their source as results only. Neither is
+derived from a stability analysis of the VIC here.
 
 ### Numerical method
 
@@ -118,12 +119,13 @@ redo factor of the first local block applies to all blocks of a Mesh.
 : Tests of the time-step bound. {#tbl-ch07-cfl-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for
-line; deck: the check itself; run: `python3 cfl_check.py`, numpy 2.4.6, double]. ctest cases: **pending: pinned
+**Evidence.** Check numbers come from `cfl_check.py`, which ports, from the code at the pin, the bound formulas line for line; deck: the check itself.[^ch07-cfl-run] ctest cases: **pending: pinned
 ctest run**. A data figure of the step against the redo count needs a logged run, **pending**.
 **Coverage.** The two Python tests run on CPU and take `--device cuda`; no multi-rank test of the reduction is
 listed here.
 :::
+
+[^ch07-cfl-run]: Run: `python3 src/snapy_report/ch07/cfl_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/cfl_check.out`.
 
 ### Limits
 
@@ -134,9 +136,12 @@ No sedimentation-velocity bound enters the step: settling is protected only by t
 
 1. **Implicit $x_2$ and $x_3$ are unreachable.** The bound reads scheme bits 1 and 2 of `scheme` ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}),
    but only schemes 0, 1 and 9 are accepted by `type` ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::type >}}).
-2. **The 1-D exception.** A column with $n_2=n_3=1$ keeps the acoustic $x_1$ bound in `denom1` ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}), so a 1-D VIC run silently runs at the explicit step
-   (`sources/canoe__tall_column_instability_TECH_REPORT.md` §3f).
-3. **Existing decks changed step.** Introducing the advective bound changed the step of existing scheme 1 and 9
-   decks without a warning (chengcli/snapy#218, Compatibility; `sources/gh__PR_BODIES_202-219.md`).
+2. **The 1-D exception.** A column with $n_2=n_3=1$ keeps the acoustic $x_1$ bound in `denom1`
+   ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}), so a 1-D VIC run silently runs at the explicit
+   step.[^ch07-cfl-1d]
+3. **No warning on the implicit bound.** A scheme 1 or 9 deck takes the advective $x_1$ bound, not the acoustic
+   one, with no message, so a deck tuned against the acoustic $x_1$ step takes a different step.
+
+[^ch07-cfl-1d]: `sources/canoe__tall_column_instability_TECH_REPORT.md` §3f.
 4. **No derivation of the implicit bounds.** $C_{\mathrm{adv}}$ and $C_{\mathrm{sh}}$ are policies; their stability
    margins are not derived or measured here.

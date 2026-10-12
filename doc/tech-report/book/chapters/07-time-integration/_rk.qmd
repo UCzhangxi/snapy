@@ -1,7 +1,7 @@
 ## Explicit SSP Runge-Kutta stages in Shu-Osher form (`integration/type`) {#sec-ch07-rk}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: OUTLINE.md 7.1; src/mesh/meshblock.cpp; pyharp src/integrator/integrator.cpp; sources/canoe__POSITIVITY_TECH_REPORT.md §3
 status: draft
 -->
@@ -68,8 +68,9 @@ stage $\mathbf U^{(0)}=\mathbf U^n$, so the step there has size $w_2\Delta t/(w_
 that a forward-Euler step does not increase for $\Delta t\le\Delta t_{\mathrm{FE}}$ is therefore not increased by
 the scheme for $\Delta t\le C\,\Delta t_{\mathrm{FE}}$, with $C$ the smallest ratio over the stages: 1 for `rk1`,
 `rk2` and `rk3`, and 2 for `rk3s4` (`[C3]`). On $u'=-u$, where forward Euler keeps $u\ge0$ for $\Delta t\le1$,
-`rk3` keeps it up to 1 and `rk3s4` up to 2 (`[C4]`). The argument is the one of
-`sources/canoe__POSITIVITY_TECH_REPORT.md` §3, written out here; $w_2\le w_1$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ({{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}}).
+`rk3` keeps it up to 1 and `rk3s4` up to 2 (`[C4]`).[^ch07-rk-ssp] $w_2\le w_1$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ({{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}}).
+
+[^ch07-rk-ssp]: The argument is that of `sources/canoe__POSITIVITY_TECH_REPORT.md` §3, written out here.
 
 *Exact and truncated.* Each stage is exact arithmetic on the three states. The step is first to third order in
 time as above; the spatial error is that of the operator, @sec-ch04.
@@ -97,8 +98,11 @@ One stage of `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp Mes
 4. the passive-scalar tendency and the user stage forcings (@sec-ch09);
 5. the average @eq-ch07-rk-stage and the conserved-variable limiter, `apply_conserved_limiter_`
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); the scalars get the same average, `_scalar_s0` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
-6. refill immersed solids, then at the last stage the phase adjustment and the gravity-work fixer
-   (@sec-ch06), then the physical boundaries, `apply_boundaries` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+6. refill immersed solids; at the last stage, the conserved-variable limiter again, the phase adjustment and the
+   gravity-work fixer (@sec-ch06); then the physical boundaries, `apply_boundaries` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+
+The scalar tendency of step 4 also carries the VIC's dry-gas face transfer and the scalars' share of any dry-mass
+source in the stage (@sec-ch07-vic-redistribute).
 
 Each stage evaluates $\mathcal L$ once, so a step costs one, two, three or four operator evaluations. The
 averages are tensor arithmetic on whole arrays, ghosts included; the ghosts are rewritten by the boundary fill
@@ -131,20 +135,23 @@ and the exchange. Nothing is fused: the dispatch path `call_average3` is comment
 : Tests of the explicit Runge-Kutta stages. {#tbl-ch07-rk-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the stage formula of snapy@e894700ff7aee30b52882e5202b16461413780b0 and the
-weights of pyharp@4721715855e937c1e8b218e964c0655f46e56e29, ported line for line; deck: the check itself; run:
-`python3 rk_check.py`, numpy 2.4.6, double]. ctest cases: **pending: pinned ctest run**.
+**Evidence.** Check numbers come from `rk_check.py`, which ports, from the code at the pin, the stage formula of `advance_local` and the pyharp weights; deck: the check itself.[^ch07-rk-run] ctest cases: **pending: pinned ctest run**.
 **Coverage.** CPU; `test_straka` runs on 2 ranks; no CUDA-specific assertion on the weights.
 :::
+
+[^ch07-rk-run]: Run: `python3 src/snapy_report/ch07/rk_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/rk_check.out`. The weights are pyharp@4721715855e937c1e8b218e964c0655f46e56e29.
 
 ### Limits
 
 1. **`max_redo` is not a YAML key.** pyharp's `from_yaml` never reads it
    ([`pyharp integrator.cpp:20-31`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L20-L31)), so YAML runs keep the default `max_redo` of 5
    ([`pyharp integrator.hpp:58`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.hpp#L58)).
-2. **pyharp is not pinned by snapy's build.** The weights cited here are those of
-   pyharp@4721715855e937c1e8b218e964c0655f46e56e29; the property $w_2\le w_1$ that the positivity limiter relies on
-   holds for all four tableaux there and must be re-checked against the pyharp a build links.
+2. **pyharp is not pinned by snapy's build.** The weights cited here are those of the pyharp commit the report
+   cites;[^ch07-rk-pyharp] the property $w_2\le w_1$ that the positivity limiter relies on holds for all four
+   tableaux there and must be re-checked against the pyharp a build links.
 3. **SSP coefficient of `rk3s4`.** Per operator evaluation it is $2/4$, against $1/3$ for `rk3`, so `rk3s4` could
    take a step about 1.5 times longer for the same SSP guarantee. The time-step bound does not use this: it applies
    the same `cfl` to every type (@sec-ch07-cfl).
+
+[^ch07-rk-pyharp]: pyharp@4721715855e937c1e8b218e964c0655f46e56e29; pyharp has no `code` shortcode, so its code is
+    cited with permalinks at that commit.
