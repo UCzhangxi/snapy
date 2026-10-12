@@ -1,10 +1,11 @@
 # Gravity and energy {#sec-ch06}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
-sources: OUTLINE.md 6; docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0;
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (code_pin.yml)
+sources: OUTLINE.md 6; docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §§1-4;
          sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md; sources/gw__NEXTPR_indep_cartesian_gravity_work_weight.md
 status: draft
+author: Linfeng Li
 reviewer:
 -->
 
@@ -14,13 +15,72 @@ $\rho v_1g_1$ in the same cell; the face form, which books the work as a flux di
 across the cell's $x_1$ faces; the global fixer that repairs the cell form's budget once per step; the
 corrected-PE face work, which makes the booked work fourth-order consistent with the scheme's own mass fluxes;
 the gravity work inside the vertical implicit operator; and a closing comparison of what each form conserves and
-which diagnostic measures it. The thread running through all of them is a single identity, @eq-ch06-dwork-booked:
-choose a discrete potential energy, and the work that conserves total energy plus that potential energy is
-determined. Every form in this chapter is that identity with a different choice of $P$, and the differences
-between the forms are differences in how accurate $P$ is, not in how the work is applied. The momentum equation
-is untouched throughout; only the energy row changes. The hydrostatic reference state these forms are often used
-with is @sec-ch05, and the implicit solver they couple into is the vertical implicit solve, which the
-time-integration chapter covers.
+which diagnostic measures it. The momentum equation is the same in every form; only the energy row changes. The
+hydrostatic reference state these forms are often used with is @sec-ch05, and the implicit solver they couple into
+is the vertical implicit solve of the time-integration chapter.
+
+**One identity behind every form.** Every form in this chapter is one identity with a different choice of
+discrete potential energy, so it is derived once, here, before the forms that use it.
+
+**The continuous budget.** With constant gravity $g_1$ along $x_1$, mass and total energy obey the continuity
+equation and the total-energy equation in their usual form,
+
+$$
+\begin{aligned}
+\partial_t\rho + \nabla\cdot(\rho\mathbf v) &= 0, \\
+\partial_tE + \nabla\cdot\big[(E+p)\mathbf v\big] &= \rho v_1g_1 ,
+\end{aligned}
+$$
+
+with $E$ the total energy density [J m$^{-3}$]. The $x_2$, $x_3$ components of gravity book cell work only and play
+no part here. The potential $\phi(x_1) = -g_1x_1$ [m$^2$ s$^{-2}$] does not depend on time, and
+$\rho v_1g_1 = -\rho\mathbf v\cdot\nabla\phi$, so $E+\rho\phi$ is conserved:
+
+$$
+\partial_t(E+\rho\phi) + \nabla\cdot\big[(E+p+\rho\phi)\mathbf v\big] = 0 .
+$$
+
+In a closed domain $\int(E+\rho\phi)\,\mathrm{d}V$ is constant. Throughout the chapter, an invariant written
+"$E+P$" or "$E+\mathrm{PE}_d$" means the integrated sum $\sum_iV_iE_i + P$ [J, per unit horizontal area on
+Cartesian grids and per steradian on spherical-polar and cubed-sphere grids], with $P$ a discrete potential energy
+of the same units.
+
+**The exact work in one cell.** Integrate the gravity source over cell $i$ and write the $x_1$ mass flux density as
+$F=\rho v_1$ [kg m$^{-2}$ s$^{-1}$]: $\int_{V_i}\rho v_1g_1\,\mathrm{d}V = g_1V_i\langle F\rangle_{V_i}$. Multiply the
+continuity equation by $\phi$ and integrate over the cell, using
+$\phi\,\nabla\cdot(\rho\mathbf v) = \nabla\cdot(\phi\rho\mathbf v) - \rho\mathbf v\cdot\nabla\phi$ and the divergence
+theorem. Only the $x_1$ faces matter: on Cartesian, spherical-polar and gnomonic-equiangle grids the $x_2$, $x_3$
+faces join cells of the same $x_1$ level (on the cubed sphere, the same radius:
+`docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §12.6), so their terms
+are mass fluxes times one value of $\phi$, which @sec-ch06-dwork treats with the horizontal directions. Rearranged,
+the exact gravity work in a cell is
+
+$$
+\begin{aligned}
+g_1V_i\langle F\rangle_{V_i} &= -\frac{\mathrm{d}}{\mathrm{d}t}\mathcal P_i - \Delta_i[A\phi F], \\
+\mathcal P_i &= \int_{V_i}\rho\phi\,\mathrm{d}V ,
+\end{aligned}
+$$ {#eq-ch06-dwork-template}
+
+with $\Delta_i[\cdot]$ the difference of a face quantity across cell $i$ and $A$ the $x_1$ face area.
+
+**The booked work.** Pick any discrete potential energy $P=\sum_iP_i$ and *define* the booked work by
+
+$$
+W_iV_i := -\dot P_i - \Delta_i[A\phi F],
+$$ {#eq-ch06-dwork-booked}
+
+with $\dot P_i$ evaluated on the discrete density tendency and $W$ in W m$^{-3}$. Two properties follow.
+**Conservation:** summing @eq-ch06-dwork-booked over a column, the $\Delta_i$ terms telescope to the two walls,
+where $F=0$, so $\sum_iW_iV_i + \dot P = 0$; the other energy fluxes telescope too, so $E+P$ is conserved exactly,
+whatever $P$ is. **Accuracy:** subtracting @eq-ch06-dwork-booked from @eq-ch06-dwork-template gives
+$W_iV_i - g_1V_i\langle F\rangle_{V_i} = \tfrac{\mathrm{d}}{\mathrm{d}t}(\mathcal P_i - P_i)$, so the booked work is
+exactly as accurate as $P_i$ is as an approximation of the cell's potential energy.
+
+The forms differ only in $P$. The face form takes the piecewise-constant $P=\mathrm{PE}_d$ (@sec-ch06-face); the
+corrected-PE face work takes a fourth-order $P$ (@sec-ch06-dwork); the cell form starts from no $P$ and leaves a
+defect that the fixer removes (@sec-ch06-cell, @sec-ch06-fixer). The implicit solver carries the same work in its
+energy row (@sec-ch06-vic), and @sec-ch06-conserves collects which invariant each form keeps.
 
 ```{python}
 #| label: fig-ch06-deps
@@ -33,8 +93,8 @@ make_fig()
 
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
-| Cell form (@sec-ch06-cell) | `gravity-work: cell` | off (the default before chengcli/snapy#303) | 1 | `test_forcing` |
-| Face form (@sec-ch06-face) | `gravity-work: face` | on since chengcli/snapy#303, `gravity_work` {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | 2 | `test_horizontal_flux_covariance` |
+| Cell form (@sec-ch06-cell) | `gravity-work: cell` | off; set explicitly | 1 | `test_forcing` |
+| Face form (@sec-ch06-face) | `gravity-work: face` | on, `gravity_work` {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | 2 | `test_horizontal_flux_covariance` |
 | Wall-cell face form (@sec-ch06-face) | `gravity-work: face-wallc` | off | 1 at walls | `test_gravity_work_fixer` |
 | Gravity-work fixer (@sec-ch06-fixer) | `gravity-work-fixer` | on with `cell` | global | `test_gravity_work_fixer` |
 | Corrected-PE face work (@sec-ch06-dwork) | `SNAP_GRAVITY_WORK_RADIAL_EXACT` | on with `face` | 4 | `test_gravity_work_radial_exact` |

@@ -1,9 +1,11 @@
 ## Gravity-work fixer (`gravity-work-fixer`) {#sec-ch06-fixer}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main on chengcli/snapy, the #297 squash-merge)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (code_pin.yml)
 sources: OUTLINE.md 6.3; sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md sections 3.6-3.7, 5.3, 5.5; code links below
 status: draft
+author: Linfeng Li
+reviewer:
 -->
 
 Local symbols: $\varpi_s$ is the weight of stage $s$'s increment in the step (code `cw`). Tracked in ISSUES.md.
@@ -11,11 +13,19 @@ Local symbols: $\varpi_s$ is the weight of stage $s$'s increment in the step (co
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Measures each step's $E+\mathrm{PE}_d$ defect $\mathcal D$ of the cell form and adds
-$-\mathcal D$ back as heat, uniformly per unit mass, after the last stage. **Switch.**
-`forcing/const-gravity/gravity-work-fixer`, default true with `gravity-work: cell`, refused otherwise.
-**Requires.** $g_2=g_3=0$, non-periodic $x_1$, and no mass through the $x_1$ walls. **Order.** A global
-correction: it fixes the integral, not the local error. **Defining equation.** @eq-ch06-fixer-fix.
+**Purpose.** Measure each step's $E+\mathrm{PE}_d$ defect $\mathcal D$ [J] of the cell form and add $-\mathcal D$
+back as heat, uniformly per unit mass, @eq-ch06-fixer-fix.
+**Data.** Per block: the stage-weighted defect, the fluid mass (total density, solid cells left out), the mass
+through the $x_1$ wall faces, the wall cells' mass and a redo flag, five float64 numbers; writes $E$ of every
+fluid cell.
+**Placement.** Defects collected in each stage of `HydroImpl::forward`; one reduction over blocks and ranks and
+one deposit after the last stage of the step.
+**Activation.** `forcing/const-gravity/gravity-work-fixer`, default true with `gravity-work: cell`, refused with a
+face form; requires $g_2=g_3=0$, non-periodic $x_1$ and no mass through the $x_1$ walls.
+**Guarantee / limits.** $E+\mathrm{PE}_d$ to round-off per step, explicit and implicit; a global correction that
+leaves the local error of the cell form.
+**Evidence.** `fixer_check.py` `[C1]`-`[C4]`; `test_gravity_work_fixer` at `TOL` $=10^{-12}$, read from the
+source, not run here.
 :::
 
 The cell form (@sec-ch06-cell) leaves a defect of $E+\mathrm{PE}_d$ every stage, @eq-ch06-cell-defect. The fixer
@@ -28,7 +38,9 @@ cell form.
 It runs only with `gravity-work: cell` and $g_1\neq0$. Its terms leave out the boundary fluxes, so it refuses any
 step that moved more than a round-off amount of mass through an $x_1$ boundary face, and it refuses a periodic
 $x_1$ (the potential $-g_1x_1$ jumps across the periodic face) and $g_2$ or $g_3\neq0$. The fix is logged per step
-as `fixgrav=`. Aliases: chengcli/snapy#283 (the fixer), #284 and #285 (its implicit part and the wall bound).
+as `fixgrav=`.[^ch06-fixer-src]
+
+[^ch06-fixer-src]: The fixer, its implicit part and its wall bound came in with chengcli/snapy#283, #284 and #285.
 
 ### Derivation
 
@@ -55,9 +67,11 @@ $10^3\epsilon_{\mathrm m}M_{\mathrm{wall}}$, $2.2\times10^{-13}M_{\mathrm{wall}}
 $1.2\times10^{-4}M_{\mathrm{wall}}$ in float32 (`[C4]`). The bound is a round-off allowance, not derived; the code
 comment records that reviewed rest decks were first refused near acoustic Courant 2500 (CUDA) and 2750 (CPU), and
 says those are not universal thresholds. Checks: `src/snapy_report/ch06/fixer_check.py`, output
-`fixer_check.out` [sha: the formulas of snapy@e894700ff7aee30b52882e5202b16461413780b0 and the stage weights of
-pyharp@4721715855e937c1e8b218e964c0655f46e56e29, ported line for line; deck: the check itself; run:
-`python3 fixer_check.py`, numpy, exact fractions].
+`fixer_check.out` [sha: the code at the pin, ported line for line: the stage weight `cw` of `HydroImpl::forward`
+and the fix and wall bound of `apply_gravity_work_fixer`, whose arithmetic is unchanged at the pin (only the way it
+reads its five sums differs from the lines the port was written from), and the stage weights of
+pyharp@4721715855e937c1e8b218e964c0655f46e56e29; deck: the check itself; run: `python3 fixer_check.py`, numpy, exact
+fractions].
 
 ### Numerical method
 
@@ -66,7 +80,7 @@ the mass that crossed the $x_1$ wall faces to another. After the last stage the 
 mass, the wall-face mass, the wall cells' mass and a redo flag into five numbers; a `Mesh` with several blocks
 adds the blocks first, and one allreduce sums them over ranks. A step the redo check will discard (a limiter
 repair, a NaN, a failed implicit solve) is left alone. Then every cell gets its share and the physical
-ghosts are refilled. At snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 a `Mesh` adds its local blocks one after another in
+ghosts are refilled. A `Mesh` adds its local blocks one after another in
 `gravity_work_fixer_sums` ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}) and one `allreduce` adds the ranks
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), so the order of the floating-point additions follows
 the decomposition and the sum can differ between decompositions at round-off. That difference has not been
@@ -113,7 +127,7 @@ boundaries", and at run time "const-gravity gravity-work-fixer: ... kg crossed a
 | `test_gravity_work_fixer_python` | $E+\mathrm{PE}_d$ kept, explicit and VIC | $10^{-12}$ rel. | `TOL` |
 | `test_gravity_work_fixer_python` | fixer off drifts | $>10^{-10}$ | planted control |
 | `test_gravity_work_fixer_python` | refusals: outflow, periodic, $g_2$ | message | refusal text |
-| `test_implicit_gravity_tall_column_python` | `cell`+fixer rest column (stated in the deck since chengcli/snapy#303, whose default is `face`) | $10^{-7}$ m s$^{-1}$ | `W_TOL` |
+| `test_implicit_gravity_tall_column_python` | `cell`+fixer rest column (the deck states `cell`; the default is `face`) | $10^{-7}$ m s$^{-1}$ | `W_TOL` |
 
 : Tests of the gravity-work fixer; assertions read from the test sources at the pin, not run. {#tbl-ch06-fixer-tests}
 
@@ -133,6 +147,9 @@ beyond round-off; for open boundaries set `gravity-work-fixer: false`.
 - It corrects the integral, not the local $O(h^2)$ error of the cell work.
 - The order of the sums over blocks and ranks follows the decomposition, so the defect can differ between
   decompositions at round-off; not measured.
-- At very large implicit steps sealed-wall round-off can exceed the bound (refusals near Courant 2500 to 2750 in
-  #285); not universal.
+- At very large implicit steps sealed-wall round-off can exceed the bound (refusals of rest decks near acoustic
+  Courant 2500 on CUDA and 2750 on CPU[^ch06-fixer-285]); not universal.
+
+[^ch06-fixer-285]: The refusal thresholds are those recorded in chengcli/snapy#285 and in the code comment of
+    `apply_gravity_work_fixer`.
 - Combinations with the study switches: @sec-ch12-matrix.
