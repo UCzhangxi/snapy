@@ -131,9 +131,9 @@ In step order (@tbl-ch03-x1seams-code):
 The reference cases are `local_blocks_restart_the_reference_at_the_seam` ({{< code tests/test_pref_local_seam.cpp HydroRefX1.local_blocks_restart_the_reference_at_the_seam >}}) and
 `in_process_split_matches_one_block_after_200_steps` ({{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}}). The arms run one
 gtest each with their environment through `seam_arm` ([`CMakeLists.txt:36-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L36-L61)); the comparisons are in
-`split_gap` and its callers ([`test_x1_seam_split.cpp:202-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L202-L286)). With `SNAP_GRAVITY_WORK_RADIAL_EXACT` the split
-column is expected to differ and the test asserts only the $E+P$ drift of the split column ($10^{-13}$) and prints the
-gap. CUDA twins of four arms are registered by `seam_arm` when CUDA is built ([`CMakeLists.txt:62-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L62-L78)); the
+`split_gap` and its callers ([`test_x1_seam_split.cpp:202-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L202-L286)). With `SNAP_GRAVITY_WORK_RADIAL_EXACT` on, `radial_exact_split_gap`
+({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}) requires the split column to equal one block
+exactly (gap 0) and its $E+P$ drift to stay within $10^{-13}$; the switch-off control bounds the gap by $10^{-13}$. CUDA twins of four arms are registered by `seam_arm` when CUDA is built ([`CMakeLists.txt:62-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L62-L78)); the
 `_mp` entries run on two ranks with `torchrun`. Their pass status at the pin was not run for this chapter (missing
 evidence).
 
@@ -142,12 +142,11 @@ evidence).
 ::: {.callout-warning title="Limits"}
 - Blocks of one process in a split column must run concurrently; a block waits at most 5 minutes for its anchor.
 - At most 16 blocks per process can exchange block messages.
-- At the pin `SNAP_GRAVITY_WORK_RADIAL_EXACT` kept a one-sided slope at block edges, so a split column differed from
-  one block. Since chengcli/snapy#303 (main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97) a seam cell takes the centred slope of one block through
-  `corrected_pe_work_seam` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and `test_x1_seam_split_radial_exact`
-  requires a gap of exactly 0 in `radial_exact_split_gap` ({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}). A
-  periodic $x_1$ column still keeps the one-sided slope at its block edges, where `x1_neighbors`
-  returns no neighbour ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and setup warns with
+- Under `SNAP_GRAVITY_WORK_RADIAL_EXACT` a seam cell takes the centred slope of one block through
+  `corrected_pe_work_seam` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), so the corrected-PE work does
+  not depend on the $x_1$ decomposition; `test_x1_seam_split_radial_exact` requires a gap of exactly 0 in `radial_exact_split_gap`
+  ({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}). A periodic $x_1$ column keeps the one-sided
+  slope at its block edges, where `x1_neighbors` returns no neighbour ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and setup warns with
   `TORCH_WARN_ONCE` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}). An implicit scheme refuses any $x_1$ split with
   `TORCH_CHECK` ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}).
 :::

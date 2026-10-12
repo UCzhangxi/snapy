@@ -72,16 +72,17 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| limiter on, factor and census | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_positivity_theta` | `limiter` |
+| limiter on, factor and census | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_positivity_theta` | `limiter`, or covariance rows (`cov2`, `cov3`) |
 | raw copy and bfunc fill (hydro) | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interpolate` | none |
-| raw copy and bfunc fill (scalar) | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | `limiter` |
+| raw copy and bfunc fill (scalar) | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | `limiter`, or the scalar's covariance row (`cov`) |
 
 : Code map of the donor-factor copy. {#tbl-ch03-thetacopy-code}
 
 In step order (@tbl-ch03-thetacopy-code):
 
-1. With the limiter on and `ny` > 0, `flux_positivity_theta` computes $\Theta$ and its meters
-   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+1. With `ny` > 0 and either the limiter on or face-flux covariance rows added on the $x_2$ or $x_3$ faces
+   (`cov2`, `cov3`: those rows can export tracer a cell does not hold), `flux_positivity_theta` computes $\Theta$
+   and its meters ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 2. `species_enthalpy` is recomputed from the primitives, ghosts included; $\Theta$ is exchanged with
    `topts` set to `interpolate(false)` and
    `type(kScalar)`, and each installed bfunc fills it at physical faces through `bfuncs`
