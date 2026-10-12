@@ -1,7 +1,7 @@
 ## Redo causes and termination status: what the log says about a rejected step and the end of a run (`apply_redo`) {#sec-ch13-redo-view}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 13.5; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; tests/test_uranus_cycle1_abort.cpp
 status: draft
 -->
@@ -51,11 +51,8 @@ from snapy_report.ch13.fig_redo_view import make_fig
 make_fig()
 ```
 
-Each rank sets its six flags in `local_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}}). They are reduced with
-MAX and packed into the mask by `reduce_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}}). `apply_redo` prints the
-cause list and the two terminal messages ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}). A Mesh with several local blocks
-ORs their flags first: each block's six flags stay on the device (`local_redo_flag_tensor`), and the blocks on a
-common device are combined and read back in one copy ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). `finalize` writes the final
+See @sec-ch07-redo for redo / rollback. `apply_redo` prints the cause list and the two terminal messages
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}). `finalize` writes the final
 output, prints the stop reason with the final `time`, `cycle`, `tlim` and `nlim`, and returns the status
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}). The example driver returns that status from `main` as `status`, so a shell
 or a test harness sees it as the exit code ({{< code examples/run_hydro.cpp main >}}).
@@ -85,7 +82,7 @@ or a test harness sees it as the exit code ({{< code examples/run_hydro.cpp main
 : Tests of the redo causes and termination status. {#tbl-ch13-redo-view-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the messages of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported as
+**Evidence.** Check numbers: [code: the messages of `apply_redo` and `finalize` at the code pin, ported as
 string logic; deck: the check itself; run: `python3 redo_view_check.py`, numpy 2.4.6]. ctest cases:
 **pending: pinned ctest run**.
 **Coverage.** Logic only.
