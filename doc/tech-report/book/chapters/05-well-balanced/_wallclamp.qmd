@@ -115,12 +115,12 @@ from snapy_report.ch05.fig_wallclamp_continuation import make_fig
 make_fig()
 ```
 
-@fig-ch05-wallclamp-order shows the effect in an earlier run, not repeated at the pin: next to both walls the face
-density reference falls at second order and stays below the largest interior error.[^ch05-wall-fig] The check
+@fig-ch05-wallclamp-order shows the effect at the pin: next to both walls the face density reference falls at second
+order and stays below the largest interior error.[^ch05-wall-fig] The check
 rebuilds the same table from this section's equations at the pin's code (`[C11]`).
 
-[^ch05-wall-fig]: Data `src/snapy_report/ch05/data/wb_ref_wall_order.json`, printed by ctest
-    `test_wb_ref_wall.release` (`order_table`) in a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank.
+[^ch05-wall-fig]: Data `src/snapy_report/ch05/data/wb_ref_wall_order.json`, printed by `WbRefWall.order_table` in
+    `ctest -V -R 'test_wb_ref_wall'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
 
 ```{python}
 #| label: fig-ch05-wallclamp-order
@@ -176,9 +176,12 @@ An unknown key in `dynamics` is refused by the key check of the options parser; 
 : Tests of the wall clamp and continuation. {#tbl-ch05-wallclamp-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** Check numbers come from `wbref_check.py`; its rebuild of the reference at the pin's code reproduces
-all 40 numbers that `test_wb_ref_wall.release` printed in an earlier run, to the printed four digits
-(`[C11]`).[^ch05-wall-chk] The ctest entries were not run at the pin (**pending: a pinned ctest run**). It also
+**Evidence.** At the pin `test_wb_ref_wall.release` prints the face errors of @fig-ch05-wallclamp-order and the
+observed orders 2.02, 2.03, 2.03 (bottom face 1: $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom
+face 2), 1.96, 1.81, 1.97 (top face 1) and 1.94, 1.94, 2.12 (top face 2), $n_1$ 32 $\to$ 64; on the isothermal column
+($\beta=0$) the wall faces carry no first-order term. `test_face_floor` (all three arms), `test_hydro_ref_x1` and
+`test_straka_redo` pass in the same run.[^ch05-wall-run] The check's rebuild of the reference reproduces all 40
+printed numbers of that table to the printed four digits (`[C11]`).[^ch05-wall-chk] It also
 shows that the test averages its cells over the full-precision column depth but writes `x1max` into the block's YAML
 with six significant digits, so the block's `dx1f`, which the scan uses, is $4.1\times10^{-7}$ relatively wider at
 $\beta=0.5$; with one consistent width the faces next to the bottom wall move by at most $2.6\times10^{-7}$ in
@@ -189,13 +192,10 @@ face-1 error $2.880\times10^{-3}$, $1.392\times10^{-3}$, $6.840\times10^{-4}$, $
 run (no MPS device; the derivation note says the same); multi-rank only through @sec-ch05-seam.
 :::
 
-[^ch05-wall-chk]: Run: `python3 src/snapy_report/ch05/wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double. The earlier
-    run is a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank; deck `tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one
-    pressure scale height. Its observed orders, not re-measured: 2.02, 2.03, 2.03 (bottom face 1:
-    $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom face 2), 1.96, 1.81, 1.97 (top face 1)
-    and 1.94, 1.94, 2.12 (top face 2), $n_1$ 32 $\to$ 64; on the isothermal column ($\beta=0$) the wall faces carry
-    no first-order term. `test_face_floor` (all three arms), `test_hydro_ref_x1` and `test_straka_redo` passed in the
-    same run.
+[^ch05-wall-chk]: Run: `python3 src/snapy_report/ch05/wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double.
+
+[^ch05-wall-run]: `ctest -V -R 'test_wb_ref_wall|test_face_floor|test_hydro_ref_x1|test_straka_redo'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank;
+    deck `tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one pressure scale height.
 
 ### Limits
 

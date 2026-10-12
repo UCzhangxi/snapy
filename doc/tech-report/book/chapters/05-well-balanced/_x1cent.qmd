@@ -171,26 +171,28 @@ a non-Cartesian geometry under it. A block too thin for the stencils (`usable` f
 
 | $r_0/H$ | implicit | $n_h$ | off, interior / wall | on, interior / wall |
 |---|---|---|---|---|
-| 5 | 0 | 1 | $2.377\times10^{-5}$ / $2.700\times10^{-5}$ | $2.162\times10^{-14}$ / $1.547\times10^{-14}$ |
-| 5 | 0 | 0 | $6.001\times10^{-8}$ / $7.447\times10^{-7}$ | $8.347\times10^{-15}$ / $1.415\times10^{-14}$ |
-| 5 | 1 | 1 | $2.363\times10^{-5}$ / $2.367\times10^{-5}$ | $1.432\times10^{-14}$ / $9.680\times10^{-15}$ |
-| 1000 | 0 | 1 | $6.510\times10^{-10}$ / $6.984\times10^{-10}$ | $2.421\times10^{-14}$ / $3.261\times10^{-14}$ |
-| 1000 | 1 | 0 | $1.403\times10^{-12}$ / $1.022\times10^{-11}$ | $8.888\times10^{-15}$ / $8.469\times10^{-15}$ |
+| 5 | 0 | 1 | $2.377\times10^{-5}$ / $2.699\times10^{-5}$ | $2.447\times10^{-14}$ / $2.127\times10^{-14}$ |
+| 5 | 0 | 0 | $5.997\times10^{-8}$ / $7.447\times10^{-7}$ | $1.156\times10^{-14}$ / $1.168\times10^{-14}$ |
+| 5 | 1 | 1 | $2.363\times10^{-5}$ / $2.367\times10^{-5}$ | $1.824\times10^{-14}$ / $1.578\times10^{-14}$ |
+| 1000 | 0 | 1 | $6.510\times10^{-10}$ / $6.983\times10^{-10}$ | $1.898\times10^{-14}$ / $3.289\times10^{-14}$ |
+| 1000 | 1 | 0 | $1.401\times10^{-12}$ / $1.022\times10^{-11}$ | $8.648\times10^{-15}$ / $9.299\times10^{-15}$ |
 
-: Rest force $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)$ after one RK3 step, five of the eight cases the test prints,
-from an earlier run; not measured at the pin. {#tbl-ch05-x1cent-rest}
+: Rest force $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)$ after one RK3 step at the pin, five of the eight cases the test
+prints.[^ch05-x1c-tab] {#tbl-ch05-x1cent-rest}
+
+[^ch05-x1c-tab]: `python tests/test_x1_centroid_rest.py` (from the build's `tests` directory, `PYTHONPATH` set to
+    this build's Python package) against a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
 
 ::: {.callout-important title="Test"}
-**Evidence.** Check numbers come from `wbref_check.py` (`[C16]`–`[C18]`). The tests were not run at the pin
-(**pending: a pinned ctest run**). In the earlier run of @tbl-ch05-x1cent-rest the rest force with the switch is at
-round-off in every case and without it the $r_0/H=5$ column feels $2.4\times10^{-5}$.[^ch05-x1c-run]
+**Evidence.** Check numbers come from `wbref_check.py` (`[C16]`–`[C18]`). At the pin
+(@tbl-ch05-x1cent-rest) the rest force with the switch is at round-off in every case and without it the $r_0/H=5$
+column feels $2.4\times10^{-5}$; the seam arm prints a split-against-one-block gap of 0 in both modes and the 2-rank
+arm 0 against both two blocks and one block.[^ch05-x1c-run]
 **Coverage.** CPU; the CUDA twins were not run (**pending: a CUDA run at the pin**).
 :::
 
-[^ch05-x1c-run]: `python tests/test_x1_centroid_rest.py` and `ctest -V` against a build of snapy@e894700ff7aee30b52882e5202b16461413780b0,
-    2026-10-10, CPU, double, 1 and 2 ranks. The seam arm printed a split-against-one-block gap of 0 in both modes, and
-    the 2-rank arm 0 against both two blocks and one block. The force is zero at rest, so the default-on flux
-    covariance of the pin does not enter these numbers; the run is still not repeated at the pin.
+[^ch05-x1c-run]: `ctest -V -R 'test_x1_centroid_rest|test_x1_seam_split_x1_centroid|test_x1_seam_split_mp_x1_centroid|test_balance_column_x1_centroid|test_face_floor_x1_centroid'` in the build directory
+    of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double; 1 and 2 ranks.
 
 ### Limits
 

@@ -71,25 +71,24 @@ from snapy_report.ch05.fig_oneoverr_favre import make_fig
 make_fig()
 ```
 
-The remainder in @fig-ch05-oneoverr-remainder comes from a closure run in snapy on code before the pin; it is not
-measured at the pin.[^ch05-1r-run] The run is `src/snapy_report/ch05/run_oneoverr_remainder.py`, the
+The remainder in @fig-ch05-oneoverr-remainder comes from a closure run in snapy at the pin.[^ch05-1r-run] The run is `src/snapy_report/ch05/run_oneoverr_remainder.py`, the
 spherical-polar counterpart of the Cartesian one-step harness `test_horizontal_flux_covariance`. It sets up an
 isentropic column of depth $H$ at radius $R$ with an anelastic roll in $\phi$, runs one RK3 step with cell gravity work
 and `SNAP_FLUX_COVARIANCE` on, and projects the entropy tendency on the seeded $w$ with unit weight per cell. The quantity
 is $R[\varepsilon n_1^2(R)-\varepsilon n_1^2(\infty)]$, where $\varepsilon n_1^2(\infty)$ is the same column in
 Cartesian geometry with the same switches; the switch implies `SNAP_WB_REF4`, which acts in Cartesian too. With the
-switch on, the $1/R$ content in that run is $+0.0004$ to $+0.0006$ for $R/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is
+switch on, the $1/R$ content is $+0.0004$ to $+0.0006$ for $R/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is
 constant in $R$, so the remainder is $O(1/R)$, and it changes little with $n_1$, so it is $O(h^2)$; it decreases slowly
 toward $+0.0004$ as $n_1$ grows. With the switch off it is $-0.027$ to $-0.031$ for $R/H \ge 40$ and $n_1 \ge 64$,
 fifty to eighty times larger, and it shrinks at small $R/H$ through a term of higher order in $1/R$.
 
-[^ch05-1r-run]: Data `src/snapy_report/ch05/data/oneoverr_remainder.json` from `src/snapy_report/ch05/run_oneoverr_remainder.py`
-    (ISSUES.md item 5). The flux-covariance code the run switches on has changed between that run and the pin, so the
-    values may differ at the pin.
+[^ch05-1r-run]: Data `src/snapy_report/ch05/data/oneoverr_remainder.json` from `python3
+    src/snapy_report/ch05/run_oneoverr_remainder.py --rh 5 10 20 40 160 1000 --nz 32 64 128 256 --snapy-sha 6fbb39750f62b83df096058a4746e77d0a634bc5
+    --out oneoverr_remainder.json` with `PYTHONPATH` set to the Python package of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank (ISSUES.md item 5).
 
 ```{python}
 #| label: fig-ch05-oneoverr-remainder
-#| fig-cap: "The $1/R$ content of the one-step effective stratification, $(R/H)\\,[\\varepsilon n_1^2(R) - \\varepsilon n_1^2(\\infty)]$ [-], against $R/H$ [-], with `SNAP_X1_CENTROID_EXACT` off (a) and on (b), for $n_1$ = 32 to 256. The reference $\\varepsilon n_1^2(\\infty)$ is the same column in Cartesian geometry with the same switches. Error bars: half the spread over seed amplitudes 0.9, 1.0 and 1.1 times $10^{-4}$, the round-off magnified by $R$. One RK3 step of `run_oneoverr_remainder.py` on code before the pin, CPU, double, one rank; not measured at the pin."
+#| fig-cap: "The $1/R$ content of the one-step effective stratification, $(R/H)\\,[\\varepsilon n_1^2(R) - \\varepsilon n_1^2(\\infty)]$ [-], against $R/H$ [-], with `SNAP_X1_CENTROID_EXACT` off (a) and on (b), for $n_1$ = 32 to 256. The reference $\\varepsilon n_1^2(\\infty)$ is the same column in Cartesian geometry with the same switches. Error bars: half the spread over seed amplitudes 0.9, 1.0 and 1.1 times $10^{-4}$, the round-off magnified by $R$. One RK3 step of `run_oneoverr_remainder.py` at the pin, CPU, double, one rank."
 #| fig-alt: "Two panels against R/H from 5 to 1000 on a log axis. Left, switch off: four curves for n1 from 32 to 256 fall together from about -0.005 at R/H 5 to about -0.03 at R/H 160 and above. Right, switch on: the curves lie flat between +0.0004 and +0.0011, closer to +0.0004 for larger n1; the R/H 1000 points carry large error bars."
 #| echo: false
 from snapy_report.ch05.fig_oneoverr_remainder import make_fig
@@ -117,12 +116,13 @@ No dedicated code. The pieces it depends on are listed in their own sections.
 : Tests of the $1/R$ remainder. {#tbl-ch05-oneoverr-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** Not measured at the pin. The closure run on code before the pin, `src/snapy_report/ch05/run_oneoverr_remainder.py`,
-with its data in `data/oneoverr_remainder.json`, gives @fig-ch05-oneoverr-remainder. With the switch on, $R/H = 5$ to $160$, the $1/R$
-content is $+0.00051$ to $+0.00063$ at $n_1 = 64$, $+0.00043$ to $+0.00048$ at $n_1 = 128$ and $+0.00038$ to
-$+0.00042$ at $n_1 = 256$. With the switch off it reaches $-0.0303$, $-0.0305$ and $-0.0306$ at $R/H = 160$. At
-$R/H = 1000$ the round-off, magnified by $R$, is $7\times10^{-5}$ to $7\times10^{-4}$ for $n_1 \ge 64$. Per ISSUES.md
-item 5 the derivation note's one-step numbers, from commits not in snapy, are not used.
+**Evidence.** The closure run at the pin, `src/snapy_report/ch05/run_oneoverr_remainder.py`, with its data in
+`data/oneoverr_remainder.json`, gives @fig-ch05-oneoverr-remainder.[^ch05-1r-run] With the switch on, $R/H = 5$ to $160$,
+the $1/R$ content is $+0.00051$ to $+0.00063$ at $n_1 = 64$, $+0.00043$ to $+0.00048$ at $n_1 = 128$ and $+0.00038$ to
+$+0.00053$ at $n_1 = 256$, where the last value carries a round-off spread of $2\times10^{-4}$. With the switch off it
+reaches $-0.0303$, $-0.0305$ and $-0.0306$ at $R/H = 160$. At $R/H = 1000$ the round-off, magnified by $R$, is
+$5\times10^{-5}$ to $9\times10^{-4}$ for $n_1 \ge 64$. Per ISSUES.md item 5 the derivation note's one-step numbers,
+from commits not in snapy, are not used.
 **Coverage.** The run is not a ctest entry; no test asserts the remainder.
 :::
 
