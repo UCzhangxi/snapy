@@ -1,21 +1,22 @@
 """Executable check of B3, the compositional/thermal ratio R of the face-flux covariance (chapter 4B, _fluxcov.qmd).
 
-Ports the covariance rows of HydroImpl::_flux_covariance at snapy@ae61e392e8766ba2d25caabc478143102ee74e77
-(src/hydro/hydro_forward.cpp:148-177): energy sigma1^2 rho D1[h] D1[u_n], tracer n sigma1^2 rho D1[u_n] D1[q_n],
-dry mass minus the tracer sum, sigma1^2 = dx1^2/12 in Cartesian. Each row's x2 divergence is the error the
-uncorrected scheme makes; R is the ratio of the buoyancy those errors carry, compositional over thermal.
+Ports the covariance rows of src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance (the cov closure) at
+snapy@ae61e392e8766ba2d25caabc478143102ee74e77: energy sigma1^2 rho D1[h] D1[u_n], tracer n
+sigma1^2 rho D1[u_n] D1[q_n], dry mass minus the tracer sum, sigma1^2 = dx1^2/12 in Cartesian. Each row's x2
+divergence is the error the uncorrected scheme makes; R is the ratio of the buoyancy those errors carry,
+compositional over thermal.
 [B1] route B (the ported rows on a discrete column) converges to route A (closed form, R = a T q_z / T_z) at O(dz^2).
 [B2] dz cancels: halving dz divides both rows by 4, and the common factor sigma1^2 rho D1[u_n] drops out of R.
 [B3] R at the cloud base of the three cases has the sign and order of magnitude (within a factor 3) of the
      estimate posted in the report thread (chengcli/snapy#289 item 3); it is not expected to reproduce it.
 
 Inputs, none fitted:
-- snapy@ae61e39 examples/: earth_crm.yaml:7-8,67,93-96 (Ts 300 K, Ps 1e5 Pa, xH2O 0.02, grav1 -9.8, dry
-  {O 0.42, N 1.56, Ar 0.01}); jupiter_crm.yaml:7-8,123,187-190 (Ts 600 K, Ps 100e5 Pa, xH2O 3e-3, grav1 -22, dry
-  {H 1.5, He 0.15}); uranus.yaml:7-8,109,135-136 (Ts 250 K, Ps 50e5 Pa, grav1 -9.01, same dry gas). Every gas has
-  cv_R 2.5, so cp/R = 3.5 per mole.
-- vapour pressure: kintera@c55b13b2204997d2d09e04498558ab9495d8ee77 h2o_ideal and ch4_ideal
-  (src/vapors/vapor_functions.h:32-38, 128-136); L = R_v T^2 dln(e_s)/dT from the same fit.
+- snapy@ae61e39 examples/, keys species/dry, forcing/const-gravity/grav1 and problem/{Ps, Ts, xH2O}:
+  earth_crm.yaml (Ts 300 K, Ps 1e5 Pa, xH2O 0.02, grav1 -9.8, dry {O 0.42, N 1.56, Ar 0.01});
+  jupiter_crm.yaml (Ts 600 K, Ps 100e5 Pa, xH2O 3e-3, grav1 -22, dry {H 1.5, He 0.15});
+  uranus.yaml (Ts 250 K, Ps 50e5 Pa, grav1 -9.01, same dry gas). Every gas has cv_R 2.5, so cp/R = 3.5 per mole.
+- vapour pressure: kintera@c55b13b2204997d2d09e04498558ab9495d8ee77 src/vapors/vapor_functions.h h2o_ideal and
+  ch4_ideal; L = R_v T^2 dln(e_s)/dT from the same fit.
 - uranus.yaml carries no CH4: deep CH4 mole fraction 0.023 (Lindal et al. 1987, JGR 92, 14987) and 0.04
   (Karkoschka & Tomasko 2009, Icarus 202, 287).
 - cloud base: lift the deck's surface gas on its dry adiabat until x p = e_s(T). Above it, T_z is either the
@@ -107,7 +108,7 @@ def column(gas, T0, p0, moist, dz):  # cells -1, 0, +1 about the cloud base, RK4
 
 
 def route_b(gas, T0, p0, moist, dz, m=2. * np.pi / 2e4):
-    """The ported rows (hydro_forward.cpp:154-177) at the middle cell; the mode's u_n = sin(m z + 1)."""
+    """The ported rows (HydroImpl::_flux_covariance, the cov closure) at the middle cell; u_n = sin(m z + 1)."""
     cells = column(gas, T0, p0, moist, dz)
     z = np.array([-dz, 0., dz]); un = np.sin(m * z + 1.)
     T = np.array([c[0] for c in cells]); st = [gas.state(c[0], c[1]) for c in cells]

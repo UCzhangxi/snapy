@@ -131,8 +131,8 @@ $\sigma_1^2m_{\mathrm z}^2\lvert g_1\rvert\,\partial_1T/T$ and the compositional
 $\sigma_1^2m_{\mathrm z}^2\lvert g_1\rvert\,\alpha_{\mathrm v}\partial_1y_{\mathrm v}$, with the same sign convention
 for both.
 
-**Route B: the rows themselves.** This route starts from the rows `cov` builds
-([`hydro_forward.cpp:154-177`](https://github.com/chengcli/snapy/blob/ae61e392e8766ba2d25caabc478143102ee74e77/src/hydro/hydro_forward.cpp#L154-L177)).
+**Route B: the rows themselves.** This route starts from the rows that `HydroImpl::_flux_covariance`
+(`src/hydro/hydro_forward.cpp`) builds with its `cov` closure.
 The energy row is $\sigma_1^2\rho\,\partial_1\hat h\,\partial_1u_n$ with the mixture enthalpy $\hat h=\sum_n y_n\hat h_n$,
 so $\partial_1\hat h = c_p\partial_1T+\sum_n(\hat h_n-\hat h_{\mathrm d})\partial_1y_n$. The tracer rows carry
 $\sigma_1^2\rho\,\partial_1u_n\,\partial_1y_n$ and the dry row minus their sum. The enthalpy those mass rows move is
@@ -153,9 +153,8 @@ $$
  = -\frac{\alpha_{\mathrm v}\,T\,\partial_1y_{\mathrm v}}{\Gamma}.
 $$ {#eq-ch04-fluxcov-b3-ratio}
 
-Each error is $O(\Delta x_1^2)$ through the factor $\sigma_1^2=\Delta x_1^2/12$ that both rows of `cov` carry
-([`hydro_forward.cpp:154-156`](https://github.com/chengcli/snapy/blob/ae61e392e8766ba2d25caabc478143102ee74e77/src/hydro/hydro_forward.cpp#L154-L156)),
-and $\Delta x_1$ cancels in $\mathcal B$. So does the mode: $\mathcal B$ is a property of the background alone. A
+Each error is $O(\Delta x_1^2)$ through the factor $\sigma_1^2=\Delta x_1^2/12$ that both rows carry
+(`src/hydro/hydro_forward.cpp` `HydroImpl::_flux_covariance`), and $\Delta x_1$ cancels in $\mathcal B$. So does the mode: $\mathcal B$ is a property of the background alone. A
 positive $\mathcal B$ means the compositional error adds to the thermal one; a negative $\mathcal B$ means it
 cancels part of it. Without any correction the buoyancy error is the thermal error times $1+\mathcal B$; with the
 energy row alone, $\mathcal B$ times the thermal error remains, and the tracer rows remove it. Above a cloud base the vapour is
@@ -175,7 +174,8 @@ listed. Nothing is fitted. The inputs are:
 - Jupiter: `examples/jupiter_crm.yaml` at the same sha (600 K at 100 bar, $x_{\mathrm v}=3\times10^{-3}$, $g_1=-22$ m s$^{-2}$, dry gas $\{\mathrm H\,1.5,\ \mathrm{He}\,0.15\}$, $\mu_{\mathrm d}=2.112$ g mol$^{-1}$).
 - Ice giant: `examples/uranus.yaml` at the same sha (250 K at 50 bar, $g_1=-9.01$ m s$^{-2}$, the same dry gas). That deck carries no methane, so the deep CH$_4$ mole fraction is taken from the literature: $0.023$ (Lindal et al. 1987, J. Geophys. Res. 92, 14987) and $0.04$ (Karkoschka and Tomasko 2009, Icarus 202, 287).
 - Every gas in the three decks has $c_v/R=2.5$ per mole.
-- Saturation is kintera's fits `h2o_ideal` ([`kintera vapor_functions.h:32-38`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/vapors/vapor_functions.h#L32-L38) and `ch4_ideal` ([`kintera vapor_functions.h:128-136`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/vapors/vapor_functions.h#L128-L136)). $L$ comes from the slope of the same fit.
+- Saturation is kintera's fits `h2o_ideal` and `ch4_ideal` (kintera `src/vapors/vapor_functions.h` at
+  kintera@c55b13b2204997d2d09e04498558ab9495d8ee77). $L$ comes from the slope of the same fit.
 
 | case | $p$ [bar] | $T$ [K] | $y_{\mathrm v}$ | $\mu_{\mathrm{mix}}$ [g/mol] | $\alpha_{\mathrm v}$ | $\Gamma$ sat. / dry [K/km] | $\mathcal B$ sat. / dry |
 |---|---|---|---|---|---|---|---|
@@ -210,7 +210,7 @@ measured in a snapy run: `[B1]`--`[B3]` check the formula and its inputs, not a 
 ::: {.callout-important title="Check"}
 The check is `src/snapy_report/ch04/b3_ratio_check.py`, output `src/snapy_report/ch04/b3_ratio_check.out`, 3 of
 3 claims passing. It ports the rows of snapy@ae61e392e8766ba2d25caabc478143102ee74e77
-(`src/hydro/hydro_forward.cpp` lines 148-177) and needs numpy only.
+(`src/hydro/hydro_forward.cpp` `HydroImpl::_flux_covariance`) and needs numpy only.
 :::
 
 
