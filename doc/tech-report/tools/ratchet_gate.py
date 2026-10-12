@@ -95,7 +95,16 @@ HISTORY_PATTERNS = [
     r"\bnow (?:defaults?|the default)\b",
     r"\bno longer (?:the )?default\b",
     r"\bnow fixed\b",
-    r"\bused to be\b",
+    # "used to" as a past habit ("the limiter used to clip"), not the passive or purpose use that technical prose
+    # is full of: no form of "be", "not" or an adverb before it ("is not used to infer"), and no purpose verb after
+    # it ("the interface used to select readers").
+    r"(?<!\bis )(?<!\bare )(?<!\bwas )(?<!\bwere )(?<!\bbe )(?<!\bbeen )(?<!\bbeing )(?<!\bnot )(?<!\balso )"
+    r"(?<!\boften )(?<!\bonly )(?<!\busually )\bused to\b(?! (?:select|infer|compute|evaluate|build|form|construct|"
+    r"set|store|check|test|mark|define|derive|estimate|reconstruct|interpolate|weight|scale|bound|limit|fill|"
+    r"update|convert|map|find|pick|choose|read|write|hold|carry|close|start|drive|measure|obtain|get|make|"
+    r"produce|generate|represent|describe|approximate|correct|advance|solve|integrate|split|apply|enforce)\b)",
+    r"\bwas previously\b",                                          # the editor's three forms (with "used to")
+    r"\bin an earlier version\b",
     r"\b(?:was|were|has been|have been) (?:added|introduced|changed|fixed|replaced|removed|moved|renamed|dropped)"
     r"(?: separately| later| earlier| first)? (?:in|by|into)\b",
     r"\b(?:fixed|landed|merged) in\b",
@@ -397,7 +406,13 @@ def _git_show(root: pathlib.Path, ref: str, rel: str) -> str | None:
 
 
 def baseline_raised(root: pathlib.Path, ref: str, baseline: dict) -> list[str]:
-    """Counts the committed baseline raises against the baseline at `ref`, when the pin did not move."""
+    """Counts the committed baseline raises against the baseline at `ref`, when the pin did not move.
+
+    A `ref` that names no commit is a problem in itself: skipping the comparison would turn the protection off."""
+    r = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return [f"--base-ref {ref!r} names no commit here (fetch it first): the baseline cannot be compared"]
     old = _git_show(root, ref, "tools/ratchet-baseline.json")
     if old is None:
         return []  # no baseline at the target yet: this change introduces it
