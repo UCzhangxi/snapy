@@ -26,7 +26,7 @@ fixer and no `fixgrav=` token. **Order.** Not a discretisation. **Defining equat
 The fixer's physics, why the cell form leaves a defect and why it is put back uniformly per unit mass, is
 @sec-ch06-fixer. This section is its bookkeeping: which buffers hold the step's defect and the mass through the
 $x_1$ walls, how they are summed, when the deposit is refused or skipped, and what the printed total means. Each
-step the fixer reduces five doubles: the defect $\mathcal D$ (J), the fluid mass $M$ (kg), the mass $W$ that
+step the fixer reduces five doubles: the defect $\mathcal D$ (J), the fluid mass $M$ (kg), the mass $M_\partial$ that
 crossed the $x_1$ boundary faces (kg), the mass $M_{\mathrm{wall}}$ of the cells next to those faces (kg), and a redo
 flag. From these it either adds $-\mathcal D\,\rho_i/M$ to every cell's energy or leaves the step alone.
 
@@ -45,17 +45,17 @@ stage enters the step's update with the weight $\varpi_s=w_2^{(s)}\prod_{t>s}w_1
 
 $$
 \mathcal D = \sum_{b}\sum_{s=1}^{S}\varpi_s\,\mathcal D_{s,b}, \qquad
-W = \sum_{b}\sum_{s=1}^{S}\Delta t\sum_{f\in\partial_{x_1}b}A_f\,\lvert F_f\rvert ,
+M_\partial = \sum_{b}\sum_{s=1}^{S}\Delta t\sum_{f\in\partial_{x_1}b}A_f\,\lvert F_f\rvert ,
 $$ {#eq-ch13-fixgrav-d}
 
 with $b$ running over every block on every rank, $\Delta t$ in s, $A_f$ in m$^2$ and $F_f$ the total mass flux
-(kg m$^{-2}$ s$^{-1}$) through a physical, non-periodic $x_1$ face of block $b$. $W$ is not stage-weighted: it adds
+(kg m$^{-2}$ s$^{-1}$) through a physical, non-periodic $x_1$ face of block $b$. $M_\partial$ is not stage-weighted: it adds
 the full-$\Delta t$ flux of every stage, so it overstates the step's net wall mass and is a conservative meter. The
-faces that $W$ counts are exactly the faces the defect leaves out, so $W$ measures what $\mathcal D$ misses. A step
+faces that $M_\partial$ counts are exactly the faces the defect leaves out, so $M_\partial$ measures what $\mathcal D$ misses. A step
 is refused unless
 
 $$
-W \le 10^{3}\,\epsilon_{\mathrm m}\,M_{\mathrm{wall}}, \qquad
+M_\partial \le 10^{3}\,\epsilon_{\mathrm m}\,M_{\mathrm{wall}}, \qquad
 M_{\mathrm{wall}} = \sum_b\sum_{i\in\text{wall cells of }b}\rho_iV_i ,
 $$ {#eq-ch13-fixgrav-bound}
 
@@ -147,7 +147,7 @@ reduction is made, and the cycle line carries no `fixgrav=` token.
 : Code map of the gravity-work fixer budget at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97. {#tbl-ch13-fixgrav-code}
 
 The run-time message a user can hit is "const-gravity gravity-work-fixer: ... kg crossed an x1 boundary face this
-step"; it prints $W$, $W/M_{\mathrm{wall}}$ and the bound $10^3\epsilon_{\mathrm m}$. At setup a user can hit
+step"; it prints $M_\partial$, $M_\partial/M_{\mathrm{wall}}$ and the bound $10^3\epsilon_{\mathrm m}$. At setup a user can hit
 "forcing/const-gravity/gravity-work-fixer needs gravity-work: cell" (the key set true with another form), and the
 $g_2$, $g_3$ and periodic-$x_1$ refusals of @sec-ch06-fixer.
 
@@ -192,7 +192,7 @@ Since chengcli/snapy#303 a run without a `gravity-work` key uses `face` and has 
 
 1. **Run total, not per step.** `fixgrav=` is a run-to-date sum of signed deposits; steps of opposite sign cancel in
    it. Like the other meters it restarts from zero after a restart (@sec-ch13-cycle).
-2. **The wall meter is unweighted.** $W$ adds the full-$\Delta t$ flux of every stage, so it overstates the step's
+2. **The wall meter is unweighted.** $M_\partial$ adds the full-$\Delta t$ flux of every stage, so it overstates the step's
    wall mass; the bound $10^3\epsilon_{\mathrm m}M_{\mathrm{wall}}$ is a round-off allowance, not derived. The code
    comment records refusals of sealed-wall rest decks near acoustic Courant 2500 (CUDA) and 2750 (CPU) from #285 and
    says they are not universal thresholds.
