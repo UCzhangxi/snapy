@@ -1,7 +1,7 @@
 ## Cycle-line budget: volume integrals of the conserved state, one line per `ncycle_out` cycles (`print_cycle_diagnostics`) {#sec-ch13-cycle}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 13.1; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; src/mesh/cycle_diagnostics.hpp;
          src/coord/coord_utils_impl.h; tests/test_cycle_diagnostics.cpp; tests/run_restart_cycle_limit.py
 status: draft
@@ -113,7 +113,7 @@ from the same function, so the Mesh line carries `ke=`, `pe=` and the meters too
 : Tests of the cycle-line budget. {#tbl-ch13-cycle-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [sha: the sums of snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy;
+**Evidence.** Check numbers: [code: the sums of `print_cycle_diagnostics` at the code pin, ported to numpy;
 deck: the check itself; run: `python3 cycle_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
 **Coverage.** CPU sums; the reductions run over any process group.
 :::
@@ -126,7 +126,8 @@ reader or a test that parses the log.
 :::
 
 1. **Solid cells.** The sums run over all interior cells, immersed-solid cells included.
-2. **Restart.** The run-to-date meters live in module buffers that the restart file does not carry, so they start
-   again after a restart (`sources/gh__PR_BODIES_202-219.md`, #217 Limits).
+2. **Restart.** The run-to-date meters live in module buffers. The restart file carries the variables, the time,
+   the cycle and the output counters, not these buffers, so the meters start again after a restart
+   ({{< code src/output/restart.cpp RestartOutput::write_output_file >}}).
 3. **Start of step.** The line is printed before the step, so the last line of a run does not show the final
    state.
