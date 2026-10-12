@@ -93,7 +93,7 @@ symbol enters NOTATION.md.
 
 Owners: chapter 4 / editor. Each scheme file lists its symbols in a "Local symbols" line; remove that line when the
 symbol enters NOTATION.md.
-- `_fluxcov.qmd` (B3 subsection): $\mathcal B$, the compositional/thermal ratio of the covariance errors;
+- `_fluxcov.qmd` (the compositional-ratio paragraphs): $\mathcal B$, the compositional/thermal ratio of the covariance errors;
   $\alpha_{\mathrm v}$, the density sensitivity to a vapour's mass fraction; $\mu_{\mathrm{mix}}$, the mixture molar
   mass; $\Gamma$, the background lapse rate; $b$, the buoyancy; $m_{\mathrm z}$, a mode's vertical wavenumber;
   the superscripts $\mathrm{err}$ (error rate of the uncorrected scheme) and $\mathrm{ex}$ (a parcel's excess).

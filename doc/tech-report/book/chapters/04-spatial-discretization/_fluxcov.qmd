@@ -7,6 +7,12 @@ sources: OUTLINE.md 4.16; docs/derivations/289-covariance-x3-curved.md@e894700ff
 status: draft
 -->
 
+Local symbols: $\mathcal B$, the compositional/thermal ratio of the buoyancy errors; $\alpha_{\mathrm v}$, the
+density sensitivity to a vapour's mass fraction; $\mu_{\mathrm{mix}}$, the mixture molar mass [kg mol$^{-1}$];
+$\Gamma$, the background lapse rate $-\partial_1T$ [K m$^{-1}$]; $b$, the buoyancy [m s$^{-2}$]; $m_{\mathrm z}$, a
+mode's vertical wavenumber [m$^{-1}$]; a superscript $\mathrm{ex}$ marks a parcel's excess over the background, and
+$\mathrm{err}$ the rate at which the uncorrected scheme gets a quantity wrong.
+
 ### Summary
 
 ::: {.callout-note title="At a glance"}
@@ -19,6 +25,9 @@ status: draft
 - The centroid term vanishes identically in Cartesian and is of relative size $L/r$ on a curved grid.
 - Both are added to the face flux, so they telescope exactly like the flux they correct.
 - Zero at rest by construction, bitwise.
+- The tracer rows matter for buoyancy, not only transport: relative to the thermal error, the compositional one is
+  $\mathcal B$ (@eq-ch04-fluxcov-b3-ratio), from $+0.08$ to $+0.12$ for water at an Earth cloud base to $-0.9$ to
+  $-1.5$ for methane on an ice giant.
 :::
 
 A finite-volume flux through an $x_2$ or $x_3$ face is the *average over that face* of the point flux. The
@@ -94,21 +103,14 @@ tracer row. Since then it rides on the mass flux without the dry row and adds it
 of a hydro species with the same mass fraction [source: commit message of snapy@ae61e392e8766ba2d25caabc478143102ee74e77, first part; code
 below].
 
-#### How large the compositional part is (B3) {#sec-ch04-fluxcov-b3}
-
-Local symbols of this subsection: $\mathcal B$, the compositional/thermal ratio; $\alpha_{\mathrm v}$, the density
-sensitivity to the vapour mass fraction; $\mu_{\mathrm{mix}}$, the mixture molar mass [kg mol$^{-1}$]; $\Gamma$, the
-background lapse rate $-\partial_1T$ [K m$^{-1}$]; $b$, the buoyancy [m s$^{-2}$]; $m_{\mathrm z}$, the vertical
-wavenumber of a mode [m$^{-1}$]; a superscript $\mathrm{ex}$ marks a parcel's excess over the background, and a
-superscript $\mathrm{err}$ the rate at which the uncorrected scheme gets a quantity wrong.
-
-The tracer rows correct the transport of every species, but a vapour changes buoyancy only through its molar
-mass, and the energy row changes it through temperature. The question chengcli/snapy#289 item 3 left open is how
-the two compare: if the scheme had only the energy row, how much of the error in the buoyancy would remain? Write
-$y_{\mathrm v}$ for the mass fraction of one vapour $\mathrm v$ in a gas of dry molar mass $\mu_{\mathrm d}$, and
-work in Cartesian about a stratified background at rest. At fixed $p$ and $T$ an ideal mixture has
-$\rho\propto\mu_{\mathrm{mix}}$ with $1/\mu_{\mathrm{mix}} = (1-y_{\mathrm v})/\mu_{\mathrm d}+y_{\mathrm v}/\mu_{\mathrm v}$,
-so the buoyancy of a parcel displaced a small distance is
+The tracer and energy rows also correct two parts of one buoyancy error. A vapour changes buoyancy only through
+its molar mass, and temperature changes it directly, so without the correction the tracer rows' gap shows up as a
+compositional error in the buoyancy and the energy row's gap as a thermal one. How the two compare decides how much
+of the error the energy row alone would leave.[^fluxcov-src] Write $y_{\mathrm v}$ for the mass fraction of one vapour
+$\mathrm v$ in a gas of dry molar mass $\mu_{\mathrm d}$, and work in Cartesian about a stratified background at
+rest. At fixed $p$ and $T$ an ideal mixture has $\rho\propto\mu_{\mathrm{mix}}$ with
+$1/\mu_{\mathrm{mix}} = (1-y_{\mathrm v})/\mu_{\mathrm d}+y_{\mathrm v}/\mu_{\mathrm v}$, so the buoyancy of a parcel
+displaced a small distance is
 
 $$
 b = \lvert g_1\rvert\left(\frac{T^{\mathrm{ex}}}{T}+\alpha_{\mathrm v}\,y^{\mathrm{ex}}_{\mathrm v}\right),\qquad
@@ -120,32 +122,31 @@ with $T^{\mathrm{ex}}$ and $y^{\mathrm{ex}}_{\mathrm v}$ the excess of a parcel'
 over the background at the same height. $\alpha_{\mathrm v}$ is positive for a vapour lighter than the gas (water in
 air, $+0.60$) and negative for a heavier one (water or methane in hydrogen-helium, $-0.9$ to $-1.1$).
 
-**Route A: the shrunk gradient.** This route follows `sources/study__289-covariance_derivations_draft.md §5.2`.
-Without the correction, the $x_2$ divergence of the missing flux $\sigma_1^2\rho\,\partial_1u_n\,\partial_1y_{\mathrm v}$
-adds $\sigma_1^2\,\partial_1y_{\mathrm v}\,\partial_2\partial_1u_2$ to the vapour tendency. For a mode with vertical
-wavenumber $m_{\mathrm z}$, continuity gives $\partial_2\partial_1u_2 = m_{\mathrm z}^2w$, so the scheme advects
-the background gradient as $(1-\sigma_1^2m_{\mathrm z}^2)\,\partial_1y_{\mathrm v}$. The same factor multiplies
-$\partial_1T$ in the temperature equation. Each part of the squared buoyancy frequency is therefore weakened by the
-same relative amount, $\sigma_1^2m_{\mathrm z}^2$, whatever its sign. The thermal error is
-$\sigma_1^2m_{\mathrm z}^2\lvert g_1\rvert\,\partial_1T/T$ and the compositional one is
-$\sigma_1^2m_{\mathrm z}^2\lvert g_1\rvert\,\alpha_{\mathrm v}\partial_1y_{\mathrm v}$, with the same sign convention
-for both.
+Two routes give the ratio of the two errors. The first follows the background gradients. Without the correction,
+the $x_2$ divergence of the missing tracer flux $\sigma_1^2\rho\,\partial_1u_n\,\partial_1y_{\mathrm v}$ adds
+$\sigma_1^2\,\partial_1y_{\mathrm v}\,\partial_2\partial_1u_2$ to the vapour tendency. For a mode with vertical
+wavenumber $m_{\mathrm z}$, continuity gives $\partial_2\partial_1u_2 = m_{\mathrm z}^2w$, so the scheme advects the
+background gradient as $(1-\sigma_1^2m_{\mathrm z}^2)\,\partial_1y_{\mathrm v}$, and the same factor multiplies
+$\partial_1T$ in the temperature equation. Each part of the squared buoyancy frequency is weakened by the same
+relative amount, $\sigma_1^2m_{\mathrm z}^2$, whatever its sign: the thermal error is
+$\sigma_1^2m_{\mathrm z}^2\lvert g_1\rvert\,\partial_1T/T$ and the compositional one
+$\sigma_1^2m_{\mathrm z}^2\lvert g_1\rvert\,\alpha_{\mathrm v}\partial_1y_{\mathrm v}$.
 
-**Route B: the rows themselves.** This route starts from the rows that `_flux_covariance`
-({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}) builds with its `cov` closure.
-The energy row is $\sigma_1^2\rho\,\partial_1\hat h\,\partial_1u_n$ with the mixture enthalpy $\hat h=\sum_n y_n\hat h_n$,
-so $\partial_1\hat h = c_p\partial_1T+\sum_n(\hat h_n-\hat h_{\mathrm d})\partial_1y_n$. The tracer rows carry
-$\sigma_1^2\rho\,\partial_1u_n\,\partial_1y_n$ and the dry row minus their sum. The enthalpy those mass rows move is
-$\sum_n(\hat h_n-\hat h_{\mathrm d})$ times each tracer row, with every energy offset $u^{\star}_n$ included. Taking it
-out of the energy row leaves $\sigma_1^2\rho\,c_p\,\partial_1T\,\partial_1u_n$. The errors are then
+The second route starts from the rows `_flux_covariance` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}) builds with its
+`cov` closure. The energy row is $\sigma_1^2\rho\,\partial_1\hat h\,\partial_1u_n$ with the mixture enthalpy
+$\hat h=\sum_n y_n\hat h_n$, so $\partial_1\hat h = c_p\partial_1T+\sum_n(\hat h_n-\hat h_{\mathrm d})\partial_1y_n$.
+The tracer rows carry $\sigma_1^2\rho\,\partial_1u_n\,\partial_1y_n$ and the dry row minus their sum, so the mass
+rows move the enthalpy $\sum_n(\hat h_n-\hat h_{\mathrm d})$ times each tracer row, every energy offset $u^{\star}_n$
+included. Taking that out of the energy row leaves $\sigma_1^2\rho\,c_p\,\partial_1T\,\partial_1u_n$, and the errors
+are
 
 $$
 \dot T^{\mathrm{err}} = \sigma_1^2\,\partial_1T\,\partial_2\partial_1u_n,\qquad
 \dot y_{\mathrm v}^{\mathrm{err}} = \sigma_1^2\,\partial_1y_{\mathrm v}\,\partial_2\partial_1u_n ,
 $$ {#eq-ch04-fluxcov-b3-err}
 
-and they share the factor $\sigma_1^2\,\partial_2\partial_1u_n$. Put into @eq-ch04-fluxcov-b3-buoy, both routes give
-the same ratio of the compositional to the thermal buoyancy error:
+which share the factor $\sigma_1^2\,\partial_2\partial_1u_n$. Put into @eq-ch04-fluxcov-b3-buoy, both routes give the
+same ratio of the compositional to the thermal buoyancy error:
 
 $$
 \mathcal B = \frac{\alpha_{\mathrm v}\,\dot y_{\mathrm v}^{\mathrm{err}}}{\dot T^{\mathrm{err}}/T}
@@ -154,29 +155,27 @@ $$
 $$ {#eq-ch04-fluxcov-b3-ratio}
 
 Each error is $O(\Delta x_1^2)$ through the factor $\sigma_1^2=\Delta x_1^2/12$ that both rows carry
-({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}), and $\Delta x_1$ cancels in $\mathcal B$. So does the mode:
-$\mathcal B$ is a property of the background alone. A
-positive $\mathcal B$ means the compositional error adds to the thermal one; a negative $\mathcal B$ means it
-cancels part of it. Without any correction the buoyancy error is the thermal error times $1+\mathcal B$; with the
-energy row alone, $\mathcal B$ times the thermal error remains, and the tracer rows remove it. Above a cloud base the vapour is
-saturated, $y_{\mathrm v}$ follows $T$ through the Clausius-Clapeyron slope, and in the small-$y_{\mathrm v}$ limit
-@eq-ch04-fluxcov-b3-ratio becomes $\mathcal B\approx\alpha_{\mathrm v}y_{\mathrm v}\,[L/(R_{\mathrm v}T)-\lvert g_1\rvert/(R_{\mathrm{d}}\Gamma)]$.
-The ratio $\mathcal B/(\alpha_{\mathrm v}y_{\mathrm v})$ from @tbl-ch04-fluxcov-b3, which is that bracket when
-$y_{\mathrm v}$ is small, is between about 4 and 15 for these cases, which is why $\mathcal B$ at a cloud base is much larger than the
-$\sim\!0.04$ of the study draft (`sources/study__289-covariance_derivations_draft.md §5.3`). That estimate let
-the vapour fall off over one pressure scale height, for which the bracket is $c_p/R_{\mathrm{d}}=3.5$.
+({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}), and $\Delta x_1$ cancels in $\mathcal B$, as
+does the mode: $\mathcal B$ is a property of the background alone. A positive $\mathcal B$ means the compositional
+error adds to the thermal one, a negative one that it cancels part of it. Without any correction the buoyancy error
+is the thermal error times $1+\mathcal B$; with the energy row alone, $\mathcal B$ times the thermal error remains, and
+the tracer rows remove it. Above a cloud base the vapour is saturated and $y_{\mathrm v}$ follows $T$ through the
+Clausius-Clapeyron slope, so in the small-$y_{\mathrm v}$ limit @eq-ch04-fluxcov-b3-ratio becomes
+$\mathcal B\approx\alpha_{\mathrm v}y_{\mathrm v}\,[L/(R_{\mathrm v}T)-\lvert g_1\rvert/(R_{\mathrm{d}}\Gamma)]$. The
+bracket is between about 4 and 15 in @tbl-ch04-fluxcov-b3. A vapour that instead fell off over one pressure scale
+height would give a bracket of $c_p/R_{\mathrm d}=3.5$, so a saturated cloud base raises $\mathcal B$ several times
+above that profile.
 
-`b3_ratio_check.py` evaluates @eq-ch04-fluxcov-b3-ratio at the cloud base of three decks. Each deck's surface gas
-is lifted on its dry adiabat until $x_{\mathrm v}p=e_{\mathrm s}(T)$, with $x_{\mathrm v}$ the vapour mole fraction.
-Above that point $\Gamma$ is taken either as the saturated (pseudo-)adiabat or as the dry adiabat, and both are
-listed. Nothing is fitted. The inputs are:
+`b3_ratio_check.py` evaluates @eq-ch04-fluxcov-b3-ratio at the cloud base of three decks. Each deck's surface gas is
+lifted on its dry adiabat until $x_{\mathrm v}p=e_{\mathrm s}(T)$, with $x_{\mathrm v}$ the vapour mole fraction.
+Above that point $\Gamma$ is either the saturated (pseudo-)adiabat or the dry adiabat, and both are listed. Nothing
+is fitted. The inputs are:
 
 - Earth: {{< code examples/earth_crm.yaml >}} (surface 300 K at $10^5$ Pa, $x_{\mathrm v}=0.02$, $g_1=-9.8$ m s$^{-2}$, dry air $\mu_{\mathrm d}=28.97$ g mol$^{-1}$).
 - Jupiter: {{< code examples/jupiter_crm.yaml >}} (600 K at 100 bar, $x_{\mathrm v}=3\times10^{-3}$, $g_1=-22$ m s$^{-2}$, dry gas $\{\mathrm H\,1.5,\ \mathrm{He}\,0.15\}$, $\mu_{\mathrm d}=2.112$ g mol$^{-1}$).
 - Ice giant: {{< code examples/uranus.yaml >}} (250 K at 50 bar, $g_1=-9.01$ m s$^{-2}$, the same dry gas). That deck carries no methane, so the deep CH$_4$ mole fraction is taken from the literature: $0.023$ (Lindal et al. 1987, J. Geophys. Res. 92, 14987) and $0.04$ (Karkoschka and Tomasko 2009, Icarus 202, 287).
 - Every gas in the three decks has $c_v/R=2.5$ per mole.
-- Saturation is kintera's fits `h2o_ideal` and `ch4_ideal` (kintera `src/vapors/vapor_functions.h` at
-  kintera@c55b13b2204997d2d09e04498558ab9495d8ee77). $L$ comes from the slope of the same fit.
+- Saturation is kintera's fits `h2o_ideal` and `ch4_ideal` in `src/vapors/vapor_functions.h`.[^fluxcov-kintera] $L$ comes from the slope of the same fit.
 
 | case | $p$ [bar] | $T$ [K] | $y_{\mathrm v}$ | $\mu_{\mathrm{mix}}$ [g/mol] | $\alpha_{\mathrm v}$ | $\Gamma$ sat. / dry [K/km] | $\mathcal B$ sat. / dry |
 |---|---|---|---|---|---|---|---|
@@ -186,34 +185,20 @@ listed. Nothing is fitted. The inputs are:
 | ice giant, CH$_4$ 0.04 | 0.985 | 81.4 | 0.2404 | 2.670 | $-1.097$ | 0.54 / 0.83 | $-1.122$ / $-1.502$ |
 
 : $\mathcal B$ at the cloud base from @eq-ch04-fluxcov-b3-ratio. The first five columns are the cloud-base state,
-the same for both lapse rates. Source: `b3_ratio_check.py` [B3], output `b3_ratio_check.out`, numpy only,
+the same for both lapse rates. Source: `b3_ratio_check.py`, output `b3_ratio_check.out`, numpy only,
 double. {#tbl-ch04-fluxcov-b3}
 
-Two checks back the formula. `[B1]` ports the rows to a three-cell column through the computed cloud-base profile,
-at $\Delta x_1 = H/32, H/64, H/128$, with $H$ the local pressure scale height. Route B converges to route A at
-second order: the relative gap is $1.6\times10^{-3}$, $3.9\times10^{-4}$ and $9.9\times10^{-5}$, a fitted order of
-2.00 in every case. `[B2]` halves $\Delta x_1$ from $H/64$ to $H/128$. That divides both rows by 3.968 to 4.000,
-and $\mathcal B$ moves by $O(\Delta x_1^2)$ only. Changing the mode's wavenumber changes $\mathcal B$ by
-$4\times10^{-16}$ relative, which is round-off.
+For water at an Earth cloud base the compositional error is about a tenth of the thermal one and adds to it. For
+water on Jupiter it cancels about a third of it. For methane on an ice giant it is as large as the thermal error and
+of the opposite sign: there the uncorrected errors nearly cancel, and the energy row alone would leave an error as
+large as the one it removes, so the tracer rows are needed there as much as the energy row.
 
-The written estimate Linfeng Li posted in the report thread for chengcli/snapy#289 item 3 was $+0.10$ to $+0.12$
-for Earth, $-0.28$ for Jupiter water and about $-0.8$ for ice-giant methane. Its inputs are not recorded, so it
-serves here as an order-of-magnitude check only, not as a value the table reproduces. `[B3]` checks that every
-entry of @tbl-ch04-fluxcov-b3 has the sign of the estimate and lies within a factor of 3 of it. The smallest
-ratio either way is 0.53. What the table supports: for water on Earth the compositional error is about a tenth of
-the thermal one and adds to it. For water on Jupiter it cancels about a third of it. For methane on an ice giant
-it is as large as the thermal error and of the opposite sign: there the uncorrected errors nearly cancel, and the
-energy row alone would leave an error as large as the one it removes. The tracer rows are not a refinement in
-that case. The values depend
-on the lapse rate by up to 40 % (ice giant) and on the deep methane abundance by 30 % to 40 %. Neither has been
-measured in a snapy run: `[B1]`--`[B3]` check the formula and its inputs, not a simulation.
+[^fluxcov-src]: Source and credit: this is item 3 of chengcli/snapy#289, labelled B3 in the report's planning. The
+    first route follows `sources/study__289-covariance_derivations_draft.md §5.2`; its §5.3 estimate of about 0.04
+    for Earth water lets the vapour fall off over one pressure scale height.
 
-::: {.callout-important title="Check"}
-The check is `src/snapy_report/ch04/b3_ratio_check.py`, output `src/snapy_report/ch04/b3_ratio_check.out`, 3 of
-3 claims passing. It ports the covariance rows of `_flux_covariance` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}), which are
-the same at the pin as at snapy@ae61e392e8766ba2d25caabc478143102ee74e77 where B3 was derived, and needs numpy only.
-:::
-
+[^fluxcov-kintera]: kintera is another repository, with no `code` shortcode; the two fits are cited at
+    kintera@c55b13b2204997d2d09e04498558ab9495d8ee77.
 
 ### Numerical method
 
@@ -286,6 +271,7 @@ $1.250\times10^{-15}$, and the scalar's four-block-versus-one difference from $5
 | `tests/test_horizontal_flux_covariance.py` | the horizontal correction | per test |
 | `test_scalar_flux_covariance_python` (main after #307; CUDA variant registered) | a passive scalar equals the same tracer carried as a hydro species, covariance on and off | $10^{-12}$ relative |
 | `test_scalar_cov_x1_split_python` (main after #307; `SNAP_FLUX_COVARIANCE=1`) | the same on a column split into four $x_1$ blocks in one process; the scalar four blocks vs one; scalar mass drift | $10^{-13}$ |
+| `b3_ratio_check.py` | `[B1]` the ported rows give @eq-ch04-fluxcov-b3-ratio; `[B2]` $\Delta x_1$ and the mode cancel; `[B3]` sign and order of magnitude against an independent estimate | $10^{-3}$ relative at $H/128$; rows $\times4$ within 0.05; a factor of 3 |
 | this chapter's check | `[C1]` the identity; `[C2]` the second moment on both grids; `[C3]` the centroid offset; `[C5]` bitwise zero at rest | symbolic, bitwise |
 
 : Tests of the horizontal flux covariance. {#tbl-ch04-fluxcov-tests}
@@ -343,9 +329,23 @@ limited drift $2.420\times10^{-15}$ and $2.403\times10^{-15}$ against $10^{-13}$
 pinned. The rule that follows: when a new face row raises a multi-block conservation error, test the row first
 where no seam enters, and check the seam faces are single-valued, before blaming the row.
 
+`b3_ratio_check.py` ports the rows of `_flux_covariance` to a three-cell column through each computed cloud-base
+profile, at $\Delta x_1 = H/32, H/64, H/128$ with $H$ the local pressure scale height. `[B1]`: the second route
+converges to the first at second order, a relative gap of $1.6\times10^{-3}$, $3.9\times10^{-4}$ and
+$9.9\times10^{-5}$, fitted order 2.00 in every case. `[B2]`: halving $\Delta x_1$ from $H/64$ to $H/128$ divides
+both rows by 3.968 to 4.000 and moves $\mathcal B$ by $O(\Delta x_1^2)$ only, and changing the mode's wavenumber
+changes $\mathcal B$ by $4\times10^{-16}$ relative. `[B3]`: every entry of @tbl-ch04-fluxcov-b3 has the sign of an
+independent written estimate and lies within a factor of 3 of it; the smallest ratio either way is
+0.53.[^fluxcov-estimate]
+
+[^fluxcov-estimate]: The estimate is Linfeng Li's, written in the report thread for chengcli/snapy#289: $+0.10$ to
+    $+0.12$ for Earth, $-0.28$ for Jupiter water and about $-0.8$ for ice-giant methane. Its inputs are not
+    recorded, so it is credited here as an order-of-magnitude check only, not as values the table reproduces.
+
 ::: {.callout-important title="Check"}
-The check is `src/snapy_report/ch04/covariance_check.py`, output
-`src/snapy_report/ch04/covariance_check.out`, 6 of 6 claims passing.
+The checks are `src/snapy_report/ch04/covariance_check.py`, output
+`src/snapy_report/ch04/covariance_check.out`, 6 of 6 claims passing, and `src/snapy_report/ch04/b3_ratio_check.py`,
+output `src/snapy_report/ch04/b3_ratio_check.out`, 3 of 3 claims passing (numpy only).
 :::
 
 ### Limits
@@ -372,3 +372,6 @@ The check is `src/snapy_report/ch04/covariance_check.py`, output
    a follow-up named in the #307 body.
 5. **Solid cells and the scalar row (main after chengcli/snapy#307).** With solid cells the hydro face states
    pass through the solid forward and the scalar's do not. The #307 body calls this pre-existing and untested.
+6. **The compositional ratio is evaluated, not run.** `[B1]`--`[B3]` check @eq-ch04-fluxcov-b3-ratio and its
+   inputs, not a simulation: no snapy run measures $\mathcal B$. The values depend on the lapse rate by up to
+   40 % and, for the ice giant, on the deep methane abundance by 30 % to 40 %, which `uranus.yaml` does not set.
