@@ -47,9 +47,9 @@ $$ {#eq-ch05-hsmode-force}
 
 with $p^{L}_{i+1/2}$ the left state at the upper face and $p^{R}_{i-1/2}$ the right state at the lower face, both
 belonging to cell $i$. $G$ is `rho_grav`
-([`hydro_forward.cpp:389-397`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L389-L397)),
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 applied by the increments that use `non_hydrostatic`
-([`hydro_forward.cpp:901-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L901-L906)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 At $n_h=0$ the momentum balance of cell $i$ becomes
 
 $$
@@ -67,7 +67,7 @@ the same operator on the cell's own states,
 $G_i=(A_{i+1/2}p^{L}_{i+1/2}-A_{i-1/2}p^{R}_{i-1/2})/V_i-S_i$, so the two cancel at rest again
 (`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §4). This form is the branch
 that calls `x1_pressure_source`
-([`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539)).
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 *Exact and truncated.* Exact: the cancellation at rest, in both forms. Away from rest the momentum source has the
 accuracy of $p^{*}-p^{L,R}$, which depends on the reconstruction and the Riemann solver (@sec-ch04).
@@ -92,25 +92,25 @@ make_fig()
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| the key, default and range | [`const_gravity.cpp:25-26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L25-L26) | `non_hydrostatic` | default 1 |
-| the remaining body force | [`const_gravity.cpp:46-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L52) | `forward` | |
-| $G$, Cartesian form | [`hydro_forward.cpp:389-397`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L389-L397) | `rho_grav` | $n_h<1$ |
-| $G$, $r^2$ form | [`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539) | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
-| work counted in the gravity-work budget | [`hydro_forward.cpp:850-857`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L850-L857) | `original_gravity_work` | |
-| momentum and energy increments | [`hydro_forward.cpp:901-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L901-L906) | `non_hydrostatic` | |
+| the key, default and range | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `non_hydrostatic` | default 1 |
+| the remaining body force | {{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}} | `forward` | |
+| $G$, Cartesian form | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `rho_grav` | $n_h<1$ |
+| $G$, $r^2$ form | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_pressure_source` | `SNAP_X1_CENTROID_EXACT` |
+| work counted in the gravity-work budget | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `original_gravity_work` | |
+| momentum and energy increments | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `non_hydrostatic` | |
 
 : Code map of the hydrostatic mode. {#tbl-ch05-hsmode-code}
 
 1. The YAML value is read into `non_hydrostatic` with default 1 and checked to lie in $[0,1]$
-   ([`const_gravity.cpp:25-26`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L25-L26)).
+   ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}).
 2. `ConstGravityImpl::forward` adds $n_h$ times the body force and its work
-   ([`const_gravity.cpp:46-52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/const_gravity.cpp#L46-L52)).
+   ({{< code src/forcing/const_gravity.cpp ConstGravityImpl::forward >}}).
 3. After the $x_1$ reconstruction, `rho_grav` is filled for the interior cells
-   ([`hydro_forward.cpp:389-397`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L389-L397)),
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
    and overwritten by the $r^2$ form with `x1_pressure_source` when that switch acts
-   ([`hydro_forward.cpp:515-539`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L515-L539)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. The increments are added with the weight $1-n_h$ read from `non_hydrostatic`
-   ([`hydro_forward.cpp:901-906`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L901-L906)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 A value outside $[0,1]$ fails the `TORCH_CHECK` of step 1. There is no warning.
 

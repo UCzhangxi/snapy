@@ -59,10 +59,10 @@ $$
 
 The last term is zero on Cartesian and spherical-polar grids, where $r_{\mathrm{c},i}=x_{1,i}$. It is booked by
 `corrected_pe_work` under `radial_mid`
-([`gravity_work_radial.hpp:94-104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L94-L104)),
+({{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}}),
 which is also called for the logged $P$ and the post-solve remainder, and on the diagonal of the implicit energy
 row as `rx_mid`
-([`implicit_hydro.cpp:317-318`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/implicit/implicit_hydro.cpp#L317-L318)).
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
 The full derivation is `docs/derivations/curved-gravity-work-weight.md@9ad0936779ae001dba65c9eafccaa7c058686c97`
 §12.5a. No executable check of this section's own: each identity it collects is checked by the check of the
 section that derives it.
@@ -105,51 +105,51 @@ the previous pin.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| default `face`; fixer default with `cell` | [`const_gravity.cpp:28-36`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28-L36) | `gravity_work` | `gravity-work` |
-| fixer off for face forms | [`hydro.cpp:65`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L65) | `gravity_work_fixer` | `gravity-work-fixer` |
+| default `face`; fixer default with `cell` | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `gravity-work` |
+| fixer off for face forms | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `gravity_work_fixer` | `gravity-work-fixer` |
 | grids with a corrected-PE form | [`gravity_work_radial.hpp:13-25`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L13-L25) | `x1_measure` | |
-| where the corrected-PE work acts | [`hydro.cpp:268-273`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L268-L273) | `radial_exact_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
-| corrected-PE work, seams | [`hydro_forward.cpp:828-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L828-L852) | `corrected_pe_work_seam` | `face` |
-| cell work and fixer defect | [`hydro_forward.cpp:888-918`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L888-L918) | `gwfix_stage` | `cell` |
-| face minus cell, wall cells | [`hydro_forward.cpp:921-927`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L921-L927) | `gravity_energy_correction` | `face-wallc` |
-| stage weight of the defect | [`hydro_forward.cpp:1015-1026`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L1015-L1026) | `cw` | `cell` |
-| fixer heat, counted | [`meshblock.cpp:906-910`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L906-L910) | `add_gravity_work_fix` | `cell` |
-| $\mathrm{PE}_d$ or $P$ summed | [`meshblock.cpp:1047-1060`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1047-L1060) | `pe_sum` | |
-| `pe=` printed | [`meshblock.cpp:1104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1104) | `pe_sum` | |
-| `fixgrav=` printed | [`meshblock.cpp:1113-1114`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1113-L1114) | `gravity_work_fix` | `gravity-work-fixer` |
-| `ie=` label | [`meshblock.cpp:1120-1122`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1120-L1122) | `print_cycle_diagnostics` | |
-| implicit needs one $x_1$ block | [`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430) | `TORCH_CHECK` | `implicit-scheme` |
+| where the corrected-PE work acts | {{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}} | `radial_exact_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| corrected-PE work, seams | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `corrected_pe_work_seam` | `face` |
+| cell work and fixer defect | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gwfix_stage` | `cell` |
+| face minus cell, wall cells | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gravity_energy_correction` | `face-wallc` |
+| stage weight of the defect | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | `cell` |
+| fixer heat, counted | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `add_gravity_work_fix` | `cell` |
+| $\mathrm{PE}_d$ or $P$ summed | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `pe_sum` | |
+| `pe=` printed | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `pe_sum` | |
+| `fixgrav=` printed | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `gravity_work_fix` | `gravity-work-fixer` |
+| `ie=` label | {{< code src/mesh/meshblock.cpp MeshBlockImpl::print_cycle_info >}} | `print_cycle_diagnostics` | |
+| implicit needs one $x_1$ block | {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}} | `TORCH_CHECK` | `implicit-scheme` |
 
 : Code map of where each form books its energy and where the logged sums are formed. {#tbl-ch06-conserves-code}
 
 1. `from_yaml` sets `gravity_work` to `face` when the key is absent and `gravity_work_fixer` to true only for
-   `cell` ([`const_gravity.cpp:28-36`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28-L36));
+   `cell` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}});
    the `HydroImpl` constructor forces `gravity_work_fixer` off for a face form
-   ([`hydro.cpp:65`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L65)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
 2. `radial_exact_work` is true for `face`, $g_1\neq0$, the switch on, and a grid whose `x1_measure` is not
    `none`: Cartesian, spherical-polar or gnomonic-equiangle
-   ([`hydro.cpp:268-273`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L268-L273)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}}).
    On another grid setup warns once in the `TORCH_WARN_ONCE` under `x1_measure`
-   ([`hydro.cpp:101-106`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L101-L106)),
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}),
    and with a periodic $x_1$ in the `TORCH_WARN_ONCE` under `periodic_x1`
-   ([`hydro.cpp:91-95`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L91-L95)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
 3. Each stage, the corrected-PE term is added to the face work, by `corrected_pe_work` on a block with no $x_1$
    neighbour and by `corrected_pe_work_seam` with the neighbour's density change at a seam
-   ([`hydro_forward.cpp:828-852`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L828-L852)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. With `cell`, `gwfix_stage` collects the stage defect for the fixer
-   ([`hydro_forward.cpp:888-918`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L888-L918)),
-   weighted by `cw` ([`hydro_forward.cpp:1015-1026`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L1015-L1026));
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
+   weighted by `cw` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}});
    otherwise `gravity_energy_correction` replaces the cell work, kept in the wall cells under `face-wallc`
-   ([`hydro_forward.cpp:921-927`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L921-L927)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 5. After the last stage the fixer adds `efix` per unit mass and counts $-\mathcal D$ with `add_gravity_work_fix`
-   ([`meshblock.cpp:906-910`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L906-L910)),
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}),
    committed when the step is accepted.
 6. The cycle diagnostics sum `pe` as $\rho\phi$ at `x1v`, minus `corrected_pe_work_seam` of the density when
    `radial_exact_work` holds, into `pe_sum`
-   ([`meshblock.cpp:1047-1060`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1047-L1060)),
-   print it as `pe=` ([`meshblock.cpp:1104`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1104)),
+   ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}),
+   print it as `pe=` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}),
    and print the run-to-date fixer energy `gravity_work_fix` as `fixgrav=` only when the fixer is on
-   ([`meshblock.cpp:1113-1114`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L1113-L1114)).
+   ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
 So `pe=` is $P$ (with $\phi$ at the volume centroid on the cubed sphere) under the corrected-PE work and
 $\mathrm{PE}_d$ under every other form. `fixgrav=` is the total energy the fixer has added over the run's
@@ -172,12 +172,12 @@ not run here. {#tbl-ch06-conserves-tests}
 The corrected-PE oracle sets `EP_TOL` and `DIAG_TOL` at
 [`test_gravity_work_radial_exact.py:55-56`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_radial_exact.py#L55-L56)
 and runs its cubed-sphere cases `cs` and `cs_vic`, one gnomonic-equiangle block with radial flow only, defined at
-[`test_gravity_work_radial_exact.py:62`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_radial_exact.py#L62).
+{{< code tests/test_gravity_work_radial_exact.py CASES >}}.
 The fixer oracle compares the drift with `TOL` in both directions at
-[`test_gravity_work_fixer.py:204-207`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_fixer.py#L204-L207);
+{{< code tests/test_gravity_work_fixer.py main >}};
 its `cell` arms now state `cell`, since the default changed. The seam test requires a gap of exactly 0 with the
 switch on and at most $10^{-13}$ with it off, in `radial_exact_split_gap`
-([`test_x1_seam_split.cpp:255-275`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L255-L275)).
+({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}).
 `face-wallc` has no conservation oracle; `test_gravity_work_fixer` only reports its drift.
 
 Evidence, all from the chengcli/snapy#303 body:

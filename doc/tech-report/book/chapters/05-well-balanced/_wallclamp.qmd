@@ -73,7 +73,7 @@ $$ {#eq-ch05-wallclamp-cont}
 
 and $r_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
 `hydro_ref_x1_wall_rop`
-([`hydro_ref_x1_impl.h:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L68-L72)).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}).
 The binomial reproduces a linear profile exactly, so with the linear branch the $O(a)$ errors
 of @eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(a^2)$, errors
 $\tfrac{31}{32}a^2/r_0$, $\tfrac14a^2/r_0$, $\tfrac1{32}a^2/r_0$ (`[C5]`, exact series). Either way faces 0-2 keep
@@ -129,28 +129,28 @@ make_fig()
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| the YAML key | [`hydro_options.cpp:57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L57) | `wb_wall_clamp` | `dynamics/wb-wall-clamp` |
-| its default | [`hydro.hpp:54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.hpp#L54) | `wb_wall_clamp` | default `true` |
-| @eq-ch05-wallclamp-cont | [`hydro_ref_x1_impl.h:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L68-L72) | `hydro_ref_x1_wall_rop` | |
-| continuation inside the binomial | [`hydro_ref_x1_impl.h:91-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L91-L106) | `ext_lo` | |
-| clamp gates of the rows | [`hydro_ref_x1_impl.h:132-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L132-L135) | `clamp_in` | clamp on, physical side |
-| one-sided rows | [`hydro_ref_x1_impl.h:158-172`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L158-L172) | `w6e` | |
-| ratio range and continuation flags | [`hydro_ref_x1_impl.h:189-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L189-L192) | `ext_hi` | two owned cells |
-| MPS tensor path | [`hydro_dispatch.cpp:163-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L163-L190) | `wall_rop` | |
+| the YAML key | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `wb_wall_clamp` | `dynamics/wb-wall-clamp` |
+| its default | {{< code src/hydro/hydro.hpp HydroOptionsImpl::wb_wall_clamp >}} | `wb_wall_clamp` | default `true` |
+| @eq-ch05-wallclamp-cont | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}} | `hydro_ref_x1_wall_rop` | |
+| continuation inside the binomial | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}} | `ext_lo` | |
+| clamp gates of the rows | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `clamp_in` | clamp on, physical side |
+| one-sided rows | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `w6e` | |
+| ratio range and continuation flags | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `ext_hi` | two owned cells |
+| MPS tensor path | {{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_mps >}} | `wall_rop` | |
 
 : Code map of the wall clamp and continuation. {#tbl-ch05-wallclamp-code}
 
 1. The option is read from `dynamics` with default `true` as `wb_wall_clamp`
-   ([`hydro_options.cpp:57`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L57))
+   ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}})
    and passed to the kernel by `_hydro_ref_x1`.
 2. In the cell function, `clamp_in` and `clamp_out` switch the two wall cells to the rows `w6e`
-   ([`hydro_ref_x1_impl.h:158-172`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L158-L172)).
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}).
 3. The owned range `jlo`..`jhi` and the flags `ext_lo`, `ext_hi` are set
-   ([`hydro_ref_x1_impl.h:189-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L189-L192)),
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
    and the binomial replaces each index past the wall by `hydro_ref_x1_wall_rop`
-   ([`hydro_ref_x1_impl.h:91-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L91-L106)).
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}).
 4. The MPS path applies the same rule to its padded ratio with `wall_rop`
-   ([`hydro_dispatch.cpp:163-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L163-L190)).
+   ({{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_mps >}}).
 
 An unknown key in `dynamics` is refused by the key check of the options parser; the clamp itself issues no warning.
 `balance_column` raises if called with the clamp off (@sec-ch05-balcol).

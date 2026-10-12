@@ -78,9 +78,9 @@ line; deck: the check itself; run: `python3 kinetics_check.py`, numpy and sympy,
 ### Numerical method
 
 The block runs once per accepted or attempted step, after the stages and before `check_redo`
-([`run_hydro.cpp:171-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L171-L195)).
+({{< code examples/run_hydro.cpp main >}}).
 It first recomputes `hydro_w` from `hydro_u`, so the rates see the saturation-adjusted state
-([`run_hydro.cpp:175-176`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L175-L176)).
+({{< code examples/run_hydro.cpp main >}}).
 It acts on the whole array, ghosts included, with no exchange; the next stage's boundary fill and exchange restore
 consistency. No conserved limiter runs between the update and `check_redo`, so a negative species produced by the
 kinetics shows up as a limiter repair, and possibly a redo, at the next step. @fig-ch10-kinetics-extent compares
@@ -99,20 +99,20 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| kinetics block | [`run_hydro.cpp:171-191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L171-L191) | `evolve_implicit` | driver |
-| redo after kinetics | [`run_hydro.cpp:193-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L195) | `check_redo` | |
-| same, 1-D driver | [`jupiter_evap_precip_1d.cpp:244-261`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/jupiter_evap_precip_1d.cpp#L244-L261) | `evolve_implicit` | driver |
+| kinetics block | {{< code examples/run_hydro.cpp main >}} | `evolve_implicit` | driver |
+| redo after kinetics | {{< code examples/run_hydro.cpp main >}} | `check_redo` | |
+| same, 1-D driver | {{< code examples/jupiter_evap_precip_1d.cpp main >}} | `evolve_implicit` | driver |
 | implicit step | [`kintera evolve_implicit_impl.h:55-77`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L55-L77) | `evolve_implicit_cell` | |
 | evaporation rate | [`kintera evaporation.cpp:128-195`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L128-L195) | `EvaporationImpl::forward` | |
 
 : Code map of the driver-level kinetics. {#tbl-ch10-kinetics-code}
 
-1. Refresh the primitives from the adjusted conserved state ([`run_hydro.cpp:175-176`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L175-L176), `hydro_w`).
-2. Form temperature, pressure and concentrations ([`run_hydro.cpp:177-181`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L177-L181), `conc`).
-3. Evaluate rates and Jacobian ([`run_hydro.cpp:184-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L184-L186), `jacobian`).
-4. Take the implicit step and convert to densities ([`run_hydro.cpp:187-190`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L187-L190), `del_rho`).
-5. Add to the species rows ([`run_hydro.cpp:191`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L191), `hydro_u`).
-6. Accept, redo or terminate ([`run_hydro.cpp:193-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L195), `check_redo`).
+1. Refresh the primitives from the adjusted conserved state ({{< code examples/run_hydro.cpp main >}}, `hydro_w`).
+2. Form temperature, pressure and concentrations ({{< code examples/run_hydro.cpp main >}}, `conc`).
+3. Evaluate rates and Jacobian ({{< code examples/run_hydro.cpp main >}}, `jacobian`).
+4. Take the implicit step and convert to densities ({{< code examples/run_hydro.cpp main >}}, `del_rho`).
+5. Add to the species rows ({{< code examples/run_hydro.cpp main >}}, `hydro_u`).
+6. Accept, redo or terminate ({{< code examples/run_hydro.cpp main >}}, `check_redo`).
 
 ### Tests
 
@@ -124,7 +124,7 @@ make_fig()
 
 `UranusLate.column_reaches_cycle_40` runs `run_hydro` on a Uranus column and requires exit code 0, no "Redoing the
 step" and no "Terminating abnormally" in the log
-([`test_uranus_cycle1_abort.cpp:115-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_uranus_cycle1_abort.cpp#L115-L127), `column_reaches_cycle_40`).
+({{< code tests/test_uranus_cycle1_abort.cpp UranusLate.column_reaches_cycle_40 >}}, `column_reaches_cycle_40`).
 Its ctest, `test_uranus_cycle1_abort.release`, is the only snapy test that runs the kinetics block. Its two other
 cases run `run_hydro` as well and check only how the run ends: `UranusCycle1.column_finishes_the_two_cycles` on a
 Uranus deck with nucleation, coagulation and evaporation reactions, and `abnormal_termination_exits_nonzero` on a

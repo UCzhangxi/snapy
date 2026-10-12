@@ -39,8 +39,8 @@ $$
 $$ {#eq-ch09-user-add}
 
 with $\mathbf V$ the dictionary of block buffers and stage variables. @eq-ch09-user-add is applied to the `user_stage_forcings` in
-[`meshblock.cpp:689-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L689-L742). Each module sees $\mathbf V$ as it was before any user module ran, because the dictionary is built once by `stage_forcing_variables`
-([`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738)). Through the Runge–Kutta average a user
+{{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}. Each module sees $\mathbf V$ as it was before any user module ran, because the dictionary is built once by `stage_forcing_variables`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). Through the Runge–Kutta average a user
 increment enters the step with the stage weight $w_2^{(s)}$, exactly as a native one; the test below asserts that
 for rk1, rk2, rk3 and rk3s4. A port of the addition checks the sum. With three modules the result is the native
 increment plus every `hydro_du`, the same for all six module orders to $4.4\times10^{-16}$
@@ -51,7 +51,7 @@ every stage adds exactly $\mathbf G$ per step with every integrator (`[C3]`).
 ### Numerical method
 
 @fig-ch09-user-forcing shows the interface. The modules are moved to the block's device when they are loaded by `set_user_stage_forcings`
-([`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109)) and are called on that device. They run once per stage of every step, and
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::set_user_stage_forcings >}}) and are called on that device. They run once per stage of every step, and
 again in a redone step (the time-integration chapter).
 
 ```{python}
@@ -67,27 +67,27 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| load, move to device | [`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109) | `set_user_stage_forcings` | API call |
-| input dictionary | [`meshblock.cpp:38-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L38-L48) | `stage_forcing_variables` | |
-| output checks | [`meshblock.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L50-L65) | `stage_forcing_result` | |
-| add `hydro_du`, `scalar_ds` | [`meshblock.cpp:690-723`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L690-L723) | `apply_extra_forcing` | |
-| call each module | [`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738) | `user_stage_forcings` | |
-| dry carry | [`meshblock.cpp:740-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L740-L742) | `carry_dry_source` | scalars present |
+| load, move to device | {{< code src/mesh/meshblock.cpp MeshBlockImpl::set_user_stage_forcings >}} | `set_user_stage_forcings` | API call |
+| input dictionary | {{< code src/mesh/meshblock.cpp stage_forcing_variables >}} | `stage_forcing_variables` | |
+| output checks | {{< code src/mesh/meshblock.cpp stage_forcing_result >}} | `stage_forcing_result` | |
+| add `hydro_du`, `scalar_ds` | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_extra_forcing` | |
+| call each module | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `user_stage_forcings` | |
+| dry carry | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `carry_dry_source` | scalars present |
 
 : Code map of the user stage forcings. {#tbl-ch09-user-code}
 
 1. `set_user_stage_forcings` loads every file with `torch::jit::load`, moves it to the block's device and puts it in evaluation mode, in
-   `set_user_stage_forcings` ([`meshblock.cpp:96-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L96-L109)).
+   `set_user_stage_forcings` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::set_user_stage_forcings >}}).
 2. In `advance_local`, after the native and scalar tendencies, the block builds the dictionary with
-   `stage_forcing_variables` ([`meshblock.cpp:38-48`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L38-L48)): every named buffer first, then the stage variables,
+   `stage_forcing_variables` ({{< code src/mesh/meshblock.cpp stage_forcing_variables >}}): every named buffer first, then the stage variables,
    which replace a buffer of the same name.
 3. It calls each of the `user_stage_forcings` with the dictionary, $\Delta t$ and the stage index
-   ([`meshblock.cpp:731-738`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L731-L738)), checks the result with
-   `stage_forcing_result` ([`meshblock.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L50-L65)) and adds it in `apply_extra_forcing`
-   ([`meshblock.cpp:690-723`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L690-L723)), which refuses a wrong shape, an unknown key, or `scalar_ds` without
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), checks the result with
+   `stage_forcing_result` ({{< code src/mesh/meshblock.cpp stage_forcing_result >}}) and adds it in `apply_extra_forcing`
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), which refuses a wrong shape, an unknown key, or `scalar_ds` without
    scalars.
 4. The user dry-density change carries the tracers with `carry_dry_source`
-   ([`meshblock.cpp:740-742`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L740-L742)), against the scalar increment from before the user modules, so an
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), against the scalar increment from before the user modules, so an
    explicit `scalar_ds` is not debited by a simultaneous dry removal.
 
 ### Tests

@@ -33,13 +33,13 @@ it. Two parts of it are worth stating plainly because they are easy to misread.
 First, the rows are not treated alike. Density and tracers go through `interp1`, which is the interpolant the
 user named. Velocity and pressure go through `interp2`, which for the two WENO types is *not* the WENO
 interpolant but the linear centred polynomial of the same width: `weno3` pairs with `cp3` and `weno5` with
-`cp5`, selected by the last character of the module name at [`interpolation.cpp:21-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L21-L36). No source in
+`cp5`, selected by the last character of the module name at {{< code src/recon/interpolation.cpp InterpImpl::create >}}. No source in
 the repository gives a rationale for that pairing, so this section records it as a design choice rather than a
 derived result; the consequence is that under `weno5` the velocity and pressure face states are fifth-order
 linear and are not limited, while density and tracers are.
 
 Second, a smoothness switch replaces the split entirely. With `shock: true` every row takes `interp1` and the
-floors are skipped, at `shock` ([`reconstruct.cpp:99-102`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L99-L102)), so the whole state is limited by the same
+floors are skipped, at `shock` ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}), so the whole state is limited by the same
 nonlinear interpolant.
 
 ### Numerical method
@@ -53,19 +53,19 @@ from snapy_report.ch04.fig_recon_stencil import make_fig
 make_fig()
 ```
 
-`forward` at [`reconstruct.cpp:79-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L79-L158) allocates a tensor with a leading axis of two, the left and
+`forward` at {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} allocates a tensor with a leading axis of two, the left and
 right face states, and fills it row group by row group. The number of ghost cells the interpolant needs is read
-from its own stencil width at `nghost` ([`reconstruct.cpp:86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L86)), which sets the interior range; a block too thin
+from its own stencil width at `nghost` ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}), which sets the interior range; a block too thin
 for the stencil fails the check on the next line rather than silently reading a ghost.
 
-The writing itself is `_apply_inplace` at [`reconstruct.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L50-L65). Its index map is the part worth
+The writing itself is `_apply_inplace` at {{< code src/recon/reconstruct.cpp _apply_inplace >}}. Its index map is the part worth
 reading twice: the right state of face $f$ and the left state of face $f$ come from cells on opposite sides, so
 the two output slices are offset by one, and the faces outside the interior range are filled by replicating the
 nearest computed face rather than by running the interpolant on ghost data.
 
 The floors are applied after each group and they come from the equation of state options, not from the
-reconstruct options: density at `density_floor` ([`reconstruct.cpp:135-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L135-L137)), pressure at
-[`reconstruct.cpp:143-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L143-L145). The tracer clamp at `clamp_min_` ([`reconstruct.cpp:153-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L153-L155)) is different
+reconstruct options: density at `density_floor` ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}), pressure at
+{{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}. The tracer clamp at `clamp_min_` ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}) is different
 in kind: it is applied whenever the limiter is on, *even when the caller passed `floor = false`*, so the
 well-balanced path of @sec-ch05 that asks for no floors still gets its tracers clamped at zero.
 
@@ -76,15 +76,15 @@ citation's anchor.
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| keys and defaults | [`reconstruct.cpp:24-39`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L24-L39) | `from_yaml` | type `dc`, scale false, shock false |
-| face index map | [`reconstruct.cpp:50-65`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L50-L65) | `_apply_inplace` | |
-| the reconstruction | [`reconstruct.cpp:79-158`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L79-L158) | `forward` | |
-| ghost width from the stencil | [`reconstruct.cpp:86`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L86) | `nghost` | |
-| shock branch | [`reconstruct.cpp:99-102`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L99-L102) | `shock` | `shock: true` |
-| density, then its floor | [`reconstruct.cpp:133-137`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L133-L137) | `pinterp1` | limiter and floor |
-| velocity and pressure | [`reconstruct.cpp:141-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L141-L145) | `pinterp2` | limiter and floor |
-| tracers, clamped regardless | [`reconstruct.cpp:151-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L151-L155) | `clamp_min_` | limiter on |
-| which interpolant is `interp2` | [`interpolation.cpp:21-36`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interpolation.cpp#L21-L36) | `Center3Interp` | `weno3`, `weno5` |
+| keys and defaults | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | type `dc`, scale false, shock false |
+| face index map | {{< code src/recon/reconstruct.cpp _apply_inplace >}} | `_apply_inplace` | |
+| the reconstruction | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `forward` | |
+| ghost width from the stencil | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `nghost` | |
+| shock branch | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `shock` | `shock: true` |
+| density, then its floor | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `pinterp1` | limiter and floor |
+| velocity and pressure | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `pinterp2` | limiter and floor |
+| tracers, clamped regardless | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `clamp_min_` | limiter on |
+| which interpolant is `interp2` | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `Center3Interp` | `weno3`, `weno5` |
 
 : Code map of the reconstruction framework. {#tbl-ch04-framework-code}
 
@@ -113,7 +113,7 @@ No test covers the row split itself: that density and tracers take `interp1` whi
 1. **Dead members.** The options object carries `density_floor`, `pressure_floor`, `limiter` and the two
    boundary flags, and `forward` reads none of them: the floors come from the equation of state. The report
    of the options object prints them anyway, which is misleading rather than wrong.
-2. **A disabled branch.** `is_boundary_lower` ([`reconstruct.cpp:104-127`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/reconstruct.cpp#L104-L127)) is a commented-out block that would have
+2. **A disabled branch.** `is_boundary_lower` ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}) is a commented-out block that would have
    narrowed the interior range next to a physical boundary before reconstructing velocity and pressure. It is
    not compiled, and nothing in the repository records why it was switched off. Reading the file without
    noticing that it is inside a comment is an easy mistake.

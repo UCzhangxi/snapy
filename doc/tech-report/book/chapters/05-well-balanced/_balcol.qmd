@@ -45,7 +45,7 @@ C &= \overline{p}_{n_1-1} - p_{\mathrm{ref},n_1-1}, \\
 \end{aligned}
 $$ {#eq-ch05-balcol-iter}
 
-In the code, @eq-ch05-balcol-iter reads the gauge `c` at the top cell and then updates `prs` and `rho` ([`balance_column.cpp:91-96`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L91-L96)).
+In the code, @eq-ch05-balcol-iter reads the gauge `c` at the top cell and then updates `prs` and `rho` ({{< code src/hydro/balance_column.cpp balance_column >}}).
 
 and stops when
 
@@ -54,7 +54,7 @@ $$
 $$ {#eq-ch05-balcol-res}
 
 The sweep @eq-ch05-balcol-iter and the stop test @eq-ch05-balcol-res are the loop that calls `call_hydro_ref_x1`
-([`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104)).
+({{< code src/hydro/balance_column.cpp balance_column >}}).
 A fixed point of @eq-ch05-balcol-iter satisfies @eq-ch05-wbx1-rest with $c=C$, so it is at rest in the solver. The
 residual is checked before the update, so the returned column is the one it describes and an already balanced
 column comes back after zero updates. $\varepsilon$ bounds the residual acceleration in units of $g$: a perturbation
@@ -111,30 +111,30 @@ make_fig()
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| refusals: gravity, shape, clamp, geometry | [`balance_column.cpp:18-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L18-L40) | `TORCH_CHECK` | `wall_clamp` |
-| at least five cells, positive state | [`balance_column.cpp:42-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L42-L55) | `nc1` | |
-| uniform test and switched pressure | [`balance_column.cpp:65-79`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L65-L79) | `ref4` | `SNAP_WB_REF4` |
-| the sweep loop | [`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104) | `sweeps` | `rtol`, `max_iter` |
-| failure to converge | [`balance_column.cpp:106-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L106-L108) | `err` | |
-| declaration and defaults | [`balance_column.hpp:103-106`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.hpp#L103-L106) | `balance_column` | |
-| Python binding | [`pyhydro.cpp:49-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/csrc/pyhydro.cpp#L49-L64) | `balance_column` | |
-| moist caller | [`bryan.cpp:221-262`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/bryan.cpp#L221-L262) | `balance_ic` | `balance-ic` |
+| refusals: gravity, shape, clamp, geometry | {{< code src/hydro/balance_column.cpp balance_column >}} | `TORCH_CHECK` | `wall_clamp` |
+| at least five cells, positive state | {{< code src/hydro/balance_column.cpp balance_column >}} | `nc1` | |
+| uniform test and switched pressure | {{< code src/hydro/balance_column.cpp balance_column >}} | `ref4` | `SNAP_WB_REF4` |
+| the sweep loop | {{< code src/hydro/balance_column.cpp balance_column >}} | `sweeps` | `rtol`, `max_iter` |
+| failure to converge | {{< code src/hydro/balance_column.cpp balance_column >}} | `err` | |
+| declaration and defaults | {{< code src/hydro/balance_column.hpp balance_column >}} | `balance_column` | |
+| Python binding | {{< code python/csrc/pyhydro.cpp bind_hydro >}} | `balance_column` | |
+| moist caller | {{< code examples/bryan.cpp balance_ic >}} | `balance_ic` | `balance-ic` |
 
 : Code map of `balance_column`. {#tbl-ch05-balcol-code}
 
 1. The arguments are checked: $g>0$, shape, matching widths, positive `rtol` and `max_iter`, the clamp, and the
    geometry under `SNAP_X1_CENTROID_EXACT`, each with a `TORCH_CHECK`
-   ([`balance_column.cpp:18-40`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L18-L40)).
+   ({{< code src/hydro/balance_column.cpp balance_column >}}).
 2. The column length `nc1` must be at least 5 and $p$, $\rho$ positive; $\theta_i$ is stored
-   ([`balance_column.cpp:42-55`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L42-L55)).
+   ({{< code src/hydro/balance_column.cpp balance_column >}}).
 3. Uniformity is decided and, for a switched non-uniform column, the stencils of @sec-ch05-wbref4 are built into
    the flag `ref4`
-   ([`balance_column.cpp:65-79`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L65-L79)).
+   ({{< code src/hydro/balance_column.cpp balance_column >}}).
 4. The loop runs @eq-ch05-balcol-res and @eq-ch05-balcol-iter, counting `sweeps`, and raises if the pressure turns
    non-positive
-   ([`balance_column.cpp:85-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L85-L104)).
+   ({{< code src/hydro/balance_column.cpp balance_column >}}).
 5. A residual `err` still above `rtol` raises
-   ([`balance_column.cpp:106-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/balance_column.cpp#L106-L108)).
+   ({{< code src/hydro/balance_column.cpp balance_column >}}).
 
 Errors a user can hit: the clamp off, fewer than five cells, a non-positive input, a spherical-polar geometry under
 `SNAP_X1_CENTROID_EXACT`, a diverging column, and no convergence within `max_iter`. The caller also owns four

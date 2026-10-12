@@ -42,7 +42,7 @@ created or destroyed per stage. Equality needs the ghost to be the donor's value
 exactly the neighbour's interior cell that occupies the ghost position, after the same reverse, flip and transpose
 relabelling as every cubed-sphere strip; within a panel and across $x_1$ seams the ghost is the same cell anyway. The
 scaling @eq-ch03-thetacopy-face is `flux_positivity_scale_`, called after the copy
-([`hydro_forward.cpp:671-698`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L698)). Nothing is approximated.
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Nothing is approximated.
 
 Check line `[C12]` confirms the two halves of that statement. The closed form
 $(\Theta - \tilde\Theta)\mathcal F_f A_f\Delta t$ is exact in sympy; and over $2\times10^5$ random faces a copied
@@ -72,23 +72,23 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| limiter on, factor and census | [`hydro_forward.cpp:648-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L669) | `flux_positivity_theta` | `limiter` |
-| raw copy and bfunc fill (hydro) | [`hydro_forward.cpp:671-688`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L688) | `interpolate` | none |
-| raw copy and bfunc fill (scalar) | [`scalar.cpp:137-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L137-L155) | `sync_theta` | `limiter` |
+| limiter on, factor and census | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_positivity_theta` | `limiter` |
+| raw copy and bfunc fill (hydro) | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interpolate` | none |
+| raw copy and bfunc fill (scalar) | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | `limiter` |
 
 : Code map of the donor-factor copy. {#tbl-ch03-thetacopy-code}
 
 In step order (@tbl-ch03-thetacopy-code):
 
 1. With the limiter on and `ny` > 0, `flux_positivity_theta` computes $\Theta$ and its meters
-   ([`hydro_forward.cpp:648-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L669)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 2. `species_enthalpy` is recomputed from the primitives, ghosts included; $\Theta$ is exchanged with
    `topts` set to `interpolate(false)` and
    `type(kScalar)`, and each installed bfunc fills it at physical faces through `bfuncs`
-   ([`hydro_forward.cpp:671-688`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L688)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 3. The withheld mass keeps its energy and momentum with `flux_positivity_carry_`, and the fluxes are scaled with
-   `flux_positivity_scale_` ([`hydro_forward.cpp:690-698`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L690-L698)).
-4. The scalar does the same in `sync_theta` ([`scalar.cpp:137-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/scalar/scalar.cpp#L137-L155)).
+   `flux_positivity_scale_` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+4. The scalar does the same in `sync_theta` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
 ### Tests
 
@@ -101,7 +101,7 @@ In step order (@tbl-ch03-thetacopy-code):
 : Tests of the donor-factor copy. C++ entries carry the build suffix (`.release`). {#tbl-ch03-thetacopy-tests}
 
 The seam test places the downwind edge of a tracer hat on the +X/+Y seam so that $\Theta$ jumps there, and checks the bounds and
-`DRIFT_TOL` ([`test_flux_positivity_cubedsphere.py:118-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_cubedsphere.py#L118-L135)). Its docstring, on the donor
+`DRIFT_TOL` ({{< code tests/test_flux_positivity_cubedsphere.py main >}}). Its docstring, on the donor
 factor `theta`, records a leak of $10^{-3}$ per 300 cycles with an interpolated fill
 ([`test_flux_positivity_cubedsphere.py:1-11`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_flux_positivity_cubedsphere.py#L1-L11)); that number has no sha, deck or run attached (missing evidence). Both Python tests have CUDA twins
 (`_cuda_python`) registered when CUDA is built; the sedimentation test runs on two ranks. Their pass status at the pin

@@ -29,38 +29,38 @@ None.
 
 `MeshImpl::reset` clones the block options $b$ times, gives block $\ell$ the rank of @eq-ch14-launch-rank, re-cuts the
 coordinate options for that rank and builds the block. It creates the pool only for $b > 1$, on the first block's
-device (`MeshImpl::reset`, [`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258)).
+device (`MeshImpl::reset`, {{< code src/mesh/mesh.cpp MeshImpl::reset >}}).
 
-The pool (`BlockWorkerPool`, [`mesh.cpp:47-208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L47-L208)) works in generations. `submit` stores
+The pool (`BlockWorkerPool`, {{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool >}}) works in generations. `submit` stores
 the job, bumps the generation and waits until all workers have run it. The first exception thrown by a worker is
 re-thrown to the caller. On CUDA the pool takes one stream per worker from the device's stream pool and a done event
 per worker. `submit` records an event on the caller's stream before the job, and each worker's stream waits on it.
 After the job the caller's stream waits on every worker's done event. So work queued before `submit` is visible to
 the workers, and their work is visible after it. Each worker runs its loop under a device guard and, on CUDA, a
-stream guard for its own stream (`run_loop`, [`mesh.cpp:134-145`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L134-L145)). `run_block_jobs` calls the job
-directly for one block ([`mesh.cpp:265-278`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L265-L278)).
+stream guard for its own stream (`run_loop`, {{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool::run >}}). `run_block_jobs` calls the job
+directly for one block ({{< code src/mesh/mesh.cpp MeshImpl::run_block_jobs >}}).
 
 The in-process ghost copy is the other place where streams meet. Each block records an arrival event on its stream
 at the rendezvous; the block that performs the copies makes its stream wait on all arrival events, copies, and
-records a completion event that every block's stream then waits on (`_prepare_local_exchange`, [`layout.cpp:279-387`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L279-L387)).
+records a completion event that every block's stream then waits on (`_prepare_local_exchange`, {{< code src/layout/layout.cpp LayoutImpl::_prepare_local_exchange >}}).
 The boards of @sec-ch14-msgmatch synchronise the posting stream before they publish a tensor, and the reader
 calls `record_stream` on it.
 
 `MeshImpl::forward` runs the advance, then the ghost exchange, as pool jobs. Between them, on the last stage with
 the gravity-work fixer on, it sums the five fixer sums of the local blocks in block order on the host and
-all-reduces them once per process (`MeshImpl::forward`, [`mesh.cpp:331-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L363)). The fixer is the subject of
+all-reduces them once per process (`MeshImpl::forward`, {{< code src/mesh/mesh.cpp MeshImpl::forward >}}). The fixer is the subject of
 the gravity-work chapter (@sec-ch06); this section only records where its reduction sits.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| worker pool, streams, events | [`mesh.cpp:47-208`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L47-L208) | `BlockWorkerPool` | $b > 1$ |
-| caller fence and done events | [`mesh.cpp:82-114`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L82-L114) | `submit` | CUDA |
-| block construction | [`mesh.cpp:225-258`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L225-L258) | `reset` | `blocks_per_process` |
-| per-block jobs | [`mesh.cpp:265-278`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L265-L278) | `run_block_jobs` | none |
-| a stage on all local blocks | [`mesh.cpp:331-363`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L331-L363) | `forward` | none |
-| arrival and completion events | [`layout.cpp:279-387`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L279-L387) | `_prepare_local_exchange` | CUDA |
+| worker pool, streams, events | {{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool >}} | `BlockWorkerPool` | $b > 1$ |
+| caller fence and done events | {{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool::submit >}} | `submit` | CUDA |
+| block construction | {{< code src/mesh/mesh.cpp MeshImpl::reset >}} | `reset` | `blocks_per_process` |
+| per-block jobs | {{< code src/mesh/mesh.cpp MeshImpl::run_block_jobs >}} | `run_block_jobs` | none |
+| a stage on all local blocks | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `forward` | none |
+| arrival and completion events | {{< code src/layout/layout.cpp LayoutImpl::_prepare_local_exchange >}} | `_prepare_local_exchange` | CUDA |
 
 : Code map of several blocks per process. {#tbl-ch14-bpp-code}
 
@@ -74,7 +74,7 @@ the gravity-work chapter (@sec-ch06); this section only records where its reduct
 
 : Tests of several blocks per process. C++ entries carry the build suffix (`.release`). {#tbl-ch14-bpp-tests}
 
-The stream checks are in `run` of [`test_cubed_sphere_exchange.cpp:66-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_cubed_sphere_exchange.cpp#L66-L90).
+The stream checks are in `run` of {{< code tests/test_cubed_sphere_exchange.cpp run >}}.
 The CUDA case runs only in a CUDA build with a visible device (`snapy_cuda_test_enabled`, @sec-ch14-gpu). Their pass
 status at the pin was not run for this chapter.
 

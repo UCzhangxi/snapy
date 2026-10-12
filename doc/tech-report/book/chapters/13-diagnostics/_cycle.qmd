@@ -40,7 +40,7 @@ $(m_2, m_3) = (3, 4)$ the contraction is $13/0.75$ against 25 when the axes are 
 density. Moving 0.5 of a density of 2.5 into species changes neither, while dropping it gives 1.25 times the
 kinetic energy (`[C2]`). With $g_1 = -10$ and $\rho = 2.5$, pe is $25\sum_i x_{1,i}V_i$ (`[C3]`).
 
-In the code, @eq-ch13-cycle-ke is the `ke` and `pe` of the block loop ([`meshblock.cpp:1037-1058`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1037-L1058)).
+In the code, @eq-ch13-cycle-ke is the `ke` and `pe` of the block loop ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
 ### Numerical method
 
@@ -57,41 +57,41 @@ make_fig()
 
 The example driver prints the line at the top of each cycle, after the cycle counter is incremented and the
 step is chosen, so the sums describe the state at the start of the step, through `print_cycle_info`
-([`run_hydro.cpp:161-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L161-L164)). The
+({{< code examples/run_hydro.cpp main >}}). The
 line starts with `cycle=`, `redo=`, `time=` and `dt=`, and it stops there when the state holds no `hydro_u`
-([`meshblock.cpp:1010-1020`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1010-L1020)).
+({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
 For each local block, `print_cycle_diagnostics` adds the conserved sums, `ke` and `pe` and the meters
-([`meshblock.cpp:1029-1071`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1029-L1071)). The momentum is raised with `coord_vec_raise_` and `cosine_cell_kj`
+({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}). The momentum is raised with `coord_vec_raise_` and `cosine_cell_kj`
 before the contraction, and the raise is the closed form above, `coord_vec_raise_impl`
-([`coord_utils_impl.h:9-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L9-L16)). `pe` is
+({{< code src/coord/coord_utils_impl.h coord_vec_raise_impl >}}). `pe` is
 added only with a constant gravity whose `grav1` is nonzero. Under the `SNAP_GRAVITY_WORK_RADIAL_EXACT` switch it
 logs the corrected potential energy of @sec-ch06-dwork instead.
 
-The block sums are then reduced once to the root rank, with `reduce` ([`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086)):
+The block sums are then reduced once to the root rank, with `reduce` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}):
 SUM for the integrals and the meter totals, MIN for the smallest limiter $\theta$, MAX for the VIC clamp residual.
 Summing four blocks locally and then once more gives the whole-domain sums to $10^{-16}$ (`[C4]`). The printing
 follows: `mass0=` always, `masst=` with species, `ke=`, the energy and `pe=` when they exist, then the meter group
-after the literal ` run-to-date:` ([`meshblock.cpp:1088-1111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1088-L1111)).
+after the literal ` run-to-date:` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
 A single block prints through `MeshBlockImpl::print_cycle_info` with the label ` ie=` and 13 decimals
-([`meshblock.cpp:1114-1119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1114-L1119)). A Mesh gathers its local blocks first and prints through
-`print_cycle_diagnostics` with ` energy=` and 14 decimals ([`mesh.cpp:409-420`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L409-L420)) (`[C5]`). Both lines come
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::print_cycle_info >}}). A Mesh gathers its local blocks first and prints through
+`print_cycle_diagnostics` with ` energy=` and 14 decimals ({{< code src/mesh/mesh.cpp MeshImpl::print_cycle_info >}}) (`[C5]`). Both lines come
 from the same function, so the Mesh line carries `ke=`, `pe=` and the meters too.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| declaration | [`cycle_diagnostics.hpp:11-14`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/cycle_diagnostics.hpp#L11-L14) | `print_cycle_diagnostics` | |
-| line head and switch | [`meshblock.cpp:1010-1020`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1010-L1020) | `ncycle_out` | `integration/ncycle_out` |
-| block loop | [`meshblock.cpp:1029-1071`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1029-L1071) | `add` | |
-| metric raise | [`coord_utils_impl.h:9-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L9-L16) | `coord_vec_raise_impl` | |
-| reduction to root | [`meshblock.cpp:1073-1086`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1073-L1086) | `reduce` | |
-| printing | [`meshblock.cpp:1088-1111`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1088-L1111) | `print` | |
-| block line | [`meshblock.cpp:1114-1119`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1114-L1119) | `print_cycle_info` | |
-| Mesh line | [`mesh.cpp:409-420`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L409-L420) | `print_cycle_info` | |
-| driver call | [`run_hydro.cpp:161-164`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L161-L164) | `print_cycle_info` | |
+| declaration | {{< code src/mesh/cycle_diagnostics.hpp print_cycle_diagnostics >}} | `print_cycle_diagnostics` | |
+| line head and switch | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `ncycle_out` | `integration/ncycle_out` |
+| block loop | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `add` | |
+| metric raise | {{< code src/coord/coord_utils_impl.h coord_vec_raise_impl >}} | `coord_vec_raise_impl` | |
+| reduction to root | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `reduce` | |
+| printing | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `print` | |
+| block line | {{< code src/mesh/meshblock.cpp MeshBlockImpl::print_cycle_info >}} | `print_cycle_info` | |
+| Mesh line | {{< code src/mesh/mesh.cpp MeshImpl::print_cycle_info >}} | `print_cycle_info` | |
+| driver call | {{< code examples/run_hydro.cpp main >}} | `print_cycle_info` | |
 
 : Code map of the cycle-line budget. {#tbl-ch13-cycle-code}
 

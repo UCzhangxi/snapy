@@ -34,7 +34,7 @@ The rank maps are definitions, not approximations; the derivation states them. W
 $0, 1, 2, \dots$ are decoded with $r_x$ the even bits and $r_y$ the odd bits (three interleaved bit sets in 3-D), codes
 that fall outside the block grid are skipped, and the $\rho$-th surviving code is the location of rank $\rho$,
 in `build_zorder_coords2` ([`connectivity.cpp:28-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/connectivity.cpp#L28-L61)), with the decoder `morton_decode2`
-([`connectivity.hpp:67-70`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/connectivity.hpp#L67-L70)). On the cubed sphere the global rank of the block at Morton rank $\rho_{\mathrm{f}}$
+({{< code src/layout/connectivity.hpp morton_decode2 >}}). On the cubed sphere the global rank of the block at Morton rank $\rho_{\mathrm{f}}$
 on face $f$ is face-major, and with $b$ blocks per process a block's rank splits as
 
 $$
@@ -45,14 +45,14 @@ $$
 $$ {#eq-ch03-layouts-rank}
 
 with $\pi$ the owning process and $\lambda$ the local index (local notation). The first row is
-`_global_rank_from_face_local` ([`cubed_sphere_layout.hpp:79-90`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.hpp#L79-L90)), the second `owner_process_rank`,
-`local_block_index` and `global_block_rank` ([`layout.hpp:83-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L83-L93)).
+`_global_rank_from_face_local` ({{< code src/layout/cubed_sphere_layout.hpp CubedSphereLayoutImpl >}}), the second `owner_process_rank`,
+`local_block_index` and `global_block_rank` ({{< code src/layout/layout.hpp LayoutOptionsImpl >}}).
 
 A neighbour inside the block grid is the location plus the offset, wrapped when the axis is periodic and absent
 ($-1$) otherwise. On the cubed sphere a step across a panel edge goes through the edge table `CS_FACE_EDGES`: leaving
 face $f$ by side $s$ arrives on face $f'$ by side $s'$, with the along-edge block index reversed when the table says
-so ([`cubed_sphere_layout.cpp:304-339`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L304-L339)). A corner step is two edge steps, ordered so that the first stays
-on the panel when it can in `neighbor_rank` ([`cubed_sphere_layout.cpp:497-547`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L497-L547)). Every map here is exact.
+so ({{< code src/layout/cubed_sphere_layout.cpp CS_FACE_EDGES >}}). A corner step is two edge steps, ordered so that the first stays
+on the panel when it can in `neighbor_rank` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::neighbor_rank >}}). Every map here is exact.
 
 ::: {.callout-important title="Check"}
 `geometry_check.py`, line `[C10]` of `geometry_check.out`: the Morton order of a $4\times4$ block grid, exact.
@@ -80,15 +80,15 @@ make_fig()
 
 | what | code link | symbol | switch |
 |------|-----------|----------|------|
-| options and block-to-process maps | [`layout.hpp:52-131`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.hpp#L52-L131) | `blocks_per_process` | `distribute` |
-| YAML card | [`layout.cpp:221-244`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L221-L244) | `from_yaml` | `layout`, `nb1`-`nb3` |
-| layout type | [`layout.cpp:246-269`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L246-L269) | `create` | `layout` |
+| options and block-to-process maps | {{< code src/layout/layout.hpp LayoutOptionsImpl >}} | `blocks_per_process` | `distribute` |
+| YAML card | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `from_yaml` | `layout`, `nb1`-`nb3` |
+| layout type | {{< code src/layout/layout.cpp LayoutImpl::create >}} | `create` | `layout` |
 | slab | [`slab_layout.cpp:10-68`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L10-L68) | `neighbor_rank` | `layout: slab` |
 | cubed | [`cubed_layout.cpp:10-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_layout.cpp#L10-L78) | `neighbor_rank` | `layout: cubed` |
 | Morton order | [`connectivity.cpp:28-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/connectivity.cpp#L28-L61) | `build_zorder_coords3` | none |
-| cubed-sphere setup | [`cubed_sphere_layout.cpp:413-430`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L413-L430) | `_initialize` | `layout: cubed-sphere` |
-| edge stepping | [`cubed_sphere_layout.cpp:445-479`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L445-L479) | `_step_one` | none |
-| periodic flags | [`meshblock_options.cpp:98-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L98-L157) | `periodic_x` | `boundary-condition` |
+| cubed-sphere setup | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_initialize >}} | `_initialize` | `layout: cubed-sphere` |
+| edge stepping | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_step_one >}} | `_step_one` | none |
+| periodic flags | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `periodic_x` | `boundary-condition` |
 | blocks per process | [`mesh.cpp:210-240`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L240) | `blocks_per_process` | `distribute` |
 
 : Code map of the layouts. {#tbl-ch03-layouts-code}
@@ -96,16 +96,16 @@ make_fig()
 In step order (@tbl-ch03-layouts-code):
 
 1. `from_yaml` reads `layout` (default `slab`), `nb3` into `py`, `nb2` into `px`, `nb1` into `pz`; `backend` is an
-   accepted but dead key, read from the `BACKEND` environment variable instead ([`layout.cpp:221-244`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L221-L244)).
+   accepted but dead key, read from the `BACKEND` environment variable instead ({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}).
 2. `Mesh` reads `blocks_per_process` (default 1) and sets the world size to processes times blocks
    ([`mesh.cpp:210-240`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L210-L240)).
-3. `slab` refuses a `pz` other than 1 with "pz must be 1 for slab layout" ([`slab_layout.cpp:10-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/slab_layout.cpp#L10-L24));
-   `cubed-sphere` refuses a `pz` other than 1 and `px` unequal to `py` ([`cubed_sphere_layout.cpp:413-430`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L413-L430));
-   for any other layout name `create` stops with "Unsupported layout type" ([`layout.cpp:246-269`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L246-L269)).
+3. `slab` refuses a `pz` other than 1 with "pz must be 1 for slab layout" ({{< code src/layout/slab_layout.cpp SlabLayoutImpl::_initialize >}});
+   `cubed-sphere` refuses a `pz` other than 1 and `px` unequal to `py` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::_initialize >}});
+   for any other layout name `create` stops with "Unsupported layout type" ({{< code src/layout/layout.cpp LayoutImpl::create >}}).
 4. The boundary names set `periodic_x`, `periodic_y` and, on `cubed`, `periodic_z`
-   ([`meshblock_options.cpp:98-157`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock_options.cpp#L98-L157)).
+   ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}).
 5. Each exchange asks `neighbor_rank` for the peer of each direction
-   ([`cubed_sphere_layout.cpp:497-547`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/cubed_sphere_layout.cpp#L497-L547)).
+   ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::neighbor_rank >}}).
 
 ### Tests
 
@@ -117,8 +117,8 @@ In step order (@tbl-ch03-layouts-code):
 : Tests of the layouts. C++ entries carry the build suffix (`.release`). {#tbl-ch03-layouts-tests}
 
 `test_exchange_decomp` runs `test_exchange` under `torchrun` on gloo in the three cases of `cases`
-([`run_exchange_decomp.py:54-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/run_exchange_decomp.py#L54-L71)); the comparison is `ghosts_match_expected`
-([`test_exchange.cpp:135-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_exchange.cpp#L135-L180)) on the cubed-sphere deck `test_exchange.yaml`. The slab case,
+({{< code tests/run_exchange_decomp.py main >}}); the comparison is `ghosts_match_expected`
+({{< code tests/test_exchange.cpp ghosts_match_expected >}}) on the cubed-sphere deck `test_exchange.yaml`. The slab case,
 `test_mesh_exchange.py`, sets four blocks with `set_local_horizontal_cells` ([`test_mesh_exchange.py:7-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L7-L46)). Both run on CPU;
 `test_exchange_decomp` uses up to six processes and runs alone. Their pass status at the pin was not run for this
 chapter (missing evidence).

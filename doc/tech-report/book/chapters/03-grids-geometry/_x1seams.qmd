@@ -43,7 +43,7 @@ $$ {#eq-ch03-x1seams-average}
 
 and floating-point addition is commutative, so both hold the same bits and the sums telescope exactly across the seam.
 @eq-ch03-x1seams-average is the seam average in `hydro_forward.cpp`, applied to the flux slab and, packed with it, the
-face pressure and the reference flux `bflux1` ([`hydro_forward.cpp:425-499`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L499)). It is applied only across
+face pressure and the reference flux `bflux1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). It is applied only across
 process seams; with mechanism (b) the two sides of an in-process seam already compute the same states, and the code
 comment states that a same-process seam is not averaged.
 
@@ -51,13 +51,13 @@ comment states that a same-process seam is not averaged.
 each cell adding its own hydrostatic drop. Split into blocks, each block needs as anchor the face value the scan has
 reached at its upper face. The top block anchors itself; each other block takes $p^{\mathrm{top}}$ from the block above
 and, after its own scan, passes its bottom face value down (`take_x1_anchor` and `pass_x1_anchor`,
-[`hydro.cpp:518-579`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L518-L579)). The relay is serial from top to bottom, so every block's anchor equals the value the
+{{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}). The relay is serial from top to bottom, so every block's anchor equals the value the
 one-block scan has at the same face, up to the order of the additions. The scan kernel itself is in @sec-ch05.
 
 **Ghost rows.** A block's ghost rows of `pref`, `dref` computed locally from its ghost quadrature differ from the
 owner's interior values; the code comment records about $10^2$ Pa near a wall. Replacing them by the neighbour's
 interior rows, sent under `kWbGhostUpTag` and `kWbGhostDnTag`, makes the perturbation field identical on both
-sides of the seam ([`hydro.cpp:581-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L581-L640)). Nothing in the derivation is truncated; the remaining differences from one block are round-off from
+sides of the seam ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}). Nothing in the derivation is truncated; the remaining differences from one block are round-off from
 the order of operations.
 
 Check line `[C13]` takes the seam average on $4\times10^5$ random pairs with the two operands in both orders: the
@@ -91,31 +91,31 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| WB4 needs three ghosts | [`hydro.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L94-L103) | `wb_ref4_enabled` | `SNAP_WB_REF4` |
-| neighbours below and above | [`hydro.cpp:261-268`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L261-L268) | `x1_neighbors` | `nb1` |
-| switch ghost rows | [`hydro.cpp:270-303`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L270-L303) | `_x1_ghost_rows` | `SNAP_X1_CENTROID_EXACT` |
-| relay and reference ghost rows | [`hydro.cpp:502-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L502-L640) | `_hydro_ref_x1` | `nb1` |
-| physical-face gating | [`hydro_forward.cpp:240-262`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L240-L262) | `phys_x1inner` | none |
-| seam average | [`hydro_forward.cpp:425-499`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L499) | `kSeamFluxUpTag` | none |
+| WB4 needs three ghosts | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `wb_ref4_enabled` | `SNAP_WB_REF4` |
+| neighbours below and above | {{< code src/hydro/hydro.cpp HydroImpl::x1_neighbors >}} | `x1_neighbors` | `nb1` |
+| switch ghost rows | {{< code src/hydro/hydro.cpp HydroImpl::_x1_ghost_rows >}} | `_x1_ghost_rows` | `SNAP_X1_CENTROID_EXACT` |
+| relay and reference ghost rows | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `_hydro_ref_x1` | `nb1` |
+| physical-face gating | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `phys_x1inner` | none |
+| seam average | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `kSeamFluxUpTag` | none |
 | relay and boards | [`layout.cpp:879-922`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L922) | `take_x1_anchor` | none |
 | block messages, at most 16 blocks | [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877) | `send_to_block` | `blocks_per_process` |
-| column gather | [`layout.cpp:777-847`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L777-L847) | `gather_x1` | none |
-| EOS column repair | [`equation_of_state.cpp:279-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L279-L285) | `gather_x1` | `nb1` |
+| column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | none |
+| EOS column repair | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `gather_x1` | `nb1` |
 
 : Code map of the $x_1$ seams. {#tbl-ch03-x1seams-code}
 
 In step order (@tbl-ch03-x1seams-code):
 
 1. Setup refuses `SNAP_WB_REF4` (or `SNAP_X1_CENTROID_EXACT`, which implies it) with `nghost` < 3, through
-   `wb_ref4_enabled` ([`hydro.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L94-L103)).
-2. In the stage, `phys_x1inner` and `phys_x1outer` gate the wall treatments ([`hydro_forward.cpp:240-262`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L240-L262));
+   `wb_ref4_enabled` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
+2. In the stage, `phys_x1inner` and `phys_x1outer` gate the wall treatments ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}});
    under `SNAP_X1_CENTROID_EXACT` the plain-mean ghost rows come from the neighbours with `_x1_ghost_rows`
-   ([`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 3. `_hydro_ref_x1` takes the anchor from above, scans, passes its bottom face down, and swaps reference ghost rows
-   with both neighbours using `kWbGhostDnTag` ([`hydro.cpp:502-640`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L502-L640)).
-4. After the $x_1$ fluxes, a process seam is averaged with `kSeamFluxDnTag` ([`hydro_forward.cpp:425-499`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L425-L499)),
+   with both neighbours using `kWbGhostDnTag` ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
+4. After the $x_1$ fluxes, a process seam is averaged with `kSeamFluxDnTag` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
    then the face-pressure ghost rows past the seam are exchanged with `_x1_ghost_rows`
-   ([`hydro_forward.cpp:501-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L501-L508)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 ### Tests
 
@@ -128,8 +128,8 @@ In step order (@tbl-ch03-x1seams-code):
 
 : Tests of the $x_1$ seams. C++ entries carry the build suffix (`.release`). {#tbl-ch03-x1seams-tests}
 
-The reference cases are `local_blocks_restart_the_reference_at_the_seam` ([`test_pref_local_seam.cpp:99-143`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L99-L143)) and
-`in_process_split_matches_one_block_after_200_steps` ([`test_pref_local_seam.cpp:300-331`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_pref_local_seam.cpp#L300-L331)). The arms run one
+The reference cases are `local_blocks_restart_the_reference_at_the_seam` ({{< code tests/test_pref_local_seam.cpp HydroRefX1.local_blocks_restart_the_reference_at_the_seam >}}) and
+`in_process_split_matches_one_block_after_200_steps` ({{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}}). The arms run one
 gtest each with their environment through `seam_arm` ([`CMakeLists.txt:36-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L36-L61)); the comparisons are in
 `split_gap` and its callers ([`test_x1_seam_split.cpp:202-286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_x1_seam_split.cpp#L202-L286)). With `SNAP_GRAVITY_WORK_RADIAL_EXACT` the split
 column is expected to differ and the test asserts only the $E+P$ drift of the split column ($10^{-13}$) and prints the
@@ -144,12 +144,12 @@ evidence).
 - At most 16 blocks per process can exchange block messages.
 - At the pin `SNAP_GRAVITY_WORK_RADIAL_EXACT` kept a one-sided slope at block edges, so a split column differed from
   one block. Since chengcli/snapy#303 (main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97) a seam cell takes the centred slope of one block through
-  `corrected_pe_work_seam` ([`hydro_forward.cpp:836-851`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L836-L851)), and `test_x1_seam_split_radial_exact`
-  requires a gap of exactly 0 in `radial_exact_split_gap` ([`test_x1_seam_split.cpp:256-277`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L256-L277)). A
+  `corrected_pe_work_seam` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and `test_x1_seam_split_radial_exact`
+  requires a gap of exactly 0 in `radial_exact_split_gap` ({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}). A
   periodic $x_1$ column still keeps the one-sided slope at its block edges, where `x1_neighbors`
-  returns no neighbour ([`hydro_forward.cpp:832-837`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L832-L837)), and setup warns with
-  `TORCH_WARN_ONCE` ([`hydro.cpp:83-96`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L83-L96)). An implicit scheme refuses any $x_1$ split with
-  `TORCH_CHECK` ([`hydro.cpp:427-430`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L427-L430)).
+  returns no neighbour ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and setup warns with
+  `TORCH_WARN_ONCE` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}). An implicit scheme refuses any $x_1$ split with
+  `TORCH_CHECK` ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}).
 :::
 
 A split column is not bitwise equal to one block; the tests use $10^{-13}$ and $10^{-12}$. Issue #250 recorded, before

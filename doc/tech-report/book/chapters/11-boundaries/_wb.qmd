@@ -50,7 +50,7 @@ p'_{i-l}&=p'_{i+l-1},\\
 \end{aligned}
 $$ {#eq-ch11-wb-parity}
 
-`is_outflow` guards these fills in [`hydro_forward.cpp:287-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L287-L343), which implements @eq-ch11-wb-parity only at physical non-outflow
+`is_outflow` guards these fills in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, which implements @eq-ch11-wb-parity only at physical non-outflow
 faces. If the cell state matches the discrete reference exactly, both perturbations vanish, their mirrors
 vanish, and a constant-preserving reconstruction returns zero perturbation. Restoring matched reference
 face values therefore adds no perturbation flux residual. The full pressure/gravity cancellation is the
@@ -85,24 +85,24 @@ make_fig()
 
 ### Code
 
-`x1_mass_covariance` reads `SNAP_X1_MASS_COVARIANCE` once, default off, in [`hydro.cpp:231-236`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L231-L236).
+`x1_mass_covariance` reads `SNAP_X1_MASS_COVARIANCE` once, default off, in {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}}.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| wboption | [`hydro_options.cpp:51-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L51-L60) | `wb_wall_clamp` | See Summary |
-| wbflags | [`hydro_forward.cpp:243-263`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L243-L263) | `wb_x1` | See Summary |
-| wb | [`hydro_forward.cpp:287-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L287-L343) | `is_outflow` | See Summary |
-| nonwb | [`hydro_forward.cpp:378-383`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L378-L383) | `_revise_x1` | See Summary |
-| ref | [`hydro.cpp:503-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L503-L556) | `wall_clamp` | See Summary |
+| wboption | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `wb_wall_clamp` | See Summary |
+| wbflags | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wb_x1` | See Summary |
+| wb | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `is_outflow` | See Summary |
+| nonwb | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_revise_x1` | See Summary |
+| ref | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `wall_clamp` | See Summary |
 | wallrop | [`hydro_ref_x1_impl.h:69-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L69-L104) | `hydro_ref_x1_wall_rop` | See Summary |
-| ref4option | [`wb_ref4.cpp:85-96`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L85-L96) | `SNAP_WB_REF4` | See Summary |
-| centroidoption | [`x1_centroid.cpp:94-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L94-L103) | `SNAP_X1_CENTROID_EXACT` | See Summary |
+| ref4option | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `SNAP_WB_REF4` | See Summary |
+| centroidoption | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `SNAP_X1_CENTROID_EXACT` | See Summary |
 
 : Implementation sites for wb. {#tbl-ch11-wb-code}
 
-1. Select the gravity/pressure WB branch and construct its reference using physical-face flags. The anchor `wall_clamp` is in [`hydro.cpp:503-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L503-L556).
-2. Subtract the reference and mirror only non-outflow physical-end perturbations. The anchor `is_outflow` is in [`hydro_forward.cpp:287-343`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L287-L343).
-3. Apply selected mass-covariance wall treatment, reconstruct, and restore the reference; the non-WB path instead revises face pairs. The anchor `_revise_x1` is in [`hydro_forward.cpp:378-383`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L378-L383).
+1. Select the gravity/pressure WB branch and construct its reference using physical-face flags. The anchor `wall_clamp` is in {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}.
+2. Subtract the reference and mirror only non-outflow physical-end perturbations. The anchor `is_outflow` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
+3. Apply selected mass-covariance wall treatment, reconstruct, and restore the reference; the non-WB path instead revises face pairs. The anchor `_revise_x1` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 
 ### Tests
 
@@ -123,9 +123,9 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The reference clamp still receives physical-face flags for outflow ([`hydro.cpp:503-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L503-L556)); it is incorrect to summarize
+The reference clamp still receives physical-face flags for outflow ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}); it is incorrect to summarize
 all WB wall operations as excluding outflow. An in-block periodic x1 callback can count as physical here while
-`is_x1_wall` excludes its name ([`hydro.cpp:204-209`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L204-L209)). The two-resolution test assertion is not the three-resolution fitted
+`is_x1_wall` excludes its name ({{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}}). The two-resolution test assertion is not the three-resolution fitted
 order required for a report measurement. Nonuniform-grid wall accuracy and outflow/implicit/WB combinations
 remain unmeasured in this draft. The derivation is restricted to smooth uniform-grid data.
 

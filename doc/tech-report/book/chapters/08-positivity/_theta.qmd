@@ -33,8 +33,8 @@ $$ {#eq-ch08-theta-def}
 
 with the sign chosen so that only genuinely outgoing contributions count: inflow is not charged.
 @eq-ch08-theta-def is `flux_positivity_theta`
-([`flux_positivity.cpp:22-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L22-L72)), with the outgoing sum built from `relu`
-([`flux_positivity.cpp:39-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L39-L47)).
+({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), with the outgoing sum built from `relu`
+({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}).
 Applying $\theta$ of the donor cell to every face then gives $u_i + \Delta t\,\Delta u_i \ge 0$ cell by
 cell.
 
@@ -82,22 +82,22 @@ from snapy_report.ch08.fig_theta_action import make_fig
 make_fig()
 ```
 
-The factors are built by `flux_positivity_theta` at [`flux_positivity.cpp:22-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L22-L72). The
+The factors are built by `flux_positivity_theta` at {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}. The
 outgoing sum is accumulated over exactly the faces the divergence will consume, with a pair of
-rectified terms per direction at `slice` ([`flux_positivity.cpp:39-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L39-L47)), so the limiter and the
+rectified terms per direction at `slice` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), so the limiter and the
 divergence cannot disagree about which face drains which cell.
 
 Two details of that function matter to a reader. The available mass stops a little short of zero, at
-`margin` ([`flux_positivity.cpp:63-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L63-L66)), because an exact-zero target rounds negative; that margin is
+`margin` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), because an exact-zero target rounds negative; that margin is
 @sec-ch08-roundoff. And ghost cells are given $\theta = 1$ here, because their outflow is never
 accumulated: the caller must fill the ghost layer the way conserved variables are filled before
 scaling, or the two ranks sharing a face would apply different factors and conservation would fail.
 
-The scaling is `flux_positivity_scale_` at [`flux_positivity.cpp:74-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L74-L104), which selects the
+The scaling is `flux_positivity_scale_` at {{< code src/hydro/flux_positivity.cpp flux_positivity_scale_ >}}, which selects the
 donor per face with a `where` on the sign of the flux. The call site is
-`narrow` ([`hydro_forward.cpp:648-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L669)), which also keeps the census that
+`narrow` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), which also keeps the census that
 @sec-ch08-roundoff describes, and the ghost fill it depends on follows at
-`pmb` ([`hydro_forward.cpp:671-686`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L686)), a raw copy that is never interpolated because an interpolated
+`pmb` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), a raw copy that is never interpolated because an interpolated
 ghost is not the neighbour's factor.
 
 ### Code
@@ -107,13 +107,13 @@ the citation's anchor.
 
 | what | code link | symbol | switch / condition |
 |---|---|---|---|
-| the factors | [`flux_positivity.cpp:22-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L22-L72) | `flux_positivity_theta` | limiter on, tracers present |
-| the outgoing sum | [`flux_positivity.cpp:39-47`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L39-L47) | `relu` | |
-| the round-off margin | [`flux_positivity.cpp:63-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L63-L66) | `margin` | |
-| the scaling | [`flux_positivity.cpp:74-104`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.cpp#L74-L104) | `flux_positivity_scale_` | |
-| the call in the stage | [`hydro_forward.cpp:648-669`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L648-L669) | `flux_positivity_theta` | |
-| the ghost fill it needs | [`hydro_forward.cpp:671-686`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L671-L686) | `interpolate` | |
-| the contract, written out | [`flux_positivity.hpp:32-67`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/flux_positivity.hpp#L32-L67) | `flux_positivity_theta` | |
+| the factors | {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}} | `flux_positivity_theta` | limiter on, tracers present |
+| the outgoing sum | {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}} | `relu` | |
+| the round-off margin | {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}} | `margin` | |
+| the scaling | {{< code src/hydro/flux_positivity.cpp flux_positivity_scale_ >}} | `flux_positivity_scale_` | |
+| the call in the stage | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_positivity_theta` | |
+| the ghost fill it needs | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interpolate` | |
+| the contract, written out | {{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}} | `flux_positivity_theta` | |
 
 : Code map of the tracer flux positivity limiter. {#tbl-ch08-theta-code}
 

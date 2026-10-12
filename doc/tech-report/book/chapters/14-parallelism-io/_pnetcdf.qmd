@@ -25,24 +25,24 @@ None.
 ### Numerical method
 
 `PNetcdfOutput`'s constructor rejects `double_precision: true`, so a misconfigured run fails at setup and not at its
-first output (`PNetcdfOutput`, [`pnetcdf.cpp:48-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/pnetcdf.cpp#L48-L58)). `write_output_file` skips the final write,
+first output (`PNetcdfOutput`, {{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}}). `write_output_file` skips the final write,
 repeats the precision check, and throws if the process holds more than one block
-([`pnetcdf.cpp:60-80`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/pnetcdf.cpp#L60-L80)). Each block then posts its own slab of each variable with
+({{< code src/output/pnetcdf.cpp PNetcdfOutput::write_output_file >}}). Each block then posts its own slab of each variable with
 a non-blocking `ncmpix_iput_vara_float` and waits for it.
 
 With `PNETCDF=ON`, CMake runs the configured Python to import `pinc` and takes its include directory and library;
 configuring fails if `pinc` cannot be imported ([`parameters.cmake:28-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/parameters.cmake#L28-L43)). A
 build without it rejects `type: pnetcdf` when the block reads its outputs: "Output type 'pnetcdf' requires
-PNETCDF=ON" (`PNETCDFOUTPUT`, [`meshblock.cpp:210-215`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L210-L215)).
+PNETCDF=ON" (`PNETCDFOUTPUT`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| float only, at setup | [`pnetcdf.cpp:48-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/pnetcdf.cpp#L48-L58) | `PNetcdfOutput` | `double_precision` |
-| one block per process | [`pnetcdf.cpp:60-80`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/pnetcdf.cpp#L60-L80) | `PNetcdfOutput::write_output_file` | `blocks_per_process` |
+| float only, at setup | {{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}} | `PNetcdfOutput` | `double_precision` |
+| one block per process | {{< code src/output/pnetcdf.cpp PNetcdfOutput::write_output_file >}} | `PNetcdfOutput::write_output_file` | `blocks_per_process` |
 | `pinc` probe | [`parameters.cmake:28-43`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/parameters.cmake#L28-L43) | `PNETCDF_OPTION` | `PNETCDF` |
-| type dispatch | [`meshblock.cpp:210-215`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L210-L215) | `PNetcdfOutput` | `type: pnetcdf` |
+| type dispatch | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `PNetcdfOutput` | `type: pnetcdf` |
 
 : Code map of PnetCDF output. {#tbl-ch14-pnetcdf-code}
 

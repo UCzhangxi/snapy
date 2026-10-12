@@ -48,7 +48,7 @@ $$ {#eq-ch06-fixer-fix}
 
 with $\rho_i$ the total density, dry plus species, and immersed-solid cells left out. @eq-ch06-fixer-fix is
 applied in `apply_gravity_work_fixer` as `efix`
-([`meshblock.cpp:906-907`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L906-L907)).
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
 Multiplying by $V_i$ and summing gives exactly $-\mathcal D$ (`[C3]`, $3.8\times10^{-16}$ relative). The wall
 faces are left out of $\mathcal D$; a step is refused when the mass through them exceeds
 $10^3\epsilon_{\mathrm m}M_{\mathrm{wall}}$, $2.2\times10^{-13}M_{\mathrm{wall}}$ in float64 and
@@ -67,8 +67,8 @@ mass, the wall-face mass, the wall cells' mass and a redo flag into five numbers
 adds the blocks first, and one allreduce sums them over ranks. A step the redo check will discard (a limiter
 repair, a NaN, a failed implicit solve) is left alone. Then every cell gets its share and the physical
 ghosts are refilled. At snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 a `Mesh` adds its local blocks one after another in
-`gravity_work_fixer_sums` ([`mesh.cpp:348-355`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/mesh.cpp#L348-L355)) and one `allreduce` adds the ranks
-([`meshblock.cpp:834-837`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/mesh/meshblock.cpp#L834-L837)), so the order of the floating-point additions follows
+`gravity_work_fixer_sums` ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}) and one `allreduce` adds the ranks
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), so the order of the floating-point additions follows
 the decomposition and the sum can differ between decompositions at round-off. That difference has not been
 measured.
 
@@ -85,23 +85,23 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| stage defect, wall mass | [`hydro_forward.cpp:860-889`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L860-L889) | `gwfix_stage` | `gravity-work-fixer` |
-| implicit part | [`hydro_forward.cpp:948-969`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L948-L969) | `epe` | `implicit-scheme` |
-| stage weight | [`hydro_forward.cpp:985-996`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L996) | `cw` | |
-| sums of one block | [`meshblock.cpp:844-868`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L844-L868) | `gravity_work_fixer_sums` | |
-| bound and fix | [`meshblock.cpp:870-911`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L870-L911) | `apply_gravity_work_fixer` | |
-| several local blocks | [`mesh.cpp:341-358`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L341-L358) | `gravity_work_fixer_sums` | |
-| setup refusals | [`hydro.cpp:62-81`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L62-L81) | `gravity_work_fixer` | `gravity-work-fixer` |
+| stage defect, wall mass | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gwfix_stage` | `gravity-work-fixer` |
+| implicit part | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `epe` | `implicit-scheme` |
+| stage weight | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | |
+| sums of one block | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `gravity_work_fixer_sums` | |
+| bound and fix | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `apply_gravity_work_fixer` | |
+| several local blocks | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `gravity_work_fixer_sums` | |
+| setup refusals | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `gravity_work_fixer` | `gravity-work-fixer` |
 
 : Code map of the gravity-work fixer. {#tbl-ch06-fixer-code}
 
 1. Per stage, form the defect of the cell work, the face work of $F-F^{\mathrm{ref}}$ and the potential-energy
-   change of the moved mass as `gwfix_stage` ([`hydro_forward.cpp:860-878`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L860-L878)).
-2. Add the mass that crossed the wall faces to `_gwfix_wall` ([`hydro_forward.cpp:880-888`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L880-L888)).
-3. Add the implicit solve's change of $E+\mathrm{PE}_d$ with `epe` ([`hydro_forward.cpp:948-969`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L948-L969)).
-4. Weight the stage by `cw` ([`hydro_forward.cpp:985-996`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L996)).
-5. After the last stage, sum and reduce once in `gravity_work_fixer_sums` ([`meshblock.cpp:832-839`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L832-L839)).
-6. Refuse on the wall bound, else add `efix` per unit mass ([`meshblock.cpp:897-910`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L897-L910)).
+   change of the moved mass as `gwfix_stage` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+2. Add the mass that crossed the wall faces to `_gwfix_wall` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+3. Add the implicit solve's change of $E+\mathrm{PE}_d$ with `epe` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+4. Weight the stage by `cw` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+5. After the last stage, sum and reduce once in `gravity_work_fixer_sums` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+6. Refuse on the wall bound, else add `efix` per unit mass ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
 
 Messages a user can hit: "const-gravity gravity-work-fixer needs grav2 = grav3 = 0", "... needs non-periodic x1
 boundaries", and at run time "const-gravity gravity-work-fixer: ... kg crossed an x1 boundary face this step".
@@ -118,7 +118,7 @@ boundaries", and at run time "const-gravity gravity-work-fixer: ... kg crossed a
 : Tests of the gravity-work fixer; assertions read from the test sources at the pin, not run. {#tbl-ch06-fixer-tests}
 
 `test_gravity_work_fixer` runs a moving isentropic column between reflecting walls for 200 rk3 steps and requires
-$\lvert\Delta(E+\mathrm{PE}_d)\rvert/\lvert E+\mathrm{PE}_d\rvert\le$ `TOL` ([`test_gravity_work_fixer.py:38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_gravity_work_fixer.py#L38)).
+$\lvert\Delta(E+\mathrm{PE}_d)\rvert/\lvert E+\mathrm{PE}_d\rvert\le$ `TOL` ({{< code tests/test_gravity_work_fixer.py TOL >}}).
 It also checks the refusals in float64 and float32, a Python-installed wall and a NaN wall cell sent to the
 redo check. It runs on CPU with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`. Measured values at the pin are **missing
 evidence**.

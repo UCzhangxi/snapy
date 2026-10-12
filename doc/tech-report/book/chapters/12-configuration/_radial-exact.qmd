@@ -13,8 +13,8 @@ pinned at snapy@e894700ff7aee30b52882e5202b16461413780b0.
 
 ::: {.callout-note title="At a glance"}
 Default: **on**. This switch defaults on, including an empty string; it is read once per process in
-`gravity_work_radial_exact` ([`hydro.cpp:256-266`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L256-L266)). It acts only with nonzero radial gravity,
-`gravity-work: face` (the default since chengcli/snapy#303, `gravity_work` [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28)) and a grid with an
+`gravity_work_radial_exact` ({{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}}). It acts only with nonzero radial gravity,
+`gravity-work: face` (the default since chengcli/snapy#303, `gravity_work` {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}) and a grid with an
 $x_1$ measure: Cartesian, spherical-polar or gnomonic-equiangle (cubed sphere). A grid without one (cylindrical)
 warns once and retains ordinary face work; a periodic $x_1$ column warns once as well.
 Use the corrected potential energy in @eq-ch12-radial-exact-budget for its budget, not the plain centroid sum.
@@ -70,11 +70,11 @@ make_fig()
 | what | code link | symbol | switch |
 |---|---|---|---|
 | flags | [`hydro.cpp:256-273`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L256-L273) | `radial_exact_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
-| guards | [`hydro.cpp:56-108`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L56-L108) | `TORCH_CHECK` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| guards | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
 | radial | [`gravity_work_radial.hpp:13-130`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/gravity_work_radial.hpp#L13-L130) | `corrected_pe_work` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
-| operator | [`hydro.cpp:319-323`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro.cpp#L319-L323) | `face_work_in_operator` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
-| curvature | [`hydro_forward.cpp:824-879`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/hydro/hydro_forward.cpp#L824-L879) | `radial_exact` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
-| default form | [`const_gravity.cpp:28`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/src/forcing/const_gravity.cpp#L28) | `gravity_work` | `gravity-work`, default `face` |
+| operator | {{< code src/hydro/hydro.cpp HydroImpl::face_work_in_operator >}} | `face_work_in_operator` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| curvature | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `radial_exact` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| default form | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `gravity-work`, default `face` |
 
 : Pinned implementation anchors. {#tbl-ch12-radial-exact-code}
 
@@ -86,7 +86,7 @@ The cited ranges are re-read at the full pin; no line numbers are carried from t
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_gravity_work_radial_exact_python` (CUDA variant registered) | explicit/VIC on spherical-polar, Cartesian and gnomonic-equiangle columns, diagnostic budget, clamp and solids | per-step relative budget $10^{-14}$; printed budget $10^{-11}$ | `EP_TOL` [`test_gravity_work_radial_exact.py:54-62`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_gravity_work_radial_exact.py#L54-L62) |
-| `test_x1_seam_split_radial_exact.<b>` | split column corrected budget, and the split equals one block | relative drift at most $10^{-13}$; gap exactly 0 (the `_radial_exact_off` control: at most $10^{-13}$) | `radial_exact_split_gap` [`test_x1_seam_split.cpp:256-277`](https://github.com/chengcli/snapy/blob/9ad0936779ae001dba65c9eafccaa7c058686c97/tests/test_x1_seam_split.cpp#L256-L277) |
+| `test_x1_seam_split_radial_exact.<b>` | split column corrected budget, and the split equals one block | relative drift at most $10^{-13}$; gap exactly 0 (the `_radial_exact_off` control: at most $10^{-13}$) | `radial_exact_split_gap` {{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}} |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-radial-exact-tests}
 

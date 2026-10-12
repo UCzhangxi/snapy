@@ -36,8 +36,8 @@ $$
 \Delta\mathbf m = -2\Delta t\,\boldsymbol\Omega\times\mathbf m ,
 $$ {#eq-ch09-coriolis-force}
 
-computed component by component in `CoriolisXYZImpl::forward` ([`coriolis.cpp:152-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L152-L192)) and, for
-`type: 123`, in `Coriolis123Impl::forward` ([`coriolis.cpp:50-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L50-L66)). Because $\mathbf m\cdot(\boldsymbol\Omega\times\mathbf m)=0$ the force does
+computed component by component in `CoriolisXYZImpl::forward` ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}}) and, for
+`type: 123`, in `Coriolis123Impl::forward` ({{< code src/forcing/coriolis.cpp Coriolis123Impl::forward >}}). Because $\mathbf m\cdot(\boldsymbol\Omega\times\mathbf m)=0$ the force does
 no work: the energy row is not touched and needs no term [check `src/snapy_report/ch09/coriolis_check.py`,
 output `coriolis_check.out`, line `[C2]`].
 
@@ -53,15 +53,15 @@ $$
 $$ {#eq-ch09-coriolis-sph}
 
 the rows of the rotation from the Cartesian to the local $(\hat r,\hat\theta,\hat\varphi)$ basis, implemented as `omega1`, `omega2`,
-`omega3` ([`coriolis.cpp:100-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L100-L108)). The rotation preserves $|\boldsymbol\Omega|$, and a rotation about $z$
+`omega3` ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}). The rotation preserves $|\boldsymbol\Omega|$, and a rotation about $z$
 gives $(\Omega\cos\theta, -\Omega\sin\theta, 0)$ [check `coriolis_check.py`, `[C3]`]. On a Cartesian grid $x_1$
 is the vertical, so `omega1` $=\Omega_z$ is the $x_1$ component unchanged
-([`coriolis.cpp:86-93`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L86-L93); `[C4]`).
+({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}; `[C4]`).
 
 *Cubed sphere.* The panel velocity is contravariant, $v^a$, and the stored momentum covariant, $m_a$. The module
 maps $\rho v^a$ to the local spherical basis with the matrix of @sec-ch03, forms @eq-ch09-coriolis-force there
 with $\boldsymbol\Omega$ projected the same way, and maps the force to covariant components with `cs_apply_velocity_transform_`
-([`coriolis.cpp:154-180`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L154-L180)). With `traditional` the two horizontal components of $\boldsymbol\Omega$
+({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}}). With `traditional` the two horizontal components of $\boldsymbol\Omega$
 are set to zero, so the force is $-2\Omega_1\hat r\times\mathbf m$, purely horizontal, and only the two
 horizontal momentum rows are updated.
 
@@ -75,7 +75,7 @@ Cartesian grid.
 @fig-ch09-coriolis-projection shows the projection of @eq-ch09-coriolis-sph for a rotation about $z$. The force is
 a pointwise source at the cell centre: no stencil, no ghosts. It runs in every stage, explicit, after the
 diffusion module in the forcing loop (@sec-ch09-framework). The projected components are computed once at
-construction and stored with `register_buffer` ([`coriolis.cpp:147-149`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L147-L149)), so they move with the block between
+construction and stored with `register_buffer` ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}), so they move with the block between
 devices.
 
 ```{python}
@@ -91,24 +91,24 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| options, defaults | [`coriolis.cpp:19-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L19-L37) | `CoriolisOptionsImpl::from_yaml` | `type`, `omega1..3`, `traditional` |
-| choose the module | [`register_forcing_modules.cpp:14-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/register_forcing_modules.cpp#L14-L23) | `CoriolisXYZ` | `type` |
-| `123` force | [`coriolis.cpp:50-66`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L50-L66) | `Coriolis123Impl::forward` | `type: 123` |
-| projection, all grids | [`coriolis.cpp:75-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L75-L150) | `CoriolisXYZImpl::reset` | `type: xyz` |
-| spherical-polar projection | [`coriolis.cpp:100-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L100-L108) | `omega1` | spherical-polar |
-| cubed-sphere transforms | [`coriolis.cpp:109-142`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L109-L142) | `cs_velocity_transform_matrix` | gnomonic-equiangle |
-| `xyz` force | [`coriolis.cpp:152-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L152-L192) | `CoriolisXYZImpl::forward` | `type: xyz` |
+| options, defaults | {{< code src/forcing/coriolis.cpp CoriolisOptionsImpl::from_yaml >}} | `CoriolisOptionsImpl::from_yaml` | `type`, `omega1..3`, `traditional` |
+| choose the module | {{< code src/hydro/register_forcing_modules.cpp HydroImpl::_register_forcings_module >}} | `CoriolisXYZ` | `type` |
+| `123` force | {{< code src/forcing/coriolis.cpp Coriolis123Impl::forward >}} | `Coriolis123Impl::forward` | `type: 123` |
+| projection, all grids | {{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}} | `CoriolisXYZImpl::reset` | `type: xyz` |
+| spherical-polar projection | {{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}} | `omega1` | spherical-polar |
+| cubed-sphere transforms | {{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}} | `cs_velocity_transform_matrix` | gnomonic-equiangle |
+| `xyz` force | {{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}} | `CoriolisXYZImpl::forward` | `type: xyz` |
 
 : Code map of the Coriolis force. {#tbl-ch09-coriolis-code}
 
 1. `CoriolisOptionsImpl::from_yaml` checks the keys and refuses a type other than `xyz` or `123`
-   ([`coriolis.cpp:19-37`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L19-L37)).
+   ({{< code src/forcing/coriolis.cpp CoriolisOptionsImpl::from_yaml >}}).
 2. `_register_forcings_module` installs `CoriolisXYZ` for `xyz` and `Coriolis123` otherwise
-   ([`register_forcing_modules.cpp:14-23`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/register_forcing_modules.cpp#L14-L23)).
-3. `CoriolisXYZImpl::reset` projects $\boldsymbol\Omega$ for the grid ([`coriolis.cpp:75-150`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L75-L150)); an
+   ({{< code src/hydro/register_forcing_modules.cpp HydroImpl::_register_forcings_module >}}).
+3. `CoriolisXYZImpl::reset` projects $\boldsymbol\Omega$ for the grid ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}); an
    unsupported grid throws. On the cubed sphere it also builds the two transform matrices and sets `traditional`
-   ([`coriolis.cpp:109-142`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L109-L142)).
-4. Each stage, `forward` adds @eq-ch09-coriolis-force ([`coriolis.cpp:152-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L152-L192)).
+   ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}).
+4. Each stage, `forward` adds @eq-ch09-coriolis-force ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}}).
 
 ### Tests
 
@@ -133,14 +133,14 @@ the solver; the check covers their formulas.
 ### Limits
 
 1. **`traditional` acts only on the cubed sphere.** It is read in the gnomonic branch only
-   ([`coriolis.cpp:115-116`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L115-L116)); on Cartesian and spherical-polar grids, and with `type: 123`, it is
+   ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}); on Cartesian and spherical-polar grids, and with `type: 123`, it is
    parsed and ignored. Not tested.
 2. **`123` in two dimensions** drops the $x_3$ momentum row when $n_3 = 1$ (the test `w.size(1) > 1`,
-   [`coriolis.cpp:60-62`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L60-L62)),
+   {{< code src/forcing/coriolis.cpp Coriolis123Impl::forward >}}),
    so the force then does work: $\mathbf m\cdot\Delta\mathbf m \ne 0$ in general [`[C5]`]. The `xyz` form keeps
    all three rows.
 3. **Axis naming.** In `xyz`, `omega1` is $\Omega_z$, `omega2` $\Omega_x$, `omega3` $\Omega_y$
-   ([`coriolis.cpp:86-88`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/coriolis.cpp#L86-L88)). On a Cartesian grid this is the $(x_1,x_2,x_3)$ order; on a sphere it is
+   ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}). On a Cartesian grid this is the $(x_1,x_2,x_3)$ order; on a sphere it is
    the Cartesian frame whose $z$ is the polar axis.
 4. **Cylindrical** has a projection branch, but the coordinate type is not functional (@sec-ch03).
 5. **No energy check through the solver** and no convergence test of the cell-centre approximation; not measured.

@@ -42,7 +42,7 @@ $$
 $$ {#eq-ch09-framework-stage}
 
 and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U + w_2^{(s)}\Delta\mathbf U$ (the time-integration chapter). @eq-ch09-framework-stage is built in `HydroImpl::forward`
-([`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765)): the divergence term on interior cells, then the module loop. Each
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}): the divergence term on interior cells, then the module loop. Each
 $\mathbf S^m$ is evaluated on the same $\mathbf W$ and on $T$ computed once from it, so the sum does not depend on
 the order of the loop; only round-off does. Nothing here needs a derivation beyond this sentence: the framework
 is a sum. A port of the assembly with three toy modules that read only $\mathbf W$ and $T$ checks its properties.
@@ -52,7 +52,7 @@ $\Delta t$ (`[C2]`). The tests below check linearity and registration on the rea
 
 The dry-air part of the forcings' increment, $\Delta\rho_{\mathrm{d}}^{\mathrm{forc}} = \Delta\mathbf U[\rho_{\mathrm{d}}]$
 after the loop minus before it, is stored as `_forcing_dry` only when the block carries passive scalars
-([`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765)). It holds the modules' dry increment only, not the divergence term, and is not formed
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). It holds the modules' dry increment only, not the divergence term, and is not formed
 without tracers (`[C3]`). The tracer carry that consumes it is in @sec-ch10.
 
 ### Numerical method
@@ -80,26 +80,26 @@ module writes into ghost cells do not survive: the ghosts are refilled from the 
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| refuse `fric-heat` | [`hydro_options.cpp:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L68-L72) | `fric-heat` | removed key |
-| the twelve keys | [`hydro_options.cpp:73-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L73-L76) | `check_keys` | `forcing:` |
-| per-module parsing | [`hydro_options.cpp:78-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L78-L120) | `from_yaml` | each key |
-| install in fixed order | [`register_forcing_modules.cpp:6-84`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/register_forcing_modules.cpp#L6-L84) | `_register_forcings_module` | each key |
-| register as submodules | [`hydro/hydro.cpp:143-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L143-L152) | `_register_forcings_module` | |
-| increment and loop | [`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765) | `forcings` | |
-| dry increment for tracers | [`hydro_forward.cpp:760-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L760-L765) | `_forcing_dry` | scalars present |
-| tracer carry | [`meshblock.cpp:676-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L676-L678) | `carry_dry_source` | scalars present |
+| refuse `fric-heat` | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `fric-heat` | removed key |
+| the twelve keys | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `check_keys` | `forcing:` |
+| per-module parsing | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `from_yaml` | each key |
+| install in fixed order | {{< code src/hydro/register_forcing_modules.cpp HydroImpl::_register_forcings_module >}} | `_register_forcings_module` | each key |
+| register as submodules | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `_register_forcings_module` | |
+| increment and loop | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `forcings` | |
+| dry increment for tracers | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_forcing_dry` | scalars present |
+| tracer carry | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `carry_dry_source` | scalars present |
 
 : Code map of the forcing framework. {#tbl-ch09-framework-code}
 
-1. `HydroOptionsImpl::from_yaml` refuses `fric-heat` ([`hydro_options.cpp:68-72`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L68-L72)), checks the keys with `check_keys` ([`hydro_options.cpp:73-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L73-L76)) and parses each module's
-   options with its `from_yaml` ([`hydro_options.cpp:78-120`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_options.cpp#L78-L120)). The `plume-forcing` options are parsed only with `plume-eos`.
+1. `HydroOptionsImpl::from_yaml` refuses `fric-heat` ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}), checks the keys with `check_keys` ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}) and parses each module's
+   options with its `from_yaml` ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}). The `plume-forcing` options are parsed only with `plume-eos`.
 2. The `HydroImpl` constructor calls `_register_forcings_module`
-   ([`register_forcing_modules.cpp:6-84`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/register_forcing_modules.cpp#L6-L84)) and registers each module under its key
-   ([`hydro/hydro.cpp:143-152`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L143-L152)).
+   ({{< code src/hydro/register_forcing_modules.cpp HydroImpl::_register_forcings_module >}}) and registers each module under its key
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
 3. Each stage, `HydroImpl::forward` starts the increment from the divergence, computes $T$ once and runs the
-   loop ([`hydro_forward.cpp:754-765`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L754-L765)).
+   loop ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. `MeshBlockImpl::advance_local` hands the dry increment to the tracers with `carry_dry_source`
-   ([`meshblock.cpp:676-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L676-L678)).
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
 ### Tests
 
@@ -126,7 +126,7 @@ list).
    `bot-heat` across $x_2$, $x_3$) also write into ghost cells. The refill after the stage overwrites them. Not a
    defect; stated so that a reader of `du` is not surprised.
 2. **Immersed solids.** The loop sees the solid placeholder state written into $\mathbf W$ before it by
-   `mark_prim_solid_` ([`hydro_forward.cpp:217-218`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L217-L218)). The diffusion module is the measured case (@sec-ch09-wallcoef);
+   `mark_prim_solid_` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The diffusion module is the measured case (@sec-ch09-wallcoef);
    the relaxations and `body-heat` read the same state and are not measured.
 3. **`plume-forcing`** is accepted by the parser and never installed (@sec-ch09-plume).
 4. **Untested combinations.** No ctest runs two boundary modules together. See the switch coverage matrix

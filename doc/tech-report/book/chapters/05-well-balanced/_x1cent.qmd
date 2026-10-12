@@ -70,10 +70,10 @@ for the monomials $n=0..4$, window $s_i=\max(\mathrm{lo},\min(\mathrm{hi}-4,i-2)
 array at a seam. The moments are integrated by four-point Gauss-Legendre, exact for degree 6, and the $5\times5$ system
 is solved once per block. The conversion is exact for degree 4 and not 5, on uniform and stretched grids and in the
 wall windows, and its weights sum to 1 (`[C16]`). @eq-ch05-x1cent-conv is `x1_plain_mean_stencils`
-([`x1_centroid.cpp:104-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L155)).
+({{< code src/coord/x1_centroid.cpp x1_plain_mean_stencils >}}).
 Ghosts past a clamped wall get the mirrored correction of the owned cells, odd for the normal velocity, in
 `x1_plain_means`
-([`x1_centroid.cpp:157-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L157-L182));
+({{< code src/coord/x1_centroid.cpp x1_plain_means >}});
 at a seam the outer ghosts' windows are off-centre, so their plain means are replaced by the neighbour's.
 
 #### The pressure source
@@ -90,9 +90,9 @@ $-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i=-V_i^{-1}\int r^2\tild
 the $r^2$ mean of $-\partial_r\tilde p$. A constant pressure gives $S_iV_i=A_{i+1/2}-A_{i-1/2}$ exactly, with $V_i$ in the
 cube form of the cell volume (`[C17]`, both identities in exact rationals). @eq-ch05-x1cent-source is
 `x1_pressure_source_stencils`
-([`x1_centroid.cpp:184-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L222)),
+({{< code src/coord/x1_centroid.cpp x1_pressure_source_stencils >}}),
 used in place of the plain difference by the branch that tests `exact_x1`
-([`spherical_polar.cpp:251-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L251-L264)).
+({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}).
 The hydrostatic mode takes the same operator (@sec-ch05-hsmode).
 
 #### Rest balance
@@ -127,29 +127,29 @@ make_fig()
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| the switch | [`x1_centroid.cpp:92-102`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L92-L102) | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
-| conversion stencils | [`x1_centroid.cpp:104-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L104-L155) | `x1_plain_mean_stencils` | |
-| conversion and mirrored ghosts | [`x1_centroid.cpp:157-182`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L157-L182) | `x1_plain_means` | |
-| source stencils | [`x1_centroid.cpp:184-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L184-L222) | `x1_pressure_source_stencils` | |
-| plain-mean view and seam ghosts | [`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285) | `x1_plain_means` | spherical-polar |
-| ghost face pressures at a seam | [`hydro_forward.cpp:501-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L501-L508) | `_x1_ghost_rows` | |
-| the source in the momentum equation | [`spherical_polar.cpp:251-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L251-L264) | `x1_pressure_source` | |
-| ghost-row exchange | [`hydro.cpp:270-303`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L270-L303) | `_x1_ghost_rows` | $x_1$ split |
-| implies `SNAP_WB_REF4` | [`wb_ref4.cpp:92-94`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/wb_ref4.cpp#L92-L94) | `x1_centroid_exact_enabled` | |
+| the switch | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
+| conversion stencils | {{< code src/coord/x1_centroid.cpp x1_plain_mean_stencils >}} | `x1_plain_mean_stencils` | |
+| conversion and mirrored ghosts | {{< code src/coord/x1_centroid.cpp x1_plain_means >}} | `x1_plain_means` | |
+| source stencils | {{< code src/coord/x1_centroid.cpp x1_pressure_source_stencils >}} | `x1_pressure_source_stencils` | |
+| plain-mean view and seam ghosts | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_plain_means` | spherical-polar |
+| ghost face pressures at a seam | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_x1_ghost_rows` | |
+| the source in the momentum equation | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `x1_pressure_source` | |
+| ghost-row exchange | {{< code src/hydro/hydro.cpp HydroImpl::_x1_ghost_rows >}} | `_x1_ghost_rows` | $x_1$ split |
+| implies `SNAP_WB_REF4` | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `x1_centroid_exact_enabled` | |
 
 : Code map of `SNAP_X1_CENTROID_EXACT`. {#tbl-ch05-x1cent-code}
 
 1. `x1_centroid_exact_enabled` reads the environment once
-   ([`x1_centroid.cpp:92-102`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/x1_centroid.cpp#L92-L102)).
+   ({{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}}).
 2. On a spherical-polar block `HydroImpl::forward` builds the view with `x1_plain_means` and exchanges its seam ghost
    rows with `_x1_ghost_rows`
-   ([`hydro_forward.cpp:270-285`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L270-L285)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 3. The reference and the reconstruction of @sec-ch05-wbx1 read the view; `SNAP_WB_REF4` acts through
    `wb_ref4_enabled` (@sec-ch05-wbref4).
 4. After the Riemann solve the face-pressure ghost rows are exchanged with `_x1_ghost_rows`
-   ([`hydro_forward.cpp:501-508`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L501-L508)).
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 5. `SphericalPolarImpl::forward` adds `x1_pressure_source` in place of the plain-difference correction
-   ([`spherical_polar.cpp:251-264`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L251-L264)).
+   ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}).
 
 The ghost-depth check of @sec-ch05-wbref4 covers this switch, since it implies `SNAP_WB_REF4`; `balance_column` refuses
 a non-Cartesian geometry under it. A block too thin for the stencils (`usable` false) keeps the plain path silently.

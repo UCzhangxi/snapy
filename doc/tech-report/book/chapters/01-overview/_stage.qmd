@@ -40,7 +40,7 @@ $$
 $$ {#eq-ch01-stage-combine}
 
 @eq-ch01-stage-combine is the recurrence stated beside `cw` in
-[`hydro_forward.cpp:985-995`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L995).
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 The increment here includes whichever explicit and implicit operations were selected; it is not restricted to
 the notation table's explicit increment $\Delta\mathbf U^{(0)}$.
 
@@ -53,10 +53,10 @@ $$
 w_2^{(s)}\prod_{s'>s}w_1^{(s')}.
 $$ {#eq-ch01-stage-weight}
 
-@eq-ch01-stage-weight is the coefficient `cw` accumulated in [`hydro_forward.cpp:985-995`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L995).
+@eq-ch01-stage-weight is the coefficient `cw` accumulated in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 The product is over the remaining stages; an empty product is one. This identity is exact for the bookkeeping
 of supplied increments, not a linearization of their nonlinear state dependence. The combine call `pintg`
-is at [`meshblock.cpp:754-783`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L754-L783); the actual integrator coefficients are external, so this chapter does not assert them
+is at {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}; the actual integrator coefficients are external, so this chapter does not assert them
 from a snapy call site. Check `[C1]` expands a generic three-stage affine recurrence symbolically.
 
 For implicit tracer transfer, start with the conservative passive-tracer law in a fixed cell:
@@ -78,7 +78,7 @@ r_{n,i+1}, & J^{\mathrm{d}}_{i+1/2}\le 0.
 \end{cases}
 $$ {#eq-ch01-stage-upwind}
 
-@eq-ch01-stage-upwind is the upwind `P` constructed in [`meshblock.cpp:650-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L650-L678).
+@eq-ch01-stage-upwind is the upwind `P` constructed in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
 At zero transfer the branch choice has no effect. Dividing the net transfer by cell volume
 $V_i$ [$\mathrm{m^3}$] yields the increment added to the scalar tendency:
 
@@ -86,7 +86,7 @@ $$
 \Delta\rho_{n,i} = \frac{J^{\mathrm{tr}}_{n,i-1/2}-J^{\mathrm{tr}}_{n,i+1/2}}{V_i}.
 $$ {#eq-ch01-stage-transfer}
 
-@eq-ch01-stage-transfer is the `P - P_above` update in [`meshblock.cpp:650-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L650-L678).
+@eq-ch01-stage-transfer is the `P - P_above` update in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
 Multiplying by $V_i$ and summing cancels every common internal face. The remaining sum is the lower-boundary
 transfer minus the upper-boundary transfer; closed ends therefore conserve tracer mass exactly in real arithmetic.
 The code's shifted buffers supply zero beyond stored ends; the physical column closure and seam consistency are
@@ -106,7 +106,7 @@ $$
 \Delta\rho^{\mathrm{source}}_{\mathrm{d}}.
 $$ {#eq-ch01-stage-dry}
 
-@eq-ch01-stage-dry is implemented by `carry_dry_source` in [`meshblock.cpp:633-645`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L633-L645).
+@eq-ch01-stage-dry is implemented by `carry_dry_source` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
 For removal the final dry and tracer densities are their source-free values plus $w_2^{(s)}$ times the
 respective source increments. Substituting the first branch factors the tracer density into the source-free
 ratio times the final dry density. Dividing recovers the original ratio whenever that final density is nonzero.
@@ -141,23 +141,23 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| stage | [`meshblock.cpp:597-626`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L597-L626) | `advance_local` | API / see Summary |
-| dry | [`meshblock.cpp:633-645`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L633-L645) | `carry_dry_source` | API / see Summary |
-| transfer | [`meshblock.cpp:650-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L650-L678) | `mass_corr` | API / see Summary |
-| user | [`meshblock.cpp:690-741`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L690-L741) | `user_stage_forcings` | callbacks installed |
-| combine | [`meshblock.cpp:754-783`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L754-L783) | `pintg` | API / see Summary |
-| last | [`meshblock.cpp:785-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L785-L842) | `pthermo` | API / see Summary |
-| weights | [`hydro_forward.cpp:985-995`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L995) | `cw` | API / see Summary |
+| stage | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `advance_local` | API / see Summary |
+| dry | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `carry_dry_source` | API / see Summary |
+| transfer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `mass_corr` | API / see Summary |
+| user | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `user_stage_forcings` | callbacks installed |
+| combine | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `pintg` | API / see Summary |
+| last | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `pthermo` | API / see Summary |
+| weights | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | API / see Summary |
 
 : Implementation anchors for accumulate and combine one stage. {#tbl-ch01-stage-code}
 
-1. Read `advance_local` for the stage part of this path ([`meshblock.cpp:597-626`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L597-L626)).
-2. Read `carry_dry_source` for the dry part of this path ([`meshblock.cpp:633-645`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L633-L645)).
-3. Read `mass_corr` for the transfer part of this path ([`meshblock.cpp:650-678`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L650-L678)).
-4. Read `user_stage_forcings` for the user part of this path ([`meshblock.cpp:690-741`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L690-L741)).
-5. Read `pintg` for the combine part of this path ([`meshblock.cpp:754-783`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L754-L783)).
-6. Read `pthermo` for the last part of this path ([`meshblock.cpp:785-842`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L785-L842)).
-7. Read `cw` for the weights part of this path ([`hydro_forward.cpp:985-995`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_forward.cpp#L985-L995)).
+1. Read `advance_local` for the stage part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+2. Read `carry_dry_source` for the dry part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+3. Read `mass_corr` for the transfer part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+4. Read `user_stage_forcings` for the user part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+5. Read `pintg` for the combine part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+6. Read `pthermo` for the last part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+7. Read `cw` for the weights part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 ### Tests
 
@@ -169,11 +169,11 @@ make_fig()
 
 : Source assertions for stage. {#tbl-ch01-stage-tests}
 
-The assertion anchor `scripted_stage_forcings_add_tendencies_in_list_order` is in [`test_user_output.cpp:576-606`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L576-L606).
+The assertion anchor `scripted_stage_forcings_add_tendencies_in_list_order` is in {{< code tests/test_user_output.cpp UserForcing.scripted_stage_forcings_add_tendencies_in_list_order >}}.
 
 The assertion anchor `scripted_module_is_shared_across_parallel_blocks` is in [`test_user_output.cpp:611-667`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L611-L667).
 
-The assertion anchor `expected` is in [`test_jit_user_forcing.py:44-71`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_jit_user_forcing.py#L44-L71).
+The assertion anchor `expected` is in {{< code tests/test_jit_user_forcing.py main >}}.
 
 No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
 the missing runs and the distinction between assertions and observations.

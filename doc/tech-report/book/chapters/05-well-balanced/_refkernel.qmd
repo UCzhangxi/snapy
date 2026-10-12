@@ -52,7 +52,7 @@ $$ {#eq-ch05-refkernel-scan}
 
 downward from the top face of the top interior cell $i_u$ and upward into the upper ghosts, clipped below at the
 smallest positive normal number. @eq-ch05-refkernel-scan is `hydro_ref_x1_scan_impl`
-([`hydro_ref_x1_impl.h:22-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L22-L60)).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}}).
 Since each step is exact, $p_{\mathrm{sf}}$ equals the exact face pressure of a hydrostatic column plus one constant
 per column, set by the anchor (`[C13]`: spread of $p_{\mathrm{sf}}-p(x_{1,f})$ $2.2\times10^{-16}$ of $p$). On a
 single block the anchor extrapolates the top cell isothermally by half a cell,
@@ -62,7 +62,7 @@ p_{\mathrm{sf},i_u+1/2} = \overline{p}_{i_u}\exp\!\left(-\frac{g\,\Delta x_{1,i_
 $$ {#eq-ch05-refkernel-anchor}
 
 the branch that sets `top_anchor`
-([`hydro_ref_x1_impl.h:30-38`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L30-L38)).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}}).
 It uses the cell averages, so even on an isothermal column it is off by the factor
 $\sinh a/a=1+a^2/6+O(a^4)$, $a=\Delta x_1/2H$ with $H=p/(\rho g)$ (`[C10]`). That offset is a column constant and drops
 out of the rest balance (@eq-ch05-wbx1-rest holds for any $c$).
@@ -80,7 +80,7 @@ p_{\mathrm{ref},i} = \tfrac{1}{1440}\big(&11\,p_{\mathrm{sf},i-5/2} - 93\,p_{\ma
 $$ {#eq-ch05-refkernel-pref}
 
 weights derived exactly in `[C1]` and coded as `w6`
-([`hydro_ref_x1_impl.h:140-156`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L140-L156)).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}).
 In the two cells next to an array end or a clamped wall the same average is taken over six one-sided faces, rows
 `w6e` (`[C2]`, @sec-ch05-wallclamp). A value outside $[\min,\max]$ of the cell's own two face pressures is rejected
 and the face mean is kept. Because the faces are exact up to $c$, $p_{\mathrm{ref},i}=\overline p_i+c+O(\Delta
@@ -94,7 +94,7 @@ p_{\mathrm{ref},i} = \frac{g\,\overline{\rho}_i\,\Delta x_{1,i}}{\ln(p_{\mathrm{
 $$ {#eq-ch05-refkernel-logmean}
 
 or the face mean when `ratio` is within $10^{-6}$ of one
-([`hydro_ref_x1_impl.h:181-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L181-L186)).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}).
 For an isothermal cell $p$ is exponential in $x_1$, and its cell average is exactly @eq-ch05-refkernel-logmean; for a
 polytrope it is $O(\Delta x_1^2)$ (`[C9]`: relative error $1.5\times10^{-4}$ at $\Delta x_1=0.05$, order 2.02).
 
@@ -111,9 +111,9 @@ $$
 $$ {#eq-ch05-refkernel-dens}
 
 coded as `dref` and `dsf`
-([`hydro_ref_x1_impl.h:193-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L193-L200)),
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
 with the binomial in `hydro_ref_x1_rop_smooth`
-([`hydro_ref_x1_impl.h:86-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L86-L108)).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}).
 At array index 0 the face density uses $r^s_0$ alone.
 
 *Why smoothed.* Take the unsmoothed ratio instead, $\rho_{\mathrm{ref},i}=p_{\mathrm{ref},i}\overline\rho_i/\overline p_i$.
@@ -168,29 +168,29 @@ neighbour's (@sec-ch05-seam).
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| the call and the uniform test | [`hydro.cpp:535-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L535-L556) | `x1_uniform_` | spread $<10^{-10}$ |
-| scan and anchor | [`hydro_ref_x1_impl.h:22-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L22-L60) | `hydro_ref_x1_scan_impl` | |
-| binomial ratio | [`hydro_ref_x1_impl.h:86-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L86-L108) | `hydro_ref_x1_rop_smooth` | |
-| cell pressure, both grids | [`hydro_ref_x1_impl.h:136-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L136-L186) | `use_six_faces` | uniform |
-| thin-block and fit guards | [`hydro_ref_x1_impl.h:124-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L124-L135) | `fits` | |
-| density references | [`hydro_ref_x1_impl.h:188-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L188-L200) | `dsf` | |
-| CPU path | [`hydro_dispatch.cpp:14-35`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L14-L35) | `hydro_ref_x1_cpu` | |
-| MPS tensor path | [`hydro_dispatch.cpp:37-200`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cpp#L37-L200) | `hydro_ref_x1_mps` | |
-| CUDA kernel | [`hydro_dispatch.cu:12-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cu#L12-L31) | `hydro_ref_x1_cuda_kernel` | CUDA build |
+| the call and the uniform test | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `x1_uniform_` | spread $<10^{-10}$ |
+| scan and anchor | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}} | `hydro_ref_x1_scan_impl` | |
+| binomial ratio | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}} | `hydro_ref_x1_rop_smooth` | |
+| cell pressure, both grids | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `use_six_faces` | uniform |
+| thin-block and fit guards | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `fits` | |
+| density references | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `dsf` | |
+| CPU path | {{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_cpu >}} | `hydro_ref_x1_cpu` | |
+| MPS tensor path | {{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_mps >}} | `hydro_ref_x1_mps` | |
+| CUDA kernel | {{< code src/hydro/hydro_dispatch.cu hydro_ref_x1_cuda_kernel >}} | `hydro_ref_x1_cuda_kernel` | CUDA build |
 
 : Code map of the reference kernel. {#tbl-ch05-refkernel-code}
 
 1. `HydroImpl::_hydro_ref_x1` classifies the block once as uniform or not and caches it in `x1_uniform_`
-   ([`hydro.cpp:535-541`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L535-L541)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 2. It reads whether each $x_1$ end is a physical boundary and calls the dispatch stub `call_hydro_ref_x1` with the
    wall-clamp option
-   ([`hydro.cpp:550-556`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L550-L556)).
+   ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 3. Per column, `hydro_ref_x1_impl` runs the scan and then the cell function for every cell
-   ([`hydro_ref_x1_impl.h:203-215`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L203-L215)).
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_impl >}}).
 4. In the cell function, the guards `thin` and `fits` decide whether one-sided rows may be used
-   ([`hydro_ref_x1_impl.h:124-135`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L124-L135)),
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
    then the cell pressure is formed by `use_six_faces` or the log-mean
-   ([`hydro_ref_x1_impl.h:136-186`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_ref_x1_impl.h#L136-L186)),
+   ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
    and the two density references by @eq-ch05-refkernel-dens.
 5. The fourth-order replacement (@sec-ch05-wbref4) and the seam exchange (@sec-ch05-seam) follow in `_hydro_ref_x1`.
 

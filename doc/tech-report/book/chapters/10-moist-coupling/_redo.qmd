@@ -49,13 +49,13 @@ check itself; run: `python3 redo_check.py`, numpy, double].
 
 @fig-ch10-redo-flow shows the decision. The saturation counter is drained once at the start of every step, so
 a failure counted by a ThermoY call between steps (a diagnostic from Python, say) is not charged to the next step
-([`meshblock.cpp:621`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L621), `saturation_failures`).
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}, `saturation_failures`).
 After the step, `local_redo_flags` reads the floor test first, then the limiter marks it may have set, then drains
 the saturation counter exactly once
-([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286)).
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}}).
 The counter read is one device-to-host copy on CUDA. A `Mesh` with several local blocks ORs their flags before the
 one collective reduction
-([`mesh.cpp:422-450`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L450)).
+({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}).
 
 ```{python}
 #| label: fig-ch10-redo-flow
@@ -70,20 +70,20 @@ make_fig()
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| entry point | [`meshblock.cpp:1302-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1302-L1304) | `check_redo` | |
-| restore or accept | [`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276) | `apply_redo` | `max_redo` |
-| saturation counter | [`meshblock.cpp:1220-1227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1220-L1227) | `saturation_failures` | |
+| entry point | {{< code src/mesh/meshblock.cpp MeshBlockImpl::check_redo >}} | `check_redo` | |
+| restore or accept | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `apply_redo` | `max_redo` |
+| saturation counter | {{< code src/mesh/meshblock.cpp MeshBlockImpl::saturation_failures >}} | `saturation_failures` | |
 | kintera's counter | [`kintera thermo_y.cpp:385-390`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L385-L390) | `take_saturation_adjustment_failures` | |
 | default of `max_redo` | [`pyharp integrator.hpp:58`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.hpp#L58) | `max_redo` | `max_redo` |
 
 : Code map of the moist redo causes. {#tbl-ch10-redo-code}
 
-1. Drain the counter at stage 0 ([`meshblock.cpp:621`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L621), `saturation_failures`).
-2. Form the six local flags ([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286), `local_redo_flags`).
-3. Reduce with MAX over ranks and pack the bits ([`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300), `reduce_redo_flags`).
-4. Name the causes in the log line ([`meshblock.cpp:1237-1240`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1237-L1240), `causes`).
-5. Terminate past `max_redo` unless cause 32 ([`meshblock.cpp:1241-1247`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1241-L1247), `max_redo`).
-6. Restore the saved state, recompute the primitives and the scalar ratios ([`meshblock.cpp:1249-1256`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1249-L1256), `drop_gravity_work_fix`).
+1. Drain the counter at stage 0 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}, `saturation_failures`).
+2. Form the six local flags ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}}, `local_redo_flags`).
+3. Reduce with MAX over ranks and pack the bits ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}}, `reduce_redo_flags`).
+4. Name the causes in the log line ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}, `causes`).
+5. Terminate past `max_redo` unless cause 32 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}, `max_redo`).
+6. Restore the saved state, recompute the primitives and the scalar ratios ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}, `drop_gravity_work_fix`).
 
 The user-visible messages are the log line "Redoing the step with smaller dt (causes: ...)" and "Maximum number of redo
 attempts exceeded. Terminating.", both in `apply_redo`.

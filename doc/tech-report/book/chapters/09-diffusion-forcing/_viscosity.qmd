@@ -59,7 +59,7 @@ and the stage adds $-\Delta t\,\nabla\cdot\mathbf F$ to momentum and energy. Wit
 replaced by $\mu$ and $\kappa\rho c_v$ by the conductivity $\kappa$.
 
 In the code, @eq-ch09-viscosity-flux is the face flux `momentum_flux` with its work and conduction terms in the
-energy row ([`diffusion.cpp:534-561`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L534-L561)).
+energy row ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 
 #### Discrete fluxes
 
@@ -75,14 +75,14 @@ $$ {#eq-ch09-viscosity-stencil}
 
 the face-normal difference, the average of the two cell-centred tangential differences, and the two-cell face
 average, in `face_normal_derivative`, `centered_derivative` and `face_average`
-([`diffusion.cpp:70-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L70-L108)). The divergence $\nabla\cdot\mathbf v$ is formed with centred differences in every cell, `div_vel` ([`diffusion.cpp:467-476`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L467-L476)), and then
-face-averaged, `div_face` ([`diffusion.cpp:517`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L517)). The
+([`diffusion.cpp:70-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L70-L108)). The divergence $\nabla\cdot\mathbf v$ is formed with centred differences in every cell, `div_vel` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}), and then
+face-averaged, `div_face` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The
 stress row $b=a$ is $2\partial_av_a - \tfrac23\overline{\nabla\cdot\mathbf v}$, a row $b\ne a$ is
 $\partial_av_b + \partial_bv_a$ with the second term dropped when direction $b$ is inactive
-([`diffusion.cpp:516-541`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L516-L541)). The viscous work uses the `face_average` of the velocity, and the conductive term
+({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The viscous work uses the `face_average` of the velocity, and the conductive term
 the face-normal temperature difference times the face coefficient of @sec-ch09-wallcoef
-([`diffusion.cpp:538-561`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L538-L561)). The tendency subtracts $\Delta t$ times the `divergence` of the three flux arrays
-([`diffusion.cpp:566-568`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L566-L568)).
+({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). The tendency subtracts $\Delta t$ times the `divergence` of the three flux arrays
+({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 
 Three properties follow and are checked against a line-by-line port of the module
 [check `src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out`]:
@@ -109,9 +109,9 @@ $$ {#eq-ch09-viscosity-dt}
 
 with $K=\max(\nu\varsigma_{\max}^{\nu},\kappa\varsigma_{\max}^{\kappa})$ in the default form ($\varsigma_{\max}$ the largest
 value of an $x_1$ profile of @sec-ch09-x1profile, 1 without one) and $K=\max(\mu/\rho_{\min}, \kappa/(\rho c_v)_{\min})$ with `dynamic: true`, in
-`max_time_step` ([`diffusion.cpp:572-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L572-L619)). At the bound $|G|=1$ exactly (`[C6]`). The solver takes the minimum of @eq-ch09-viscosity-dt and the hyperbolic bound through
-`pdiffusion` ([`hydro/hydro.cpp:396-398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L396-L398)) and then multiplies by the Courant
-factor `cfl` (default 0.9; [`meshblock.cpp:528`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L528)), so the diffusive step runs at `cfl` times its limit.
+`max_time_step` ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}}). At the bound $|G|=1$ exactly (`[C6]`). The solver takes the minimum of @eq-ch09-viscosity-dt and the hyperbolic bound through
+`pdiffusion` ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}) and then multiplies by the Courant
+factor `cfl` (default 0.9; {{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}), so the diffusive step runs at `cfl` times its limit.
 
 #### What `kappa_iso` diffuses
 
@@ -162,30 +162,30 @@ operator at a wall through the solver is **not measured**.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| options, refusals | [`diffusion.cpp:246-325`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L246-L325) | `DiffusionOptionsImpl::from_yaml` | all keys |
-| setup checks | [`diffusion.cpp:334-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L334-L345) | `DiffusionImpl::reset` | grid, `nghost`, $c_v$ |
+| options, refusals | {{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}} | `DiffusionOptionsImpl::from_yaml` | all keys |
+| setup checks | {{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}} | `DiffusionImpl::reset` | grid, `nghost`, $c_v$ |
 | stencil helpers | [`diffusion.cpp:70-108`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L70-L108) | `face_normal_derivative` | |
-| cell divergence | [`diffusion.cpp:467-476`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L467-L476) | `div_vel` | `nu_iso` $>0$ |
-| $\rho c_v$ | [`diffusion.cpp:477-481`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L477-L481) | `rho_cv` | `kappa_iso` $>0$, not dynamic |
-| stress and work | [`diffusion.cpp:516-542`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L516-L542) | `momentum_flux` | `nu_iso` $>0$ |
-| heat flux | [`diffusion.cpp:544-562`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L544-L562) | `dtdn` | `kappa_iso` $>0$ |
-| tendency | [`diffusion.cpp:566-568`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L566-L568) | `divergence` | |
-| time-step bound | [`diffusion.cpp:572-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L572-L619) | `DiffusionImpl::max_time_step` | |
-| bound used by the solver | [`hydro/hydro.cpp:396-398`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L396-L398) | `max_time_step` | |
+| cell divergence | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `div_vel` | `nu_iso` $>0$ |
+| $\rho c_v$ | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `rho_cv` | `kappa_iso` $>0$, not dynamic |
+| stress and work | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `momentum_flux` | `nu_iso` $>0$ |
+| heat flux | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `dtdn` | `kappa_iso` $>0$ |
+| tendency | {{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}} | `divergence` | |
+| time-step bound | {{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}} | `DiffusionImpl::max_time_step` | |
+| bound used by the solver | {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}} | `max_time_step` | |
 
 : Code map of the isotropic viscosity and heat conduction. {#tbl-ch09-viscosity-code}
 
 1. `DiffusionOptionsImpl::from_yaml` refuses `K` and `type`, checks the keys, and requires finite non-negative
-   coefficients and a literal `true`/`false` for `dynamic` ([`diffusion.cpp:246-325`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L246-L325)).
+   coefficients and a literal `true`/`false` for `dynamic` ({{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}}).
 2. `DiffusionImpl::reset` refuses a non-Cartesian grid when a coefficient is positive, viscosity with fewer than two
-   ghosts, and conduction without a positive reference $c_v$ ([`diffusion.cpp:334-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L334-L345)); it then builds
+   ghosts, and conduction without a positive reference $c_v$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}); it then builds
    the $x_1$ profiles (@sec-ch09-x1profile).
-3. `forward` forms the cell divergence `div_vel` ([`diffusion.cpp:467-476`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L467-L476)) and `rho_cv`
-   ([`diffusion.cpp:477-481`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L477-L481)), then, per active direction, the face coefficient, the stress rows and
-   their work, `momentum_flux` ([`diffusion.cpp:516-542`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L516-L542)), and the heat flux from `dtdn`
-   ([`diffusion.cpp:544-562`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L544-L562)).
-4. It subtracts $\Delta t$ times the `divergence` of the three flux arrays ([`diffusion.cpp:566-568`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L566-L568)).
-5. `max_time_step` returns @eq-ch09-viscosity-dt ([`diffusion.cpp:572-619`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/diffusion.cpp#L572-L619)); it throws on a
+3. `forward` forms the cell divergence `div_vel` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}) and `rho_cv`
+   ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}), then, per active direction, the face coefficient, the stress rows and
+   their work, `momentum_flux` ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}), and the heat flux from `dtdn`
+   ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
+4. It subtracts $\Delta t$ times the `divergence` of the three flux arrays ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
+5. `max_time_step` returns @eq-ch09-viscosity-dt ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}}); it throws on a
    non-finite coefficient or a non-positive bound.
 
 ### Tests

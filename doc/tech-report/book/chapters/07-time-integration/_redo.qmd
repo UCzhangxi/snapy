@@ -49,7 +49,7 @@ $r_{\max}+1=6$ times, the last at $\Delta t_0/32$ [check `src/snapy_report/ch07/
 Past $r_{\max}$ a VIC solve failure (bit 32) still restores the step before the run stops; any other cause stops
 without restoring (`[C4]`).
 
-In the code, @eq-ch07-redo-dt is the factor `current_redo` of the step bound ([`meshblock.cpp:528`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L528)).
+In the code, @eq-ch07-redo-dt is the factor `current_redo` of the step bound ({{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}).
 
 ### Numerical method
 
@@ -66,34 +66,34 @@ make_fig()
 
 The floor test recomputes the primitives from `hydro_u` on a copy, because `hydro_w` is one stage stale after the
 last stage, and compares them with $1.001$ times the floors in a negated form, so a NaN counts as a hit
-([`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204)). A Mesh with several local blocks ORs the flags of its blocks before the single
-reduction and applies the decision to every block; it checks signals first, in `MeshImpl::check_redo` ([`mesh.cpp:422-452`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L452)). The
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}). A Mesh with several local blocks ORs the flags of its blocks before the single
+reduction and applies the decision to every block; it checks signals first, in `MeshImpl::check_redo` ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). The
 example driver calls `check_redo` after the kinetics, so a redo also rolls the kinetics back
-([`run_hydro.cpp:193-195`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L195)).
+({{< code examples/run_hydro.cpp main >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| floor test | [`meshblock.cpp:1190-1204`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1190-L1204) | `floor_hit` | `density-floor`, `pressure-floor` |
+| floor test | {{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}} | `floor_hit` | `density-floor`, `pressure-floor` |
 | clamp, limiter, saturation flags | [`meshblock.cpp:1206-1227`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1206-L1227) | `limiter_hits` | |
-| decision, restore, stop | [`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276) | `apply_redo` | `max_redo` |
-| local flags | [`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286) | `local_redo_flags` | |
-| collective bit mask | [`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300) | `reduce_redo_flags` | |
-| block entry | [`meshblock.cpp:1302-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1302-L1304) | `check_redo` | |
-| Mesh entry | [`mesh.cpp:422-452`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L422-L452) | `check_redo` | |
-| exit status | [`meshblock.cpp:1121-1140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1140) | `finalize` | |
-| driver use | [`run_hydro.cpp:193-202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L202) | `check_redo` | |
+| decision, restore, stop | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `apply_redo` | `max_redo` |
+| local flags | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}} | `local_redo_flags` | |
+| collective bit mask | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}} | `reduce_redo_flags` | |
+| block entry | {{< code src/mesh/meshblock.cpp MeshBlockImpl::check_redo >}} | `check_redo` | |
+| Mesh entry | {{< code src/mesh/mesh.cpp MeshImpl::check_redo >}} | `check_redo` | |
+| exit status | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}} | `finalize` | |
+| driver use | {{< code examples/run_hydro.cpp main >}} | `check_redo` | |
 
 : Code map of step acceptance and redo. {#tbl-ch07-redo-code}
 
-1. After the stages and the kinetics, the driver calls `check_redo` ([`run_hydro.cpp:193-202`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/examples/run_hydro.cpp#L193-L202)).
-2. `local_redo_flags` collects the six local flags ([`meshblock.cpp:1278-1286`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1286)); `reduce_redo_flags`
-   reduces them with `MAX` and builds the mask ([`meshblock.cpp:1288-1300`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1288-L1300)).
+1. After the stages and the kinetics, the driver calls `check_redo` ({{< code examples/run_hydro.cpp main >}}).
+2. `local_redo_flags` collects the six local flags ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}}); `reduce_redo_flags`
+   reduces them with `MAX` and builds the mask ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}}).
 3. `apply_redo` logs the causes, increments the count, restores or stops, or on acceptance resets the count
-   ([`meshblock.cpp:1229-1276`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1229-L1276)).
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}).
 4. At the end `finalize` returns 1 when no normal stop reason applies, "Terminating abnormally"
-   ([`meshblock.cpp:1121-1140`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1121-L1140)).
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}).
 
 ### Tests
 
@@ -130,6 +130,6 @@ state.
 3. **Bad start states.** A species repair of a bad initial state requests a redo that no step can cure
    (chengcli/snapy#263, `sources/gh__ISSUE_THREADS_251-294.md`).
 4. **Signals.** Only the Mesh path checks signals, with `CheckSignalFlags`; the single-block path does not
-   ([`mesh.cpp:426-429`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/mesh.cpp#L426-L429)).
+   ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}).
 5. **No gradual recovery.** An accepted step resets $r$ to 0, so the step after a redo goes straight back to the
    full bound.

@@ -40,14 +40,14 @@ $$
 $$
 
 with $x_{1,\mathrm{top}}$ the upper face of the block, and for a bottom layer the distance is
-$x_{1,i-1/2}-x_{1,\mathrm{bot}}$ (`eta` in the code; [`top_sponge_lyr.cpp:58-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L58-L61), [`bot_sponge_lyr.cpp:58-61`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L58-L61)).
+$x_{1,i-1/2}-x_{1,\mathrm{bot}}$ (`eta` in the code; {{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}}, {{< code src/forcing/bot_sponge_lyr.cpp BotSpongeLyrImpl::forward >}}).
 One stage adds
 
 $$
 \Delta m_a = -\frac{\Delta t}{\tau}\,\sin^2\!\big(\tfrac{\pi}{2}\zeta_i\big)\,\rho_i\,g_{ab}v^b_i
 $$ {#eq-ch09-sponge-drag}
 
-to the three momentum rows and nothing to the energy (`force`, [`top_sponge_lyr.cpp:62-73`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L62-L73)). Because the
+to the three momentum rows and nothing to the energy (`force`, {{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}}). Because the
 distance is measured from each cell's *lower* face, the bottom cell of a bottom sponge has $\zeta=1$, while the top
 cell of a top sponge has $\zeta = 1 - h/w$ [check `src/snapy_report/ch09/sponge_check.py`, output
 `sponge_check.out`, `[C1]`: scale 0.8536 for $h/w=0.25$].
@@ -59,7 +59,7 @@ is therefore an energy-conserving drag with frictional heating, not a sink of to
 *Covariant lowering.* The primitive velocities $v^b$ are contravariant and the stored momenta $m_a$ covariant. On
 the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\theta_{jk}\ne0$, and
 `coord_vec_lower_impl` forms $f_2 = f^2 + \cos\theta\,f^3$, $f_3 = f^3 + \cos\theta\,f^2$
-([`coord_utils_impl.h:19-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L19-L24)). The lowered drag is antiparallel to the covariant momentum and its power
+({{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The lowered drag is antiparallel to the covariant momentum and its power
 $v^af_a = -\rho a\,g_{ab}v^av^b$ is negative for $|\cos\theta|<1$ (`[C3]`). Without the lowering the cross product of
 force and covariant momentum is $\cos\theta\,(v_3^2-v_2^2)$ per unit $\rho a$, non-zero away from the panel centres
 (`[C4]`: 0.455 at a corner with $\cos\theta=-\tfrac12$, $\mathbf v=(1, 0.3)$). On an orthogonal grid
@@ -82,26 +82,26 @@ make_fig()
 
 The drag is a cell source at every cell of the block, ghosts included; ghost increments are overwritten by the
 boundary fill. Only the block that owns the physical boundary applies it (`is_physical_boundary`,
-[`top_sponge_lyr.cpp:52`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L52)).
+{{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}}).
 It runs in every stage, explicit, in the forcing loop (@sec-ch09-framework).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| options | [`top_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L17-L34) | `TopSpongeLyrOptionsImpl::from_yaml` | `top-sponge-lyr` |
-| top drag | [`top_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L47-L76) | `TopSpongeLyrImpl::forward` | |
-| options | [`bot_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L17-L34) | `BotSpongeLyrOptionsImpl::from_yaml` | `bot-sponge-lyr` |
-| bottom drag | [`bot_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L47-L76) | `BotSpongeLyrImpl::forward` | |
-| lowering | [`coord_utils_impl.h:19-24`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/coord_utils_impl.h#L19-L24) | `coord_vec_lower_impl` | cubed sphere |
+| options | {{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrOptionsImpl::from_yaml >}} | `TopSpongeLyrOptionsImpl::from_yaml` | `top-sponge-lyr` |
+| top drag | {{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}} | `TopSpongeLyrImpl::forward` | |
+| options | {{< code src/forcing/bot_sponge_lyr.cpp BotSpongeLyrOptionsImpl::from_yaml >}} | `BotSpongeLyrOptionsImpl::from_yaml` | `bot-sponge-lyr` |
+| bottom drag | {{< code src/forcing/bot_sponge_lyr.cpp BotSpongeLyrImpl::forward >}} | `BotSpongeLyrImpl::forward` | |
+| lowering | {{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}} | `coord_vec_lower_impl` | cubed sphere |
 
 : Code map of the sponge layers. {#tbl-ch09-sponge-code}
 
-1. `from_yaml` requires $\tau>0$ and $w>0$ ([`top_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L17-L34),
-   [`bot_sponge_lyr.cpp:17-34`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L17-L34)).
+1. `from_yaml` requires $\tau>0$ and $w>0$ ({{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrOptionsImpl::from_yaml >}},
+   {{< code src/forcing/bot_sponge_lyr.cpp BotSpongeLyrOptionsImpl::from_yaml >}}).
 2. `forward` returns unless the block owns the physical boundary, forms $\zeta$ and the $\sin^2$ scale, builds the
-   force from $\rho v^b$, lowers it and subtracts it ([`top_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/top_sponge_lyr.cpp#L47-L76),
-   [`bot_sponge_lyr.cpp:47-76`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/forcing/bot_sponge_lyr.cpp#L47-L76)).
+   force from $\rho v^b$, lowers it and subtracts it ({{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}},
+   {{< code src/forcing/bot_sponge_lyr.cpp BotSpongeLyrImpl::forward >}}).
 
 ### Tests
 
