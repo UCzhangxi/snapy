@@ -96,6 +96,10 @@ def check(root, *extra):
     " The test passes at the head on CPU.",
     " The digest is compared against its base.",
     " The implicit part was moved into the VIC operator by a later change.",
+    # the three forms of the editor's sign-off on #60
+    " The face value was previously taken from the cell centre.",
+    " In an earlier version the slope was one-sided.",
+    " The limiter used to clip the density at zero.",
 ])
 def test_history_red(tmp_path, text):
     root = make(tmp_path, ch01_extra=text)
@@ -114,6 +118,10 @@ def test_history_red(tmp_path, text):
     " Now consider the second face.",
     " The variable `pr` is the pressure.",
     " The column is mixed until the mixture is non-negative.",
+    # "used to" in its passive and purpose uses, found in the book at tech-report 00b58d57
+    " This draft performs no registered CTest run, and a visible GPU is not used to infer CUDA support.",
+    " The flux limiter is used to bound the face states.",
+    " The weights are often used to compute the face average.",
 ])
 def test_history_green_for_physics_wording(tmp_path, text):
     root = make(tmp_path, ch01_extra=text)
@@ -323,6 +331,18 @@ def test_check_base_ref_rejects_a_hand_raised_baseline(tmp_path):
     (root / "code_pin.yml").write_text(f"repo: chengcli/snapy\nsha: {'1' * 40}\n")
     assert rg.main(["--root", str(root), "update"]) == 0
     assert check(root, "--base-ref", "base") == 0
+
+
+def test_check_base_ref_fails_loudly_when_it_names_no_commit(tmp_path, capsys):
+    root = make(tmp_path)
+    assert rg.main(["--root", str(root), "update"]) == 0
+    git(root, "init", "-q")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "base")
+    assert check(root, "--base-ref", "HEAD") == 0
+    # a mistyped or unfetched target must not turn the baseline protection off
+    assert check(root, "--base-ref", "origin/no-such-branch") == 1
+    assert "names no commit" in capsys.readouterr().out
 
 
 # ---- owners -------------------------------------------------------------------------------------------------
