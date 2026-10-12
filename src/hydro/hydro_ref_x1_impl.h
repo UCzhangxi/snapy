@@ -83,14 +83,10 @@ inline DISPATCH_MACRO T hydro_ref_x1_wall_rop(T r0, T r1, int k) {
 //! bias; a repeated wall cell is exact only for constant rho/p and leaves an
 //! O(dz) error at the first faces (docs/derivations/wb-ref-wall.md). Only
 //! owned cells are read.
-template <typename T>
-inline DISPATCH_MACRO T hydro_ref_x1_rop_smooth(T const* w, int ncells,
-                                                int flat, int nc1, int i,
-                                                int jlo, int jhi, bool ext_lo,
-                                                bool ext_hi) {
-  auto rop = [&](int j) {
-    return w[IDN * ncells + flat + j] / w[IPR * ncells + flat + j];
-  };
+template <typename T, typename Rop>
+inline DISPATCH_MACRO T hydro_ref_x1_rop_smooth_with(Rop const& rop, int i,
+                                                     int jlo, int jhi,
+                                                     bool ext_lo, bool ext_hi) {
   T v[5];
   for (int m = -2; m <= 2; ++m) {
     int j = i + m;
@@ -108,10 +104,22 @@ inline DISPATCH_MACRO T hydro_ref_x1_rop_smooth(T const* w, int ncells,
 }
 
 template <typename T>
+inline DISPATCH_MACRO T hydro_ref_x1_rop_smooth(T const* w, int ncells,
+                                                int flat, int nc1, int i,
+                                                int jlo, int jhi, bool ext_lo,
+                                                bool ext_hi) {
+  auto rop = [&](int j) {
+    return w[IDN * ncells + flat + j] / w[IPR * ncells + flat + j];
+  };
+  return hydro_ref_x1_rop_smooth_with<T>(rop, i, jlo, jhi, ext_lo, ext_hi);
+}
+
+template <typename T>
 inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
     T const* w, T const* dx1f, T const* psf_lo, T const* psf_hi, T* pref,
     T* dsf, T* dref, int column, int i, int ncolumns, int nc1, int iu, T grav,
-    bool uniform, bool phys_in, bool phys_out, bool wall_clamp) {
+    bool uniform, bool phys_in, bool phys_out, bool wall_clamp,
+    T const* rs_all = nullptr) {
   int ncells = ncolumns * nc1;
   int flat = column * nc1;
   int il = nc1 - 1 - iu;
@@ -190,12 +198,16 @@ inline DISPATCH_MACRO void hydro_ref_x1_cell_impl(
   int jhi = (wall_clamp && phys_out) ? iu : nc1 - 1;
   bool ext_lo = wall_clamp && phys_in && il + 1 <= iu;
   bool ext_hi = wall_clamp && phys_out && iu - 1 >= il;
-  T rs = hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i, jlo, jhi, ext_lo,
-                                 ext_hi);
-  T rf = i > 0 ? T(0.5) * (hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i - 1,
-                                                   jlo, jhi, ext_lo, ext_hi) +
-                           rs)
-               : rs;
+  // SNAP_REF_X1_SMEM: rs_all holds every cell's smoothed rho/p, computed
+  // once per cell by the same expression, instead of twice per cell here
+  T rs = rs_all ? rs_all[i]
+                : hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i, jlo, jhi,
+                                          ext_lo, ext_hi);
+  T rsm = i > 0 ? (rs_all ? rs_all[i - 1]
+                          : hydro_ref_x1_rop_smooth(w, ncells, flat, nc1, i - 1,
+                                                    jlo, jhi, ext_lo, ext_hi))
+                : T(0);
+  T rf = i > 0 ? T(0.5) * (rsm + rs) : rs;
   dref[flat + i] = cell_pref * rs;
   dsf[flat + i] = lo * rf;
 }
@@ -212,6 +224,18 @@ inline DISPATCH_MACRO void hydro_ref_x1_impl(
                            ncolumns, nc1, iu, grav, uniform, phys_in, phys_out,
                            wall_clamp);
   }
+}
+
+//! the bounds hydro_ref_x1_cell_impl gives the smoothing window
+inline DISPATCH_MACRO void hydro_ref_x1_window(int nc1, int iu, bool phys_in,
+                                               bool phys_out, bool wall_clamp,
+                                               int* jlo, int* jhi, bool* ext_lo,
+                                               bool* ext_hi) {
+  int il = nc1 - 1 - iu;
+  *jlo = (wall_clamp && phys_in) ? il : 0;
+  *jhi = (wall_clamp && phys_out) ? iu : nc1 - 1;
+  *ext_lo = wall_clamp && phys_in && il + 1 <= iu;
+  *ext_hi = wall_clamp && phys_out && iu - 1 >= il;
 }
 
 }  // namespace snap
