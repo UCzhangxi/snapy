@@ -90,6 +90,23 @@ also on CUDA, which on more than one rank.
 Known limits, failure modes, untested combinations, open issues, each with its evidence or "not measured".
 ```
 
+**One narrow exception: a section that documents code which is not reachable.** Some of the tree is present but
+cannot run — a directory that the build does not compile, a module the parser accepts but never installs, a
+mechanism reachable only through an option the code refuses. A section whose whole subject is *that the thing
+does not run* has no scheme to describe, so the six layers would be six empty headings. Such a section may be a
+short piece of prose with no layer headings, and it must:
+
+1. **say so in its own title** — "not built", "accepted by the parser, never installed", or the like;
+2. **prove it from the code at the pin**, citing the specific place that makes it unreachable (the build file
+   that omits the directory, the branch that refuses the type), not merely asserting it;
+3. **say where the behaviour a reader expected actually lives**, or that it lives nowhere;
+4. **stay short**. It is a signpost, not a chapter.
+
+This is an exception for *unreachable code*, not for unfinished writing. A scheme that runs takes all six
+layers however thin they are, and "the Tests layer is pending" is a to-do (section 11.1), never grounds for
+dropping the headings. `book/chapters/09-diffusion-forcing/_turbulence.qmd` and `_plume.qmd` are the worked
+examples.
+
 Rules for the layers:
 
 - **Summary** fits on one screen: the "At a glance" box and at most three paragraphs. It states the default
@@ -151,7 +168,13 @@ citation resolves there and lists the symbols whose body changed so their claims
 the current pin. That table is **provenance, not a citation**: it records what three files said at one past
 commit, which is evidence that cannot be stated without the shas. It is never a source to read the pin from, it
 is not updated when the pin moves, and nothing else in this guide or in any `.qmd` may restate a sha on the same
-excuse. A sha anywhere else in prose is still a defect.
+excuse.
+
+**So where may a sha be written at all?** Exactly four places, and nowhere else: `code_pin.yml`, which is the
+pin; a PROVENANCE block, which records what a section was written against; a `[source: ...]`, `[sha: ...]` or
+`[^label]:` provenance footnote; and the change-history table named above. A URL for a package with no code
+pin carries its sha inside the link, which is the link's own form (section 10.6), not prose. **A sha in body
+prose, outside those four, is a defect** — including in this guide, which holds itself to the same list.
 
 A sha written anywhere else is a copy, and copies go stale. They had. Read at tech-report
 `f38085bb02c2043b7002bfeb85a47601f52cc2d7`, three files stated a snapy pin, and the two prose copies agreed
@@ -252,8 +275,9 @@ paragraph they touch and does not sweep the rest of the book in a content PR.
   publication". The editor re-reads every such statement against the note's branch tip as the last step before
   each release render, and the author either removes the statement or re-pins it. The same applies to any
   sentence that says a defect was "flagged to its author".
-- Pull requests and issues, **in a PROVENANCE block or a `[source: ...]` footnote only**, never in prose:
-  `chengcli/snapy#NNN` or `UCzhangxi/snapy#NNN`, always with the owner/repo.
+- Pull requests and issues, **in a PROVENANCE block, a `[source: ...]` footnote or a markdown `[^label]:`
+  footnote definition only**, never in prose: `chengcli/snapy#NNN` or `UCzhangxi/snapy#NNN`, always with the
+  owner/repo.
 - Commit: `snapy@<full-sha>`, the full 40 characters, with its subject line in quotes when the subject carries
   the meaning. A short sha appears nowhere in a rendered file: it is not stable as the repository grows and
   `git fetch` does not accept it. Where a short form is wanted for reading, write the full sha and let the link
@@ -372,13 +396,26 @@ src/snapy_report/figstyle.py                    # shared style: palette, fonts, 
 ### 6.2 Look
 - Size: full width 6.2 in (the PDF text width), half width 3.05 in; height as needed. Vector output (SVG for HTML, PDF for
   the PDF; section 10.4); no raster line drawings.
-- Fonts: whatever `snapy_report.figstyle` sets, which is the one figure font stack and is not restated per
-  figure — **serif text with STIX, not sans**: `font.family: serif`, `font.serif: ["STIXGeneral",
-  "DejaVu Serif"]` (DejaVu Serif is the fallback, not the choice) and `mathtext.fontset: stix`, at 9 pt for
-  text and labels and 8 pt for ticks, annotations and legends
-  (`src/snapy_report/figstyle.py:33-43`, with the same values set as package defaults in
+- Fonts: whatever `snapy_report.figstyle` sets, which a figure never restates for itself — **serif text with
+  STIX, not sans**: `font.family: serif`, `font.serif: ["STIXGeneral", "DejaVu Serif"]` (DejaVu Serif is the
+  fallback, not the choice) and `mathtext.fontset: stix`, at 9 pt for text and labels and 8 pt for ticks,
+  annotations and legends (`src/snapy_report/figstyle.py:33-43`, with the same values as package defaults in
   `src/snapy_report/__init__.py:11-16`). Fonts embed as TrueType, `pdf.fonttype: 42`.
   Do not depend on a TeX installation: this is matplotlib's own mathtext, not LaTeX.
+
+  **Two chapter modules do not follow this yet, and a reader should not be told otherwise.** Measured in the
+  tree as this was written, `grep -rnE 'font\.family|mathtext\.fontset' src/snapy_report/`:
+
+  | module | what it sets | diverges in |
+  |---|---|---|
+  | `src/snapy_report/figstyle.py:33-35`, `__init__.py:13-15` | `serif` / `STIXGeneral` / `stix` | — the rule above |
+  | `src/snapy_report/ch05/_style.py:39,41` | `DejaVu Sans` / `dejavusans` | font family and mathtext |
+  | `src/snapy_report/ch09/_style.py:37` | `DejaVu Sans` (mathtext not set) | font family |
+
+  These two are **named exceptions of record, not permission**: no new chapter module may add a third stack,
+  and a chapter that is rewritten moves onto `figstyle`. `ch05/_style.py:32-33` also sets its widths to
+  `SINGLE = 3.4` and `DOUBLE = 7.0` while its own docstring calls them "the two widths of STYLE 6.2"; section
+  6.2 gives 3.05 in and 6.2 in, so that docstring is wrong whichever widths are eventually chosen.
 - Palette: Okabe-Ito, colour-blind safe, used in this order and with these meanings across the report where
   applicable:
 
@@ -637,13 +674,18 @@ files, so every construct below must work in both. When in doubt, render both an
   grep -rlE  'https://github\.com/chengcli/snapy/blob/(e894700ff7aee30b52882e5202b16461413780b0|9ad0936779ae001dba65c9eafccaa7c058686c97)/'       book --include='*.qmd' | wc -l   # 99
   ```
 
-  **563 links across 99 `.qmd` files.** Every one of them is a row in `reviews/code-anchors-unmapped.tsv`
-  (620 rows, 563 of them snapy at those two shas), which is the **register** of this debt.
+  **The count is a measurement, not a constant written here.** It falls as chapters are rewritten, so re-run
+  the commands rather than quoting this paragraph. The reading as this section was written was **560 links
+  across 97 `.qmd` files on tech-report `81e6984bb70c2a59aa68c5dd69c3dc7aaaa4d6e5`**; a branch that predates a
+  conversion will read higher and one that follows it lower.
 
-  The rule on it is a **ratchet: the count may fall and must never rise.** A PR that adds a snapy link at a
-  non-pin sha is rejected even though 563 already exist; a PR that converts some to the shortcode lowers the
-  count and removes their rows from the register. Converting the remaining 99 files is a **separate migration**
-  and is deliberately not done inside a style change.
+  `reviews/code-anchors-unmapped.tsv` is the **register**: one row per link, and it is the authority on which
+  links are declared. A link that is not in the register is not covered by this clause.
+
+  The rule is a **ratchet: the count may fall and must never rise.** A PR that adds a snapy link at a non-pin
+  sha is rejected however many already exist; a PR that converts some to the shortcode lowers the count and
+  removes their rows from the register. Converting the remaining files is a **separate migration** and is
+  deliberately not done inside a style change.
 - The link below is the form for a repository with **no code pin** (kintera, pyharp, pydisort, commux —
   section 3.1, "Open slots"), and for the registered passages above — and nowhere else. Its text is
   `basename:lines` and its target is the file at a full sha on GitHub:
@@ -654,17 +696,26 @@ files, so every construct below must work in both. When in doubt, render both an
 
   The full path and the sha are in the URL, not in the link text. Where two files share a basename, add the last
   directory (`hydro/hydro.cpp:120-140`). A Code table holds this link form only for a package with no code
-  pin; for snapy it holds the shortcode. Its "symbol" column holds the anchor of section 3.1. The pins are defined in section 3.1. The
-  editor's pin-mover script rewrites every URL when the pin moves and re-resolves each range by its anchor
-  (section 3.1), and `tools/check_citations.py` checks every link (file, lines and anchor at the sha).
-- A citation is never abbreviated to a bare `:lines`. Every citation, including the second and tenth to the same
-  file, is a full link with the link text `basename:lines`. Repetition is the point: a reader opens the book at
-  one page. Where a walk-through cites the same file many times, the numbered list of section 10.7 carries one
-  link per step.
+  pin; for snapy it holds the shortcode. Its "symbol" column holds the anchor of section 3.1.
+
+  **How the pin moves, now that snapy is cited by symbol.** There is no URL-rewriting script for snapy: a
+  shortcode carries no sha, so moving the pin is editing one line of `code_pin.yml`, and
+  `python3 tools/code_anchors.py bump <full-sha>` does it — it refuses the move while any citation fails to
+  resolve at the new sha and lists the cited symbols whose body changed, so their claims can be re-read
+  (section 11.2). The links in this bullet are the exception that still carries a sha in the text: a package
+  with no code pin moves when a human changes it, and `tools/check_citations.py` checks those links (file,
+  lines and anchor at the sha). It has no knowledge of `code_pin.yml` and resolves every sha by clone or
+  fetch, so its count depends on whether it can reach those repositories.
+- **Repetition is the point, in either form**: a reader opens the book at one page, so the second and tenth
+  citation to the same file are written out in full like the first. For snapy that means the shortcode again,
+  never a bare "as above"; for a package with no code pin it means a full link with the text `basename:lines`,
+  never an abbreviation to a bare `:lines`. Where a walk-through cites the same file many times, the numbered
+  list of section 10.7 carries one citation per step.
 - Code excerpts: only when the text discusses the lines, at most 15 lines, in a fenced block with its language
   (`cpp`, `python`, `yaml`) and the citation link in the sentence before it. No line numbers inside the block;
   the link carries them.
-- Pull requests and issues: `[chengcli/snapy#296](https://github.com/chengcli/snapy/issues/296)`.
+- Pull requests and issues, **in a PROVENANCE block or a source footnote only** and never in prose
+  (section 3.2): `[chengcli/snapy#296](https://github.com/chengcli/snapy/issues/296)`.
 
 ### 10.7 Callouts and boxes
 - The Summary layer opens with one `::: {.callout-note title="At a glance"}` box: what the scheme does, the switch,
@@ -675,7 +726,8 @@ files, so every construct below must work in both. When in doubt, render both an
   gives each kind its own colour, a light tint and a left bar, so a reader can scan for them:
   - `::: {.callout-note title="..."}`: definition or derivation, and the Summary's "At a glance" box. Titles:
     "At a glance", "Definition", "Derivation".
-  - `::: {.callout-tip title="Code"}`: code anchor, the `basename:lines` links a passage rests on, with the symbol
+  - `::: {.callout-tip title="Code"}`: code anchor, the citations a passage rests on — the shortcode for snapy,
+    a `basename:lines` link for a package with no code pin — with the symbol
     and the switch.
   - `::: {.callout-important title="Check"}` (or `"Test"`): a check or test, with its name and tolerance.
   - `::: {.callout-warning title="Limits"}` (or `"Open issue"`): limits and open issues.
