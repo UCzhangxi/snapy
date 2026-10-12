@@ -1,5 +1,20 @@
 # Style guide for the snapy Technical Report
 
+## 0. Audience
+
+The target reader of the whole book is a first-year PhD student from another group, with a general physics
+and numerics background. They have no snapy experience and no atmospheric-model code behind them.
+
+If that reader cannot follow a section, they cannot use our code. Every section must let them understand
+what the piece does, why it is there, and how to use it.
+
+Writers test each section against that reader. If a step needs knowledge they would not have, write the step
+out or point to where it is explained.
+
+"Would that reader follow this?" is the first question of every review.
+
+---
+
 This file is binding for every chapter author. The worked example is
 `chapters/06-gravity-energy/D_face_work_pe.md`; it is a **pre-conversion draft**, so sections 1-9 bind it in
 full but section 10 (Quarto markup) does not. A pre-conversion draft may hand-number its equations
@@ -37,6 +52,20 @@ notation, 6 figures, 7 executable checks, 8 directory layout, 9 review checklist
 - Source format: Quarto (`.qmd`, Pandoc markdown with LaTeX math), rendered to an HTML site and a PDF from the same
   files. Section 10 gives the markup rules; they are binding. Wrap at about 120 characters.
 - Physics is written as connected prose. Bullets are for procedures, lists of switches and checklists only.
+
+### 1.1 Readability
+
+These rules help the reader follow each section and use the code. Readability is checked in every review.
+
+- Each section opens with a plain-language paragraph explaining what the piece does and why, before any symbol.
+- Write derivations out in full, with every intermediate step on its own numbered or aligned line.
+  Never write "it follows that" or "one can show" without the steps. State each assumption where it is used.
+- Define every symbol at first use in the section, with units.
+- Keep "At a glance" box fields short. Put long evidence (test names, check commands, versions) in the section's
+  Evidence/Verification subsection, and keep one line in the box pointing there.
+- Keep sentences under about 30 words, with one idea per paragraph.
+- Readability is a review gate with the same weight as correctness. A hard-to-read section, a skipped derivation
+  step or an undefined symbol is a `changes` verdict, with the paragraph cited.
 
 ## 2. The six-layer scheme template
 
