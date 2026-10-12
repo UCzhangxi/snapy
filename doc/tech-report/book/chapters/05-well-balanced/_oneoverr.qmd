@@ -1,8 +1,8 @@
 ## The $1/R$ remainder on spherical-polar grids: what is left after the corrections (no switch) {#sec-ch05-oneoverr}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 5.9; docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0 §6;
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
+sources: OUTLINE.md 5.9; docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §6;
          sources/study__next-1overR_README.md §§0-3; sources/gw__ONEOVERR_split_RESULT.md §§1-2;
          sources/study__next-1overR-remainder_README.md §§0-4; ISSUES.md item 5
 status: draft
@@ -25,9 +25,11 @@ divergence adds a $2/r$ factor to every flux error. The covariance corrections o
 of @sec-ch05-x1cent remove the leading such terms of the face fluxes, the reference and the pressure force. What remains
 is not a defect of any map but of an input: the $x_1$ velocity the maps reconstruct is a ratio of two $r^2$ means, not a
 mean, and the conversion of @eq-ch05-x1cent-conv makes means plain, not ratios exact. This section records that
-remainder, its signature, and what evidence exists for it at the pin; it has no code of its own.
+remainder, its signature, and what evidence exists for it; it has no code of its own.
 
-*Aliases.* "the 1/R term", "leg (d)" of #289; "hypothesis H1" in `sources/gw__ONEOVERR_split_RESULT.md`.
+*Aliases.* "the 1/R term"; "leg (d)" and "hypothesis H1" in the sources.[^ch05-1r-alias]
+
+[^ch05-1r-alias]: Leg (d) of chengcli/snapy#289; hypothesis H1 of `sources/gw__ONEOVERR_split_RESULT.md`.
 
 ### Derivation
 
@@ -44,11 +46,13 @@ $r^2$ measure (this paragraph only: primes are $r$-derivatives; derived for line
 sympy). The conversion of @eq-ch05-x1cent-conv treats $\tilde w$ as an $r^2$ mean and so removes the $\delta_iw'$ part;
 the covariance part stays. Reconstructing the converted value with weights for plain means therefore leaves an $O(h^2)$
 face error, which the $2/r$ of the radial divergence turns into an $O(h^2/R)$ tendency. The
-same holds for $T=p/\rho$ and for $\rho/p$ inside the reference filter. The expansion follows
-`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §6; the harness and the
-$+g/(6c_pR)$ signature of the remainder in the effective stratification are in `sources/study__next-1overR_README.md`
-§§0-3, and the completeness of the face fluxes to $O(h^4)$ including $h^2/R$ is
-`sources/gw__ONEOVERR_split_RESULT.md` §§1-2.
+same holds for $T=p/\rho$ and for $\rho/p$ inside the reference filter. The remainder shows in the effective
+stratification with the signature $+g/(6c_pR)$, and the face fluxes are complete to $O(h^4)$ including
+$h^2/R$.[^ch05-1r-src]
+
+[^ch05-1r-src]: The expansion follows `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §6; the harness and the
+    signature are in `sources/study__next-1overR_README.md` §§0-3; the completeness of the face fluxes is
+    `sources/gw__ONEOVERR_split_RESULT.md` §§1-2.
 
 *Exact and truncated.* The remainder is $O(h^2/R)$ and vanishes for $R\to\infty$ (Cartesian).
 
@@ -67,21 +71,25 @@ from snapy_report.ch05.fig_oneoverr_favre import make_fig
 make_fig()
 ```
 
-The measured remainder comes from a closure run in snapy at the pin (ISSUES.md item 5), plotted in
-the figure @fig-ch05-oneoverr-remainder. The run is `src/snapy_report/ch05/run_oneoverr_remainder.py`, the
+The remainder in @fig-ch05-oneoverr-remainder comes from a closure run in snapy on code before the pin; it is not
+measured at the pin.[^ch05-1r-run] The run is `src/snapy_report/ch05/run_oneoverr_remainder.py`, the
 spherical-polar counterpart of the Cartesian one-step harness `test_horizontal_flux_covariance`. It sets up an
 isentropic column of depth $H$ at radius $R$ with an anelastic roll in $\phi$, runs one RK3 step with cell gravity work
 and `SNAP_FLUX_COVARIANCE` on, and projects the entropy tendency on the seeded $w$ with unit weight per cell. The quantity
 is $R[\varepsilon n_1^2(R)-\varepsilon n_1^2(\infty)]$, where $\varepsilon n_1^2(\infty)$ is the same column in
 Cartesian geometry with the same switches; the switch implies `SNAP_WB_REF4`, which acts in Cartesian too. With the
-switch on, the $1/R$ content is $+0.0004$ to $+0.0006$ for $R/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is constant
-in $R$, so the remainder is $O(1/R)$, and it changes little with $n_1$, so it is $O(h^2)$; it decreases slowly toward
-$+0.0004$ as $n_1$ grows. With the switch off it is $-0.027$ to $-0.031$ for $R/H \ge 40$ and $n_1 \ge 64$, fifty to
-eighty times larger, and it shrinks at small $R/H$ through a term of higher order in $1/R$.
+switch on, the $1/R$ content in that run is $+0.0004$ to $+0.0006$ for $R/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is
+constant in $R$, so the remainder is $O(1/R)$, and it changes little with $n_1$, so it is $O(h^2)$; it decreases slowly
+toward $+0.0004$ as $n_1$ grows. With the switch off it is $-0.027$ to $-0.031$ for $R/H \ge 40$ and $n_1 \ge 64$,
+fifty to eighty times larger, and it shrinks at small $R/H$ through a term of higher order in $1/R$.
+
+[^ch05-1r-run]: Data `src/snapy_report/ch05/data/oneoverr_remainder.json` from `src/snapy_report/ch05/run_oneoverr_remainder.py`
+    (ISSUES.md item 5). The flux-covariance code the run switches on has changed between that run and the pin, so the
+    values may differ at the pin.
 
 ```{python}
 #| label: fig-ch05-oneoverr-remainder
-#| fig-cap: "The $1/R$ content of the one-step effective stratification, $(R/H)\\,[\\varepsilon n_1^2(R) - \\varepsilon n_1^2(\\infty)]$ [-], against $R/H$ [-], with `SNAP_X1_CENTROID_EXACT` off (a) and on (b), for $n_1$ = 32 to 256. The reference $\\varepsilon n_1^2(\\infty)$ is the same column in Cartesian geometry with the same switches. Error bars: half the spread over seed amplitudes 0.9, 1.0 and 1.1 times $10^{-4}$, the round-off magnified by $R$. One RK3 step of `run_oneoverr_remainder.py` against a source build of chengcli/snapy e894700ff7aee30b52882e5202b16461413780b0, CPU, double, one rank."
+#| fig-cap: "The $1/R$ content of the one-step effective stratification, $(R/H)\\,[\\varepsilon n_1^2(R) - \\varepsilon n_1^2(\\infty)]$ [-], against $R/H$ [-], with `SNAP_X1_CENTROID_EXACT` off (a) and on (b), for $n_1$ = 32 to 256. The reference $\\varepsilon n_1^2(\\infty)$ is the same column in Cartesian geometry with the same switches. Error bars: half the spread over seed amplitudes 0.9, 1.0 and 1.1 times $10^{-4}$, the round-off magnified by $R$. One RK3 step of `run_oneoverr_remainder.py` on code before the pin, CPU, double, one rank; not measured at the pin."
 #| fig-alt: "Two panels against R/H from 5 to 1000 on a log axis. Left, switch off: four curves for n1 from 32 to 256 fall together from about -0.005 at R/H 5 to about -0.03 at R/H 160 and above. Right, switch on: the curves lie flat between +0.0004 and +0.0011, closer to +0.0004 for larger n1; the R/H 1000 points carry large error bars."
 #| echo: false
 from snapy_report.ch05.fig_oneoverr_remainder import make_fig
@@ -109,8 +117,8 @@ No dedicated code. The pieces it depends on are listed in their own sections.
 : Tests of the $1/R$ remainder. {#tbl-ch05-oneoverr-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** The closure run at the pin, `src/snapy_report/ch05/run_oneoverr_remainder.py`, with its data in
-`data/oneoverr_remainder.json`, gives @fig-ch05-oneoverr-remainder. With the switch on, $R/H = 5$ to $160$, the $1/R$
+**Evidence.** Not measured at the pin. The closure run on code before the pin, `src/snapy_report/ch05/run_oneoverr_remainder.py`,
+with its data in `data/oneoverr_remainder.json`, gives @fig-ch05-oneoverr-remainder. With the switch on, $R/H = 5$ to $160$, the $1/R$
 content is $+0.00051$ to $+0.00063$ at $n_1 = 64$, $+0.00043$ to $+0.00048$ at $n_1 = 128$ and $+0.00038$ to
 $+0.00042$ at $n_1 = 256$. With the switch off it reaches $-0.0303$, $-0.0305$ and $-0.0306$ at $R/H = 160$. At
 $R/H = 1000$ the round-off, magnified by $R$, is $7\times10^{-5}$ to $7\times10^{-4}$ for $n_1 \ge 64$. Per ISSUES.md
@@ -126,6 +134,7 @@ item 5 the derivation note's one-step numbers, from commits not in snapy, are no
    metric carries its own $1/R$ across the column's error profile and does not measure the scheme's term (same note,
    §6).
 3. **Gravity-work interplay.** The face-form gravity work and its curvature flux on radial grids contribute their own
-   $1/R$ content; that is @sec-ch06 (`sources/study__next-1overR-remainder_README.md` §§0-4).
-4. **Stale references.** The study READMEs were written before chengcli/snapy#293 merged; their file and line references
-   do not match the pin.
+   $1/R$ content; that is @sec-ch06.[^ch05-1r-gw]
+4. **Source references.** The file and line references in the study READMEs do not match the pin.
+
+[^ch05-1r-gw]: `sources/study__next-1overR-remainder_README.md` §§0-4.

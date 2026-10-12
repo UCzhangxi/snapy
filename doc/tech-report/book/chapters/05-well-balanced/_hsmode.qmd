@@ -1,9 +1,9 @@
 ## Hydrostatic mode: gravity replaced by the cell's own pressure difference (`forcing/const-gravity/non-hydrostatic`) {#sec-ch05-hsmode}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 5.5; src/hydro/hydro_forward.cpp; src/forcing/const_gravity.cpp;
-         docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0 §4 (re-derived from the code)
+         docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §4 (re-derived from the code)
 status: draft
 -->
 
@@ -64,10 +64,12 @@ $0<n_h<1$ the force is the blend of the two forms.
 Under `SNAP_X1_CENTROID_EXACT` on spherical-polar grids the pressure force is
 $-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i$ with the source $S_i$ of @eq-ch05-x1cent-source, and $G$ takes
 the same operator on the cell's own states,
-$G_i=(A_{i+1/2}p^{L}_{i+1/2}-A_{i-1/2}p^{R}_{i-1/2})/V_i-S_i$, so the two cancel at rest again
-(`docs/derivations/x1-centroid-spherical.md@e894700ff7aee30b52882e5202b16461413780b0` §4). This form is the branch
+$G_i=(A_{i+1/2}p^{L}_{i+1/2}-A_{i-1/2}p^{R}_{i-1/2})/V_i-S_i$, so the two cancel at rest again.[^ch05-hs-note] This form
+is the branch
 that calls `x1_pressure_source`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+
+[^ch05-hs-note]: `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §4.
 
 *Exact and truncated.* Exact: the cancellation at rest, in both forms. Away from rest the momentum source has the
 accuracy of $p^{*}-p^{L,R}$, which depends on the reconstruction and the Riemann solver (@sec-ch04).
@@ -126,14 +128,16 @@ A value outside $[0,1]$ fails the `TORCH_CHECK` of step 1. There is no warning.
 : Tests of the hydrostatic mode. {#tbl-ch05-hsmode-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** At the pin, `test_hydrostatic` prints a maximum spurious vertical velocity after 100 steps of
-$7.84\times10^{-15}$, and the $n_h=0$ rows of `test_x1_centroid_rest` read, switch off and on, $6.0\times10^{-8}$ and
-$8.3\times10^{-15}$ (interior, $r_0/H=5$, explicit) [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test
-files; run: `ctest -V` and `python tests/test_x1_centroid_rest.py` against the pin's build, 2026-10-10, CPU, double,
-1 rank].
+**Evidence.** Not run at the pin (**pending: a pinned ctest run**); the values of an earlier run are in the
+footnote.[^ch05-hs-run] The cancellation at rest is checked by `[C19]`.
 **Coverage.** CPU; CUDA twins exist and were not run (**pending: a CUDA run at the pin**); 2 ranks through the seam
 tests. No test measures the mode away from rest.
 :::
+
+[^ch05-hs-run]: In a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank, with `python tests/test_x1_centroid_rest.py` against that build: `test_hydrostatic`
+    maximum spurious vertical velocity after 100 steps $7.84\times10^{-15}$; the $n_h=0$ rows of
+    `test_x1_centroid_rest`, switch off and on, $6.0\times10^{-8}$ and $8.3\times10^{-15}$ (interior,
+    $r_0/H=5$, explicit). Not re-measured.
 
 ### Limits
 

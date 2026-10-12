@@ -1,7 +1,7 @@
 ## Legacy $x_1$ wall routines: isentropic wall ghosts and the wall-face state copy (no switch) {#sec-ch05-legacy}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 5.10; src/hydro/hydro.cpp; src/hydro/hydro_forward.cpp (described from the code)
 status: draft
 -->
@@ -18,9 +18,8 @@ of @sec-ch05-wbx1 runs instead, and the shallow-water EOS has no pressure row fo
 **Defining equation.** @eq-ch05-legacy-copy.
 :::
 
-Before the well-balanced reconstruction, a stratified column at a wall was handled by filling the ghost cells with an
-isentropic continuation of the wall cell and by making the two states at the wall face agree. Both routines are still
-in the code. The ghost fill's call in `HydroImpl::forward` is commented out; the face copy runs only on the $x_1$ path
+Two routines treat a stratified column at a wall without the well-balanced reconstruction: one fills the ghost cells
+with an isentropic continuation of the wall cell, the other makes the two states at the wall face agree. The ghost fill's call in `HydroImpl::forward` is commented out; the face copy runs only on the $x_1$ path
 taken when `wb_x1` is false and gravity is on, a combination no configuration reaches with a pressure row.
 
 ### Derivation
@@ -60,8 +59,10 @@ make_fig()
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
-| face copy, lower and upper | [`hydro.cpp:448-460`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L448-L460) | `_revise_x1outer_lr` | |
-| isentropic ghosts, lower and upper | [`hydro.cpp:462-500`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro.cpp#L462-L500) | `_revise_x1outer_ghost` | |
+| face copy, lower | {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}} | `_revise_x1inner_lr` | |
+| face copy, upper | {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1outer_lr >}} | `_revise_x1outer_lr` | |
+| isentropic ghosts, lower | {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_ghost >}} | `_revise_x1inner_ghost` | |
+| isentropic ghosts, upper | {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1outer_ghost >}} | `_revise_x1outer_ghost` | |
 | the commented-out call | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_revise_x1inner_ghost` | |
 | the only live call | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_revise_x1inner_lr` | `wb_x1` false, gravity on |
 

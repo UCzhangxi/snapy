@@ -1,9 +1,9 @@
 ## Wall clamp and the wall continuation of the default reference (`dynamics/wb-wall-clamp`) {#sec-ch05-wallclamp}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 5.3; src/hydro/hydro_ref_x1_impl.h; src/hydro/hydro_dispatch.cpp; src/hydro/hydro_options.cpp;
-         docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0 §§1-5; the wall-closure patches in
+         docs/derivations/wb-ref-wall.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §§1-5; the wall-closure patches in
          sources/team-notes/
 status: draft
 -->
@@ -32,9 +32,10 @@ clamped wall (and their ghost rows); $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$ and t
 applies with `SNAP_WB_REF4` off; with it on, @sec-ch05-wbref4 replaces the density reference with its own cubic wall
 values. `balance_column` refuses to run with the clamp off.
 
-*Aliases.* "wb-wall-clamp", "the wall closure", "linear/ln closure". The continuation arrived as three wall-closure
-patches (linear, then ln-linear, then the two branches), kept as raw notes in `sources/team-notes/` and squash-merged
-into the pin by chengcli/snapy#297.
+*Aliases.* "wb-wall-clamp", "the wall closure", "linear/ln closure".[^ch05-wall-src]
+
+[^ch05-wall-src]: Source and credit: three wall-closure patches (linear, then ln-linear, then the two branches), kept as
+    raw notes in `sources/team-notes/` and merged in chengcli/snapy#297.
 
 ### Derivation
 
@@ -56,8 +57,9 @@ and errors $\tfrac{23}{32}a$, $\tfrac7{32}a$, $\tfrac1{32}a$ and $0$ in the face
 faces 0 to 3 (`[C4]`, exact). Relative to $r$ these are fixed multiples of $(r'/r)\Delta x_1$, so the face density
 reference is first order at faces 0-2. The even-parity perturbation ghosts (@sec-ch05-wbx1) copy the bias of
 $\rho'=\overline\rho-\rho_{\mathrm{ref}}$ into the ghosts, so the solver's face densities there are first order too;
-the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is
-(`docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0` §3).
+the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is.[^ch05-wall-mirror]
+
+[^ch05-wall-mirror]: `docs/derivations/wb-ref-wall.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §3.
 
 #### The continuation
 
@@ -113,8 +115,12 @@ from snapy_report.ch05.fig_wallclamp_continuation import make_fig
 make_fig()
 ```
 
-The measured effect at the pin is @fig-ch05-wallclamp-order: next to both walls the face density reference falls at
-second order and stays below the largest interior error.
+@fig-ch05-wallclamp-order shows the effect in an earlier run, not repeated at the pin: next to both walls the face
+density reference falls at second order and stays below the largest interior error.[^ch05-wall-fig] The check
+rebuilds the same table from this section's equations at the pin's code (`[C11]`).
+
+[^ch05-wall-fig]: Data `src/snapy_report/ch05/data/wb_ref_wall_order.json`, printed by ctest
+    `test_wb_ref_wall.release` (`order_table`) in a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank.
 
 ```{python}
 #| label: fig-ch05-wallclamp-order
@@ -170,14 +176,9 @@ An unknown key in `dynamics` is refused by the key check of the options parser; 
 : Tests of the wall clamp and continuation. {#tbl-ch05-wallclamp-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** At the pin, `test_wb_ref_wall.release` prints the face errors of @fig-ch05-wallclamp-order and the
-observed orders 2.02, 2.03, 2.03 (bottom face 1: $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom
-face 2), 1.96, 1.81, 1.97 (top face 1) and 1.94, 1.94, 2.12 (top face 2), $n_1$ 32 $\to$ 64; on the isothermal column
-($\beta=0$) the wall faces carry no first-order term [sha `e894700ff7aee30b52882e5202b16461413780b0`; deck:
-`tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one pressure scale height; run:
-ctest `test_wb_ref_wall.release`, 2026-10-10, CPU, double, 1 rank; data `src/snapy_report/ch05/data/wb_ref_wall_order.json`].
-`test_face_floor` (all three arms), `test_hydro_ref_x1` and `test_straka_redo` pass in the same run.
-The check's rebuild reproduces all 40 printed numbers of that table to the printed four digits (`[C11]`). It also
+**Evidence.** Check numbers come from `wbref_check.py`; its rebuild of the reference at the pin's code reproduces
+all 40 numbers that `test_wb_ref_wall.release` printed in an earlier run, to the printed four digits
+(`[C11]`).[^ch05-wall-chk] The ctest entries were not run at the pin (**pending: a pinned ctest run**). It also
 shows that the test averages its cells over the full-precision column depth but writes `x1max` into the block's YAML
 with six significant digits, so the block's `dx1f`, which the scan uses, is $4.1\times10^{-7}$ relatively wider at
 $\beta=0.5$; with one consistent width the faces next to the bottom wall move by at most $2.6\times10^{-7}$ in
@@ -187,6 +188,14 @@ face-1 error $2.880\times10^{-3}$, $1.392\times10^{-3}$, $6.840\times10^{-4}$, $
 **Coverage.** CPU; the CUDA cases exist and were not run (**pending: a CUDA run at the pin**); the MPS path was not
 run (no MPS device; the derivation note says the same); multi-rank only through @sec-ch05-seam.
 :::
+
+[^ch05-wall-chk]: Run: `python3 src/snapy_report/ch05/wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double. The earlier
+    run is a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank; deck `tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one
+    pressure scale height. Its observed orders, not re-measured: 2.02, 2.03, 2.03 (bottom face 1:
+    $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom face 2), 1.96, 1.81, 1.97 (top face 1)
+    and 1.94, 1.94, 2.12 (top face 2), $n_1$ 32 $\to$ 64; on the isothermal column ($\beta=0$) the wall faces carry
+    no first-order term. `test_face_floor` (all three arms), `test_hydro_ref_x1` and `test_straka_redo` passed in the
+    same run.
 
 ### Limits
 
@@ -198,9 +207,13 @@ the second-order argument. With `wb-wall-clamp: false`, `balance_column` cannot 
 1. **Stretched grids.** The continuation, like the binomial, assumes uniform spacing. Not measured.
 2. **MPS.** The tensor path implements the same rule and is compared with the CPU path only when run on CPU.
 3. **Straka at CFL 1.6.** `test_straka_redo` is a robustness test past the stability limit. The derivation note's
-   ensembles (`docs/derivations/wb-ref-wall.md@e894700ff7aee30b52882e5202b16461413780b0` §5) were measured on the code
-   of the wall-closure commits, not at the pin, and its $\epsilon=10^{-4}$ ensemble does not separate the references;
-   the near-zero linear continuation as the cause of the linear form's failure there is a hypothesis of that note.
-4. **Stale text in the notes.** `docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1 still
-   describes the binomial as edge-replicated at a clamped wall; the code at the pin continues the ratio as above.
+   ensembles are not measured at the pin, and its $\epsilon=10^{-4}$ ensemble does not separate the
+   references;[^ch05-wall-straka] the near-zero linear continuation as the cause of the linear form's failure there is
+   a hypothesis of that note.
+4. **The derivation note differs from the code.** The note on the higher-order reference describes the binomial as
+   edge-replicated at a clamped wall; the code at the pin continues the ratio as above.[^ch05-wall-stale]
+
+[^ch05-wall-straka]: `docs/derivations/wb-ref-wall.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §5, measured on the code of the wall-closure patches.
+
+[^ch05-wall-stale]: `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §1.
 5. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

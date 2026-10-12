@@ -1,9 +1,9 @@
 ## Well-balanced $x_1$ reconstruction: perturbations about a hydrostatic reference (gravity on) {#sec-ch05-wbx1}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 5.1; src/hydro/hydro_forward.cpp; src/recon/reconstruct.cpp;
-         docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0 §§1, 6
+         docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5 §§1, 6
 status: draft
 -->
 
@@ -32,8 +32,10 @@ perturbation ghosts at a physical, non-outflow $x_1$ wall are filled with even p
 its density and pressure floors off; and a face value that comes out non-positive falls back to the reference
 pressure or to the density of the adjacent cell. The $x_2$ and $x_3$ sweeps have no such treatment.
 
-*Aliases.* "WB" or "well-balanced reconstruction" in comments and commit messages; the "base" reference of
-`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §1.
+*Aliases.* "WB" or "well-balanced reconstruction" in comments and commit messages; the "base" reference of the
+derivation note.[^ch05-wbx1-note]
+
+[^ch05-wbx1-note]: `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §1.
 
 ### Derivation
 
@@ -81,8 +83,9 @@ $$ {#eq-ch05-wbx1-rest}
 whatever the density reference is: with $v_1=0$ the face density enters no flux. Because $p_{\mathrm{ref}}$ is rebuilt
 from the state, @eq-ch05-wbx1-rest is a fixed-point condition on the column, which `balance_column` solves
 (@sec-ch05-balcol). On spherical-polar grids the face areas and the geometric pressure source enter the same
-cancellation; the plain-mean form is @sec-ch05-x1cent. The derivation follows
-`docs/derivations/wb-ref4.md@e894700ff7aee30b52882e5202b16461413780b0` §§1, 6.
+cancellation; the plain-mean form is @sec-ch05-x1cent.[^ch05-wbx1-deriv]
+
+[^ch05-wbx1-deriv]: The derivation follows `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §§1, 6.
 
 *Exact and truncated.* The rest balance is exact for any column satisfying @eq-ch05-wbx1-rest. Away from rest the
 face states carry the reconstruction's truncation error on the perturbation plus the offset
@@ -176,15 +179,18 @@ and @sec-ch05-wbref4.
 : Tests of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-tests}
 
 ::: {.callout-important title="Test"}
-**Evidence.** All entries above pass at the pin [sha `e894700ff7aee30b52882e5202b16461413780b0`; decks: the test
-files named; run: `ctest -V` of the chapter's 28 entries on a Release build of the pin, 2026-10-10, CPU, double,
-1 rank except the `_mp` entries (2 ranks)]. Printed values from that run: `test_hydrostatic` maximum spurious
-vertical velocity after 100 steps $7.84\times10^{-15}$; `test_face_floor` unresolved-column dipped-face mass flux
-$2.8319\times10^{-8}$ in the default, `_wb_ref4` and `_x1_centroid` arms; `test_wb_wall_corner` CPU corner errors 0.
+**Evidence.** Not run at the pin: these tests have not been run on a build of the pinned code (**pending: a pinned
+ctest run**). An earlier run's values are in the footnote.[^ch05-wbx1-run]
 **Coverage.** CPU only in that run (the build had CUDA off, so every `_cuda` case was skipped); the CUDA arms
 `face_floor_*_cuda` and `*_cuda` of `test_wb_wall_corner` exist and compare CUDA with CPU to $10^{-5}$ relative
 and exactly: **pending: a CUDA run at the pin**. Multi-rank: through the seam tests of @sec-ch05-seam only.
 :::
+
+[^ch05-wbx1-run]: All entries passed in a `ctest -V` of a Release build of snapy@e894700ff7aee30b52882e5202b16461413780b0, 2026-10-10, CPU, double, 1 rank except the `_mp` entries (2 ranks); the
+    reference kernels they exercise are unchanged between that commit and the pin. Printed values, not re-measured:
+    `test_hydrostatic` maximum spurious vertical velocity after 100 steps $7.84\times10^{-15}$; `test_face_floor`
+    unresolved-column dipped-face mass flux $2.8319\times10^{-8}$ in the default, `_wb_ref4` and `_x1_centroid`
+    arms; `test_wb_wall_corner` CPU corner errors 0.
 
 ### Limits
 
@@ -198,6 +204,8 @@ but not at the discrete fixed point @eq-ch05-wbx1-rest is not at rest.
    on a curved grid a stratified column is therefore balanced in $x_1$ only.
 2. **Floors off for the perturbation, but not for species.** The species clamp at zero still applies under the EOS
    limiter (table above). Not measured as a source of imbalance.
-3. **Moist columns.** No reference meets the floor of a moist column in every case; the choice of reference is a
-   parked study (chengcli/snapy#275) and there is no YAML key to choose it (chengcli/snapy#281).
+3. **Moist columns.** No reference meets the floor of a moist column in every case; the choice of reference is an
+   open study and there is no YAML key to choose it.[^ch05-wbx1-moist]
+
+[^ch05-wbx1-moist]: The study is chengcli/snapy#275; the missing key is chengcli/snapy#281.
 4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
