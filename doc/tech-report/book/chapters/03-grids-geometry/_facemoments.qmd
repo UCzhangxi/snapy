@@ -2,7 +2,8 @@
 
 <!-- PROVENANCE
 pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/coord/coordinate.cpp, src/coord/coordinate.hpp, src/coord/spherical_polar.cpp, src/coord/gnomonic_equiangle.cpp, docs/derivations/289-covariance-x3-curved.md, tests/test_radial_face_moments.cpp
+sources: src/coord/coordinate.cpp, src/coord/coordinate.hpp, src/coord/spherical_polar.cpp, src/coord/gnomonic_equiangle.cpp, docs/derivations/289-covariance-x3-curved.md, tests/test_radial_face_moments.cpp;
+         chengcli/snapy#308 PR body (commits 4 and 5, Evidence) for the zero-shift flag, at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (the #308 squash-merge)
 status: draft
 -->
 
@@ -16,9 +17,16 @@ $\int_{r_-}^{r_+} r^n\,\mathrm{d}r$ [m$^{n+1}$].
 ::: {.callout-note title="At a glance"}
 **What**: the exact $x_1$ second moment of an $x_2$/$x_3$ face and the exact distance between a cell's volume
 centroid and that face's centroid, in a cancellation-free form. **Switch**: read only when `SNAP_FLUX_COVARIANCE` is
-set (@sec-ch12-flux-covariance). **Default**: off (the helpers exist on every grid). **Requires**: nothing.
-**Order**: exact. **Defining equations**: @eq-ch03-facemoments-moment, @eq-ch03-facemoments-shift.
+set (@sec-ch12-flux-covariance). **Default**: off at the pin, on since chengcli/snapy#307 (the helpers exist on
+every grid). **Requires**: nothing. **Order**: exact. **Defining equations**: @eq-ch03-facemoments-moment,
+@eq-ch03-facemoments-shift. **Zero-shift flag** (main after chengcli/snapy#308): a host constant of the coordinate type
+that says the shift is identically zero, so the covariance skips its centroid parts; a tripwire test keeps the flag
+equal to the shift.
 :::
+
+Text and rows marked "main after chengcli/snapy#308" were checked against main at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; the rest of this section's text was checked at
+snapy@e894700ff7aee30b52882e5202b16461413780b0. Code citations resolve at the pin of `code_pin.yml`.
 
 The flux through an $x_2$ or $x_3$ face is a face average, weighted by the face's own area measure. On a Cartesian
 grid that weight is uniform in $x_1$; on the spherical-polar and cubed-sphere grids an $x_2$/$x_3$ face spans
@@ -77,6 +85,39 @@ the cell volume is the same $r^2$ integral times the solid angle (@sec-ch03-gnom
 though its `x1v` is the midpoint. They are evaluated when the covariance correction asks for them, in the stage, before
 the $x_2$/$x_3$ fluxes. @fig-ch03-facemoments-ratio plots both against $h/x^{\mathrm{m}}$.
 
+*The zero-shift flag (main after chengcli/snapy#308).* On the base measure the shift is zero by construction:
+`face_centroid_shift_x1` returns `zeros_like(dx1f)` unconditionally ({{< code src/coord/coordinate.cpp CoordinateImpl::face_centroid_shift_x1 >}}). Every centroid part
+of the covariance is then an exact zero, so since chengcli/snapy#308 the covariance asks a second virtual,
+`face_centroid_shift_zero` ({{< code src/coord/coordinate.hpp CoordinateImpl::face_centroid_shift_zero >}}), and skips those parts when it is true. It is a literal of the
+coordinate type, not a test of tensor contents: `true` in the base class, so Cartesian inherits it; `false` in
+`SphericalPolarImpl` (`face_centroid_shift_zero`, {{< code src/coord/spherical_polar.hpp SphericalPolarImpl::face_centroid_shift_zero >}}) and `GnomonicEquiangleImpl`
+(`face_centroid_shift_zero`, {{< code src/coord/gnomonic_equiangle.hpp GnomonicEquiangleImpl::face_centroid_shift_zero >}}), the two classes that override the shift; and `false` in
+`CylindricalImpl` (`face_centroid_shift_zero`, {{< code src/coord/coordinate.hpp CylindricalImpl::face_centroid_shift_zero >}}). Cylindrical builds no `dx1f`, so the base
+shift has nothing to take `zeros_like` of, and its faces are $r$-weighted, so its shift is not zero in general; with
+`false` it keeps the path main took before. The flag is read in three places: the centroid parts of
+`_flux_covariance` (`centroid`, {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}), the same in `scalar_flux_covariance` (`centroid`,
+{{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}), and the shifted pressure of the geometric source (`face_centroid_shift_zero`,
+{{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Because the flag comes from the type, no class can return zeros only for some grids,
+and it holds no state that a re-mesh or `.to()` could leave stale [source: chengcli/snapy#308 body, commits 4 and 5].
+
+The guard changes no arithmetic order. The #308 body reports, for commit 4 against its base with
+`SNAP_FLUX_COVARIANCE=1` and `gravity-work: face`: `hydro_u`, `hydro_w` and the step sizes `torch.equal` and equal
+as int64 bit patterns on an A100 (2-D $120\times178$, 200 steps; $160^3$, 20 steps) and on CPU (the 2-D deck);
+`test_scalar_flux_covariance.py` bit-identical on Cartesian and gnomonic-equiangle, CPU and CUDA, covariance off and
+on; on top of commits 1-3, the six-panel moist positivity deck, 40 cycles, 498 saved tensors, 0 differ; and ctest
+`-R 'covariance|positivity'` 15/15, `-R 'covariance|positivity|lu_failure|gravity_work_cache|coordinate'` 18/18 on
+both builds. Commit 5 changes only the cylindrical flag and the test, so in `src/` no Cartesian or gnomonic-equiangle
+path changes [source: chengcli/snapy#308 body, Evidence; sha: the commits named there, squash-merged as
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; run: A100 and CPU builds, not re-run here]. The step time and kernel counts of the same
+runs belong to @sec-ch14 and are not repeated here.
+
+*A lesson from the same PR.* A positivity-carry change that read the velocity from `w` was dropped from
+chengcli/snapy#308: on gnomonic-equiangle grids `w` holds the contravariant tangential velocity while the carry's rows
+are covariant, so it is not $u/\rho$ there [source: chengcli/snapy#308 body]. A shortcut that is exact on Cartesian
+and spherical-polar grids can be wrong on the cubed sphere for a reason that a Cartesian bitwise comparison cannot
+see; the dropped change is described only in the body, and no test in the repository encodes the distinction
+(**missing evidence**).
+
 ```{python}
 #| label: fig-ch03-facemoments-ratio
 #| fig-cap: "The radial face moment divided by its Cartesian value $h^2/12$ (solid) and the face-centroid shift divided by its leading term $h^2/(12x^{\\mathrm{m}})$ (dashed), against the relative cell width $h/x^{\\mathrm{m}}$. Both are dimensionless and tend to $1$ as the cell becomes thin; the moment is the Cartesian one to within $h^2/(12(x^{\\mathrm{m}})^2)$."
@@ -95,6 +136,9 @@ make_fig()
 | exact radial moment | {{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_moment2_ >}} | `radial_face_moment2_` | none |
 | exact radial shift | {{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_centroid_shift_ >}} | `radial_face_centroid_shift_` | none |
 | spherical-polar overrides | [`spherical_polar.cpp:213-222`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/spherical_polar.cpp#L213-L222) | `face_moment2_x1` | `SNAP_FLUX_COVARIANCE` |
+| the zero-shift flag, base `true` (main after #308) | {{< code src/coord/coordinate.hpp CoordinateImpl::face_centroid_shift_zero >}} | `face_centroid_shift_zero` | `SNAP_FLUX_COVARIANCE` |
+| spherical-polar, gnomonic and cylindrical `false` (main after #308) | {{< code src/coord/spherical_polar.hpp SphericalPolarImpl::face_centroid_shift_zero >}}, {{< code src/coord/gnomonic_equiangle.hpp GnomonicEquiangleImpl::face_centroid_shift_zero >}}, {{< code src/coord/coordinate.hpp CylindricalImpl::face_centroid_shift_zero >}} | `face_centroid_shift_zero` | |
+| the flag's readers in the covariance (main after #308) | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}, {{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}, {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `face_centroid_shift_zero` | `SNAP_FLUX_COVARIANCE` |
 | gnomonic overrides | [`gnomonic_equiangle.cpp:229-243`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/coord/gnomonic_equiangle.cpp#L229-L243) | `face_centroid_shift_x1` | `SNAP_FLUX_COVARIANCE` |
 
 : Code map of the radial face moments. {#tbl-ch03-facemoments-code}
@@ -115,6 +159,7 @@ In step order (@tbl-ch03-facemoments-code):
 | `test_radial_face_moments` | the hand rationals equal the integrals | $10^{-13}$ relative | double evaluation of the $I_n$ |
 | `test_radial_face_moments` | the closed forms equal the rationals | $10^{-14}$ relative | a few operations of round-off |
 | `test_radial_face_moments` | per-cell indexing on a four-cell column | $10^{-14}$ abs., $10^{-12}$ rel. | as above, and the integrals' cancellation |
+| `test_coordinate` (main after #308) | `face_centroid_shift_zero_matches_the_shift`: the flag equals "the shift is all zero" for each coordinate type, in float64 and float32; cylindrical's flag is `false` | exact (boolean) | the test's `EXPECT_EQ` |
 
 : Tests of the radial face moments. C++ entries carry the build suffix (`.release`). {#tbl-ch03-facemoments-tests}
 
@@ -125,8 +170,24 @@ $13/162$, as listed in `kCells` ({{< code tests/test_radial_face_moments.cpp kCe
 exactly by line `[C2]` of `geometry_check.out`. The test runs on CPU, one process; the helpers are pure tensor
 functions with no device-specific path. Its pass status at the pin was not run for this chapter (missing evidence).
 
+*The tripwire (main after chengcli/snapy#308).* `face_centroid_shift_zero_matches_the_shift`
+({{< code tests/test_coordinate.cpp Coordinate.face_centroid_shift_zero_matches_the_shift >}}, in `test_coordinate`, {{< code tests/CMakeLists.txt >}}) builds a block of each coordinate type, cartesian,
+cylindrical, spherical-polar and gnomonic-equiangle, on a radius range of 1 to 2, in float64 and again after
+`.to(float32)`. For the three types that build a shift it requires `face_centroid_shift_zero()` to be true exactly
+when `face_centroid_shift_x1()` is all zero, and the shift to have the block's dtype; for cylindrical, which builds
+none, it requires the flag to be `false`. A new type that overrides the shift without the flag fails it. The #308
+body reports that the test passes at the head (CPU build) and fails on spherical-polar when `SphericalPolarImpl`'s flag
+is forced to `true` [source: chengcli/snapy#308 body, Evidence]. Linfeng Li's review run of the final #308 head
+(snapy@7b5dd2093bbac05408309287390e59edf4088fc8, whose tree is that of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; CPU build, one scratch copy per
+broken flag) also forced the base class's flag to `false`: the test then fails on cartesian, so it fires on both
+broken flags [source: review run, not in the #308 body; deck: the test itself]. No run with cylindrical's flag forced
+to `true` is recorded (**missing evidence**), although the test asserts `false` for it directly.
+
 ### Limits
 
 No known limits beyond the degenerate-face mask, which drops the curvature correction on ghost cells that reach
-$r \le 0$. The helpers are used only by `SNAP_FLUX_COVARIANCE`; their effect on the solution belongs to @sec-ch04. The
+$r \le 0$, and, since chengcli/snapy#308, one rule: the zero-shift flag is a host constant that nothing checks against
+the device at run time. A coordinate type that overrides `face_centroid_shift_x1` must also return `false` from
+`face_centroid_shift_zero`, or the covariance drops its centroid parts on that grid; only the tripwire test above
+enforces this. The helpers are used only by `SNAP_FLUX_COVARIANCE`; their effect on the solution belongs to @sec-ch04. The
 switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
