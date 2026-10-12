@@ -25,7 +25,7 @@ $N = 3$ and $5$, $\Delta t$ from $10^{-9}$ to $10^3$, a singular block at layer 
 **Activation.** As for the assembly; $N=3$ or $N=5$.
 **Guarantee / limits.** A direct solve, exact up to round-off; no pivoting between blocks.
 **Evidence.** Tests: for float and double, $N = 3$ and $5$, identity blocks and failing columns sweep as stated,
-{{< code tests/test_lu_failure.cpp lu_failure.current_float_three >}} and its siblings; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, the round-off values printed differ in their last digits from the committed file, each still inside its stated threshold (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
+{{< code tests/test_lu_failure.cpp lu_failure.current_float_three >}} and its siblings; these ctests were not run at the pin. Check: `python3 src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out` lines `[C1]`–`[C4]`; the check ports the code at snapy@e894700ff7aee30b52882e5202b16461413780b0, not the pin.
 :::
 
 The right-hand side is the explicit increment of the stage over the step. So the sweep returns the corrected
@@ -61,7 +61,7 @@ See @fig-ch07-vic-sweep for the two passes.
 
 ```{python}
 #| label: fig-ch07-vic-sweep
-#| fig-cap: "The block-tridiagonal matrix of one column (green: the diagonal blocks $a_i$; sky blue: $b_i$, $c_i$) and the two passes that solve it. The forward sweep (orange) runs from the first row to the last and factors each eliminated block with ludcmp, refusing it when a pivot ratio is at most $8N\\epsilon$; the back substitution (blue) runs from the last row to the first."
+#| fig-cap: "The block-tridiagonal matrix of one column (green: the diagonal blocks $a_i$; sky blue: $b_i$, $c_i$) and the two passes that solve it. The forward sweep (orange) runs from the first row to the last and factors each eliminated block with ludcmp, refusing it when a pivot ratio is at most $8N\\epsilon_{\\mathrm{m}}$; the back substitution (blue) runs from the last row to the first."
 #| fig-alt: "A six-by-six block-tridiagonal matrix on the left, and on the right a downward orange arrow with the forward formulas and an upward blue arrow with the back-substitution formula."
 #| echo: false
 from snapy_report.ch07.fig_vic_sweep import make_fig
@@ -99,13 +99,13 @@ On CUDA the sweep is one thread per column, and the assembly and the final cell 
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `current_*` and `legacy_*` cases | for float and double, $N=3$ and 5, on a 2-layer column: identity blocks sweep with finite results; a repeated row, a row repeated up to $4\epsilon$, an infinite entry or an infinite right-hand side in either layer returns false | exact (logical) | contract |
+| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `current_*` and `legacy_*` cases | for float and double, $N=3$ and 5, on a 2-layer column: identity blocks sweep with finite results; a repeated row, a row repeated up to $4\epsilon_{\mathrm{m}}$, an infinite entry or an infinite right-hand side in either layer returns false | exact (logical) | contract |
 | this section's check, `vic_sweep_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
 
 : Tests of the block Thomas sweep. {#tbl-ch07-vic-sweep-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `vic_sweep_check.py`, which ports, from the code at the pin, the sweep; deck: random diagonally dominant columns and a 2-layer assembled column.[^ch07-vic-sweep-run] ctest cases: **pending: pinned ctest run**.
+**Evidence.** Check numbers come from `vic_sweep_check.py`, which ports, from the code at snapy@e894700, the sweep; deck: random diagonally dominant columns and a 2-layer assembled column.[^ch07-vic-sweep-run] ctest cases: **pending: pinned ctest run**.
 **Coverage.** CPU and CUDA share the sweep header.
 :::
 
