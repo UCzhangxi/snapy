@@ -18,21 +18,22 @@ runs on `gnomonic-equiangle` (cubed-sphere) grids as well as Cartesian and spher
 more term, for the offset between the cell's volume centroid and `x1v`.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Say, for each gravity-work form, which invariant $E_{\mathrm{tot}}+P$ is exact, per stage or per step, explicit and implicit,
-which logged numbers measure it and which test is its oracle; the common rule is @eq-ch06-dwork-booked.
+**Purpose.** Says, for each gravity-work form, which invariant is exact, per stage or per step, and which test is its oracle.
 
 **Data.** The integrated invariants $E_{\mathrm{tot}}+\mathrm{PE}_d$ and $E_{\mathrm{tot}}+P$ [J]; the logged `ie=`, `pe=` and `fixgrav=`.
 
 **Placement.** A guide across @sec-ch06-cell to @sec-ch06-vic; it adds no step of its own.
 
-**Activation.** `gravity-work`, default `face`, with `SNAP_GRAVITY_WORK_RADIAL_EXACT` on by default;
-`gravity-work-fixer` only with `cell`.
+**Activation.** `gravity-work`, default `face`, with `SNAP_GRAVITY_WORK_RADIAL_EXACT` on by default; the fixer only with `cell`.
 
-**Guarantee / limits.** Exact means to round-off on a closed column; open $x_1$ boundaries change every invariant
-by the boundary potential-energy flux.
+**Guarantee / limits.** Exact means to round-off on a closed column; open $x_1$ boundaries change every invariant.
 
-**Evidence.** The oracle of each form in @tbl-ch06-conserves-tests, read from the source, not run here.
+**Evidence.** The oracle of each form in @tbl-ch06-conserves-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $\mathcal E=E_{\mathrm{tot}}+P$ [J] as a function of the state;
+$x^{\mathrm m}_{1,i}$ [m] the stored cell centre `x1v`, which on a `gnomonic-equiangle` grid is the face midpoint;
+$x_{1,i}$ and $\delta_i=x_{1,i}-x^{\mathrm m}_{1,i}$ are NOTATION.md's centroid and centroid offset.
 
 Every form in this chapter is the identity @eq-ch06-dwork-booked with a different discrete potential energy, so
 the question "what does it conserve" is "which $P$ does it use, and where does it stop using it". The face form
@@ -47,35 +48,43 @@ quantity.
 
 The template @eq-ch06-dwork-booked conserves $E_{\mathrm{tot}}+P$ exactly on a closed column for any $P$; the forms differ only
 in $P$, and the derivations are in the sections that own them. The face form is $P=\mathrm{PE}_d$
-(@eq-ch06-dwork-face). The corrected-PE work is @eq-ch06-dwork-d, conserving @eq-ch06-dwork-pe; its stage-by-stage
-argument extends to the step because $E_{\mathrm{tot}}+P$ is linear in the state and every RK stage is a convex combination
-(@sec-ch06-dwork), and in the implicit solve the matrix part @eq-ch06-dwork-couple plus the remainder
+(@eq-ch06-dwork-face). The corrected-PE work is @eq-ch06-dwork-d, conserving @eq-ch06-dwork-pe; its stage-by-stage argument extends to the step in three steps (@sec-ch06-dwork):
+
+1. $\mathcal E=E_{\mathrm{tot}}+P$ is linear in the state, and $\mathcal E(\Delta t\,\mathcal L)=0$ on a closed column by
+   @eq-ch06-dwork-booked.
+2. A stage gives $\mathcal E(\mathbf U^{\mathrm{new}})=w_0^{(s)}\mathcal E(\mathbf U^n)+w_1^{(s)}\mathcal E(\mathbf U)$, and
+   $w_0^{(s)}+w_1^{(s)}=1$ for every stage of the four integrators at the pyharp pin, `rk1`, `rk2`, `rk3` and `rk3s4`
+   ([`pyharp integrator.cpp:33-81`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L33-L81)).
+3. By induction over the stages, $\mathcal E(\mathbf U)=\mathcal E(\mathbf U^n)$ after each stage, hence after the step.
+
+It is the unit sum $w_0+w_1=1$ that the argument uses, not convexity: non-negative weights are not needed.
+
+In the implicit solve the matrix part @eq-ch06-dwork-couple plus the remainder
 @eq-ch06-dwork-remainder book the work of the mass actually moved. The cell form leaves @eq-ch06-cell-defect per
 stage; the fixer @eq-ch06-fixer-fix subtracts the stage-weighted sum after the last stage, so $E_{\mathrm{tot}}+\mathrm{PE}_d$
 closes per step but not per stage. `face-wallc` books $W^{\mathrm{cell}}$ instead of $W^{\mathrm{face}}$ in the
 two $x_1$ wall cells, so its $E_{\mathrm{tot}}+\mathrm{PE}_d$ defect is their cell-minus-face work (@sec-ch06-face).
 
-One step has no home in the earlier sections: the cubed-sphere term. On a `gnomonic-equiangle` grid the volume uses the $r^2$
-measure, but `x1v` is the cell's face midpoint, not its volume centroid $r_{\mathrm{c},i}$. The fourth-order
-expansion of @eq-ch06-dwork-pe4 is about the centroid, so the corrected potential energy is
-$P_i = V_i[\rho_i\phi(r_{\mathrm{c},i}) - g_1\sigma_i^2s_i[\rho]]$ with $\sigma_i^2$ about $r_{\mathrm{c},i}$.
-Since $\phi(r_{\mathrm{c},i}) = \phi_i - g_1(r_{\mathrm{c},i}-x_{1,i})$, with $\phi_i=-g_1x_{1,i}$ at `x1v`, this
-is $P_i = V_i[\rho_i\phi_i - g_1(r_{\mathrm{c},i}-x_{1,i})\rho_i - g_1\sigma_i^2s_i[\rho]]$, and inserting it into
-@eq-ch06-dwork-booked, whose face form is written with $\phi_i$ at `x1v`, gives
+On a `gnomonic-equiangle` grid the corrected-PE work books one more term, derived in @sec-ch06-dwork as
+@eq-ch06-dwork-cs: the stored cell centre `x1v`, $x^{\mathrm m}_{1,i}$, is the face midpoint, not the volume centroid
+$x_{1,i}$, and with $\delta_i=x_{1,i}-x^{\mathrm m}_{1,i}$ the work gains $g_1\delta_i\dot\rho_i$. In four steps:
 
-$$
-W_i = W^{\mathrm{face}}_i + g_1\,\sigma_i^2\,s_i[\dot\rho] + g_1\,(r_{\mathrm{c},i}-x_{1,i})\,\dot\rho_i .
-$$
+1. The corrected $P$ is expanded about the centroid, so its potential is $\phi(x_{1,i})$.
+2. $\phi$ is linear, so $\phi(x_{1,i})=\phi(x^{\mathrm m}_{1,i})-g_1\delta_i$ exactly.
+3. The code writes $\phi$ at `x1v`, so $P_i$ gains $-g_1V_i\delta_i\rho_i$, and @eq-ch06-dwork-booked turns that into
+   the extra work $g_1\delta_i\dot\rho_i$.
+4. On Cartesian and spherical-polar grids `x1v` is the centroid, $\delta_i=0$, and the term vanishes.
 
-The last term is zero on Cartesian and spherical-polar grids, where $r_{\mathrm{c},i}=x_{1,i}$. It is booked by
-`corrected_pe_work` under `radial_mid`
-({{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}}),
-which is also called for the logged $P$ and the post-solve remainder, and on the diagonal of the implicit energy
-row as `rx_mid`
-({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
-The full derivation is `docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5`
-§12.5a. No executable check of this section's own: each identity it collects is checked by the check of the
-section that derives it.
+The term is booked by `corrected_pe_work` under `radial_mid`
+({{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}}), in the logged $P$ and the post-solve remainder,
+and on the diagonal of the implicit energy row as `rx_mid`
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). Its checks are those of
+@sec-ch06-dwork (`[CS1]`, `[CS2]`); `[C25]` of `derivation_check.py` is step 2.[^ch06-cons-chk]
+
+[^ch06-cons-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch06/derivation_check.py`, CPU, double, 1 process;
+    Python 3.11.13, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, line `[C25]`.
+    This section has no check of its own; each identity it collects is checked by the check of the section that
+    derives it.
 
 ### Numerical method
 
