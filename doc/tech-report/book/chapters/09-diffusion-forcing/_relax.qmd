@@ -7,8 +7,6 @@ sources: OUTLINE.md 9.8; src/forcing/relax_bot_temp.cpp, relax_bot_velo.cpp, rel
 status: draft
 -->
 
-<!-- Local symbols: $\alpha_{\mathrm f}$, the at-face extrapolation weight of relax-bot-temp (code `a`).
-     NOTATION.md has no symbol for it. Opened as ISSUES.md item 9. -->
 
 ### Summary
 
@@ -47,6 +45,14 @@ $10^{-13}$); the composition swap keeps density and temperature,
 were not run at the pin. Check: `python3 src/snapy_report/ch09/relax_check.py`, output `relax_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): $\tau$ [s] the named relaxation time of each module; $T_{\mathrm b}$ [K]
+the target `btemp`; $T^{\mathrm{tgt}}$ [K] the temperature that is relaxed (the cell value, or the face value with
+`at-face`); $\alpha_{\mathrm f}$ [-] the at-face extrapolation weight (code `a`); cells $0$ and $1$ the bottom interior
+cell and the one above it; $\mathbf v_{\mathrm b}$ [m s$^{-1}$] the target `bvx`, `bvy`, `bvz` of $(v^1,v^2,v^3)$;
+$y^{\mathrm{tgt}}_n$ [-] the target mass fractions; $U(\cdot,T)$ [J m$^{-3}$] kintera's volumetric internal energy at fixed
+$T$; $g_{ab}$ the panel metric of @sec-ch03-gnomonic, $g_{23}=\cos\psi$. $\rho$, $c_v$, $y_n$, $N_y$, $m_a$, $x_{1,i}$ and $\epsilon_{\mathrm m}$
+are NOTATION.md's.
+
 `relax-bot-velo` leaves the total energy $E$ untouched, so the kinetic energy it removes becomes internal energy density, as
 for the sponges (@sec-ch09-sponge).
 
@@ -73,12 +79,26 @@ T^{\mathrm{tgt}} &= (1+\alpha_{\mathrm f})\,T_0 - \alpha_{\mathrm f}\,T_1, \\
 $$ {#eq-ch09-relax-face}
 
 and the increment is multiplied by the gain $1/(1+\alpha_{\mathrm f})$, `gain`
-({{< code src/forcing/relax_bot_temp.cpp RelaxBotTempImpl::forward >}}). The target is exact for a linear $T$ on any
-spacing, to $5.7\times10^{-14}$ $\mathrm{K}$ over 100 random spacings;[^relax-c] on uniform cells
-$\alpha_{\mathrm f}=\tfrac12$, the target is $1.5T_0-0.5T_1$ and the gain $\tfrac23$ (`[C2]`). The gain follows
-from the chain rule: only cell $0$ is heated, and $\partial T^{\mathrm{tgt}}/\partial T_0 = 1+\alpha_{\mathrm f}$, so
-heating cell $0$ at $(T_{\mathrm b}-T^{\mathrm{tgt}})/ [\tau(1+\alpha_{\mathrm f})]$ moves the face value at exactly
-$(T_{\mathrm b}-T^{\mathrm{tgt}})/\tau$ (`[C3]`).
+({{< code src/forcing/relax_bot_temp.cpp RelaxBotTempImpl::forward >}}). Why, in four steps.
+
+1. *The line through the two centres.* $T(x_1)=T_0+(T_1-T_0)(x_1-x_{1,0})/(x_{1,1}-x_{1,0})$.
+2. *Its value at the face.* At $x_{1,-1/2}$ this is $T_0-\alpha_{\mathrm f}(T_1-T_0)=(1+\alpha_{\mathrm f})T_0-\alpha_{\mathrm f}T_1$, which
+   is @eq-ch09-relax-face, exact for a linear $T$ on any spacing; on uniform cells $\alpha_{\mathrm f}=\tfrac12$, the target
+   $1.5T_0-0.5T_1$ (`[C2]`).
+3. *Only cell 0 is heated.* So the face value moves at $\partial T^{\mathrm{tgt}}/\partial T_0=1+\alpha_{\mathrm f}$ times the rate of $T_0$.
+4. *Hence the gain.* Heating cell 0 at $(T_{\mathrm b}-T^{\mathrm{tgt}})/[\tau(1+\alpha_{\mathrm f})]$ moves the face value at exactly
+   $(T_{\mathrm b}-T^{\mathrm{tgt}})/\tau$ (`[C3]`); on uniform cells the gain is $\tfrac23$.
+
+*Round-off of the target.* `a` is two subtractions and a division, $\hat\alpha_{\mathrm f}=\alpha_{\mathrm f}(1+\eta_\alpha)$ with
+$\lvert\eta_\alpha\rvert\le3\cdot\tfrac{\epsilon_{\mathrm m}}2$, and `(1. + a) * T0 - a * T1` adds four roundings. To first order
+
+$$
+\lvert\widehat{T^{\mathrm{tgt}}}-T^{\mathrm{tgt}}\rvert\le\tfrac{\epsilon_{\mathrm m}}2\big[3\alpha_{\mathrm f}\lvert T_0-T_1\rvert
++2(1+\alpha_{\mathrm f})\lvert T_0\rvert+\alpha_{\mathrm f}\lvert T_1\rvert+\lvert T^{\mathrm{tgt}}\rvert\big],
+$$
+
+about $5\epsilon_{\mathrm m}T$ on uniform cells. The check measures at most 0.787 of it over 20000 random spacings,
+and the existing port finds the target exact for a linear $T$ to $5.7\times10^{-14}$ K over 100 spacings.[^relax-c]
 
 #### Velocity
 
@@ -150,6 +170,45 @@ every stage, explicit, in the forcing loop (@sec-ch09-framework).
 
 ### Code
 
+**A minimal input.** A surface layer at 300 K, a drag toward rest and a water-vapour source:
+
+```yaml
+forcing:
+  relax-bot-temp: {tau: 3600., btemp: 300., at-face: true}   # at-face needs nghost >= 2
+  relax-bot-velo: {tau: 3600.}                               # targets bvx, bvy, bvz default 0
+  relax-bot-comp: {tau: 3600., species: [H2O], xfrac: [0.01]}
+```
+
+**What is refused, and why.**
+
+1. *An unknown key* in each block, by `check_keys`.
+2. *$\tau\le0$*, in each module ("RelaxBotTempOptions: tau must be greater than zero.", and the same for `Velo`
+   and `Comp`).
+3. *`relax-bot-temp` without `btemp`*, with "RelaxBotTempOptions: btemp is required (no default).", or with
+   `btemp` $\le0$; and `at-face` other than the literal `true` or `false`, with "RelaxBotTempOptions: at-face must
+   be true or false" ({{< code src/forcing/relax_bot_temp.cpp >}}).
+4. *`at-face` with fewer than two interior cells in the selection*, at run time, with "[RelaxBotTemp] at-face needs
+   two interior cells at the lower boundary; got N. Set nghost >= 2." ({{< code src/forcing/relax_bot_temp.cpp >}}).
+5. *`relax-bot-comp`*: `species` and `xfrac` of different lengths, a duplicate species, an `xfrac` outside $[0,1]$
+   or a sum above 1 ({{< code src/forcing/relax_bot_comp.cpp >}}); no thermodynamics card, an unknown species, or the dry species
+   ({{< code src/forcing/relax_bot_comp.cpp >}}, {{< code src/forcing/relax_bot_comp.cpp >}}).
+
+**The code, mapped to @eq-ch09-relax-temp and @eq-ch09-relax-face** (`RelaxBotTempImpl::forward`):
+
+```cpp
+auto a = (x1v[il] - x1f[il]) / (x1v[il + 1] - x1v[il]);
+target = (1. + a) * T0 - a * T1;
+gain = 1.0 / (1. + a);
+...
+auto heating = dt / options->tau() * rho * cv * (options->btemp() - target);
+if (gain.defined()) heating *= gain;
+du[IPR].index(bottom) += heating;
+```
+
+`a` is $\alpha_{\mathrm f}$, `target` $T^{\mathrm{tgt}}$ and `gain` $1/(1+\alpha_{\mathrm f})$; without `at-face`, `target` is the bottom
+cell's temperature and `gain` is undefined. The composition module adds `dt / tau * delta` with `delta` the three
+rows of @eq-ch09-relax-comp ({{< code src/forcing/relax_bot_comp.cpp >}}).
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | temperature options | {{< code src/forcing/relax_bot_temp.cpp RelaxBotTempOptionsImpl::from_yaml >}} | `RelaxBotTempOptionsImpl::from_yaml` | `btemp` required |
@@ -176,6 +235,8 @@ every stage, explicit, in the forcing loop (@sec-ch09-framework).
    {{< code src/forcing/relax_bot_comp.cpp RelaxBotCompImpl::forward >}}).
 
 ### Tests
+
+The derived round-off checks [D3a] pass.[^dropin-relax]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -215,3 +276,9 @@ run**.
 5. **Energy of the velocity drag.** $E$ is untouched, so the removed kinetic energy heats the bottom row; intended
    for a drag, but not stated in the code.
 6. **Solids.** The modules read the solid placeholder state if a solid cell sits in the bottom row. Not tested.
+
+[^dropin-relax]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
+    [D3a]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
+    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
+    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
+    (`--mutate D3a`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).

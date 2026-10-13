@@ -42,6 +42,12 @@ were not run at the pin. The Cartesian, cylindrical and spherical-polar branches
 `python3 src/snapy_report/ch09/coriolis_check.py`, output `coriolis_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): $\boldsymbol\Omega=(\Omega_1,\Omega_2,\Omega_3)$ [s$^{-1}$] the rotation
+vector in the cell's frame, `omega1..3` of the module; $(\Omega_x,\Omega_y,\Omega_z)$ [s$^{-1}$] the same vector in the fixed
+Cartesian frame of `type: xyz`; $\mathbf m=\rho\mathbf v$ [kg m$^{-2}$ s$^{-1}$] the momentum density formed from the stage's
+primitives (NOTATION.md $m_a$); $n_3$ the number of $x_3$ cells. $\theta$, $\varphi$, $\rho$, $\mathbf v$, $\Delta t$ and $\epsilon_{\mathrm m}$
+are NOTATION.md's.
+
 ### Derivation
 
 In a frame rotating at $\boldsymbol\Omega$ the momentum equation gains $-2\boldsymbol\Omega\times \rho\mathbf v$.
@@ -53,8 +59,26 @@ $$ {#eq-ch09-coriolis-force}
 
 computed component by component in `CoriolisXYZImpl::forward`
 ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}}) and, for `type: 123`, in `Coriolis123Impl::forward`
-({{< code src/forcing/coriolis.cpp Coriolis123Impl::forward >}}). Because $\mathbf m\cdot(\boldsymbol\Omega\times\mathbf m)=0$
-the force does no work: the energy row is not touched and needs no term.[^cor-c2]
+({{< code src/forcing/coriolis.cpp Coriolis123Impl::forward >}}). Why the energy row needs no term, in three steps.
+
+1. *The increment is perpendicular to the momentum.* $\mathbf m\cdot(\boldsymbol\Omega\times\mathbf m)=0$ for every
+   $\boldsymbol\Omega$, so $\mathbf m\cdot\Delta\mathbf m=0$ in exact arithmetic on an orthonormal frame.
+2. *The code forms each row as one difference of two products.* `du[IVX] += 2. * dt * (omega3 * m2 - omega2 * m3)`
+   and its two cyclic partners; `2. * dt` is exact, so each row carries three roundings, the two products and the
+   difference, plus the final product with `2. * dt`.
+3. *Hence the work of the computed increment is bounded.* To first order each row is
+   $-2\Delta t\,[(\boldsymbol\Omega\times\mathbf m)_i + \Omega_km_j\eta' - \Omega_jm_k\eta'']$ with
+   $\lvert\eta'\rvert,\lvert\eta''\rvert\le3\cdot\tfrac{\epsilon_{\mathrm m}}2$. The exact part drops out of
+   $\mathbf m\cdot\Delta\mathbf m$. What remains is at most $3\epsilon_{\mathrm m}\Delta t\sum_k\lvert\Omega_k\rvert\,2\lvert m_im_j\rvert$, and
+   $2\lvert m_im_j\rvert\le\lvert\mathbf m\rvert^2$, $\sum_k\lvert\Omega_k\rvert\le\sqrt3\lvert\boldsymbol\Omega\rvert$ give
+
+$$
+\lvert\mathbf m\cdot\widehat{\Delta\mathbf m}\rvert\le3\sqrt3\,\epsilon_{\mathrm m}\,\Delta t\,\lvert\boldsymbol\Omega\rvert\,\lvert\mathbf m\rvert^2 .
+$$
+
+The check finds at most 0.279 of this bound over 20000 draws.[^dropin-coriolis] On the cubed sphere the two
+$3\times3$ transforms add their own roundings; the bound above is for the orthonormal branches (Cartesian, spherical-polar,
+cylindrical, and `123` in three dimensions).
 
 *Projection onto spherical-polar cells.* A Cartesian vector $(\Omega_x,\Omega_y,\Omega_z)$ has, at colatitude
 $\theta$ and azimuth $\varphi$, the components
@@ -110,6 +134,41 @@ make_fig()
 
 ### Code
 
+**A minimal input.** A rotation about the polar axis on a spherical-polar or cubed-sphere grid:
+
+```yaml
+forcing:
+  coriolis:
+    type: xyz          # xyz (default): omega1..3 are Omega_z, Omega_x, Omega_y of a fixed Cartesian frame
+    omega1: 7.29e-5    # s^-1, Omega_z: the polar axis
+    traditional: false # cubed sphere only: keep the radial component of Omega alone
+```
+
+**What is refused, and why.**
+
+1. *An unknown key* in `coriolis`, by `check_keys` ("unknown key 'forcing/coriolis/KEY'"): a misspelt `omega` would
+   otherwise run with no rotation.
+2. *A `type` other than `xyz` or `123`*, with "CoriolisOptions: unsupported type " and the value
+   (`CoriolisOptionsImpl::from_yaml`, {{< code src/forcing/coriolis.cpp >}}).
+3. *`type: xyz` on a grid other than Cartesian, cylindrical, spherical-polar or gnomonic-equiangle*, at construction,
+   with "CoriolisXYZ: unsupported coordinate system" ({{< code src/forcing/coriolis.cpp >}}).
+
+**The code, mapped to @eq-ch09-coriolis-force** (`CoriolisXYZImpl::forward`, orthonormal branches):
+
+```cpp
+auto m1 = w[IDN] * w[IVX];
+auto m2 = w[IDN] * w[IVY];
+auto m3 = w[IDN] * w[IVZ];
+
+du[IVX] += 2. * dt * (omega3 * m2 - omega2 * m3);
+du[IVY] += 2. * dt * (omega1 * m3 - omega3 * m1);
+du[IVZ] += 2. * dt * (omega2 * m1 - omega1 * m2);
+```
+
+`m1..m3` are $\mathbf m$; each `du` line is one component of $-2\Delta t\,\boldsymbol\Omega\times\mathbf m$, since
+$(\boldsymbol\Omega\times\mathbf m)_1=\Omega_2m_3-\Omega_3m_2$; `omega1..3` are the projected components of
+@eq-ch09-coriolis-sph built once in `reset`.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | options, defaults | {{< code src/forcing/coriolis.cpp CoriolisOptionsImpl::from_yaml >}} | `CoriolisOptionsImpl::from_yaml` | `type`, `omega1..3`, `traditional` |
@@ -132,6 +191,8 @@ make_fig()
 4. Each stage, `forward` adds @eq-ch09-coriolis-force ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}}).
 
 ### Tests
+
+The derived round-off checks [D1] pass.[^dropin-coriolis]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -166,3 +227,9 @@ form through the solver; the check covers their formulas.
 
 [^cor-c5]: `python3 src/snapy_report/ch09/coriolis_check.py`, line `[C5]`: the dropped component would have been
     $-0.20$, and $\mathbf m\cdot\Delta\mathbf m = 0.60$ in the two-dimensional case of the check.
+
+[^dropin-coriolis]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
+    [D1]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
+    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
+    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
+    (`--mutate D1`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).

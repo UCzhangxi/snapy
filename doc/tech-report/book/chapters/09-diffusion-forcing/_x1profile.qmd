@@ -8,9 +8,6 @@ sources: OUTLINE.md 9.6; src/forcing/diffusion.cpp, docs/derivations/diffusion-f
 status: draft
 -->
 
-<!-- Local symbols: $\varsigma$, the x1 profile of a diffusion coefficient (code `nu_scale_x1`, `kappa_scale_x1`).
-     NOTATION.md has no symbol for it, and $s$ is reserved for the centroid slope (NOTATION.md section 10).
-     Opened as ISSUES.md item 8. -->
 
 ### Summary
 
@@ -49,6 +46,13 @@ YAML table equals the per-cell profile bit for bit, {{< code tests/test_diffusio
 were not run at the pin. Check: `python3 src/snapy_report/ch09/x1profile_check.py`, output `x1profile_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): $\varsigma(x_1)$ [-] the $x_1$ profile of a coefficient (`nu_scale_x1`,
+`kappa_scale_x1`; $s$ is the centroid slope of NOTATION.md); $q$ the cell field it multiplies ($\rho$ or $\rho c_v$);
+$c=\varsigma q$ the product; $c^{\mathrm{MP}}$, $c^{\mathrm{PM}}$ the mean-of-products and product-of-means face values;
+$c_0$ a constant product ($C$ is the Courant number); $F_0$ [W m$^{-2}$] the uniform exact flux of a linear
+temperature; $\eta_{i\pm1/2}$ [-] the relative excess of $c^{\mathrm{PM}}$ on a face ($e$ is the specific internal energy);
+$(x^{\mathrm k}_\ell,\varsigma_\ell)$ the knots of a table. $h$, $\rho_{\mathrm{ref}}$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
+
 A profile is given either as a table of knots in $x_1$, linear between knots and held beyond them, or, from
 Python, as one value per $x_1$ cell centre of a block, ghosts included. It is frozen when the block is built.
 
@@ -73,18 +77,34 @@ The second line is an identity (`[C1]`).[^x1p-c] The code uses $c^{\mathrm{MP}}$
 ({{< code src/forcing/diffusion.cpp face_scaled_coefficient >}}), which also extrapolates the product at a wall
 (@sec-ch09-wallcoef).
 
-*A constant product.* Let $\varsigma q = C$ in every cell. Then $c^{\mathrm{MP}} = C$ on every face, while
+*A constant product.* Let $\varsigma q = c_0$ in every cell. Then $c^{\mathrm{MP}} = c_0$ on every face, while
 
 $$
-c^{\mathrm{PM}}_{i-1/2} = C\Big[1 + \frac{(q_i-q_{i-1})^2}{4q_{i-1}q_i}\Big] = C\big[1 + \tfrac14(h\,\partial_1q/q)^2 + O(h^3)\big].
+c^{\mathrm{PM}}_{i-1/2} = c_0\Big[1 + \frac{(q_i-q_{i-1})^2}{4q_{i-1}q_i}\Big] = c_0\big[1 + \tfrac14(h\,\partial_1q/q)^2 + O(h^3)\big].
 $$
 
 For a linear temperature, whose exact flux $F_0$ is uniform, the tendency of cell $i$ is
-$-(F_0/h)(e_{i+1/2}-e_{i-1/2})$ with $e$ the bracketed excess, $O(h^2)$ in the interior. In the cell next to a wall
+$-(F_0/h)(\eta_{i+1/2}-\eta_{i-1/2})$ with $\eta$ the bracketed excess, $O(h^2)$ in the interior. In the cell next to a wall
 one face is the extrapolated product, which is exact, so the tendency there is $O(h)$. The port reproduces both:
 $c^{\mathrm{MP}}$ gives $|\dot E|<10^{-12}F_0/h$ at $n_1$ = 16 to 128, and $c^{\mathrm{PM}}$ converges at orders
 1.40, 1.66, 1.81 in the interior and 0.71, 0.84, 0.92 over all cells, where the maximum sits in a wall cell
 (`[C2]`).
+
+*Round-off of the zero tendency.* For stored $\varsigma_i$, $q_i$, $T_i$ the conductive face flux is
+`-kappa * coef * dtdn` with `coef` $=\tfrac12(\varsigma_{i-1}q_{i-1}+\varsigma_iq_i)$ and `dtdn` $=(T_i-T_{i-1})/\Delta x$: six roundings
+(two products and one sum in `coef`, a subtraction and a division in `dtdn`, and the two products of the flux),
+so each face flux is within $6\cdot\tfrac{\epsilon_{\mathrm m}}2$ relative. The divergence adds the subtraction, the division by $V_i$ and the
+product with $\Delta t$ of @sec-ch02-laws. To first order the computed tendency of cell $i$ differs from the exact
+tendency of the stored values by at most
+
+$$
+7\cdot\tfrac{\epsilon_{\mathrm m}}2\,\frac{\Delta t}{V_i}\bigl(A\lvert F_{i+1/2}\rvert+A\lvert F_{i-1/2}\rvert\bigr)+3\cdot\tfrac{\epsilon_{\mathrm m}}2\,\lvert\Delta E_i\rvert ,
+$$
+
+so the zero tendency of @eq-ch09-x1profile-mp holds to $O(\epsilon_{\mathrm m})$ of $\Delta t\,F_0/h$. The check measures at most 0.056 of the
+bound on the 32-cell column of @fig-ch09-x1profile-tendency, where the exact tendency of the stored values, which
+is not zero because $\varsigma_iq_i$ is not exactly $c_0$ in binary, is $8.7\times10^{-17}$ of $\Delta t\,F_0/h$. That is the scale
+the ctest's $10^{-12}$ tolerance sits far above.
 
 *A smooth product.* $c^{\mathrm{MP}}$ is the trapezoidal average of $c$ across the face and differs from
 $c(x_{1,i-1/2})$ by $O(h^2)$; $c^{\mathrm{PM}}$ differs from it by $\tfrac14\,\partial_1\varsigma\,\partial_1q\,h^2$. Both give a second-order face flux (`[C3]`: orders 1.98 and 1.98 from $n_1$ = 128 to 256). The
@@ -129,6 +149,40 @@ changes.
 
 ### Code
 
+**A minimal input.** A kinematic conduction coefficient whose product with a density falling tenfold is constant:
+
+```yaml
+forcing:
+  diffusion:
+    kappa_iso: 0.25
+    kappa_scale_x1: {x1: [0., 5.e3, 1.e4], scale: [1., 3.16, 10.]}   # linear between knots, held beyond
+```
+
+From Python the profile can instead be one float64 value per $x_1$ cell centre of the block, ghosts included
+(`nu_scale_x1` / `kappa_scale_x1` on the options), or a table (`..._table`).
+
+**What is refused, and why.**
+
+1. *A malformed table*: not a map, an unknown key besides `x1` and `scale`, non-numbers, different lengths
+   ({{< code src/forcing/diffusion.cpp >}}), fewer than two knots, non-finite values, knots not strictly increasing, or a scale not
+   strictly positive (`checked_table`, {{< code src/forcing/diffusion.cpp >}}).
+2. *At setup:* an inference tensor; a profile given both per cell and as a table; any profile with `dynamic: true`,
+   which has no density to balance; a per-cell profile when $x_1$ is split, of the wrong length, not float64, or not
+   finite and positive (`DiffusionImpl::reset`, {{< code src/forcing/diffusion.cpp >}}).
+3. *After setup:* a profile set, replaced or changed after the block was built (`check_profiles`, {{< code src/forcing/diffusion.cpp >}}).
+
+**The code, mapped to @eq-ch09-x1profile-mp** (`face_scaled_coefficient`, $x_1$ faces):
+
+```cpp
+if (idir == 0) {
+  return face_coefficient(value * scale.view({1, 1, -1}), coord, idir, start,
+                          end, wall_lower, wall_upper);
+}
+```
+
+`value * scale` is the product $\varsigma q$ in every cell, so `face_coefficient` returns $c^{\mathrm{MP}}$ on interior faces (its
+`face_average`) and the extrapolated product on a wall face (@sec-ch09-wallcoef).
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | YAML table parsing | {{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}} | `take_table` | `nu_scale_x1`, `kappa_scale_x1` |
@@ -155,6 +209,8 @@ changes.
    ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 
 ### Tests
+
+The derived round-off checks [D6] pass.[^dropin-x1profile]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -185,3 +241,9 @@ ctest to print them and a pinned run, **pending**. ctest cases: **pending a pinn
 3. **Frozen.** A profile changed after the block is built is refused, not used.
 4. **The table is linear between knots**; a profile with curvature needs enough knots. Not measured.
 5. **The wall cell keeps the $O(h)$ error** of the normal-stress kernel (@sec-ch09-viscosity).
+
+[^dropin-x1profile]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
+    [D6]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
+    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
+    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
+    (`--mutate D6`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).

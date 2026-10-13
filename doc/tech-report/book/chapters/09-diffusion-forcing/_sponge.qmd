@@ -7,9 +7,6 @@ sources: OUTLINE.md 9.9; src/forcing/top_sponge_lyr.cpp, bot_sponge_lyr.cpp, src
 status: draft
 -->
 
-<!-- Local symbols: $\zeta$, the depth fraction of a cell inside a sponge layer (code `eta`). NOTATION.md has no
-     symbol for it, and $\eta$ is the gnomonic panel coordinate and the general small quantity (NOTATION.md
-     sections 1 and 10). Opened as ISSUES.md item 10. -->
 
 ### Summary
 
@@ -42,12 +39,19 @@ larger product); the ctest was not run at the pin. No test of the drag magnitude
 `python3 src/snapy_report/ch09/sponge_check.py`, output `sponge_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): $L_{\mathrm{spg}}$ [m] the layer width `width` ($w$ is a source letter
+of $\mathbf v$ in NOTATION.md); $\tau$ [s] the named relaxation time; $\zeta_i$ [-] the depth fraction of cell $i$ inside the
+layer (code `eta`; $\eta$ is the panel coordinate and the general small quantity of NOTATION.md);
+$\alpha_{\mathrm{spg}}=\Delta t\sin^2(\pi\zeta/2)/\tau$ [-] the drag fraction of one stage (NOTATION.md does not use a bare $a$);
+$x_{1,\mathrm{top}}$, $x_{1,\mathrm{bot}}$ [m] the block's outer $x_1$ faces; $f^a$, $f_a$ the contravariant and lowered drag; $g_{ab}$
+and $\psi$ as in @sec-ch03-gnomonic. $\rho$, $v^a$, $m_a$ and $\Delta x_1$ are NOTATION.md's.
+
 ### Derivation
 
-For a cell whose lower face is $x_{1,i-1/2}$, the depth fraction inside a top layer of width $w$ is
+For a cell whose lower face is $x_{1,i-1/2}$, the depth fraction inside a top layer of width $L_{\mathrm{spg}}$ is
 
 $$
-\zeta_i = \min\Big(1, \max\Big(0, \frac{w - (x_{1,\mathrm{top}} - x_{1,i-1/2})}{w}\Big)\Big),
+\zeta_i = \min\Big(1, \max\Big(0, \frac{L_{\mathrm{spg}} - (x_{1,\mathrm{top}} - x_{1,i-1/2})}{L_{\mathrm{spg}}}\Big)\Big),
 $$
 
 with $x_{1,\mathrm{top}}$ the upper face of the block, and for a bottom layer the distance is
@@ -61,18 +65,18 @@ $$ {#eq-ch09-sponge-drag}
 to the three momentum rows and nothing to the energy (`force` in `TopSpongeLyrImpl::forward`,
 {{< code src/forcing/top_sponge_lyr.cpp TopSpongeLyrImpl::forward >}}). Because the distance is measured from each
 cell's *lower* face, the bottom cell of a bottom sponge has $\zeta=1$, while the top cell of a top sponge has
-$\zeta = 1 - \Delta x_1/w$, with $\Delta x_1$ the cell's $x_1$ width: scale 0.8536 for $\Delta x_1/w=0.25$.[^spg-c]
+$\zeta = 1 - \Delta x_1/L_{\mathrm{spg}}$, with $\Delta x_1$ the cell's $x_1$ width: scale 0.8536 for $\Delta x_1/L_{\mathrm{spg}}=0.25$.[^spg-c]
 
-*Heating.* With $a = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy density of the cell rises by the
-kinetic energy removed, $\tfrac12\rho|\mathbf v|^2[1-(1-a)^2]$, which is positive for $0<a<2$ (`[C2]`). The sponge
+*Heating.* With $\alpha_{\mathrm{spg}} = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy density of the cell rises by the
+kinetic energy removed, $\tfrac12\rho|\mathbf v|^2[1-(1-\alpha_{\mathrm{spg}})^2]$, which is positive for $0<\alpha_{\mathrm{spg}}<2$ (`[C2]`). The sponge
 is therefore an energy-conserving drag with frictional heating, not a sink of total energy.
 
 *Covariant lowering.* The primitive velocities $v^b$ are contravariant and the stored momenta $m_a$ covariant. On
 the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\psi\ne0$, with $\psi$ the angle between the panel axes (`cosine_cell_kj`, @sec-ch03-gnomonic), and
 `coord_vec_lower_impl` forms $f_2 = f^2 + \cos\psi\,f^3$, $f_3 = f^3 + \cos\psi\,f^2$
 ({{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The lowered drag is antiparallel to the covariant
-momentum and its power $v^af_a = -\rho a\,g_{ab}v^av^b$ is negative for $|\cos\psi|<1$ (`[C3]`). Without the
-lowering the cross product of force and covariant momentum is $\cos\psi\,(v_3^2-v_2^2)$ per unit $\rho a$,
+momentum and its power $v^af_a = -\rho\alpha_{\mathrm{spg}}\,g_{ab}v^av^b$ is negative for $|\cos\psi|<1$ (`[C3]`). Without the
+lowering the cross product of force and covariant momentum is $\cos\psi\,(v_3^2-v_2^2)$ per unit $\rho\alpha_{\mathrm{spg}}$,
 non-zero away from the panel centres: 0.455 at a corner with $\cos\psi=-\tfrac12$, $\mathbf v=(1, 0.3)$ (`[C4]`).
 On an orthogonal grid $\cos\psi=0$ and the lowering is the identity bit for bit.
 
@@ -100,6 +104,36 @@ boundary fill. Only the block that owns the physical boundary applies it (`is_ph
 forcing loop (@sec-ch09-framework).
 
 ### Code
+
+**A minimal input.**
+
+```yaml
+forcing:
+  top-sponge-lyr: {tau: 1.e3, width: 5.e3}   # s, m: the top 5 km
+  bot-sponge-lyr: {tau: 1.e3, width: 1.e3}
+```
+
+**What is refused, and why.** An unknown key, by `check_keys`; $\tau\le0$ or `width` $\le0$, with
+"TopSpongeLyrOptions: tau must be greater than zero.", "... width must be greater than zero." and the same for
+`BotSpongeLyrOptions` ({{< code src/forcing/top_sponge_lyr.cpp >}}, {{< code src/forcing/bot_sponge_lyr.cpp >}}): a zero width divides by zero in
+$\zeta$, and a zero $\tau$ in the drag.
+
+**The code, mapped to @eq-ch09-sponge-drag** (`TopSpongeLyrImpl::forward`):
+
+```cpp
+if (!phydro->pmb->options->is_physical_boundary(0, 0, 1)) return du;
+auto x1max = pcoord->x1f[iu + 1];
+auto eta = (options->width() - (x1max - pcoord->x1f.slice(0, 0, -1))) /
+           options->width();
+eta.clamp_(0., 1.0);
+auto scale = torch::sin(M_PI / 2. * eta).pow(2).unsqueeze(0).unsqueeze(0);
+auto force = w[IDN] * w.narrow(0, IVX, 3) / options->tau() * scale * dt;
+coord_vec_lower_(force, pcoord->cosine_cell_kj);
+du.narrow(0, IVX, 3) -= force;
+```
+
+`eta` is $\zeta_i$ from each cell's lower face `x1f`, `scale` is $\sin^2(\pi\zeta_i/2)$, `force` is $\alpha_{\mathrm{spg}}\rho v^a$ and
+`coord_vec_lower_` the lowering by $g_{ab}$; the bottom sponge measures $x_{1,i-1/2}-x_{1,\mathrm{bot}}$ instead.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
