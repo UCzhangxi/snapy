@@ -1,42 +1,80 @@
 ## Thermodynamics evidence {#sec-ch15-ch02-tests}
 
-The following is a source inventory at snapy `e894700ff7aee30b52882e5202b16461413780b0`, not a run log.
-No compiled snapy or kintera tests were run for this draft. The report's independent CPU formula checks
-have their own committed outputs; they cannot certify dispatch, CUDA kernels or communication.
+Thermodynamic tests must distinguish a reversible state conversion from the choice of energy zero.
+This catalogue supports @sec-ch02 and separates those checks from phase-change conservation.
 
-### EOS maps and reference energies
+<!-- PROVENANCE
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
+sources: tests named in the Code table
+status: draft
+-->
 
-`moist_mixture` checks round trips and cache refresh in {{< code tests/test_eos.cpp DeviceTest.moist_mixture >}}. The offset tests are [`test_eos.cpp:168-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L168-L207).
+### Summary
 
-The ideal-moist temperature sweep uses $50$, $100$, $200$, and $400\,\mathrm K$,
-with relative threshold $10^{-12}$, affinity threshold $10^{-12}$ and offset threshold $10^{-10}$;
-these are regression tolerances, not measured errors: {{< code tests/test_eos_temp2inteng.py main >}}.
+::: {.callout-note title="At a glance"}
+**Purpose.** Connect the chapter's claims to executable assertions.
 
-`test_eos_species_registry_python` uses relative $10^{-14}$ for conversions and exact equality for
-step output after rewriting the global tables: {{< code tests/test_eos_species_registry.py main >}}.
+**Data.** Test inputs and thresholds; no new solver measurements.
 
-The two-card parent split uses $10^{-10}$ for float64 and $10^{-4}$ for float32: {{< code tests/test_two_cards_species.cpp expect_card_a_parents >}}.
+**Placement.** Verification outside the simulation step.
 
-The registry threshold `TOL` is defined in [`test_eos_species_registry.py:28-29`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos_species_registry.py#L28-L29).
+**Activation.** Select the named tests; this catalogue changes no defaults.
 
-### Flux enthalpy and phase adjustment
+**Guarantee / limits.** Source coverage does not establish a runtime pass.
 
-The NASA/H2 enthalpy carry assertion includes dry gas and kinetic energy. Its relative tolerance is
-$10^{-9}$, chosen to distinguish the omitted-kinetic-energy error per the source comment: {{< code tests/test_flux_positivity_carry.cpp flux_positivity.moist_mixture_nasa9_h2_enthalpy_matches_internal_plus_pressure >}}. No historical residual from that comment is treated as a new run.
+**Evidence.** The Tests layer distinguishes report checks from solver tests.
+:::
 
-The wall test requires actual phase change and relative energy and water drift below $10^{-12}$: [`test_wall_saturation.cpp:63-89`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_wall_saturation.cpp#L63-L89). It is parameterized for CPU and, when compiled, CUDA; neither was executed here.
+### Derivation
 
-### Registration, gaps and reproducible report checks
+The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
+these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
 
-The temperature and registry Python tests have default CPU registrations: [`CMakeLists.txt:245-256`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L245-L256).
-Shallow-water examples require `FULL_TESTS`: [`CMakeLists.txt:368-379`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L368-L379).
+### Numerical method
 
-The old 14-variable EOS round trips are commented out: [`test_eos.cpp:209-273`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_eos.cpp#L209-L273). ANEOS has no runtime evidence. A moist-mixture temperature-map sweep,
-compiled H2 heat-capacity plot and full phase active-set tests remain follow-up evidence.
-No thermodynamic multi-rank coverage is claimed.
+Read the assertion and its registration, then run the selected test in a build of the code pin.
+Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
+formula check cannot establish that the compiled implementation ran.
 
-Run `python3 src/snapy_report/ch02/<scheme>_check.py` for each non-interface scheme.
-The sibling `.out` files record numbered claims on the synthetic decks in `formulas.py`.
-Moist-mixture has three claims; consistency and saturation each have two. ANEOS prints `[I1]`,
-an illustration without external table validation. No KKT or partition convergence claim is tested.
-These verify derivation identities with CPU float64 or symbolic algebra, not compiled source behavior.
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| 1 | {{< code tests/test_eos.cpp DeviceTest.moist_mixture >}} | `DeviceTest.moist_mixture` | test selection |
+| 2 | {{< code tests/test_eos.cpp DeviceTest.ideal_moist_internal_energy_offset >}} | `DeviceTest.ideal_moist_internal_energy_offset` | test selection |
+| 3 | {{< code tests/test_eos.cpp DeviceTest.ideal_gas_internal_energy_offset_is_zero >}} | `DeviceTest.ideal_gas_internal_energy_offset_is_zero` | test selection |
+| 4 | {{< code tests/test_eos_temp2inteng.py main >}} | `main` | test selection |
+| 5 | {{< code tests/test_eos_species_registry.py main >}} | `main` | test selection |
+| 6 | {{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} | `WallSaturation.phase_change_preserves_energy_and_water` | test selection |
+
+: Assertion definitions for this catalogue. {#tbl-ch15-ch02-tests-sources}
+
+The numbered source entries above map directly to the Tests table. CTest registration names and environments
+come from `setup_test`, `snapy_add_python_test` and the explicit entries in
+{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
+other configurations use their build suffix through `setup_test`
+({{< code cmake/macros/macro_setup_test.cmake >}}).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_eos.release` | Moist-mixture round trip and cache refresh after pressure mutation | rtol = atol = $10^{-6}$ | Source assertion 1 |
+| `test_eos.release` | Ideal-moist offset scales linearly with the supplied density field | rtol = atol = $10^{-6}$ | Source assertion 2 |
+| `test_eos.release` | Ideal-gas energy offset is zero | rtol = atol = $10^{-12}$ | Source assertion 3 |
+| `test_eos_temp2inteng_python` | Temperature round trip, affinity and energy intercept | relative $10^{-12}$, $10^{-12}$, $10^{-10}$ | Source assertion 4 |
+| `test_eos_species_registry_python` | Conversions survive global table mutation; step output unchanged | relative below `TOL`; exact step | Source assertion 5 |
+| `test_wall_saturation.release` | Condensation/evaporation changes cloud mass and preserves energy/water | relative drift below $10^{-12}$ | Source assertion 6 |
+
+: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch02-tests-assertions}
+
+The temperature inputs are 50, 100, 200 and 400 K in `main` above, not measured temperature errors.
+The registry constant `TOL` is $10^{-14}$ ({{< code tests/test_eos_species_registry.py TOL >}}).
+The `src/snapy_report/ch02/*_check.py` scripts exercise the chapter's formulas. ANEOS is an illustration,
+not validation against an external thermodynamic table.
+
+### Limits
+
+A passed conversion does not establish phase-equilibrium convergence, active-set completeness or multi-rank
+thermodynamics. No compiled EOS or saturation test was run for this catalogue. Tolerance values are inherited
+assertion constants, not a derived bound on roundoff.
