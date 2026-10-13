@@ -62,11 +62,13 @@ Why the catalogue reads these tests the way it does, each step tied to the sourc
    by rtol = atol = $10^{-10}$, and is skipped when CUDA is unavailable; a skip is not an agreement.
 6. *Read the solid rows as budgets.* The top-level code of {{< code tests/test_implicit_stratified_solid.py >}}
    requires every arm to end finite with the relative mass drift of each fluid segment below $10^{-12}$
-   (`solid_run`, {{< code tests/test_implicit_stratified_solid.py solid_run >}}); with the corrected-PE work on,
-   the curved-grid energy of `curved_energy` ({{< code tests/test_implicit_stratified_solid.py curved_energy >}})
-   must drift by at most `EPE_TOL` $= 10^{-11}$, the constant it imports from the tall-column test
-   ({{< code tests/test_implicit_face_work_operator.py EPE_TOL >}}). The ratio form and the reduction bound of
-   @sec-ch15 apply to both.
+   (`solid_run`, {{< code tests/test_implicit_stratified_solid.py solid_run >}}). Its tall and coarse columns
+   with the face work or the fixer on are also held to an energy drift below `EPE_TOL` $= 10^{-11}$, the
+   constant the script imports from the face-work operator test
+   ({{< code tests/test_implicit_face_work_operator.py EPE_TOL >}}). With the corrected-PE work on, the
+   curved-grid energy of `curved_energy` ({{< code tests/test_implicit_stratified_solid.py curved_energy >}})
+   is held tighter: its relative drift must be at most $10^{-12}$, a literal in the same top-level code. The
+   ratio form and the reduction bound of @sec-ch15 apply to all three.
 
 ### Numerical method
 
@@ -136,7 +138,7 @@ exact contract, not a bound on the residual of @eq-ch15-budget.
 | `test_radiating_boundary.release` | a saved reference continues exactly; a missing one is refused | exact (`torch::equal`); `c10::Error` | the test |
 | `test_radiating_boundary.release` | the CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | the test |
 | `test_implicit_stratified_solid_python` | solid-separated segments keep their mass and end finite | relative segment-mass drift $<10^{-12}$ | the script |
-| `test_implicit_stratified_solid_radial_exact_python` | the curved-grid corrected energy closes | relative drift $\le10^{-11}$ | `EPE_TOL` of the tall-column test |
+| `test_implicit_stratified_solid_radial_exact_python` | the curved-grid corrected energy closes; the tall and coarse columns keep theirs | curved relative drift $\le10^{-12}$; columns $<$ `EPE_TOL` $= 10^{-11}$ | the script; `EPE_TOL` of the face-work operator test |
 
 : Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch11-assertions}
 
