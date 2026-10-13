@@ -30,7 +30,7 @@ $\rho_{\mathrm{sf}}$ at faces.
 **Activation.** Environment variable `SNAP_WB_REF4`, read once per process, default off; implied by
 `SNAP_X1_CENTROID_EXACT`. Requires $n_g\ge3$ (checked at setup).
 
-**Guarantee / limits.** $\delta\rho_f=O(\Delta x_1^4)$ where the guards do not fire; a guarded cell or face keeps the
+**Guarantee / limits.** $\eta_{\rho,f}=O(\Delta x_1^4)$ where the guards do not fire; a guarded cell or face keeps the
 kernel's second-order value. $p_{\mathrm{sf}}$ is never changed, so the rest balance is the kernel's. Without the
 corrected-PE face work a third-order wall band remains.
 
@@ -97,9 +97,12 @@ P(x_{1,s+j}) &= \sum_{k<j}\rho_{\mathrm{ref},s+k}\,\Delta x_{1,s+k},
 $$ {#eq-ch05-wbref4-face}
 
 with $P$ the quartic through the primitive at the five faces $j=0..4$ (four cells), window $s=f-2$ kept inside the owned cells at a
-clamped wall, physical spacing. On a uniform grid the weights on $\rho_{\mathrm{ref},s..s+3}$ are $(-1,7,7,-1)/12$ in the
-interior, $(25,-23,13,-3)/12$ at the wall face and $(3,13,-5,1)/12$ at the next (`[C8]`). The face is exact for cubic
-point profiles on any grid, so $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
+clamped wall, physical spacing. On a uniform grid of width $h$, $P$ takes the values $0,\ h\rho_{\mathrm{ref},s},\ h(\rho_{\mathrm{ref},s}+\rho_{\mathrm{ref},s+1}),\dots$
+at the faces $j=0..4$; writing $P$ in the Lagrange basis $\ell_j$ of those five faces and differentiating,
+$\rho_{\mathrm{sf},s+j}=\partial_1P(x_{1,s+j})=\sum_{k=0}^{3}\rho_{\mathrm{ref},s+k}\,h\sum_{m>k}\partial_1\ell_m(x_{1,s+j})$, which on
+$\rho_{\mathrm{ref},s..s+3}$ is $(25,-23,13,-3)/12$ at $j=0$ (the wall face), $(3,13,-5,1)/12$ at $j=1$ (the next) and
+$(-1,7,7,-1)/12$ at $j=2$ (the interior face, window $s=f-2$) (`[C8]`). The face is exact for cubic
+point profiles on any grid, so $\eta_{\rho,f}=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
 mid-column offset $3.2\times10^{-12}$ to $2.8\times10^{-16}$ relative from $n_1$ = 32 to 256, fitted order 4.68, against
 order 2.00 for the kernel). @eq-ch05-wbref4-face is built as the weights `awt`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
@@ -134,7 +137,7 @@ choices, not derived. Since $p_{\mathrm{sf}}$ is never changed and on a uniform 
 rest state @eq-ch05-wbx1-rest is the kernel's.
 
 *Exact and truncated.* Exact: the end-cell identity, the face weights for cubics, @eq-ch05-wbref4-pnu for cubics.
-$O(\Delta x_1^4)$: $\rho_{\mathrm{ref}}$ and $\delta\rho_f$ in the interior. At the three faces next to a wall the note
+$O(\Delta x_1^4)$: $\rho_{\mathrm{ref}}$ and $\eta_{\rho,f}$ in the interior. At the three faces next to a wall the note
 gives $O(\Delta x_1^3)$ (the anchor constant through the even ghosts); not re-checked here.
 
 ### Numerical method

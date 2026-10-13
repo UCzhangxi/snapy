@@ -11,7 +11,7 @@ status: draft
 ### Summary
 
 A finite-volume cell on a spherical-polar grid holds the $r^2$ mean of a quantity, whose centroid sits
-$\Delta x_1^2/(6\overline r)$ above the mid-radius. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
+$\Delta x_1^2/(6r^{\mathrm m}_i)$ above the mid-radius $r^{\mathrm m}_i$. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
 scan and the six-face cell pressure, is a formula for plain means. Fed $r^2$ means they are off by $O(\Delta x_1^2/r)$: the face
 values, the scan step, and the pressure force, whose plain difference balances gravity only against the wrong scan.
 The switch converts the inputs of the maps, for the maps only, to plain means with a five-cell stencil exact to degree
@@ -47,24 +47,41 @@ the mid-radius). `balance_column` balances only a column declared Cartesian unde
 
 Units: $r$ and $\Delta x_1$ [m]; $A_{i\pm1/2}=r_{i\pm1/2}^2$ and $V_i=(r_{i+1/2}^3-r_{i-1/2}^3)/3$ are per unit solid angle, as the
 code forms them. $\langle q\rangle_i=V_i^{-1}\int r^2q\,\mathrm{d}r$ is the $r^2$ mean, $\overline q_i=\Delta x_{1,i}^{-1}\int q\,\mathrm{d}r$ the plain
-mean, and $x=(r-\overline r_i)/\Delta x_{1,i}$ the local coordinate. Re-written from the derivation note.[^ch05-x1c-note]
+mean, and $x=(r-r^{\mathrm m}_i)/\Delta x_{1,i}$ the local coordinate, with $r^{\mathrm m}_i=\tfrac12(r_{i-1/2}+r_{i+1/2})$ the mid-radius (NOTATION.md $x^{\mathrm m}_{1,i}$). Re-written from the derivation note.[^ch05-x1c-note]
 
 [^ch05-x1c-note]: `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §§1-5.
 
 #### The defect
 
-Expanding $q$ about the mid-radius,
+Write $r^{\mathrm m}_i=\tfrac12(r_{i-1/2}+r_{i+1/2})$ for the mid-radius and $\Delta=\Delta x_{1,i}$. Expanding $q$ about
+$r^{\mathrm m}_i$, $q(r)=q+(r-r^{\mathrm m}_i)\,\partial_1q+\tfrac12(r-r^{\mathrm m}_i)^2\,\partial_1^2q+\tfrac16(r-r^{\mathrm m}_i)^3\,\partial_1^3q+\dots$,
+with $q$ and its derivatives taken at $r^{\mathrm m}_i$, the two means need the moments of $r-r^{\mathrm m}_i$ on each
+measure. With $\int r^2\,\mathrm dr=\Delta\big((r^{\mathrm m}_i)^2+\Delta^2/12\big)$ and
+$\int(r-r^{\mathrm m}_i)\,r^2\,\mathrm dr=r^{\mathrm m}_i\Delta^3/6$ over the cell,
 
 $$
 \begin{aligned}
-\langle q\rangle_i &= \overline q_i + \delta_i\,\partial_1 q(\overline r_i) + O(\Delta x_1^4/\overline r^2), \\
-\delta_i &= \frac{2\Delta x_{1,i}^2\,\overline r_i}{\Delta x_{1,i}^2 + 12\,\overline r_i^2} = \frac{\Delta x_{1,i}^2}{6\overline r_i} - \frac{\Delta x_{1,i}^4}{72\,\overline r_i^3} + \cdots
+\delta_i &= \langle r-r^{\mathrm m}_i\rangle_i = \frac{r^{\mathrm m}_i\Delta^3/6}{\Delta\big((r^{\mathrm m}_i)^2+\Delta^2/12\big)}
+ = \frac{2\Delta^2\,r^{\mathrm m}_i}{\Delta^2+12\,(r^{\mathrm m}_i)^2}
+ = \frac{\Delta^2}{6r^{\mathrm m}_i}-\frac{\Delta^4}{72\,(r^{\mathrm m}_i)^3}+\cdots, \\
+\langle (r-r^{\mathrm m}_i)^2\rangle_i &= \frac{\Delta^2}{12}+\frac{\Delta^4}{180\,(r^{\mathrm m}_i)^2}+\cdots,
+\qquad \overline{(r-r^{\mathrm m}_i)^2}_i=\frac{\Delta^2}{12},\qquad \overline{(r-r^{\mathrm m}_i)}_i=0,
 \end{aligned}
+$$
+
+so that
+
+$$
+\langle q\rangle_i = \overline q_i + \delta_i\,\partial_1 q(r^{\mathrm m}_i)
++ \frac{\Delta^4}{240\,r^{\mathrm m}_i}\,\partial_1^3q + \frac{\Delta^4}{360\,(r^{\mathrm m}_i)^2}\,\partial_1^2q + O(\Delta^6),
 $$ {#eq-ch05-x1cent-defect}
 
-(`[C18]`, exact). Each uniform-measure map fed $\langle q\rangle$ is off by $\delta \partial_1 q=O(\Delta x_1^2/r)$; in particular the scan
-step becomes $g\Delta x_1\langle\rho\rangle$ instead of $g\int\rho\,\mathrm{d}r=g\Delta x_1\overline\rho$, and the perturbation of a resting
-column is $O(\Delta x_1^2/r)$ instead of a constant.
+$\delta_i$ being the centroid offset of NOTATION.md (`[C18]`, exact). The second-moment difference gives the last term
+and the third moment $\langle(r-r^{\mathrm m}_i)^3\rangle_i=\Delta^4/(40\,r^{\mathrm m}_i)+\dots$ the one before it, so the
+remainder after $\delta_i\partial_1q$ is $O(\Delta x_1^4/r)$. Each uniform-measure map fed $\langle q\rangle$ is off by
+$\delta_i\partial_1q=O(\Delta x_1^2/r)$; in particular the scan step becomes $g\Delta x_1\langle\rho\rangle$ instead of
+$g\int\rho\,\mathrm{d}r=g\Delta x_1\overline\rho$, and the perturbation of a resting column is $O(\Delta x_1^2/r)$ instead of
+a constant.
 
 #### Plain means
 
@@ -96,8 +113,19 @@ $$
 S_i = \frac{2}{V_i}\int_{r_{i-1/2}}^{r_{i+1/2}} r\,\tilde p\,\mathrm{d}r = \sum_{j=0}^{5}w_{i,j}\,p^{*}_{s+j},
 $$ {#eq-ch05-x1cent-source}
 
-and integration by parts, with $\tilde p$ through both faces of the cell, gives
-$-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i=-V_i^{-1}\int r^2\tilde p'\,\mathrm{d}r$: the net pressure force is
+and integration by parts gives the net pressure force. Since $\partial_r(r^2\tilde p)=2r\tilde p+r^2\partial_r\tilde p$,
+
+$$
+\begin{aligned}
+S_iV_i = 2\int_{r_{i-1/2}}^{r_{i+1/2}} r\,\tilde p\,\mathrm{d}r
+&= \big[r^2\tilde p\big]_{r_{i-1/2}}^{r_{i+1/2}} - \int_{r_{i-1/2}}^{r_{i+1/2}} r^2\,\partial_r\tilde p\,\mathrm{d}r \\
+&= A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2} - \int_{r_{i-1/2}}^{r_{i+1/2}} r^2\,\partial_r\tilde p\,\mathrm{d}r ,
+\end{aligned}
+$$
+
+where the second line uses that $\tilde p$ passes through both faces of the cell, $\tilde p(r_{i\pm1/2})=p^{*}_{i\pm1/2}$,
+and $A_{i\pm1/2}=r_{i\pm1/2}^2$. Dividing by $V_i$,
+$-(A_{i+1/2}p^{*}_{i+1/2}-A_{i-1/2}p^{*}_{i-1/2})/V_i+S_i=-V_i^{-1}\int r^2\,\partial_r\tilde p\,\mathrm{d}r$: the net pressure force is
 the $r^2$ mean of $-\partial_r\tilde p$. A constant pressure gives $S_iV_i=A_{i+1/2}-A_{i-1/2}$ exactly, with $V_i$ in the
 cube form of the cell volume (`[C17]`, both identities in exact rationals). @eq-ch05-x1cent-source is
 `x1_pressure_source_stencils`
@@ -110,7 +138,7 @@ The hydrostatic mode takes the same operator (@sec-ch05-hsmode).
 
 On a hydrostatic column of $r^2$ means: the conversion gives $\overline\rho$ to $O(\Delta x_1^6/r)$; the scan then gives the
 exact face pressures plus one constant; the reference on plain means is the Cartesian fourth-order one; and the net
-force $-V^{-1}\int r^2(\tilde p'+g\rho)\,\mathrm{d}r$ has the constant drop out. For a density of degree $\le4$ every step
+force $-V^{-1}\int r^2(\partial_r\tilde p+g\rho)\,\mathrm{d}r$ has the constant drop out. For a density of degree $\le4$ every step
 is exact and the column is balanced exactly, which is the oracle of the test.
 
 *Exact and truncated.* Exact: the conversion for degree 4, both source identities, rest for degree $\le4$. For a

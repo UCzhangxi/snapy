@@ -89,7 +89,15 @@ p_{\mathrm{ref},i} = \tfrac{1}{1440}\big(&11\,p_{\mathrm{sf},i-5/2} - 93\,p_{\ma
 \end{aligned}
 $$ {#eq-ch05-refkernel-pref}
 
-weights derived exactly in `[C1]` and coded as `w6`
+In cell units $\varsigma=(x_1-x_{1,i})/\Delta x_1$ (local symbol), the faces sit at $\varsigma_m=m-\tfrac52$, $m=0..5$. The cell
+average of the quintic through them is $\sum_m w_m\,p_{\mathrm{sf},m}$ with weights that reproduce the cell means of the
+monomials,
+
+$$
+\sum_{m=0}^{5}w_m\,\varsigma_m^{\,n}=\int_{-1/2}^{1/2}\varsigma^{\,n}\,\mathrm d\varsigma=\Big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80},\ 0\Big)_n,\qquad n=0..5,
+$$
+
+whose solution is $(11,-93,802,802,-93,11)/1440$ (`[C1]`), coded as `w6` $=\{11/1440,\,-31/480,\,401/720,\dots\}$
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}).
 In the two cells next to an array end or a clamped wall the same average is taken over six one-sided faces, rows
 `w6e` (`[C2]`, @sec-ch05-wallclamp). A value outside $[\min,\max]$ of the cell's own two face pressures is rejected
@@ -137,17 +145,38 @@ x_1^4)$. This re-derives the degeneracy stated in the comment above `hydro_ref_x
 [^ch05-ref-degen]: The measurements behind it are in `sources/canoe__tall_column_instability_TECH_REPORT.md` §§3d, 4-5.
 
 *Face-density offset.* What the solver uses is $\rho_{\mathrm{sf}}+\mathcal W[\overline\rho-\rho_{\mathrm{ref}}]
-=\mathcal W[\overline\rho]+\delta\rho_f$ with $\delta\rho_f=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]$. Expanding
-the ratio of averages, the binomial bias, the two-cell mean and the cell pressure, the derivation note[^ch05-ref-off]
-obtains
+=\mathcal W[\overline\rho]+\eta_{\rho,f}$ with $\eta_{\rho,f}=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]$ (local symbol: the
+offset of face $f$ [$\mathrm{kg\,m^{-3}}$]). On a uniform grid of width $h$, with $p$, $\rho$ and $\chi=\rho/p$ the point
+values and derivatives taken at the face, and $\mathcal W$ a reconstruction that returns the face value of the function
+whose cell averages it is given, to $O(h^4)$, the four expansions of the derivation note[^ch05-ref-off] are:
+
+1. ratio of averages: from $\overline q=q+\tfrac{h^2}{24}\partial_1^2q$ at the cell centre,
+   $\chi_i=\overline\rho_i/\overline p_i=\chi+\tfrac{h^2}{24}\big(\partial_1^2\rho-\chi\,\partial_1^2p\big)/p$;
+2. binomial bias: $\chi^s_i=\chi_i+\tfrac{h^2}{2}\partial_1^2\chi$, from the second moment 1 of $(1,4,6,4,1)/16$;
+3. two-cell mean: $\tfrac12(\chi^s_{i-1}+\chi^s_i)=\chi^s(x_{1,f})+\tfrac{h^2}{8}\partial_1^2\chi$;
+4. cell pressure: $p_{\mathrm{ref},i}=\overline p_i+c$ and $p_{\mathrm{sf},f}=p(x_{1,f})+c$, with $c$ the column constant.
+
+Then, from @eq-ch05-refkernel-dens,
 
 $$
-\delta\rho_f = \frac{\Delta x_1^2}{12}\big(\partial_1p\,\partial_1\chi+2p\,\partial_1^2\chi\big) + O(\Delta x_1^4),
+\begin{aligned}
+\rho_{\mathrm{sf},f} &= (p+c)\Big[\chi+\tfrac{h^2}{24}\tfrac{\partial_1^2\rho-\chi\partial_1^2p}{p}+\tfrac{5h^2}{8}\partial_1^2\chi\Big], \\
+\rho_{\mathrm{ref},i} &= (\overline p_i+c)\,\chi^s_i = \rho+\tfrac{h^2}{24}\partial_1^2\rho+\tfrac{h^2}{2}p\,\partial_1^2\chi + c\,\chi^s_i \quad\text{(at the cell centre)}, \\
+\mathcal W[\rho_{\mathrm{ref}}] &= \Big(\rho+\tfrac{h^2}{2}p\,\partial_1^2\chi+c\,\chi^s\Big)-\tfrac{h^2}{24}\partial_1^2\big(\rho+c\chi\big),
+\end{aligned}
+$$
+
+the last line because cell values that are point samples of a function $R$ are the cell averages of
+$R-\tfrac{h^2}{24}\partial_1^2R$. Subtracting, and using $\partial_1^2\rho=\chi\,\partial_1^2p+2\,\partial_1p\,\partial_1\chi+p\,\partial_1^2\chi$,
+
+$$
+\eta_{\rho,f} = \frac{h^2}{12}\big(\partial_1p\,\partial_1\chi+2p\,\partial_1^2\chi\big) + \frac{h^2}{6}\,c\,\partial_1^2\chi + O(h^4).
 $$ {#eq-ch05-refkernel-offset}
 
-with $\chi=\rho/p$ the point ratio. `[C14]` measures $\delta\rho_f$ at
-the middle face of a polytrope against fifth-order linear reconstruction and finds the ratio
-to @eq-ch05-refkernel-offset 1.0022, 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
+The anchor makes $c$ itself $O(h^2p)$ (the factor $\sinh a/a$ of @eq-ch05-refkernel-anchor), so the last term is
+$O(h^4)$ and the offset is the first term, with $\chi=\rho/p$ the point ratio. `[C14]` measures $\eta_{\rho,f}$ at the
+middle face of a polytrope against fifth-order linear reconstruction and finds the ratio to the first term 1.0022,
+1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
 
 [^ch05-ref-off]: `docs/derivations/wb-ref4.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §2.
 

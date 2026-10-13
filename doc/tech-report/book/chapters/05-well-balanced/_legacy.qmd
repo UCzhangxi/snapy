@@ -43,9 +43,18 @@ $$ {#eq-ch05-legacy-copy}
 
 in `_revise_x1inner_lr`
 ({{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}}),
-so the Riemann solver sees no pressure jump at the wall. The ghost fill holds $K=p/\rho^\gamma$ of the wall cell and
-integrates $\mathrm{d}(p^{a})/\mathrm{d}x_1=-a\,g/K^{1/\gamma}$, $a=(\gamma-1)/\gamma$, cell by cell into the ghosts, the
-isentropic hydrostatic profile, in `_revise_x1inner_ghost`
+so the Riemann solver sees no pressure jump at the wall. The ghost fill holds the wall cell's ratio of specific heats $\gamma$ (NOTATION.md, `W->A` of that cell) and its
+isentrope constant $K_{\mathrm{is}}=p/\rho^\gamma$ (local symbol) fixed, takes $g=-g_1>0$, and integrates hydrostatic balance
+$\partial_1p=-\rho g$ with $\rho=(p/K_{\mathrm{is}})^{1/\gamma}$. With $\alpha_\gamma=(\gamma-1)/\gamma$ (local symbol),
+
+$$
+\frac{\mathrm d(p^{\alpha_\gamma})}{\mathrm dx_1}=\alpha_\gamma\,p^{\alpha_\gamma-1}\,\partial_1p
+=-\alpha_\gamma\,g\,K_{\mathrm{is}}^{-1/\gamma}\,p^{\,\alpha_\gamma-1+1/\gamma}
+=-\frac{\alpha_\gamma\,g}{K_{\mathrm{is}}^{1/\gamma}},
+$$
+
+since $\alpha_\gamma-1+1/\gamma=0$. So $p^{\alpha_\gamma}$ is linear in $x_1$, and stepping it down by the centre spacing
+cell by cell into the ghosts is exact for the isentropic hydrostatic profile, in `_revise_x1inner_ghost`
 ({{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_ghost >}}).
 Neither is used at the pin, so neither has a check.
 
