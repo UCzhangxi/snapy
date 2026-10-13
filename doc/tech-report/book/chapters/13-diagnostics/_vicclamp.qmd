@@ -27,13 +27,14 @@ divergence exactly. When every species of a donor is starved, the meter reads th
 
 ### Derivation
 
-Let $\Delta\rho_i$ [kg m$^{-3}$] be the total density change of cell $i$ after the redistribution and the clamps,
-dry gas plus every species, and $V_i$ [m$^3$] the cell volume, so $\Delta\rho_iV_i$ [kg] is the cell's mass change.
+Let $\Delta^{\mathrm{rd}}\rho_i$ [kg m$^{-3}$] be the density change that the redistribution itself books in cell
+$i$, summed over dry gas and every species, and $V_i$ [m$^3$] the cell volume, so $\Delta^{\mathrm{rd}}\rho_iV_i$
+[kg] is the redistribution's mass change of the cell. It is not the total solved change $\Delta\rho_i$.
 Let $M_{i\mp1/2}$ [kg] be the face transfers of @eq-ch07-vic-faces, positive upward. The meter, a pure number
 written by its log name, is
 
 $$
-\mathrm{vicclamp} = \max_i \frac{\big|\Delta\rho_iV_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
+\mathrm{vicclamp} = \max_i \frac{\big|\Delta^{\mathrm{rd}}\rho_iV_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
 $$ {#eq-ch13-vicclamp}
 
 maximised over the run, with $f$ [kg] a floor against empty faces. Without a clamp, $\mathrm{vicclamp}$ is zero to
@@ -59,8 +60,9 @@ from snapy_report.ch13.fig_vicclamp import make_fig
 make_fig()
 ```
 
-After each redistribution, `forward_masked` forms the per-cell residual from the redistribution buffer and
-raises the running maximum `_clamp_residual` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The comment there
+After each redistribution, `forward_masked` forms the per-cell residual from the redistribution buffer
+`_mass_corr`. Its dry and species rows give $\Delta^{\mathrm{rd}}\rho_i$, and its row at index `IVX` holds the face
+transfers. It then raises the running maximum `_clamp_residual` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The comment there
 explains why the residual is per cell: a column maximum would hide a binding in a low-flux layer. The meter is
 read through `clamp_residual` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::clamp_residual >}}). The cycle line takes the MAX over
 blocks into `vic_max` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}), reduces it with MAX across ranks, and prints
