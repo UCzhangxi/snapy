@@ -18,7 +18,7 @@ local function load(name)
 end
 
 return {
-  ["generated"] = function(args)
+  ["generated"] = function(args, kwargs, meta, raw_args, context)
     local name = args[1] and pandoc.utils.stringify(args[1]) or ""
     local key = args[2] and pandoc.utils.stringify(args[2]) or ""
     local v = load(name)[key]
@@ -26,6 +26,11 @@ return {
       error("no generated value " .. name .. " " .. key .. ": run the generators of book/_quarto.yml's pre-render step")
     end
     -- a value is markdown: a number, a dash, or a cross-reference that quarto resolves after this shortcode
-    return pandoc.utils.blocks_to_inlines(pandoc.read(v, "markdown").blocks)
+    local inlines = pandoc.utils.blocks_to_inlines(pandoc.read(v, "markdown").blocks)
+    -- alone in a table cell the shortcode is a block; Plain keeps the cell as the committed text would (no <p>)
+    if context == "block" then
+      return pandoc.Plain(inlines)
+    end
+    return inlines
   end,
 }
