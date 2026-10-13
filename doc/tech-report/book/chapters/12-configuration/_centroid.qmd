@@ -15,29 +15,21 @@ This section keeps the selector and the guards of the $r^2$-exact maps; the conv
 operator and their derivation are in @sec-ch05-x1cent and are not repeated here.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Selects the $r^2$-exact $x_1$ maps on spherical-polar grids: the five-cell conversion of
-$r^2$-weighted cell means to plain means, @eq-ch05-x1cent-conv, and the six-face radial pressure source,
-@eq-ch05-x1cent-source (@sec-ch05-x1cent).
+**Purpose.** Selects the spherical mean and pressure maps of @sec-ch05-x1cent.
 
-**Data.** In: the $x_1$ primitives as $r^2 \,\mathrm{d}r$ averages and the six face pressures; out: plain
-means for the $x_1$ reconstruction and the radial pressure acceleration. Only $x_1$ inputs are converted.
+**Data.** $r^2$-weighted primitives and face pressures in; plain means and pressure source out.
 
-**Placement.** In `HydroImpl::forward`, before the well-balanced $x_1$ reconstruction (the conversion) and in
-the geometric source (the pressure operator), on spherical-polar grids only.
+**Placement.** Before radial reconstruction and in the spherical pressure source.
 
-**Activation.** `SNAP_X1_CENTROID_EXACT`, default off; it turns `SNAP_WB_REF4` on and so inherits the
-three-ghost guard with gravity. `balance_column` accepts only a Cartesian geometry while it is on.
+**Activation.** `SNAP_X1_CENTROID_EXACT=1`, default off; implies WB.
 
-**Guarantee / limits.** Exact for polynomials of degree four (conversion) and for the quintic pressure
-interpolant (source); unusable stencils return the original means. No conversion exists for gnomonic grids.
+**Guarantee / limits.** Degree-four mean conversion; unusable stencils retain the input means.
 
-**Evidence.** `test_x1_centroid_rest_python`: a resting spherical column stays balanced to `TOL_ON` =
-$10^{-10}$ with the switch on and is unbalanced above `TOL_OFF` = $10^{-8}$ with it off, for explicit and
-implicit stepping and non-hydrostatic 1 and 0 ({{< code tests/test_x1_centroid_rest.py TOL_ON >}});
-`test_x1_seam_split_x1_centroid.<b>`: a split column matches one block to $10^{-13}$
-({{< code tests/test_x1_seam_split.cpp X1SeamSplit.centroid_exact_split_matches_one_block >}}); check `[C3]` of
-`configuration_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-centroid-tests.
 :::
+
+Local symbols: $r=x_1$ is radius [m]; pressure is measured in Pa. The weighted mean uses the spherical volume
+measure $r^2\,\mathrm{d}r$.
 
 ### Derivation
 
@@ -75,6 +67,36 @@ make_fig()
 
 ### Code
 
+**How to use it.** Set `SNAP_X1_CENTROID_EXACT=1` before launch. Merge this fragment into a complete spherical
+card with suitable radial bounds and enough owned cells for the stencils:
+
+```yaml
+geometry:
+  type: spherical-polar
+  cells:
+    nghost: 3
+forcing:
+  const-gravity:
+    grav1: -9.8     # m s^-2
+    gravity-work: cell
+```
+
+XC implies WB even if `SNAP_WB_REF4=0`; the same three-ghost refusal of @sec-ch12-wb-reference applies.
+Do not use `balance_column` to construct this spherical state: with XC enabled it accepts only Cartesian geometry.
+Unusable conversion stencils retain their input means rather than throwing.
+
+`x1_centroid_exact_enabled` ({{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}}) contains this selection step:
+
+```cpp
+    auto v = get_env("SNAP_X1_CENTROID_EXACT", "0");
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return !(v.empty() || v == "0" || v == "false" || v == "off" || v == "no");
+```
+
+The default `"0"` leaves the maps off. A true result selects the degree-four mean conversion and the separate
+six-face pressure identity of `[C3]`; the geometry gate remains in `HydroImpl::forward`.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | flag | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `x1_centroid_exact_enabled` | `SNAP_X1_CENTROID_EXACT` |
@@ -102,6 +124,7 @@ make_fig()
 | `test_x1_centroid_rest_python` (CUDA variant registered) | force balance of a resting spherical column, implicit scheme 0 and 1, non-hydrostatic 1 and 0 | on below $10^{-10}$; off above $10^{-8}$ | `TOL_ON`, `TOL_OFF` |
 | `test_x1_seam_split_x1_centroid.<b>` (CUDA and two-rank variants registered) | a split column matches one block | relative gap at most $10^{-13}$ | the test |
 | `test_balance_column_x1_centroid.<b>`, `test_face_floor_x1_centroid.<b>` | the balance and face-floor checks hold with the implied reference | as in their base tests | `tests/CMakeLists.txt` |
+| `configuration_check.py` `[C3]` (report check) | the spherical mean moments and pressure identities | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-centroid-tests}
 
@@ -113,6 +136,14 @@ are registered in {{< code tests/CMakeLists.txt >}}.
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the spherical mean moments and pressure identities in `[C3]`.[^ch12-centroid-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-centroid-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C3]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

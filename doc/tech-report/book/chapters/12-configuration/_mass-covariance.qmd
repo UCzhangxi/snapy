@@ -14,26 +14,21 @@ This section keeps the selector and the guard of the radial velocity correction;
 the finite-difference form are derived in @sec-ch04-x1masscov and are not repeated here.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Selects the $x_1$ mass-flux covariance of @sec-ch04-x1masscov: the well-balanced $x_1$ path
-converts the density-weighted radial velocity to a plain mean before reconstruction, @eq-ch04-x1masscov-gap.
+**Purpose.** Selects the radial mean conversion of @eq-ch04-x1masscov-gap.
 
-**Data.** In: the cell density and radial velocity of the $x_1$ column, ghosts included; out: the corrected
-velocity the perturbation reconstruction reads, restored to the input afterwards.
+**Data.** Density and radial velocity in; corrected reconstruction velocity out.
 
-**Placement.** Inside the well-balanced branch of `HydroImpl::forward`, after the reference is subtracted and
-before the $x_1$ reconstruction, on every hydro call.
+**Placement.** Well-balanced radial branch, before reconstruction; input restored afterwards.
 
-**Activation.** `SNAP_X1_MASS_COVARIANCE`, default off. With nonzero `grav1` the setup requires at least three
-owned $x_1$ cells.
+**Activation.** `SNAP_X1_MASS_COVARIANCE=1`, default off.
 
-**Guarantee / limits.** A leading $O(\Delta x_1^2)$ correction, exact for linear fields; no accuracy oracle is
-registered, only the setup guard.
+**Guarantee / limits.** With radial gravity, at least three owned radial cells are required.
 
-**Evidence.** `test_x1_seam_split_x1_mass_covariance.<b>`: two owned cells are refused with the guard's
-message and three are accepted
-({{< code tests/test_x1_seam_split.cpp X1SeamSplit.x1_mass_covariance_needs_3_x1_cells >}}); check `[C4]` of
-`configuration_check.py`; the ctest was not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-mass-covariance-tests.
 :::
+
+Local symbols: $\rho$ is density [$\mathrm{kg\,m^{-3}}$], radial velocity has units [m s$^{-1}$], and $\Delta x_1$
+is cell width [m].
 
 ### Derivation
 
@@ -65,6 +60,30 @@ make_fig()
 
 ### Code
 
+**How to use it.** Set `SNAP_X1_MASS_COVARIANCE=1` before launch and give each block at least three owned
+radial cells. This gravity fragment belongs inside a complete input card:
+
+```yaml
+forcing:
+  const-gravity:
+    grav1: -9.8     # m s^-2
+    gravity-work: cell
+```
+
+For two owned cells with radial gravity, reset refuses the stencil with
+"SNAP_X1_MASS_COVARIANCE needs at least 3 x1 cells per block, got 2; unset it".
+Ghost cells do not count towards this minimum: the one-sided wall slope uses owned cells.
+
+`HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) contains this selection step:
+
+```cpp
+        wx1[IVX] -= dx1f * dx1f / 12. * rho_1 * w_1 / density;
+```
+
+Here `dx1f` is the radial cell width [m], `rho_1` the density slope [$\mathrm{kg\,m^{-4}}$],
+and `w_1` the radial velocity slope [$\mathrm{s^{-1}}$]. Dividing their product by density gives the velocity
+correction [m s$^{-1}$] in @eq-ch04-x1masscov-gap, whose linear identity is checked by `[C4]`.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | flag | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
@@ -86,6 +105,7 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_x1_seam_split_x1_mass_covariance.<b>` | two owned cells are refused with the guard's text; three are accepted | exception text; no throw | the test |
+| `configuration_check.py` `[C4]` (report check) | the mass-weighted mean identity | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-mass-covariance-tests}
 
@@ -94,6 +114,14 @@ the arm is registered with `SNAP_X1_MASS_COVARIANCE=1` in {{< code tests/CMakeLi
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the mass-weighted mean identity in `[C4]`.[^ch12-mass-covariance-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-mass-covariance-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C4]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

@@ -16,29 +16,21 @@ five-cell filter, its cubic wall continuation and the four-cell face rule, is de
 not repeated here.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Selects the fourth-order, cell/face-consistent density reference of the well-balanced $x_1$
-reconstruction; the filter is @eq-ch05-wbref4-dref and its face rule @eq-ch05-wbref4-face (@sec-ch05-wbref4).
+**Purpose.** Selects the reference filter and face rule of @sec-ch05-wbref4.
 
-**Data.** In: the cell ratios $\chi=\rho/p$ of the owned cells and, across a seam, the exchanged ghost rows;
-out: the cell and face density references the reconstruction subtracts and restores.
+**Data.** Cell ratios $\chi=\rho/p$ in; cell and face density references out.
 
-**Placement.** Inside `HydroImpl::_hydro_ref_x1`, on every hydro call before the $x_1$ perturbation
-reconstruction.
+**Placement.** Before the well-balanced radial perturbation reconstruction.
 
-**Activation.** `SNAP_WB_REF4`, default off; on whenever `SNAP_X1_CENTROID_EXACT` is on. With nonzero
-`grav1` the setup requires `nghost` at least 3.
+**Activation.** `SNAP_WB_REF4=1`, default off; XC also enables it.
 
-**Guarantee / limits.** Exact for cubic $\chi$ on a uniform grid; a stencil that is not usable (fewer than four
-owned cells next to a clamped wall, fewer than five cells) or a face value outside its cell range keeps the base
-reference of @sec-ch05-refkernel.
+**Guarantee / limits.** Cubic exactness on uniform grids; unusable stencils keep the base reference.
 
-**Evidence.** `test_wb_ref4_order_python`: three-resolution slope at least `ORDER_ON` = 2.75 with the switch
-on and below `ORDER_OFF` = 2.5 with it off, both arms with FC on
-({{< code tests/test_wb_ref4_order.py ORDER_ON >}}); `test_x1_seam_split_wb_ref4.<b>`: a split column matches
-one block to $10^{-13}$ and fewer than three ghosts are refused
-({{< code tests/test_x1_seam_split.cpp X1SeamSplit.wb_ref4_flag_at_the_seam_split_matches_one_block >}}); check
-`[C2]` of `configuration_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-wb-reference-tests.
 :::
+
+Local symbols: $\rho$ is density [$\mathrm{kg\,m^{-3}}$], $p$ pressure [Pa], and $\chi=\rho/p$
+[$\mathrm{s^2\,m^{-2}}$].
 
 ### Derivation
 
@@ -74,6 +66,32 @@ make_fig()
 
 ### Code
 
+**How to use it.** Set `SNAP_WB_REF4=1` before launch and merge this fragment into a complete input card.
+Use `SNAP_X1_CENTROID_EXACT=0` when isolating WB from XC:
+
+```yaml
+geometry:
+  cells:
+    nghost: 3
+forcing:
+  const-gravity:
+    grav1: -9.8     # m s^-2
+    gravity-work: cell
+```
+
+With radial gravity, `HydroImpl::reset` refuses a thinner halo: for two ghosts the message is
+"SNAP_WB_REF4 (or SNAP_X1_CENTROID_EXACT, which implies it) needs nghost >= 3, got 2; unset it".
+The pressure scan needs those three neighbours; zero gravity disables that guard.
+
+`wb_ref4_enabled` ({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}) contains this selection step:
+
+```cpp
+  return on || x1_centroid_exact_enabled();
+```
+
+The logical OR selects the reference whenever either switch is active. It chooses the filter and face rule
+checked by `[C2]`; it does not remove their stencil-usability fallback.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | flag | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `wb_ref4_enabled` | `SNAP_WB_REF4` |
@@ -100,6 +118,7 @@ make_fig()
 | `test_x1_seam_split_wb_ref4.<b>` (CUDA and two-rank variants registered) | a split column matches one block; `nghost` below 3 is refused | relative gap at most $10^{-13}$; exception text | the test |
 | `test_x1_seam_split_wb_ref4_gravity_0.<b>` | with zero gravity a one-ghost column sets up and steps | finite state | the test |
 | `test_balance_column_wb_ref4.<b>`, `test_face_floor_wb_ref4.<b>` | the balance and face-floor checks hold under the switched reference | as in their base tests | `tests/CMakeLists.txt` |
+| `configuration_check.py` `[C2]` (report check) | the filter, wall continuation and face moments | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-wb-reference-tests}
 
@@ -112,6 +131,14 @@ registered in {{< code tests/CMakeLists.txt >}}.
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the filter, wall continuation and face moments in `[C2]`.[^ch12-wb-reference-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-wb-reference-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C2]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

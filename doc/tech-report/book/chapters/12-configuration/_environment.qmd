@@ -17,29 +17,22 @@ process and never again, which is why this section exists apart from the switche
 of a switch needs one child process per arm, and a flag set between two stages of one process does nothing.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A: one parsing rule and one lifetime rule for the five numerics switches `SNAP_WB_REF4`,
+**Purpose.** Parses and caches the five process-wide numerics switches.
+
+**Data.** Environment strings in; one cached boolean per accessor out.
+
+**Placement.** First accessor call, including calls during setup.
+
+**Activation.** WB, XC, MC default off; FC, RE on; XC implies WB.
+
+**Guarantee / limits.** No trimming, spelling validation or cross-rank agreement check.
+
+**Evidence.** Tests below, @tbl-ch12-environment-tests.
+:::
+
+The variables are `SNAP_WB_REF4`,
 `SNAP_X1_CENTROID_EXACT`, `SNAP_FLUX_COVARIANCE`, `SNAP_X1_MASS_COVARIANCE` and
 `SNAP_GRAVITY_WORK_RADIAL_EXACT` (WB, XC, FC, MC, RE).
-
-**Data.** In: the environment string of each variable at the first call of its accessor. Out: one cached
-boolean per accessor, shared by every block of the process.
-
-**Placement.** The first call of an accessor, which can happen during setup before any time step; the value
-is then fixed for the life of the process.
-
-**Activation.** Three switches default to off (WB, XC, MC); two default to on: FC, whose lookup falls back to
-`"1"` ({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}), and RE, whose lookup falls back to `"1"`
-as well ({{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}}). XC turns WB on.
-
-**Guarantee / limits.** The parse is a lower-cased comparison with four false tokens; no trimming, no
-validation of spelling, and nothing checks that the ranks of a run agree.
-
-**Evidence.** `test_horizontal_flux_covariance_python` and `test_gravity_work_radial_exact_python` each compare
-the unset arm with the `1` arm bit for bit and the `0` arm against it
-({{< code tests/test_horizontal_flux_covariance.py main >}},
-{{< code tests/test_gravity_work_radial_exact.py main >}}); check `[C1]` of `configuration_check.py`; the
-ctests were not run at the pin.
-:::
 
 | value, compared after lower-casing | WB, XC, MC | FC | RE |
 |---|---|---|---|
@@ -82,6 +75,30 @@ make_fig()
 
 ### Code
 
+**How to use it.** Start a fresh process for each comparison. For example, from the configured build,
+run the registered covariance script under `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`; its child arms select FC.
+Use the CTest registration to obtain its remaining environment (@sec-ch12-matrix):
+
+```bash
+ctest --test-dir build -R '^test_horizontal_flux_covariance_python$' --output-on-failure
+```
+
+Run this command from the checkout root after configuring the import path (@sec-ch12-test-environment).
+These switches have no YAML equivalent. Set them before importing or constructing the solver, on every rank.
+Misspellings are not refused: `false ` enables the switch because whitespace is not stripped.
+
+`HydroImpl::flux_covariance` ({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}) contains this selection step:
+
+```cpp
+    auto v = get_env("SNAP_FLUX_COVARIANCE", "1");
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return !(v.empty() || v == "0" || v == "false" || v == "off" || v == "no");
+```
+
+The fallback string is the unset arm of `[C1]`; lower-casing and the final comparison implement its token table.
+The enclosing function stores this result in a local static, so changing the environment afterwards has no effect.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | env | {{< code src/layout/layout.hpp get_env >}} | `get_env` | `SNAP_*` |
@@ -110,6 +127,7 @@ make_fig()
 |---|---|---|---|
 | `test_horizontal_flux_covariance_python` | the unset arm equals the `1` arm bit for bit; the `0` arm differs | `torch.equal` | the script |
 | `test_gravity_work_radial_exact_python` | the unset arm equals the `1` arm bit for bit; the `0` arm differs | `torch.equal` | the script |
+| `configuration_check.py` `[C1]` (report check) | the parser truth table and XC implication | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-environment-tests}
 
@@ -120,6 +138,14 @@ The arm dictionaries are `ARMS` in {{< code tests/test_horizontal_flux_covarianc
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the parser truth table and XC implication in `[C1]`.[^ch12-environment-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-environment-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C1]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

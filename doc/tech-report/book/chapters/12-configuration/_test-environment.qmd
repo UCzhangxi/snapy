@@ -17,23 +17,17 @@ lists them, so that a reader can rerun one arm of a test and knows that a skippe
 failure.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A: the harness variables select test arms and record evidence provenance; they are not hydro
-schemes.
+**Purpose.** Selects test arms and distinguishes execution from skips.
 
-**Data.** In: the per-test environment that `tests/CMakeLists.txt` registers and the variables a test reads
-itself. Out: which arm runs, which case the filter selects, and whether a run counts as pass, fail or skip.
+**Data.** CTest environment and test filters in; selected assertion outcomes out.
 
-**Placement.** CTest registration and the start of each test process.
+**Placement.** Registration, then each test process startup.
 
-**Activation.** Per registration; on a non-CUDA build every test gets `SNAPY_BUILD_CUDA=0` and the
-CUDA-labelled entries are disabled, whatever GPU is visible.
+**Activation.** Per registration; non-CUDA builds set `SNAPY_BUILD_CUDA=0`.
 
-**Guarantee / limits.** A selected arm must execute its assertion: the seam arms require the one-test pass
-marker, and a Python CUDA arm that cannot run exits with the skip code 125, which is neither pass nor failure.
+**Guarantee / limits.** An empty selection proves nothing; skip code 125 is not a pass.
 
-**Evidence.** `test_python_import_path_python`: the imported package and the preserved caller path
-({{< code tests/test_python_import_path.py >}}, exact paths, skip 125 when unconfigured); check `[C9]` of
-`configuration_check.py`; no registered ctest was run for this chapter.
+**Evidence.** Tests below, @tbl-ch12-test-environment-tests.
 :::
 
 | variable | purpose |
@@ -79,6 +73,29 @@ make_fig()
 
 ### Code
 
+**How to use it.** Configure `SNAPY_TEST_PYTHONPATH` to the parent directory of the package from the build,
+then run its import probe before a numerical Python test:
+
+```bash
+ctest --test-dir build -R '^test_python_import_path_python$' --output-on-failure
+```
+
+These are harness settings, not YAML keys. An unset package path makes the probe skip with code 125.
+Treat that as missing import evidence. Likewise, inspect disabled CUDA entries separately and do not count an
+empty `GTEST_FILTER` selection as a successful numerical assertion.
+
+{{< code tests/CMakeLists.txt >}} contains this selection step:
+
+```cmake
+set_tests_properties(test_python_import_path_python PROPERTIES
+  ENVIRONMENT "PYTHONPATH=${_marker}"
+  SKIP_RETURN_CODE 125
+)
+```
+
+The marker tests whether the caller's path survives, while `SKIP_RETURN_CODE` distinguishes an unavailable
+probe from a pass. That distinction is the predicate checked by `[C9]`.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | seam arms | {{< code tests/CMakeLists.txt >}} | `seam_arm` | `GTEST_FILTER` |
@@ -104,6 +121,7 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_python_import_path_python` | the imported package lies under the cache path and the caller's `PYTHONPATH` entry survives | exact paths; skip 125 when unconfigured | the script's `assert` statements |
+| `configuration_check.py` `[C9]` (report check) | the selected-test and skip predicates | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-test-environment-tests}
 
@@ -111,6 +129,14 @@ The assertions are the top-level `assert` statements of {{< code tests/test_pyth
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the selected-test and skip predicates in `[C9]`.[^ch12-test-environment-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-test-environment-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C9]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

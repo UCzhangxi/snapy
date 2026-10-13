@@ -17,33 +17,20 @@ are not repeated here. The default matters for every reader of a deck: a run tha
 gets the correction, and a run that sets the variable gets what it sets.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Selects the $x_2$ and $x_3$ face-flux correction of @sec-ch04-fluxcov: the $x_1$ covariance term
-of @eq-ch04-fluxcov-identity and, on a curved grid, the cell-to-face centroid term, @eq-ch04-fluxcov-dF.
+**Purpose.** Selects the lateral correction of @eq-ch04-fluxcov-dF.
 
-**Data.** In: the reconstructed left and right face states of each lateral direction and the grid's $x_1$ face
-moments; out: an additive correction to every active $x_2$ or $x_3$ flux, a tracer row for each passive scalar,
-and the shifted pressure of the matching geometric source.
+**Data.** Face states and radial moments in; hydro and tracer flux corrections out.
 
-**Placement.** In `HydroImpl::forward`, per lateral direction, after the face states are built and before the
-Riemann flux is added; the scalar rows in `ScalarImpl::forward` of the same stage.
+**Placement.** Each lateral flux and its matching geometric source, every stage.
 
-**Activation.** `SNAP_FLUX_COVARIANCE`, read once per process. **The correction is on by default**: the lookup
-falls back to `"1"` when the variable is unset, and `0`, `false`, `off`, `no` or an empty value turn it off
-({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}). A direction's geometric source is corrected only
-when that direction's flux is; the species donor limiter runs whenever the correction is on.
+**Activation.** `SNAP_FLUX_COVARIANCE`, default on; `0` disables it.
 
-**Guarantee / limits.** A leading $O(\Delta x_1^2)$ smooth-gradient correction that telescopes exactly on a
-shared face; no fourth-order claim. Fewer than three $x_1$ cells or a shallow-water state give no correction.
+**Guarantee / limits.** Leading $O(\Delta x_1^2)$ correction; no fourth-order guarantee.
 
-**Evidence.** `test_horizontal_flux_covariance_python`: scaled onset error below `FIXED` = 0.04 with the term
-on, the unset arm equal to the `1` arm bit for bit, plain energy drift at most `EPE_TOL` = $10^{-12}$
-({{< code tests/test_horizontal_flux_covariance.py FIXED >}}); `test_flux_covariance_rows_python`: rest to
-$10^{-9}$, a uniform species to $10^{-13}$, energy-offset invariance to $10^{-10}$
-({{< code tests/test_flux_covariance_rows.py REST_TOL >}}); `test_flux_covariance_seams_python`: six-panel
-totals drift below $10^{-12}$ and the on and off arms differ by more than $10^{-13}$
-({{< code tests/test_flux_covariance_seams.py DRIFT_TOL >}}); check `[C4]` of `configuration_check.py`; the
-ctests were not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-flux-covariance-tests.
 :::
+
+Local symbols: $\Delta x_1$ is the radial cell width [m]; the face correction has the units of its flux row.
 
 ### Derivation
 
@@ -78,6 +65,31 @@ make_fig()
 
 ### Code
 
+**How to use it.** Leave FC unset for its default, or set `SNAP_FLUX_COVARIANCE=1` explicitly before launch.
+Use a new process with `SNAP_FLUX_COVARIANCE=0` for the control. In a complete multidimensional card,
+this fragment leaves both lateral flux directions active:
+
+```yaml
+dynamics:
+  disable-flux-x2: false
+  disable-flux-x3: false
+```
+
+There is no setup refusal for an unavailable covariance stencil: fewer than three radial cells or a shallow-water
+state give no correction. A collapsed or disabled lateral direction also supplies no corrected flux.
+
+`HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) contains this selection step:
+
+```cpp
+      priemann->forward(wlr2[ILT], wlr2[IRT], DIM2, _flux2);
+      if (dcov.defined()) _flux2 += dcov;
+      cov2 = dcov.defined();
+```
+
+`dcov` is the additive face term of @eq-ch04-fluxcov-dF, built from the states before the Riemann call.
+These lines add it to the computed flux and record whether the matching source needs correction.
+The shared-face cancellation checked by `[C4]` requires both cells to use that same flux.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | flag and default | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | `get_env` | `SNAP_FLUX_COVARIANCE` |
@@ -105,6 +117,7 @@ make_fig()
 | `test_flux_covariance_seams_python` | six-panel conservation with cell work and the fixer, direction gating, `0` and `1` arms differ | drift below $10^{-12}$; difference above $10^{-13}$ | `DRIFT_TOL`, `DIFF_TOL` |
 | `test_scalar_cov_x1_split_python` (`SNAP_FLUX_COVARIANCE=1`), `test_pref_local_seam_flux_covariance.<b>` (`SNAP_FLUX_COVARIANCE=1`) | the correction on a column split in $x_1$ matches one block | as registered | `tests/CMakeLists.txt` |
 | `test_flux_positivity_python`, `test_flux_positivity_cubedsphere_cov_off_python`, `test_flux_positivity_carry.<b>` (`SNAP_FLUX_COVARIANCE=0`) | the unlimited base arm of the positivity tests, which the default would limit | as in those tests | `tests/CMakeLists.txt` |
+| `configuration_check.py` `[C4]` (report check) | the covariance identity and shared-face cancellation | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-flux-covariance-tests}
 
@@ -119,6 +132,14 @@ ctest environments by {{< code tests/CMakeLists.txt >}}.
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the covariance identity and shared-face cancellation in `[C4]`.[^ch12-flux-covariance-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-flux-covariance-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C4]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

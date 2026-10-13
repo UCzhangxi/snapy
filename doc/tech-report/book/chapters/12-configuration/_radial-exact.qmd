@@ -16,30 +16,21 @@ work; the derivation of the corrected potential energy, the centroid slope and t
 @sec-ch06-dwork and is not repeated here.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Selects the corrected-PE face gravity work of @sec-ch06-dwork, whose budget quantity is the
-corrected potential energy @eq-ch06-dwork-pe and whose booked increment is @eq-ch06-dwork-d.
+**Purpose.** Selects corrected potential-energy work, @eq-ch06-dwork-d.
 
-**Data.** In: the stage's $x_1$ mass-flux divergence (the density change) and the grid's $x_1$ faces; out:
-the face-work energy increment, and the matching term in the implicit operator.
+**Data.** Radial density increment and grid faces in; energy increment out.
 
-**Placement.** In `HydroImpl::forward`, in the gravity-work bookkeeping after the fluxes; in the implicit
-operator when a vertical implicit scheme runs.
+**Placement.** Gravity-work bookkeeping and the matching implicit operator.
 
-**Activation.** `SNAP_GRAVITY_WORK_RADIAL_EXACT`, default on (an empty value is on too). It acts only when
-`grav1` is nonzero, `gravity-work` is `face` (the YAML default) and the grid has an $x_1$ measure: Cartesian,
-spherical-polar or gnomonic-equiangle.
+**Activation.** `SNAP_GRAVITY_WORK_RADIAL_EXACT`, default on; requires face work.
 
-**Guarantee / limits.** The discrete budget of energy plus corrected potential energy is exact up to round-off
-and boundary fluxes; on a grid without an $x_1$ measure (cylindrical) the switch warns once and plain face work
-runs; on a periodic $x_1$ column it warns once and the corrected potential is not single-valued.
+**Guarantee / limits.** Corrected budget on supported measures; unsupported grids warn and fall back.
 
-**Evidence.** `test_gravity_work_radial_exact_python`: per-step relative change of $E+P$ at most $10^{-14}$ on
-spherical-polar, Cartesian and gnomonic-equiangle columns, explicit and implicit, the printed budget to
-$10^{-11}$, unset equal to `1` bit for bit ({{< code tests/test_gravity_work_radial_exact.py main >}});
-`test_x1_seam_split_radial_exact.<b>`: a split column matches one block exactly with the switch on and to
-$10^{-13}$ with it off ({{< code tests/test_x1_seam_split.cpp X1SeamSplit.radial_exact_split_gap >}}); check
-`[C5]` of `configuration_check.py`; the ctests were not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-radial-exact-tests.
 :::
+
+Local symbols: $E$ and $P$ denote the domain-integrated gas and potential energies [J]; $g_1$ is radial
+acceleration [m s$^{-2}$].
 
 ### Derivation
 
@@ -79,6 +70,33 @@ make_fig()
 
 ### Code
 
+**How to use it.** Set `SNAP_GRAVITY_WORK_RADIAL_EXACT=1` explicitly before launch for a corrected-budget run.
+Merge this fragment into a complete card with non-periodic radial boundaries:
+
+```yaml
+geometry:
+  type: cartesian
+forcing:
+  const-gravity:
+    grav1: -9.8     # m s^-2
+    gravity-work: face
+    gravity-work-fixer: false
+```
+
+Use a fresh process with RE=0 for the plain-budget control. Periodic radial boundaries and unsupported measures
+produce warnings, not refusals; they do not establish the corrected-budget guarantee. The separate implicit
+operator refuses a radial block split (@sec-ch12-matrix).
+
+`HydroImpl::radial_exact_work` ({{< code src/hydro/hydro.cpp HydroImpl::radial_exact_work >}}) contains this selection step:
+
+```cpp
+  return gravity_work_radial_exact() && g && g->grav1() != 0. &&
+         g->gravity_work() == "face" && x1_measure(type) != X1Measure::none;
+```
+
+All four predicates must hold before the work in @eq-ch06-dwork-d is selected. `[C5]` checks its algebraic
+cancellation for a fixed linear slope operator; it does not execute this C++ branch.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | flag | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}} | `gravity_work_radial_exact` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
@@ -108,6 +126,7 @@ make_fig()
 | `test_x1_seam_split_radial_exact.<b>`, `_radial_exact_off.<b>` (CUDA and two-rank variants registered) | the split column keeps the one-block state and $E+P$; the off control bounds the gap by round-off | gap exactly 0 on; at most $10^{-13}$ off; drift at most $10^{-13}$ | the test |
 | `test_implicit_face_work_operator_radial_exact_python`, `test_implicit_stratified_solid_radial_exact_python` (`SNAP_GRAVITY_WORK_RADIAL_EXACT=1`) | the implicit budgets with the corrected work | as in those tests | `tests/CMakeLists.txt` |
 | `test_forcing.<b>`, `test_gravity_work_fixer_python`, `test_horizontal_flux_covariance_python`, `test_flux_covariance_rows_python`, `test_implicit_face_work_operator_python`, `test_implicit_stratified_solid_python` (`SNAP_GRAVITY_WORK_RADIAL_EXACT=0`) | the plain face-work invariant, with the switch off by registration | as in those tests | `tests/CMakeLists.txt` |
+| `configuration_check.py` `[C5]` (report check) | the corrected potential-energy increment | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-radial-exact-tests}
 
@@ -119,6 +138,14 @@ switch are in {{< code tests/CMakeLists.txt >}}.
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the corrected potential-energy increment in `[C5]`.[^ch12-radial-exact-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-radial-exact-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C5]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

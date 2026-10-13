@@ -16,28 +16,17 @@ it is, where they meet, which device it uses and which communication library joi
 variables and their defaults, and the one rule a run with more than one process must follow: set `MASTER_PORT`.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A: the launch variables fix the process topology (rank, world size, rendezvous, device) and the
-communication backend before any block exists.
+**Purpose.** Selects ranks, rendezvous, device and communication backend.
 
-**Data.** In: the environment at the construction of the layout options. Out: the layout options' backend,
-ranks, sizes, master address and port, device and device index; three UCX defaults written into the process
-environment.
+**Data.** Launch environment in; layout options and process group out.
 
-**Placement.** Each time layout options are constructed, and again for `BACKEND` and `DEVICE` when options are
-read from YAML; the UCX defaults when the UCX process group starts.
+**Placement.** Options construction, YAML parsing, then group setup.
 
-**Activation.** `BACKEND` defaults to the compiled platform default (`ucx` in a UCX build off macOS, else
-`gloo`); the rank variables default to one CPU process. The YAML key `distribute/backend` passes the key check
-and is not read.
+**Activation.** One CPU process by default; backend follows the compiled platform default.
 
-**Guarantee / limits.** A multi-process run must set `MASTER_PORT`; without it the options refuse any world
-size above one and a single process gets a random port. Nothing validates that the ranks agree on the numerics
-switches.
+**Guarantee / limits.** `MASTER_PORT` is required when either world size exceeds one.
 
-**Evidence.** `test_process_group.<b>`: the platform default, the environment override, the ignored YAML key,
-the random port for one process, the refusal without a port at world size two, and a provided port
-({{< code tests/test_process_group.cpp LayoutOptions.UsesBackendEnvironmentVariable >}} and its siblings, exact
-strings and expected exceptions); check `[C8]` of `configuration_check.py`; the ctest was not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-layout-tests.
 :::
 
 | environment | default | role |
@@ -92,6 +81,32 @@ make_fig()
 
 ### Code
 
+**How to use it.** For two CPU processes, give both ranks the same reachable `MASTER_ADDR` and unused
+`MASTER_PORT`, set `PROCESS_WORLD_SIZE=2` and `WORLD_SIZE=2`, and give each process its distinct rank.
+For rank zero the environment prefix is:
+
+```bash
+env PROCESS_RANK=0 RANK=0 PROCESS_WORLD_SIZE=2 WORLD_SIZE=2 \
+  MASTER_ADDR=127.0.0.1 MASTER_PORT=29500 DEVICE=cpu BACKEND=gloo \
+  python driver.py
+```
+
+`driver.py` stands for the application's complete driver; rank one uses rank values 1. The loopback address
+works only on one host. Choose a backend present in the build. YAML `distribute/backend` is accepted but ignored.
+Omitting the port refuses the options with "MASTER_PORT must be set for multi-process runs", followed by
+both world sizes and the requirement that all ranks rendezvous on the same TCPStore.
+
+`LayoutOptionsImpl::LayoutOptionsImpl` ({{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}) contains this selection step:
+
+```cpp
+  auto master_port_env = std::getenv("MASTER_PORT");
+  if (master_port_env) {
+    master_port(std::stoi(master_port_env));
+```
+
+The provided value is used directly. The following `else` branch enforces the one-process random-port rule;
+`[C8]` enumerates why independent random choices cannot guarantee a shared port for several processes.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | backend default | {{< code src/layout/layout.cpp default_backend >}} | `default_backend` | `USE_UCX` |
@@ -117,6 +132,7 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_process_group.<b>` | the platform default with `BACKEND` unset; `BACKEND=gloo` overrides; the YAML key is ignored; a random port in 29500 to 29600 for one process; a missing port is refused at world size two; a provided port is kept; a single process owns no group | exact strings; expected exceptions | the test |
+| `configuration_check.py` `[C8]` (report check) | the shared-port assignment predicate | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-layout-tests}
 
@@ -130,6 +146,14 @@ The assertions are {{< code tests/test_process_group.cpp LayoutOptions.DefaultsT
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the shared-port assignment predicate in `[C8]`.[^ch12-layout-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-layout-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C8]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 
