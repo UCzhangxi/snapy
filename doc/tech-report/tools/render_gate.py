@@ -1154,6 +1154,24 @@ def gate_task_map(book):
     return len(bad)
 
 
+def gate_provenance(book):
+    """N7: every provenance tag names a full snapy sha at or after the code pin that resolves, and the command; a
+    quoted timing adds its scope and repetitions. Per-chapter counts of failing tags may only fall
+    (tools/check_provenance.py, STYLE 4). Checked in the report's layout, where the baseline file is."""
+    report = book.parent
+    baseline = report / "tools" / "provenance-baseline.json"
+    if not baseline.exists():
+        print("\n[provenance gate] no tools/provenance-baseline.json next to the book: skipped")
+        return 0
+    import check_provenance
+    status, msgs, found = check_provenance.check(report, baseline)
+    print("\n[provenance gate] " + (f"every chapter within its baseline ({len(found)} tag problem(s) in all)"
+                                     if status == 0 else f"{len(msgs)} chapter(s) above the baseline"))
+    for m in msgs:
+        print(f"  ✗ {m}")
+    return len(msgs)
+
+
 def gate_figstyle(book):
     """Figure code styles only through snapy_report.figstyle; per-chapter counts may only shrink
     (tools/check_figstyle.py, STYLE 6). Checked in the report's layout, where the baseline file is."""
@@ -1356,6 +1374,7 @@ def main(argv):
                     ("freeze tracked", gate_freeze_is_tracked),
                     ("chapter list", gate_chapter_list),
                     ("figstyle", gate_figstyle),
+                    ("provenance", gate_provenance),
                     ("tables", gate_tables),
                     ("do cards", gate_do_cards),
                     ("hand-typed chapter", gate_hand_typed_chapters))
