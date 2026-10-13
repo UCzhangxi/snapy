@@ -27,7 +27,7 @@ driver of their own or follow an existing one.
 
 **Guarantee / limits.** A map, no order; the example runs kinetics after the stages and before `check_redo`.
 
-**Evidence.** `test_check_redo_parallel.<b>` (exact) and the restart-cycle script; see the Tests layer.
+**Evidence.** `test_check_redo_parallel.<b>` (exact) and `test_restart_cycle_limit`; see the Tests layer.
 :::
 
 Local symbols: $n_{\mathrm{redo}}$ is the number of redos of the current step (`current_redo`);
@@ -172,7 +172,7 @@ the state the stages left, before `check_redo`. The `check_redo` lines are step 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_check_redo_parallel.<b>` | one redo decision across two ranks; the rolled-back state equals the saved one | exact equality | saved tensors are copied back |
-| `tests/run_restart_cycle_limit.py` (a script; no ctest entry at the pin) | the restarted run resumes at the matching cycle and ends at the same time | absolute $10^{-12}$ on logged values, $10^{-9}$ on the termination time | the script's `assert_close` |
+| `tests/run_restart_cycle_limit.py` (`test_restart_cycle_limit`) | the restarted run resumes at the matching cycle and ends at the same time | absolute $10^{-12}$ on logged values, $10^{-9}$ on the termination time | the script's `assert_close` |
 | this chapter's check, `driver_check.py` | `[C1]`-`[C3]`: clock, step halving and stop, on a port of the loop | exact | logic port |
 
 : Source assertions for the driver loop. {#tbl-ch01-driver-tests}
@@ -180,7 +180,8 @@ the state the stages left, before `check_redo`. The `check_redo` lines are step 
 The parallel assertion is {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}};
 the script's checks are `assert_close` ({{< code tests/run_restart_cycle_limit.py assert_close >}}) in `main`
 ({{< code tests/run_restart_cycle_limit.py main >}}), which exits with the skip code 125 when the driver
-executable is not available.
+executable is not available. The ctest `test_restart_cycle_limit` runs it, registered with the other restart tests
+({{< code tests/CMakeLists.txt >}}) on every platform but macOS.
 
 The check is a port of the loop as a state machine driven by a scripted sequence of `check_redo`
 results.[^ch01-driver-run] `[C1]`: a rejected step leaves the clock and the cycle count where they were. Outputs
@@ -188,8 +189,12 @@ follow only accepted steps (time 4.05 after accepted steps of 1.8, 0.45 and 1.8,
 redo halves the step of the retry (1.8, 0.9, 0.45, 0.225). `[C3]`: a negative `check_redo` ends the loop at the time
 of the last accepted step (1.80 after three attempts, two outputs).
 
-The two-rank ctest runs on CPU only; neither ctest nor the script has been run for this report at the pin:
-**pending a pinned ctest run**.
+`test_restart_cycle_limit` passes at the pin.[^ch01-driver-restart] The two-rank ctest runs on CPU only and has not
+been run for this report at the pin: **pending a pinned ctest run**.
+
+[^ch01-driver-restart]: [sha: the code pin; deck: the test itself; run: `ctest -R test_restart_cycle_limit
+    --output-on-failure` in a CPU Release build with `NETCDF=ON`, 1 process; torch 2.10.0, kintera 2.6.2, Python
+    3.11.13]. 1 of 1 passed, 8.9 s.
 
 [^ch01-driver-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch01/driver_check.py`,
     CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
