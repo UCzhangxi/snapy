@@ -27,7 +27,7 @@ below is read from the CMake sources at the pin ({{< code CMakeLists.txt >}}, {{
 
 **Guarantee / limits.** A registered or disabled test is not an executed test.
 
-**Evidence.** Tests below, @tbl-ch12-build-tests.
+**Evidence.** Tests below, @tbl-ch12-build-tests; solver ctests were not run.
 :::
 
 | option or cache value | default | effect and coupling |
@@ -88,11 +88,15 @@ Kintera". These are shell commands, not YAML options:
 ```bash
 git clone https://github.com/chengcli/snapy && cd snapy && git checkout <pin>
 pip install "kintera>=2.6.2"
-cmake -S . -B build -DBUILD_TESTS=ON -DFULL_TESTS=OFF -DCUDA=OFF
+cmake -S . -B build -DBUILD_TESTS=ON -DFULL_TESTS=OFF -DCUDA=OFF \
+  -DSNAPY_TEST_PYTHONPATH="$(pwd)/build/python"
 cmake --build build
+python -m pip install . --no-deps --target "$(pwd)/build/python"
 ctest --test-dir build -N
 ```
 
+Use the preface build recipe for its complete test configuration; this smaller recipe selects CPU registration only.
+The `build/python` directory must contain the extension built from this checkout before running Python ctests.
 `-N` lists tests; it does not execute them. Set `SNAPY_TEST_PYTHONPATH` at configure time when testing a Python
 extension from that build. Missing dependencies can stop configuration; a failed Torch ABI probe reports
 "Failed to detect Torch GLIBCXX ABI". YAML cannot change an already compiled feature.

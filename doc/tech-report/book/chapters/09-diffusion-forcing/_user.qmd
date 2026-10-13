@@ -19,10 +19,7 @@ Runge–Kutta average. A user change of the dry-air density carries the passive 
 **Purpose.** Calls user TorchScript modules once per Runge–Kutta stage and adds what they return to the hydro and
 scalar increments; @eq-ch09-user-add.
 
-**Data.** In: one dictionary of every named block buffer and the stage variables (stage variables win), the
-full step $\Delta t$ [$\mathrm{s}$] and the stage index. Out: `hydro_du` (the shape of the hydro increment,
-total-mass basis, per unit volume) and/or `scalar_ds` (the shape of the scalar increment), each an increment over the
-full step. Check case: three toy modules, and the rk1, rk2, rk3, rk3s4 stage weights of pyharp.
+**Data.** In: shared buffer dictionary, full $\Delta t$ and stage index; out: `hydro_du` and/or `scalar_ds` increments.
 
 **Placement.** Every RK stage, in `MeshBlockImpl::advance_local`, after the native forcings, the vertical implicit
 correction and the scalar update, before the RK average.
@@ -33,11 +30,18 @@ correction and the scalar update, before the RK average.
 **Guarantee / limits.** The return value is added as it is, not multiplied by $\Delta t$; a wrong shape or an
 unknown key is refused.
 
-**Evidence.** Tests: a scripted module adds $0.25\cdot1+0.5$ to the dry density in one stage,
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: one dictionary of every named block buffer and the stage variables (stage variables win), the
+full step $\Delta t$ [$\mathrm{s}$] and the stage index. Out: `hydro_du` (the shape of the hydro increment,
+total-mass basis, per unit volume) and/or `scalar_ds` (the shape of the scalar increment), each an increment over the
+full step. Check case: three toy modules, and the rk1, rk2, rk3, rk3s4 stage weights of pyharp.
+
+**Evidence details.** Tests: a scripted module adds $0.25\cdot1+0.5$ to the dry density in one stage,
 {{< code tests/test_jit_user_forcing.py main >}} (`assert_close` defaults); a user dry increment changes the density by
 $w_2^{(s)}$ times it for every integrator, {{< code tests/test_stage_forcing_dry_tracer.py main >}} ($10^{-12}$
-absolute); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/user_check.py`, output `user_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+absolute); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/user_check.py`, output `user_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical [^env-user].
 
 Local symbols (flagged to the editor, ISSUES.md): $\mathsf D$ the dictionary of named block buffers and stage variables
 handed to every module ($V$ is the cell volume in NOTATION.md); $\ell=1..N_{\mathrm u}$ the user modules, in load order ($q$ is
@@ -58,18 +62,19 @@ $$
 \Delta\mathbf U = \Delta\mathbf U^{\mathrm{nat}} + \sum_{\ell=1}^{N_{\mathrm u}}\mathbf G^{[\ell]}(\mathsf D, \Delta t, s),
 $$ {#eq-ch09-user-add}
 
-with $\mathsf D$ the dictionary of block buffers and stage variables. @eq-ch09-user-add is the loop over
-`user_stage_forcings` in `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
-Every module sees $\mathsf D$ as it was before any user module ran: `stage_forcing_variables` builds the
-dictionary once, from the stage variables and not from the increments
-({{< code src/mesh/meshblock.cpp stage_forcing_variables >}}). Through the Runge–Kutta average a user increment
-enters the step with the stage weight $w_2^{(s)}$, exactly as a native one; the test below asserts that for rk1,
-rk2, rk3 and rk3s4.
+1. With $\mathsf D$ the dictionary of block buffers and stage variables. @eq-ch09-user-add is the loop over
+   `user_stage_forcings` in `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+   The dictionary is shared: in-place mutation of its tensors is visible to later user modules.
+2. Without such mutation, every module sees $\mathsf D$ as it was before any user module ran: `stage_forcing_variables` builds the
+   dictionary once, from the stage variables and not from the increments
+   ({{< code src/mesh/meshblock.cpp stage_forcing_variables >}}). Through the Runge–Kutta average a user increment
+   enters the step with the stage weight $w_2^{(s)}$, exactly as a native one; the test below asserts that for rk1,
+   rk2, rk3 and rk3s4.
 
-A port of the addition checks three properties. With three modules the result is the native increment plus
-every `hydro_du`, the same for all six module orders to $4.4\times10^{-16}$; a `hydro_du` of the wrong shape and an
-unsupported key are refused; and a constant user increment $\mathbf G$ in every stage adds exactly $\mathbf G$ per
-step with rk1, rk2, rk3 and rk3s4.[^user-c]
+3. A port of the addition checks three properties. With three modules the result is the native increment plus
+   every `hydro_du`, the same for all six module orders to $4.4\times10^{-16}$; a `hydro_du` of the wrong shape and an
+   unsupported key are refused; and a constant user increment $\mathbf G$ in every stage adds exactly $\mathbf G$ per
+   step with rk1, rk2, rk3 and rk3s4.[^user-c]
 
 [^user-c]: `python3 src/snapy_report/ch09/user_check.py`, output `user_check.out`, lines `[C1]`–`[C3]`; a numpy
     port of the addition in `MeshBlockImpl::advance_local` at the snapy pin and of the stage weights of pyharp at
@@ -92,7 +97,7 @@ make_fig()
 
 ### Code
 
-**A minimal input.** No YAML key: a module is scripted and saved in Python, and its file name handed to the block (or
+**A minimal input.** Run this example from `build/bin`, where `straka_single.yaml` is available. No YAML key: a module is scripted and saved in Python, and its file name handed to the block (or
 the `Mesh`, which has the same call, {{< code python/csrc/pymesh.cpp >}}):
 
 ```python
@@ -187,3 +192,5 @@ for them), although `test_stage_forcing_dry_tracer.py` accepts a device argument
    limiter makes the step redo; the redo machinery is @sec-ch07-redo and @sec-ch08.
 3. **Ordering.** User modules see the stage variables, not the native increment; a module cannot react to what the
    native forcings did in the same stage.
+
+[^env-user]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

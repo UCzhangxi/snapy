@@ -20,10 +20,7 @@ reads no ghost at all and is exact for a linear profile.
 from the two nearest interior cells instead of averaging the wall cell with its ghost;
 @eq-ch09-wallcoef-extrap.
 
-**Data.** In: the coefficient ($\rho$ or $\rho c_v$, either times an $x_1$ profile) of the wall cell and its
-interior neighbour, cell averages, and their $x_1$ widths; the recorded name of the $x_1$ boundary function. Out: the
-coefficient on the wall face. Check cases: 100 random stretched columns with a linear coefficient, and
-$\rho=\rho_0e^{-x_1/H}$ at $h/H$ from $1/32$ to $1/64$.
+**Data.** In: the two nearest cell coefficients and widths; out: the wall-face diffusion coefficient.
 
 **Placement.** Inside the diffusion module, wherever it forms a face coefficient, every stage.
 
@@ -33,13 +30,20 @@ $\rho=\rho_0e^{-x_1/H}$ at $h/H$ from $1/32$ to $1/64$.
 **Guarantee / limits.** Exact for a linear coefficient, second order otherwise; falls back to the wall cell's value
 if the extrapolation is not positive; needs two interior $x_1$ cells.
 
-**Evidence.** Tests: on a linear density a uniform $\mathrm{d}T/\mathrm{d}n$ gives the same tendency in every interior cell,
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: the coefficient ($\rho$ or $\rho c_v$, either times an $x_1$ profile) of the wall cell and its
+interior neighbour, cell averages, and their $x_1$ widths; the recorded name of the $x_1$ boundary function. Out: the
+coefficient on the wall face. Check cases: 100 random stretched columns with a linear coefficient, and
+$\rho=\rho_0e^{-x_1/H}$ at $h/H$ from $1/32$ to $1/64$.
+
+**Evidence details.** Tests: on a linear density a uniform $\mathrm{d}T/\mathrm{d}n$ gives the same tendency in every interior cell,
 {{< code tests/test_diffusion.cpp DeviceTest.wall_face_coefficient_reads_no_ghost >}} ($10^{-5}$); the wall flux does
 not depend on the ghost density,
 {{< code tests/test_diffusion.cpp DeviceTest.wall_flux_does_not_depend_on_the_ghost_density >}} ($10^{-10}$); only the
 four names count, {{< code tests/test_diffusion.cpp diffusion_options.wall_names_are_an_exact_whitelist >}} (exact);
-these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/wallcoef_check.py`, output `wallcoef_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/wallcoef_check.py`, output `wallcoef_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical [^env-wallcoef].
 
 Local symbols (flagged to the editor, ISSUES.md): cells $0$ and $1$ the wall cell and its interior neighbour; $h_0$, $h_1$ [m]
 their $x_1$ widths; $q$ the cell field whose face value is taken ($\rho$ or $\rho c_v$, either times an $x_1$ profile); $q_f$ its
@@ -64,6 +68,8 @@ q_f &= (1+\alpha_{\mathrm f})\,q_0 - \alpha_{\mathrm f}\,q_1, \\
 \alpha_{\mathrm f} &= \frac{h_0}{h_0+h_1},
 \end{aligned}
 $$ {#eq-ch09-wallcoef-extrap}
+
+<!-- equation-check: eq-ch09-wallcoef-extrap ch09_dropin_check.py [D3b] -->
 
 the same expression at both walls, because the offset to the face and the direction to the second cell change
 sign together. @eq-ch09-wallcoef-extrap is `extrapolate_to_wall`
@@ -172,7 +178,7 @@ line keeps the two-cell average on a block with fewer than two interior $x_1$ ce
 
 ### Tests
 
-The derived round-off checks [D3b] pass.[^dropin-wallcoef]
+The derived round-off checks [D3b] pass.[^ch09-roundoff]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -215,8 +221,5 @@ solids are read as fluid by the diffusion module, with a face heat capacity abou
 5. **Block too short.** With fewer than two interior $x_1$ cells, `nface` $<3$, the average is kept
    ({{< code src/forcing/diffusion.cpp face_coefficient >}}).
 
-[^dropin-wallcoef]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
-    [D3b]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
-    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
-    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
-    (`--mutate D3b`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).
+
+[^env-wallcoef]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

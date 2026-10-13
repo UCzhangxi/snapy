@@ -1,7 +1,7 @@
 ## External component interfaces {#sec-appe-components}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (main); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: build metadata and component call sites below
 status: draft
 -->
@@ -72,9 +72,9 @@ Pyharp is used through C++ `harp::Integrator`: snapy parses its options, creates
 independent of any external radiation functionality that package may provide.
 
 Disort is explicitly in the `PUBLIC` libraries of the `snap` shared target, through `DISORT_LIBRARY`
-([`CMakeLists.txt:55-75`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L55-L75)). `FindDisort` locates `disort_release` ([`FindDisort.cmake:76-97`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindDisort.cmake#L76-L97)) and obtains version information
-by importing pydisort ([`FindDisort.cmake:16-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindDisort.cmake#L16-L32)). Harp similarly reads `pyharp.__version__`
-([`FindHarp.cmake:16-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindHarp.cmake#L16-L31)) and requires its headers/library ([`FindHarp.cmake:74-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindHarp.cmake#L74-L103)).
+({{< code src/CMakeLists.txt >}}). `FindDisort` locates `disort_release` ({{< code cmake/modules/FindDisort.cmake >}}) and obtains version information
+by importing pydisort ({{< code cmake/modules/FindDisort.cmake >}}). Harp similarly reads `pyharp.__version__`
+({{< code cmake/modules/FindHarp.cmake >}}) and requires its headers/library ({{< code cmake/modules/FindHarp.cmake >}}).
 
 ```{python}
 #| label: fig-appe-components
@@ -90,6 +90,12 @@ make_fig()
 **What to install.** For a CPU build on Linux: PyTorch 2.10.0, `kintera>=2.6.2`, pyharp, pydisort, and, for the UCX
 process group and PnetCDF output, `commux>=0.1.4` and `pinc>=0.2.0`. The versions are those of the build metadata
 above; for pyharp and pydisort none is declared.
+
+```bash
+python -m pip install "torch==2.10.0" "kintera>=2.6.2" pyharp pydisort "commux>=0.1.4" "pinc>=0.2.0"
+```
+
+These metadata requirements do not establish a tested compatible combination; use the preface recipe for a complete build.
 
 **What the build refuses, and why.** In order, at configure time:
 
@@ -125,8 +131,8 @@ of item 2.
 | integrator options | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `IntegratorOptionsImpl` | component API |
 | integrator construction | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `IntegratorImpl` | component API |
 | hydro/scalar stage combination | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `pintg` | component API |
-| three C++ link dependencies | [`CMakeLists.txt:55-75`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L55-L75) | `DISORT_LIBRARY` | component API |
-| Python imports | [`__init__.py:1-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L8) | `pydisort` | component API |
+| three C++ link dependencies | {{< code src/CMakeLists.txt >}} | `DISORT_LIBRARY` | component API |
+| Python imports | {{< code python/__init__.py >}} | `pydisort` | component API |
 
 : Representative active call sites and dependency edges. {#tbl-appe-calls}
 
@@ -145,7 +151,7 @@ needs. The floor at the pin is the last, 2.6.2 ({{< code CMakeLists.txt >}}).
 
 | check | assertion | tolerance | evidence |
 |---|---|---|---|
-| local anchor audit | pinned file/range exists and contains the recorded symbol | exact text | `reviews/check_appe_anchors.py` |
+| local anchor audit | pinned file/range exists and contains the recorded symbol | exact text | `python tools/code_anchors.py check` |
 | source math-span check | appendix has valid math delimiters | exact syntax | frozen house checker |
 | dependency runtime compatibility | not run | not measured | no build or installed-package execution |
 
@@ -159,7 +165,7 @@ a platform linker may omit unused dependencies from the resulting dynamic depend
 
 ::: {.callout-warning title="Limits"}
 The frozen outline describes the Disort locator as only supporting Python. The actual `PUBLIC` link list above
-corrects that description at the source pin. The compiled `src_files` glob ([`CMakeLists.txt:35-53`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L35-L53)) excludes the legacy
+corrects that description at the source pin. The compiled `src_files` glob ({{< code src/CMakeLists.txt >}}) excludes the legacy
 diagnostics directory and files with trailing underscores. Inspection of its source directories finds no active
 Disort radiative-transfer call. Radiation-labelled output metadata is not a solver call.
 The external radiative time-step limiter mentioned by the outline is not implemented in the pinned snapy tree;
@@ -167,5 +173,5 @@ this appendix does not assign external runner keys or a radiation scheme to snap
 
 The missing pyharp/pydisort Python dependency declarations and unspecified CMake version floors leave reproducible
 installation and supported compatibility ranges unresolved. The requested kintera pin has been read, not built
-with this snapy pin. Official citation checking and book rendering await publication tooling and editor integration.
+with this snapy pin.
 :::

@@ -181,7 +181,11 @@ def scheme_rows(s: Scheme, statements: dict[str, str], checks_dir: Path) -> list
     whole = "\n".join(s.lines)
     num = re.match(r"sec-ch(\d+)", s.chapter)
     chk_dir = checks_dir / f"ch{num.group(1)}" if num else None
-    scripts = sorted({c for c in _CHECK.findall(whole) if chk_dir and (chk_dir / c).exists()})
+    # Explicit equation-check comments scope a multi-equation script to its actual claims.
+    tagged = re.findall(r"<!-- equation-check: (eq-[\w-]+) ([\w-]+_check\.py) (\[D[\w]+\]) -->", whole)
+    tagged_scripts = {script for _, script, _ in tagged}
+    scripts = sorted({c for c in _CHECK.findall(whole) if c not in tagged_scripts
+                      and chk_dir and (chk_dir / c).exists()})
     source = "exists" if _NOTE.search(body) else "re-derived"
     title = re.sub(r"\s*\(`[^)]*`\)\s*$", "", s.title).strip()
 
@@ -220,7 +224,9 @@ def scheme_rows(s: Scheme, statements: dict[str, str], checks_dir: Path) -> list
         code = _code_cell(s, n + 1, bounds[k + 1]) or _code_cell(s, prev, top) or "not tagged"
         after = "\n".join(s.lines[n + 1:bounds[k + 1]])
         clines = sorted(set(_CLINE.findall(after)), key=lambda c: int(c[2:-1]))
-        check = ", ".join([f"`{c}`" for c in scripts] + [f"`{c}`" for c in clines]) or "none"
+        specific = [f"`{script}` `{tag}`" for eq, script, tag in tagged if eq == label
+                    and chk_dir and (chk_dir / script).exists()]
+        check = ", ".join([f"`{c}`" for c in scripts] + [f"`{c}`" for c in clines] + specific) or "none"
         rows.append(Row(s.chapter, s.label, title, label, stmt, code, check, source, label in statements))
     return rows
 

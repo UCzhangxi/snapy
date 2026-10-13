@@ -15,10 +15,10 @@ DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "kinetic
 def make_fig():
     s, x1, e1, x10, e10 = np.loadtxt(DATA, delimiter=",", unpack=True)
     fig, ax = fs.new_figure(fs.SINGLE, 2.6)
-    ax.plot(s, x1 / x1[0], color=fs.GREEN, label=r"extent, $c_1=c_2$")
-    ax.plot(s, x10 / x10[0], color=fs.GREEN, ls="--", label=r"extent, $c_1=10c_2$")
-    ax.plot(s, e1 / e1[0], color=fs.BLUE, ls=":", label=r"$K-c_1c_2$ (plain law)")
-    ax.set_xlabel(r"saturation ratio $c_1c_2/K$ [-]")
+    ax.plot(s, x1 / x1[0], color=fs.GREEN, label=r"extent, $\tilde c_A=\tilde c_B$")
+    ax.plot(s, x10 / x10[0], color=fs.GREEN, ls="--", label=r"extent, $\tilde c_A=10\tilde c_B$")
+    ax.plot(s, e1 / e1[0], color=fs.BLUE, ls=":", label=r"$K-\tilde c_A\tilde c_B$ (plain law)")
+    ax.set_xlabel(r"saturation ratio $\tilde c_A\tilde c_B/K$ [-]")
     ax.set_ylabel("drive / drive at 0 [-]")
     ax.legend(frameon=False)
     return fig
