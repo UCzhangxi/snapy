@@ -1,126 +1,123 @@
-## Gravity-work fixer budget: D, the wall mass and `fixgrav=` (`apply_gravity_work_fixer`) {#sec-ch13-fixgrav}
+## Gravity-work fixer budget: the meters, the accounting and `fixgrav=` (`gravity-work-fixer`) {#sec-ch13-fixgrav}
 
 <!-- PROVENANCE
-pin: snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 (main on chengcli/snapy, the #303 squash-merge)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
 sources: OUTLINE.md 13.4; src/hydro/hydro_forward.cpp; src/hydro/hydro.hpp; src/hydro/hydro.cpp; src/mesh/meshblock.cpp;
          src/mesh/mesh.cpp; src/forcing/const_gravity.cpp; tests/test_gravity_work_fixer.py;
-         tests/test_flux_covariance_seams.py; chengcli/snapy#303 body
+         tests/test_flux_covariance_seams.py; tests/CMakeLists.txt
 status: draft
 -->
-
-This section describes main at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97, after chengcli/snapy#303, while the
-rest of the book is pinned at snapy@e894700ff7aee30b52882e5202b16461413780b0. Between the two shas the fixer's code
-did not change; what changed is the default form of the gravity work, and with it whether the fixer runs at all.
 
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Books the defect $\mathcal D$ of $E+\mathrm{PE}_d$ that the cell form of the gravity work leaves in
-one step, sums it with four other numbers over blocks and ranks, deposits $-\mathcal D$ as heat, and keeps the
-run's total as `fixgrav=` on the cycle line. **Switch.** `forcing/const-gravity/gravity-work-fixer`, default true
-with `gravity-work: cell` and false otherwise; the default form is `gravity-work: face`, so a default run has no
-fixer and no `fixgrav=` token. **Order.** Not a discretisation. **Defining equations.** @eq-ch13-fixgrav-d and
-@eq-ch13-fixgrav-bound.
+**What it does.** Measures, once per step, what the gravity-work fixer needs, adds the numbers over all blocks and
+ranks, and keeps the run total of the fixer's deposits as `fixgrav=` on the cycle line.
+**Switch.** `forcing/const-gravity/gravity-work-fixer`. It defaults to true with `gravity-work: cell` and to
+false otherwise. The default form is `gravity-work: face`, so a default run has no fixer and no `fixgrav=`.
+**Order.** Not a discretisation.
+**Defining equation.** @eq-ch13-fixgrav-meters.
+**Evidence.** See the Tests layer.
 :::
 
-The fixer's physics, why the cell form leaves a defect and why it is put back uniformly per unit mass, is
-@sec-ch06-fixer. This section is its bookkeeping: which buffers hold the step's defect and the mass through the
-$x_1$ walls, how they are summed, when the deposit is refused or skipped, and what the printed total means. Each
-step the fixer reduces five doubles: the defect $\mathcal D$ (J), the fluid mass $M$ (kg), the mass $M_\partial$ that
-crossed the $x_1$ boundary faces (kg), the mass $M_{\mathrm{wall}}$ of the cells next to those faces (kg), and a redo
-flag. From these it either adds $-\mathcal D\,\rho_i/M$ to every cell's energy or leaves the step alone.
+With `gravity-work: cell`, the energy that gravity exchanges with the flow is booked cell by cell. Over one step
+this leaves a small error in the total of energy plus potential energy. The gravity-work fixer removes that error
+once per step. Why the error arises, how each stage is weighted, when a step is refused and how the correction is
+spread over the cells are all in @sec-ch06-fixer.
 
-Since chengcli/snapy#303 the default is `gravity-work: face` (with the corrected-PE face work on), and the fixer is
-on only when a deck states `gravity-work: cell`. A deck that states `cell` runs exactly as before #303: the body of
-chengcli/snapy#303 reports such decks bitwise equal before and after the change (straka, bryan, cubed sphere). Aliases:
-chengcli/snapy#283 (the fixer), #284 and #285 (its implicit part and the wall bound), #303 (the face default).
+This section is the fixer's bookkeeping, seen from the log. It says what the fixer measures, how the numbers of
+many blocks are added, when a step is left alone, and what the printed `fixgrav=` value means. A user reads it to
+interpret the cycle line of a run with the fixer on.[^ch13-fixgrav-alias]
+
+[^ch13-fixgrav-alias]: Aliases a reader meets in commit messages and the derivation notes: chengcli/snapy#283
+    (the fixer), #284 and #285 (its implicit part and the wall bound), #303 (the `face` default).
 
 ### Derivation
 
-Let stage $s$ of an $S$-stage step change the block's $E+\mathrm{PE}_d$ by $\mathcal D_s$, the sum over the block's
-interior cells of the cell work, the face work of $F-F^{\mathrm{ref}}$ and $\phi_i\,\Delta m_i$ for the mass the
-$x_1$ fluxes move, plus, with an implicit scheme, the change of $\sum_iV_i(E_i+\phi_i\rho_i)$ across the solve. The
-stage enters the step's update with the weight $\varpi_s=w_2^{(s)}\prod_{t>s}w_1^{(t)}$ (rk3: $1/6$, $1/6$, $2/3$;
-@sec-ch06-fixer). The step's defect and the mass that crossed the $x_1$ boundary faces are
+The fixer reads four numbers per step and keeps one total. The defect $\mathcal D$ [J] is the step's error in
+$E_{\mathrm{tot}}+\mathrm{PE}_d$, the integrated total energy plus the discrete potential energy. Its stage weights
+and the correction it drives are @eq-ch06-fixer-fix. The other three numbers and the total are defined here:
 
 $$
-\mathcal D = \sum_{b}\sum_{s=1}^{S}\varpi_s\,\mathcal D_{s,b}, \qquad
-M_\partial = \sum_{b}\sum_{s=1}^{S}\Delta t\sum_{f\in\partial_{x_1}b}A_f\,\lvert F_f\rvert ,
-$$ {#eq-ch13-fixgrav-d}
+\begin{aligned}
+M &= \sum_{b}\sum_{i\in b}\rho_iV_i , \\
+M_\partial &= \sum_{b}\sum_{s=1}^{S}\Delta t\sum_{f\in\partial_{x_1}b}A_f\,\lvert F_f\rvert , \\
+M_{\mathrm{wall}} &= \sum_{b}\sum_{i\in\mathrm{wall}(b)}\rho_iV_i , \\
+\mathtt{fixgrav} &= -\sum_{n}\mathcal D^{n} .
+\end{aligned}
+$$ {#eq-ch13-fixgrav-meters}
 
-with $b$ running over every block on every rank, $\Delta t$ in s, $A_f$ in m$^2$ and $F_f$ the total mass flux
-(kg m$^{-2}$ s$^{-1}$) through a physical, non-periodic $x_1$ face of block $b$. $M_\partial$ is not stage-weighted: it adds
-the full-$\Delta t$ flux of every stage, so it overstates the step's net wall mass and is a conservative meter. The
-faces that $M_\partial$ counts are exactly the faces the defect leaves out, so $M_\partial$ measures what $\mathcal D$ misses. A step
-is refused unless
+The symbols are as follows.
 
-$$
-M_\partial \le 10^{3}\,\epsilon_{\mathrm m}\,M_{\mathrm{wall}}, \qquad
-M_{\mathrm{wall}} = \sum_b\sum_{i\in\text{wall cells of }b}\rho_iV_i ,
-$$ {#eq-ch13-fixgrav-bound}
+- $b$ runs over every block on every rank, and $i$ over the interior cells of block $b$. Immersed-solid cells are
+  left out of $M$.
+- $\rho_i$ [kg m$^{-3}$] is the total density of cell $i$, dry gas plus every species, and $V_i$ [m$^3$] its volume.
+- $s$ runs over the $S$ stages of the step, and $\Delta t$ [s] is the step.
+- $f$ runs over the $x_1$ faces of block $b$ that are physical, non-periodic boundary faces of the domain.
+  $A_f$ [m$^2$] is the face area and $F_f$ [kg m$^{-2}$ s$^{-1}$] the total mass flux through it.
+- $\mathrm{wall}(b)$ is the set of interior cells of block $b$ next to such a face.
+- $n$ runs over the accepted steps since the start of the run or the last restart.
 
-with $\epsilon_{\mathrm m}$ the machine epsilon of the state's dtype. Otherwise each interior cell gets
-$\Delta E_i = -\mathcal D\,\rho_i/M$ with $M=\sum_b\sum_i\rho_iV_i$, solids excluded, so the deposit sums to exactly
-$-\mathcal D$ over the domain (@eq-ch06-fixer-fix). The deposit is booked as $-\mathcal D$ into a pending total; the
-pending total is committed when the step is accepted and dropped when it is redone. `fixgrav=` prints the committed
-plus the pending total, so after an accepted step it is the run's sum $-\sum_n\mathcal D^n$ (J) over accepted steps
-since the start of the run or the last restart.
+So $M$ [kg] is the fluid mass, $M_\partial$ [kg] the mass that crossed the boundary faces, and $M_{\mathrm{wall}}$
+[kg] the mass of the cells next to them.
 
-In the code, @eq-ch13-fixgrav-d is the stage defect `gwfix_stage`
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), the wall mass `_gwfix_wall`
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), the implicit part `epe`
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) and the stage weight `cw`
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-@eq-ch13-fixgrav-bound is the check of `apply_gravity_work_fixer` against `bound`
-({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}). The budget algebra (stage weights,
-the deposit summing to $-\mathcal D$, the bound in float64 and float32) is checked in @sec-ch06-fixer by
-`src/snapy_report/ch06/fixer_check.py`; this section adds no check of its own.
+Three properties of these meters matter for reading the log. First, $\mathcal D$ leaves out the boundary faces, and
+$M_\partial$ counts exactly those faces, so $M_\partial$ measures what $\mathcal D$ misses. @sec-ch06-fixer
+compares it with $M_{\mathrm{wall}}$ to refuse a step. Second, $M_\partial$ is not stage-weighted. It adds the
+full-$\Delta t$ flux of every stage, so it overstates the step's net boundary mass and errs on the safe side.
+Third, `fixgrav=` is a signed run total. A deposit of $-\mathcal D$ is first booked as pending. It is committed when
+the step is accepted and dropped when the step is redone. The printed value is the committed total plus the
+pending one, so after an accepted step it is $-\sum_n\mathcal D^n$.
+
+In the code, $M_\partial$ is the wall-face mass `_gwfix_wall`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). $M$ and $M_{\mathrm{wall}}$ are the second and
+fourth of the five sums of `gravity_work_fixer_sums`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). The pending and committed totals are
+`_gwfix_pending` and `_gwfix_total`, behind `gravity_work_fix`, `add_gravity_work_fix`,
+`commit_gravity_work_fix` and `drop_gravity_work_fix` ({{< code src/hydro/hydro.hpp HydroImpl >}}). These
+definitions are bookkeeping, so this section adds no check of its own. The algebra of the defect, the deposit and
+the bound is checked in @sec-ch06-fixer by `src/snapy_report/ch06/fixer_check.py`.
 
 ### Numerical method
 
-@fig-ch06-fixer-flow shows the order of the operations within one step. In buffer terms:
+@fig-ch06-fixer-flow shows the order of the operations in one step. The bookkeeping runs as follows.
 
-1. **Stage 0 reset.** At the first stage of every step, including a redone one, `advance_local` zeroes the defect
-   and the wall mass and commits the previous step's pending deposit, since reaching a new step means the previous
-   one was accepted
-   (`gravity_work_defect`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
-2. **Each stage.** `HydroImpl::forward` forms `gwfix_stage` as a sum over the block's interior cells, adds the
-   implicit solve's change of $E+\mathrm{PE}_d$, and adds `cw` times the result to `_gwfix_d`; it adds the
-   unweighted wall-face mass to `_gwfix_wall`. Both buffers are float64 whatever the state's dtype.
-3. **After the last stage.** `gravity_work_fixer_sums` returns the block's five numbers as a float64 CPU tensor:
-   `_gwfix_d`, the fluid mass $\sum_i\rho_iV_i$ (dry plus species, solid cells zeroed), `_gwfix_wall`, the mass of
-   the interior cells next to the block's $x_1$ walls, and 1 if the block's limiter patched a cell or found a NaN or
-   its implicit solve failed, else 0
-   (`gravity_work_fixer_sums`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). The mass is summed in the
-   state's dtype and then converted.
-4. **Reduction.** With one block per process the block calls one allreduce SUM on its own
-   (`gravity_work_fixer_sums`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); with several
-   local blocks `MeshImpl::forward` defers that, adds the blocks' vectors and makes one allreduce for the process
-   (`gravity_work_fixer_sums`, {{< code src/mesh/mesh.cpp MeshImpl::forward >}}). The order of these
-   sums is @sec-ch14-collectives.
-5. **Skip.** If the summed redo flag is positive or any of the five sums is not finite, every block zeroes its
-   buffers and returns without a deposit, so the redo check decides the step as it would with the fixer off
+1. **Stage 0.** At the first stage of every step, including a redone one, `advance_local` zeroes the defect and
+   the wall-face mass. It also commits the previous step's pending deposit, because reaching a new step means the
+   previous one was accepted (`gravity_work_defect`,
+   {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+2. **Each stage.** `HydroImpl::forward` adds the stage's weighted defect to `_gwfix_d` and the stage's
+   boundary-face mass to `_gwfix_wall`. Both buffers are float64 whatever the dtype of the state
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
+3. **Five sums.** After the last stage, `gravity_work_fixer_sums` returns five numbers as one float64 CPU tensor:
+   $\mathcal D$, $M$, $M_\partial$, $M_{\mathrm{wall}}$ and a redo flag. The flag is 1 if the block's limiter
+   patched a cell or found a NaN, or if its implicit solve failed, and 0 otherwise
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). The masses are summed in the
+   dtype of the state and then converted.
+4. **Reduction.** With one block per process, the block makes one allreduce SUM of its own five numbers
+   (`gravity_work_fixer_sums`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). With several
+   local blocks, `MeshImpl::forward` defers that, adds the blocks' tensors and makes one allreduce for the process
+   (`gravity_work_fixer_sums`, {{< code src/mesh/mesh.cpp MeshImpl::forward >}}). The order of these additions is
+   discussed in @sec-ch14-collectives.
+5. **Skip.** If the summed redo flag is positive, or any of the five sums is not finite, every block zeroes its
+   buffers and returns without a deposit. The redo check then decides the step as it would with the fixer off
    (`isfinite`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
-6. **Refuse or deposit.** Otherwise @eq-ch13-fixgrav-bound is checked with `TORCH_CHECK`, which stops the run; on
-   success `efix` $=-\mathcal D/M$ (J kg$^{-1}$) is added per unit mass to the interior energy and $-\mathcal D$ to the
-   pending total (`efix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
-   The physical ghosts are refilled after the deposit.
-7. **Accept or redo.** `check_redo` drops the pending deposit when it redoes the step
-   (`drop_gravity_work_fix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}) and commits it
-   when it accepts
-   (`commit_gravity_work_fix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}).
-8. **Print.** Every block adds the same global $-\mathcal D$, so the cycle line reads the root block's total without
-   a further reduction, and prints it only while the fixer is on
+6. **Deposit.** Otherwise the refusal and the deposit of @sec-ch06-fixer run, and $-\mathcal D$ is booked as
+   pending (`add_gravity_work_fix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
+7. **Accept or redo.** `apply_redo` drops the pending deposit when it redoes the step and commits it when it
+   accepts (`drop_gravity_work_fix`, `commit_gravity_work_fix`,
+   {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}).
+8. **Print.** Every block adds the same global $-\mathcal D$. The cycle line therefore reads the root block's
+   total without a further reduction, and prints it only while the fixer is on
    (`fixgrav`, {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
-The fixer is "on" in this sense when `HydroImpl::gravity_work_fixer` holds: $g_1\neq0$, `gravity-work: cell` and
-the key true
-(`gravity_work_fixer`, {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_fixer >}}). With the default `face` form the YAML
-default of the key is false
-(`gravity_work_fixer`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}), and a value set
+The fixer is on, in this sense, when `HydroImpl::gravity_work_fixer` holds: $g_1\neq0$, `gravity-work: cell` and
+the key true ({{< code src/hydro/hydro.cpp HydroImpl::gravity_work_fixer >}}). With the default `face` form the
+YAML default of the key is false
+(`gravity_work_fixer`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}). A value set
 from Python is overwritten to false at setup
-(`gravity_work_fixer`, {{< code src/hydro/hydro.cpp HydroImpl::reset >}}). No buffer is filled, no
-reduction is made, and the cycle line carries no `fixgrav=` token.
+(`gravity_work_fixer`, {{< code src/hydro/hydro.cpp HydroImpl::reset >}}). Then no buffer is filled, no reduction
+is made, and the cycle line carries no `fixgrav=` token.
 
 ### Code
 
@@ -132,71 +129,66 @@ reduction is made, and the cycle line carries no `fixgrav=` token.
 | when the fixer is on | {{< code src/hydro/hydro.cpp HydroImpl::gravity_work_fixer >}} | `gravity_work_fixer` | |
 | the four buffers | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `_gwfix_d` | |
 | defect, total, pending, wall accessors | {{< code src/hydro/hydro.hpp HydroImpl >}} | `gravity_work_fix` | |
-| stage defect | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gwfix_stage` | |
-| wall-face mass | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_gwfix_wall` | |
-| implicit part | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `epe` | `implicit-scheme` |
-| stage weight | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | |
-| stage-0 reset | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `gravity_work_defect` | |
-| one block's reduction | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `gravity_work_fixer_sums` | |
+| stage defect and wall-face mass | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `gwfix_stage`, `_gwfix_wall` | |
+| stage-0 reset, one block's reduction | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `gravity_work_defect` | |
 | the five sums | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `gravity_work_fixer_sums` | |
-| skip, bound, deposit | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `apply_gravity_work_fixer` | |
+| skip and pending deposit | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `apply_gravity_work_fixer` | |
 | several local blocks | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `gravity_work_fixer_sums` | |
-| printing | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `fixgrav` | |
 | drop on redo, commit on accept | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `commit_gravity_work_fix` | |
+| printing | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `fixgrav` | |
 
-: Code map of the gravity-work fixer budget at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97. {#tbl-ch13-fixgrav-code}
+: Code map of the gravity-work fixer budget. {#tbl-ch13-fixgrav-code}
 
-The run-time message a user can hit is "const-gravity gravity-work-fixer: ... kg crossed an x1 boundary face this
-step"; it prints $M_\partial$, $M_\partial/M_{\mathrm{wall}}$ and the bound $10^3\epsilon_{\mathrm m}$. At setup a user can hit
-"forcing/const-gravity/gravity-work-fixer needs gravity-work: cell" (the key set true with another form), and the
-$g_2$, $g_3$ and periodic-$x_1$ refusals of @sec-ch06-fixer.
+A user can hit three messages. The run stops with "const-gravity gravity-work-fixer: ... kg crossed an x1 boundary
+face this step", which prints $M_\partial$, $M_\partial/M_{\mathrm{wall}}$ and the bound of @sec-ch06-fixer. At
+setup, "forcing/const-gravity/gravity-work-fixer needs gravity-work: cell" refuses the key with another form. The
+$g_2$, $g_3$ and periodic-$x_1$ refusals are listed in @sec-ch06-fixer.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `tests/test_gravity_work_fixer.py` (`test_gravity_work_fixer_python`) | `cell` + fixer, explicit, implicit and with a wall installed from Python: max relative drift of $E+\mathrm{PE}_d$ over 200 rk3 steps | $\le10^{-12}$ | `TOL` |
+| `tests/test_gravity_work_fixer.py` (`test_gravity_work_fixer_python`) | `cell` + fixer, explicit, implicit and with a wall installed from Python: max relative drift of $E_{\mathrm{tot}}+\mathrm{PE}_d$ over 200 rk3 steps | $\le10^{-12}$ | `TOL` |
 | same | `cell` + fixer in float32 | $\le 200\,\epsilon_{32}$ | one float32 epsilon per step |
 | same | `cell`, fixer off: the defect is real | $>10^{-10}$ | $100\,$`TOL`, planted control |
 | same | outflow $x_1$ (float64 and float32) refused by the wall bound; periodic $x_1$ refused at setup | message | refusal text |
 | same | a NaN in a wall cell goes to the redo check, not to a refusal | `check_redo` $\neq0$ | redo semantics |
 | same | from Python, a deck without `gravity-work` reads `face` with the fixer false, one with `cell` reads the fixer true | exact | the defaults |
-| `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`), conservation arm | six cubed-sphere panels as six local blocks of one process, `cell` + fixer, covariance on: drift of $E+\mathrm{PE}_d$ over 10 steps | $<10^{-12}$ | `DRIFT_TOL` |
+| `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`), conservation arm | six cubed-sphere panels as six local blocks of one process, `cell` + fixer, covariance on: drift of $E_{\mathrm{tot}}+\mathrm{PE}_d$ over 10 steps | $<10^{-12}$ | `DRIFT_TOL` |
 
-: Tests of the gravity-work fixer budget at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97. {#tbl-ch13-fixgrav-tests}
+: Tests of the gravity-work fixer budget. {#tbl-ch13-fixgrav-tests}
 
-`test_gravity_work_fixer` drives one `MeshBlock` in one process, so it exercises the single-block reduction path;
-it reports `fixgrav` from the buffers `hydro.gwfix_total` and `hydro.gwfix_pending` but asserts nothing about its
-value. Since #303 every arm states `gravity-work: cell` in its `const-gravity` block
-(`const-gravity`, {{< code tests/test_gravity_work_fixer.py config >}}).
-ctest runs it on CPU with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0`. The six-panel arm of `test_flux_covariance_seams` is
-the only test whose fixer runs through the several-local-blocks path of `MeshImpl::forward`.
+`test_gravity_work_fixer` drives one `MeshBlock` in one process, so it exercises the single-block reduction path.
+It reports `fixgrav` from the buffers `hydro.gwfix_total` and `hydro.gwfix_pending`, but asserts nothing about its
+value. Every arm states `gravity-work: cell` in its `const-gravity` block
+(`const-gravity`, {{< code tests/test_gravity_work_fixer.py config >}}). ctest runs the test on CPU with
+`SNAP_GRAVITY_WORK_RADIAL_EXACT=0` ({{< code tests/CMakeLists.txt >}}). The six-panel arm of
+`test_flux_covariance_seams` is the only test whose fixer runs through the several-local-blocks path of
+`MeshImpl::forward`.
 
 ::: {.callout-important title="Check"}
-**Evidence.** The body of chengcli/snapy#303 reports the CPU ctest run at the PR head with one failure,
-`test_straka`, which also fails at e894700ff7aee30b52882e5202b16461413780b0 [source: chengcli/snapy#303 body; sha:
-snapy@546b1afd80d47a437a92ead745ef525f8335094a (PR head); deck/run: ctest -j1 on one CPU machine, 114/115]; both tests
-of the table therefore passed there. It also reports that decks stating `gravity-work: cell` are bitwise equal
-before and after #303 [source: chengcli/snapy#303 body; sha: snapy@546b1afd80d47a437a92ead745ef525f8335094a (PR
-head); deck/run: straka, bryan and cubed-sphere decks; the run is not stated in the body]. The measured drifts and
-`fixgrav` values of these tests at snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 are **missing evidence**.
+**Evidence.** Pass status at the code pin: **pending: pinned ctest run**. The measured drifts and `fixgrav` values
+of these tests at the pin are **missing evidence**.[^ch13-fixgrav-run]
 **Coverage.** CPU only; one process; float64 and float32.
 :::
+
+[^ch13-fixgrav-run]: A CPU ctest run reported in the body of chengcli/snapy#303, at a commit that is not the code
+    pin, had one failure, `test_straka`, and both tests of the table passing. That run is not evidence at the pin.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Since chengcli/snapy#303 a run without a `gravity-work` key uses `face` and has no fixer: its cycle line has no
-`fixgrav=` and its conserved invariant is $E+P$ with the corrected PE, not $E+\mathrm{PE}_d$ (@sec-ch06-fixer).
+A run without a `gravity-work` key uses `face` and has no fixer. Its cycle line has no `fixgrav=`, and its conserved
+invariant is $E_{\mathrm{tot}}+P$ with the corrected potential energy, not $E_{\mathrm{tot}}+\mathrm{PE}_d$
+(@sec-ch06-fixer).
 :::
 
-1. **Run total, not per step.** `fixgrav=` is a run-to-date sum of signed deposits; steps of opposite sign cancel in
-   it. Like the other meters it restarts from zero after a restart (@sec-ch13-cycle).
-2. **The wall meter is unweighted.** $M_\partial$ adds the full-$\Delta t$ flux of every stage, so it overstates the step's
-   wall mass; the bound $10^3\epsilon_{\mathrm m}M_{\mathrm{wall}}$ is a round-off allowance, not derived. The code
-   comment records refusals of sealed-wall rest decks near acoustic Courant 2500 (CUDA) and 2750 (CPU) from #285 and
-   says they are not universal thresholds.
-3. **Value not asserted.** No test asserts the value of `fixgrav=` or of $\mathcal D$; the tests assert the conserved
-   $E+\mathrm{PE}_d$ that the deposit produces.
+1. **Run total, not per step.** `fixgrav=` is a run-to-date sum of signed deposits, so steps of opposite sign cancel
+   in it. Like the other meters it starts again from zero after a restart (@sec-ch13-cycle).
+2. **The wall meter is unweighted.** $M_\partial$ adds the full-$\Delta t$ flux of every stage, so it overstates the
+   step's boundary mass. The bound it is compared with is a round-off allowance, not derived (@sec-ch06-fixer).
+3. **Value not asserted.** No test asserts the value of `fixgrav=` or of $\mathcal D$. The tests assert the
+   conserved $E_{\mathrm{tot}}+\mathrm{PE}_d$ that the deposit produces.
 4. **More than one rank, other devices.** No test runs the fixer on more than one rank or on CUDA, and none compares
    its sums between decompositions (@sec-ch14-repro).
+5. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.

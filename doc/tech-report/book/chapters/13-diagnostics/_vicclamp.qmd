@@ -20,23 +20,30 @@ change after the VIC redistribution and the face transfers $M_{i-1/2} - M_{i+1/2
 **Defining equation.** @eq-ch13-vicclamp.
 :::
 
-The VIC redistribution of @sec-ch07-vic-redistribute moves each constituent through the faces, but never more than
-the donor holds. Without a clamp, every cell's total change equals its face divergence exactly. The meter reports
-how much the clamps broke that identity: 0 when nothing clamped, and $\sum y$ when every species of a donor was
-starved.
+The implicit solver moves gas and species between neighbouring cells, but never more than a cell holds. When it
+has to hold back, the cells no longer gain exactly what the faces deliver. This meter reports how large that
+mismatch ever got in the run, so a user can see whether the limit on the transfers acted. It reads 0 when nothing
+was held back.
+
+The redistribution is @sec-ch07-vic-redistribute. Without a clamp, every cell's total change equals its face
+divergence exactly. When every species of a donor is starved, the meter reads $\sum y$, the donor's species mass
+fraction.
 
 ### Derivation
 
-Let $\Delta m_i = \sum_c \Delta\rho_{c,i}V_i$ be the total constituent change of cell $i$ from the redistribution,
-over dry gas and every species. With $M_{i\mp1/2}$ the solved face transfers, the meter is
+Let $\Delta m_i = \sum_c \Delta\rho_{c,i}V_i$ [kg] be the total constituent change of cell $i$ from the
+redistribution, summed over dry gas and every species $c$. Here $\Delta\rho_{c,i}$ [kg m$^{-3}$] is the density
+change of constituent $c$ and $V_i$ [m$^3$] the cell volume. Let $M_{i\mp1/2}$ [kg] be the solved face transfers.
+The meter, a pure number, is
 
 $$
 r = \max_i \frac{\big|\Delta m_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
 $$ {#eq-ch13-vicclamp}
 
-maximised over the run, with $f$ a floor against empty faces. Without a clamp, $r$ is zero to round-off [check
+maximised over the run, with $f$ [kg] a floor against empty faces. Without a clamp, $r$ is zero to round-off [check
 `src/snapy_report/ch13/vicclamp_check.py`, output `vicclamp_check.out`, `[C1]`]. If the species of a donor are
-starved, its species transfer is clamped to zero. Only the dry fraction $M(1-\sum y)$ moves, so each cell
+starved, its species transfer is clamped to zero. With $y$ the species mass fractions of the donor [-], only the
+dry fraction $M(1-\sum y)$ moves, so each cell
 misses $M\sum y$, and $r = \sum y$. That is 0.03 for $y = (0.01, 0.02)$ (`[C2]`). The floor is the smallest
 normal float in float32, where $10^{-300}$ rounds to zero, and $10^{-300}$ in float64 (`[C3]`).
 
@@ -101,3 +108,4 @@ where.
 1. **Not a cause.** A large reading does not reject a step. The step acceptance reads the dry-gas clamp mark
    instead (@sec-ch07-redo).
 2. **Restart.** Like the other meters, it starts again after a restart.
+3. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.

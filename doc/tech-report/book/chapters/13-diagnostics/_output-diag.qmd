@@ -20,15 +20,16 @@ horizontal means.
 **Defining equation.** @eq-ch13-div-face.
 :::
 
-These fields are not budgets. Nothing in the run reads them back. They are there so that an output file can be
-checked by eye or by a script: a divergence field to look for spurious sources, the VIC correction to see where
-the implicit solve acts, and a column path to follow a species. No potential-energy or budget field is written.
+An output file can carry extra fields that help a user inspect a run. These fields are not budgets, and nothing
+in the run reads them back. They are there so that an output file can be checked by eye or by a script: a
+divergence field to look for spurious sources, the VIC correction to see where the implicit solve acts, and a
+column path to follow a species. No potential-energy or budget field is written.
 
 ### Derivation
 
 The divergence fields interpolate the cell velocity to faces as the mean of the two neighbouring cells. The first
 entry of the array, which lies in the ghost layer, copies its cell. They then apply the coordinate divergence
-of @sec-ch03. On a Cartesian grid with spacing $\Delta x_1$ this is
+of @sec-ch03. On a Cartesian grid with spacing $\Delta x_1$ [m] and cell velocity $v_{1,i}$ [m s$^{-1}$] this is
 
 $$
 (\nabla\cdot\mathbf v)_i = \frac{v_{1,i+1/2} - v_{1,i-1/2}}{\Delta x_1} , \quad v_{1,i+1/2} = \tfrac12(v_{1,i} + v_{1,i+1}) ,
@@ -37,9 +38,12 @@ $$ {#eq-ch13-div-face}
 and the sums for $x_2$ and $x_3$ are similar. A linear field is exact on every face but the first [check
 `src/snapy_report/ch13/output_diag_check.py`, output `output_diag_check.out`, `[C1]`]. The divergence of a uniform
 velocity is zero, and that of $v_1 = 2.5\,x_1$ is 2.5 in the interior (`[C2]`). The virtual potential
-temperature is $\theta_v = \theta\,p/(\rho R_dT)$, which equals $\theta$ for dry air and $\theta\,R/R_d$ otherwise
-(`[C3]`). `path_<species>` is $\sum_i\rho_{y,i}V_i/A_{\mathrm{bottom}}$, the column mass per unit area on a
-Cartesian column (`[C4]`).
+temperature [K] is $\theta_v = \theta\,p/(\rho R_dT)$, with $\theta$ [K] the potential temperature, $p$ [Pa]
+the pressure, $\rho$ [kg m$^{-3}$] the density, $T$ [K] the temperature and $R_d$ [J kg$^{-1}$ K$^{-1}$] the dry
+gas constant. It equals $\theta$ for dry air and $\theta\,R/R_d$ otherwise, with $R$ the gas constant of the
+mixture (`[C3]`). `path_<species>` is $\sum_i\rho_{y,i}V_i/A_{\mathrm{bottom}}$ [kg m$^{-2}$], with
+$\rho_{y,i}$ [kg m$^{-3}$] the species density, $V_i$ [m$^3$] the cell volume and $A_{\mathrm{bottom}}$ [m$^2$] the
+area of the bottom face. It is the column mass per unit area on a Cartesian column (`[C4]`).
 
 In the code, @eq-ch13-div-face is `interp_to_face` ({{< code src/output/load_diag_output_data.cpp interp_to_face >}}) followed by the
 coordinate `divergence` of the face values ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
@@ -117,3 +121,4 @@ diagnostic of the cell velocities. It is not the divergence the scheme saw.
 2. **Last correction only.** The `ic_*` fields hold the correction of the last stage before the output, not a sum
    over the step.
 3. **Legacy code.** The fields of `src/diagnostics/` are not built (@sec-ch13); only the ones above exist.
+4. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.
