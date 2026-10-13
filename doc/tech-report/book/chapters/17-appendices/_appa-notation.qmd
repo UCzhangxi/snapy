@@ -17,9 +17,9 @@ the $r^2\sin\theta$ metric).
 
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
-| $x_1, x_2, x_3$ | the three coordinate directions; $x_1$ is always the vertical (radial) direction |  | @sec-ch01-stage | x1, x2, x3 |
+| $x_1, x_2, x_3$ | the three coordinate directions; $x_1$ is always the vertical (radial) direction |  | @sec-ch01-construction | x1, x2, x3 |
 | $z$ | $x_1$ on a Cartesian grid (height) | [m] | @sec-ch03-layouts | `x1v`, `x1f` |
-| $r$ | $x_1$ on a spherical-polar grid (radius) | [m] | @sec-ch01-stage | `x1v`, `x1f` |
+| $r$ | $x_1$ on a spherical-polar grid (radius) | [m] | @sec-ch01-driver | `x1v`, `x1f` |
 | $\theta$ | $x_2$ on a spherical-polar grid (colatitude) | [rad] | @sec-ch03-sphpolar | x2 |
 | $\varphi$ | $x_3$ on a spherical-polar grid (azimuth); never the potential (source notes: $\phi$ in coord code) | [rad] | @sec-ch03-sphpolar | x3 |
 | $\xi, \eta$ | the two gnomonic-equiangle panel coordinates of a cubed-sphere block ($x_2, x_3$) (source notes: $\alpha,\beta$) | [rad] | @sec-ch03-gnomonic |  |
@@ -53,14 +53,14 @@ all $N_y$ species and excludes dry air.
 
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
-| $\rho$ | total density, dry plus every species that carries mass | [kg m$^{-3}$] | @sec-ch01-stage | primitive `w[IDN]`; conserved `u[IDN]` $+\sum$ `u[ICY+n-1]` |
-| $\rho_{\mathrm{d}}$ | dry-air density | [kg m$^{-3}$] | @sec-ch02-laws | conserved `u[IDN]` |
-| $y_n$ | mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$; this is snapy's composition variable and the only one the state vector carries (source notes: $q_n$) | [-] | @sec-ch02-ideal-moist | primitive `w[ICY+n-1]` |
+| $\rho$ | total density, dry plus every species that carries mass | [kg m$^{-3}$] | @sec-ch01-initialization | primitive `w[IDN]`; conserved `u[IDN]` $+\sum$ `u[ICY+n-1]` |
+| $\rho_{\mathrm{d}}$ | dry-air density | [kg m$^{-3}$] | @sec-ch01-scalar | conserved `u[IDN]` |
+| $y_n$ | mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$; this is snapy's composition variable and the only one the state vector carries (source notes: $q_n$) | [-] | @sec-ch01-initialization | primitive `w[ICY+n-1]` |
 | $r_n$ | mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1) | [-] | @sec-ch01-stage | `s/rho_d` in `src/scalar` |
-| $\rho_n$ | partial density of species $n$, $\rho y_n$ | [kg m$^{-3}$] | @sec-ch01-stage | conserved `u[ICY+n-1]` |
+| $\rho_n$ | partial density of species $n$, $\rho y_n$ | [kg m$^{-3}$] | @sec-ch02-laws | conserved `u[ICY+n-1]` |
 | $\mathcal V, \mathcal C$ | the vapour and condensate index sets; $n\in\mathcal V$ runs $1..N_v$ and $n\in\mathcal C$ runs $N_v+1..N_y$, in that order, as the rows are stored |  | @sec-ch02-ideal-moist | `vapor_ids`, `cloud_ids` |
 | $N_v, N_c, N_y$ | the number of vapours, of condensates, and of species rows, $N_y=N_v+N_c$ | count | — | `nvapor`, `ncloud`, `ny` |
-| $\mathbf v = (v_1,v_2,v_3)$ | velocity (source notes: $u, w$) | [m s$^{-1}$] | @sec-ch01-stage | `w[IVX]`, `w[IVY]`, `w[IVZ]` |
+| $\mathbf v = (v_1,v_2,v_3)$ | velocity (source notes: $u, w$) | [m s$^{-1}$] | @sec-ch01-initialization | `w[IVX]`, `w[IVY]`, `w[IVZ]` |
 | $m_1, m_2, m_3$ | momentum density $\rho v_a$ (source notes: $m$) |  | @sec-ch03-sphpolar | `u[IVX]`.. |
 | $p$ | pressure | [Pa] | @sec-ch02-laws | `w[IPR]` |
 | $T$ | temperature | [K] | @sec-ch02-ideal-moist | `"W->T"` |
@@ -72,7 +72,7 @@ all $N_y$ species and excludes dry air.
 | $\hat h$ | specific enthalpy $e + p/\rho$ (source notes: $h$ (not used: $h$ is the cell width)) | [J kg$^{-1}$] | @sec-ch02-moist-mixture |  |
 | $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$; excludes potential energy (source notes: $E$) | [J m$^{-3}$] | @sec-ch02-laws | conserved `u[IPR]` |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | vector | @sec-ch01-stage | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` |
-| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch07-vic-reject | `hydro_w` |
+| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch01-hydro | `hydro_w` |
 | $c_{v,n}, c_{p,n}$ | specific heats of species $n$ at constant volume and pressure, **per unit mass of that species**; $c_{v,n} = c^{\mathrm{ref}}_n R_n$ with $c^{\mathrm{ref}}_n$ the dimensionless table value. $n=\mathrm{d}$ is dry air: $c_{v,\mathrm{d}}, c_{p,\mathrm{d}}$ | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `cref_R` |
 | $c_v, c_p$ | mixture specific heats **per unit total mass**, $c_v = \sum_n y_n c_{v,n}$ over dry air and every species; a chapter that needs the per-dry-mass form writes it out and says so | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `"VT->cv"` |
 | $\gamma$ | mixture ratio of specific heats $c_p/c_v$, local, varies with composition; $\gamma_{\mathrm{d}}$ is the dry value | [-] | @sec-ch02-ideal-gas | `gamma`, `"W->A"` |
@@ -104,7 +104,7 @@ the symbol in math, and never let the two touch.
 | $T_\star, p_\star$ | the **thermodynamic** reference state: the single temperature and pressure at which $c^{\mathrm{ref}}_n$, $u^{\mathrm{ref}}_n$ and $s^{\mathrm{ref}}_n$ are tabulated (defaults $300$ K and $10^5$ Pa). The star is never used for the hydrostatic reference state of §6, which is a per-cell field written with the subscript $\mathrm{ref}$ | [K], [Pa] | — | kintera `reference-state/{Tref,Pref}` |
 | $\nu_{nk}$ | stoichiometric coefficient of species $n$ in reaction $k$, always with both indices; never bare $\nu$, which is kinematic viscosity (§8) |  | @sec-ch02-saturation | `stoich` |
 | $\mathsf N$ | the stoichiometry matrix, $\mathsf N_{nk} = \nu_{nk}$, species by reaction; never $\mathsf S$, which is the centroid-slope matrix (§4) | matrix | @sec-ch02-saturation | `stoich` |
-| $k = 1..N_r$ | reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so |  | @sec-ch02-saturation | `nreaction` |
+| $k = 1..N_r$ | reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so |  | @sec-ch01-mesh | `nreaction` |
 | $K_k$ | equilibrium constant of reaction $k$; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3) | [units stated per reaction] | @sec-ch10-kinetics |  |
 | $Z_n$ | compressibility factor of gas species $n$, $p_n = Z_n\rho_nR_nT$; $Z_n=1$ at the pin, because kintera's `func2` registry is empty. Capital, because $z$ is the Cartesian height (§1) | [-] | @sec-ch02-moist-mixture | `czh` |
 | $\tilde c_n$ | molar concentration of species $n$; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$ | [mol m$^{-3}$] | @sec-ch02-moist-mixture | kintera state `V` |
@@ -194,7 +194,7 @@ $p_{\mathrm{ref}}$ for $10^5$ Pa.
 
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
-| $\Delta t$ | the step |  | @sec-ch01-stage | `dt` |
+| $\Delta t$ | the step |  | @sec-ch01-driver | `dt` |
 | $\Delta q$ | the change of $q$ over one RK stage, stated each time as "per stage" or "per step"; on a state variable in an implicit context write $\Delta^{\mathrm{stg}}\rho$ for the stage change and keep $\Delta\rho_i$ for the solved change of the row below |  | — |  |
 | $t^n$ | time at step $n$ |  | — | `cycle` |
 | $\mathbf U^{(s)}$ | state after RK stage $s$ | vector | @sec-ch07-rk |  |

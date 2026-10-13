@@ -1,4 +1,4 @@
-"""Storage cartoon at snapy@e894700ff7aee30b52882e5202b16461413780b0; no data."""
+"""Storage cartoon at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; no data."""
 from snapy_report import figstyle as fs
 
 

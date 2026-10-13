@@ -1,4 +1,4 @@
-"""Expose the C++ API to Python; snapy@e894700ff7aee30b52882e5202b16461413780b0; no measured data."""
+"""Expose the C++ API to Python; snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; no measured data."""
 from .flow import make_flow
 
 

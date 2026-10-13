@@ -1,37 +1,56 @@
-## Locate tensor rows, faces and ghost slabs (`NMASS / PartOptions`) {#sec-ch01-layout}
+## Locate tensor rows, faces and ghost slabs (`NMASS` / `PartOptions`) {#sec-ch01-layout}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
-sources: OUTLINE.md entry 1.10; pinned Code table
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md entry 1.10; src/snap.h; src/coord/coordinate.hpp; src/mesh/meshblock.hpp; src/mesh/meshblock.cpp; src/recon/reconstruct.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
-Hydro buffers have variable, x3, x2, x1 axes. A resolved direction includes ghosts on both sides; a one-cell direction
-has no ghost storage. Primitive and conserved row meanings differ even though their row indices agree.
+Every field of a block is one tensor with the same shape. There is a variable axis, then the three space axes in the
+order $x_3$, $x_2$, $x_1$, so that $x_1$ is the fastest-varying one. A direction with more than one cell carries ghost
+cells on both sides; a one-cell direction has none. This section says which row is which variable, where the interior
+starts and ends, how a face pair is stored, and how a slab of a block is addressed.
 
 ::: {.callout-note title="At a glance"}
-Hydro buffers have variable, x3, x2, x1 axes.
-NMASS default 0; exterior slabs default true.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A, a code map: rows, axes, interior ends, face pairs and the slab selector `part`.
+
+**Data.** The hydro tensors (variable, $x_3$, $x_2$, $x_1$); `il`, `iu` are the first and last interior index.
+
+**Placement.** Everywhere a kernel indexes a block tensor.
+
+**Activation.** `NMASS` must be 0 (default); `PartOptions` selects exterior slabs by default.
+
+**Guarantee / limits.** A map; no convergence order.
+
+**Evidence.** `test_scalar.<b>` (shape, exact), `test_mesh_exchange_python` (ghost slab, exact); see Tests.
 :::
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
-their owning chapters.
+No separate derivation: this section describes an interface or control-flow path, and the operators are derived
+in their owning chapters.
 
 ### Numerical method
 
-Cell values occupy the final three axes; x1 is contiguous in the nominal layout. The first species row follows energy
-or pressure. At a face the left and right reconstruction slots share the face index; `_apply_inplace` offsets their
-output slices by one. `part` takes offsets in x3, x2, x1 order, returning an interior or boundary slab with optional
-extensions and depth. In the Code table, `il` and `iu` are the first and last interior math indices, not new physical
-variables. Layout has no convergence order.
+The row indices are the enumeration of {{< code src/snap.h >}}: density `IDN` = 0, the three velocity or momentum rows
+`IVX`, `IVY`, `IVZ` = 1, 2, 3. The pressure or energy row is `IPR` = 4 and the first species row `ICY` = 5. The face
+pair slots are `ILT` = 0 and `IRT` = 1. The primitive and conserved rows share the same indices with different
+meanings. The static assertion of the same file refuses the legacy `NMASS > 0` layout. The cell counts are `nc1`,
+`nc2`, `nc3` of `CoordinateOptionsImpl` ({{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}}): the interior
+count plus twice `nghost` when the direction is resolved, 1 otherwise. The interior ends are `il` and `iu` of
+`CoordinateImpl` ({{< code src/coord/coordinate.hpp CoordinateImpl >}}), `nghost` and `nghost + nx1 - 1`, or 0 on a
+one-cell axis. At a face the left and right reconstructed states share the face index. `_apply_inplace`
+({{< code src/recon/reconstruct.cpp _apply_inplace >}}) writes the two output slices offset by one cell and copies the
+end values into the ghosts. `PartOptions` ({{< code src/mesh/meshblock.hpp PartOptions >}}) selects `exterior`
+(default true), per-direction extensions, a `depth` and the number of dimensions. `MeshBlockImpl::part`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::part >}}) takes an offset triple in $x_3$, $x_2$, $x_1$ order and
+returns the interior or the boundary slab on that side. Layout has no convergence order.
 
-@fig-ch01-layout-flow shows the data or call sequence.
+@fig-ch01-layout-flow shows the storage stencil.
 
 ```{python}
 #| label: fig-ch01-layout-flow
@@ -42,47 +61,81 @@ from snapy_report.ch01.fig_layout_flow import make_fig
 make_fig()
 ```
 
+**Why the layout is fixed this way.** Three facts of the code.
+
+1. $x_1$ is the last axis, so a column is contiguous in memory; the shape check of `initialize_local` requires
+   (variables, $x_3$, $x_2$, $x_1$) ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}}).
+2. A one-cell axis carries no ghosts, so a two-dimensional run stores no empty slabs
+   ({{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}}).
+3. The two reconstructed states of a face share one face index, so the face pair can be passed to a Riemann solver as
+   one tensor. `_apply_inplace` writes them offset by one cell
+   ({{< code src/recon/reconstruct.cpp _apply_inplace >}}).
+
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| indices | [`snap.h:34-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L64) | `ICY` | API / see Summary |
-| sizes | {{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}} | `nc1` | API / see Summary |
-| ends | {{< code src/coord/coordinate.hpp CoordinateImpl >}} | `il` | API / see Summary |
-| partopts | {{< code src/mesh/meshblock.hpp PartOptions >}} | `PartOptions` | `PartOptions` |
-| part | {{< code src/mesh/meshblock.cpp MeshBlockImpl::part >}} | `part` | API / see Summary |
-| reconstruct | {{< code src/recon/reconstruct.cpp _apply_inplace >}} | `_apply_inplace` | API / see Summary |
-| modules | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `pintg` | API / see Summary |
+| rows | {{< code src/snap.h >}} | `ICY` | `NMASS` |
+| counts | {{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}} | `nc1` | `geometry/cells` |
+| ends | {{< code src/coord/coordinate.hpp CoordinateImpl >}} | `il` | `geometry/cells/nghost` |
+| slab options | {{< code src/mesh/meshblock.hpp PartOptions >}} | `PartOptions` | `PartOptions` |
+| slab | {{< code src/mesh/meshblock.cpp MeshBlockImpl::part >}} | `part` | none |
+| face pair | {{< code src/recon/reconstruct.cpp _apply_inplace >}} | `_apply_inplace` | none |
+| buffers | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `_hydro_u0` | none |
 
-: Implementation anchors for locate tensor rows, faces and ghost slabs. {#tbl-ch01-layout-code}
+: Implementation anchors for the storage layout. {#tbl-ch01-layout-code}
 
-1. Read `ICY` for the indices part of this path ([`snap.h:34-64`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/snap.h#L34-L64)).
-2. Read `nc1` for the sizes part of this path ({{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}}).
-3. Read `il` for the ends part of this path ({{< code src/coord/coordinate.hpp CoordinateImpl >}}).
-4. Read `PartOptions` for the partopts part of this path ({{< code src/mesh/meshblock.hpp PartOptions >}}).
-5. Read `part` for the part part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::part >}}).
-6. Read `_apply_inplace` for the reconstruct part of this path ({{< code src/recon/reconstruct.cpp _apply_inplace >}}).
-7. Read `pintg` for the modules part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}).
+1. Rows and the index assertion: `ICY` in {{< code src/snap.h >}}.
+2. Counts and ends: `nc1` ({{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}}), `il`
+   ({{< code src/coord/coordinate.hpp CoordinateImpl >}}).
+3. Slabs and face pairs: `part` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::part >}}), `_apply_inplace`
+   ({{< code src/recon/reconstruct.cpp _apply_inplace >}}).
+
+**How to use it.** Index a block tensor by row and by slab, never by hand-computed offsets:
+
+```cpp
+auto interior = pmb->part({0, 0, 0}, PartOptions().exterior(false));   // the owned cells
+auto lower_x1 = pmb->part({0, 0, -1}, PartOptions().exterior(true));   // the x1 ghost slab below
+auto rho_d = hydro_u[IDN];                                              // one row
+```
+
+`part` takes the offset triple in $x_3$, $x_2$, $x_1$ order ({{< code src/mesh/meshblock.cpp MeshBlockImpl::part >}}).
+Refused: a build with `NMASS > 0`, by the static assertion of {{< code src/snap.h >}}. The row enumeration is:
+
+```cpp
+enum {
+  // hydro variables
+  IDN = 0,  //!< Density index
+  IVX = 1,  //!< X-velocity index
+  IVY = 2,  //!< Y-velocity index
+  IVZ = 3,  //!< Z-velocity index
+  IPR = 4,  //!< Pressure index
+  ICY = 5,  //!< Composition/species index (first mass fraction)
+
+  // reconstruction variables
+  ILT = 0,  //!< Left interface
+  IRT = 1,  //!< Right interface
+};
+```
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_scalar.release` | Initialization, shape, finite increment | allclose defaults; exact shape | API contract; numeric rationale absent |
-| `test_mesh_exchange_python` | Selected neighbor slab | exact equality | Integer rank field copied |
+| `test_scalar.<b>` | the scalar tensors have the block's shape, device and dtype | exact | the API contract |
+| `test_mesh_exchange_python` | the selected ghost slab of each block holds its neighbour's rank | exact equality | an integer rank field is copied |
 
-: Source assertions for layout. {#tbl-ch01-layout-tests}
+: Source assertions for the storage layout. {#tbl-ch01-layout-tests}
 
-The assertion anchor `scalar_s` is in {{< code tests/test_scalar.cpp DeviceTest.initialize_and_transport_scalar >}}.
+The assertions are {{< code tests/test_scalar.cpp DeviceTest.initialize_and_transport_scalar >}} and the
+top-level `assert` of {{< code tests/test_mesh_exchange.py >}}.
 
-The assertion anchor `ghost` is in [`test_mesh_exchange.py:37-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_exchange.py#L37-L50).
-
-No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
-the missing runs and the distinction between assertions and observations.
+Both tests run on CPU (`test_scalar.<b>` also on CUDA through the shared device list). Neither has been run
+for this report at the pin: **pending a pinned ctest run**. No report check exists for this section.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-NMASS greater than zero is rejected by the species-layout static assertion. Degenerate axes cannot supply an ordinary
-multi-cell stencil. The tests here exercise selected shapes and slabs rather than every depth/extension combination.
+`NMASS > 0` is refused by the species-layout static assertion. A one-cell axis cannot supply a multi-cell
+stencil. The tests exercise selected shapes and slabs, not every depth and extension combination.
 :::

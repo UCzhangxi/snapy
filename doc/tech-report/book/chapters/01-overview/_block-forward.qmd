@@ -1,36 +1,51 @@
 ## Exchange before a single-block stage (`MeshBlock.forward`) {#sec-ch01-block-forward}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
-sources: OUTLINE.md entry 1.5; pinned Code table
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md entry 1.5; src/mesh/meshblock.cpp; src/mesh/mesh.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
-`MeshBlock::forward` exchanges conserved ghosts before `advance_local` reconstructs them. A caller that edits
-conserved interiors between stages therefore presents those changes to the next exchange.
+A driver that steps one block calls `MeshBlock::forward` once per stage. That call does two things in a fixed
+order: it first refreshes the ghost cells from the neighbours, then advances the stage. The order matters
+for a caller that edits the interior between two calls, because the edit reaches the ghosts before the next
+reconstruction reads them.
 
 ::: {.callout-note title="At a glance"}
-`MeshBlock::forward` exchanges conserved ghosts before `advance_local` reconstructs them.
-Always exchanges first; no ordering switch.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A, a code map: exchange the conserved ghosts, then run `advance_local`.
+
+**Data.** In: `hydro_u` and `scalar_s` with stale ghosts. Out: the same tensors advanced by one stage.
+
+**Placement.** Once per stage, from the single-block driver.
+
+**Activation.** Always exchanges first; no ordering switch.
+
+**Guarantee / limits.** Changes data freshness, not the stencil order; the mesh driver orders it differently.
+
+**Evidence.** No dedicated test (missing evidence); the ownership rule is tested in @sec-ch11-timing.
 :::
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
-their owning chapters.
+No separate derivation: this section describes an interface or control-flow path, and the operators are derived
+in their owning chapters.
 
 ### Numerical method
 
-The exchange fills hydro conserved ghosts and scalar density ghosts. It then refreshes eligible physical x1 boundaries
-inside exchanged tangential slabs and recomputes scalar ratios. Outflow is excluded from that corner refresh. This
-wrapper changes data freshness, not the stencil order. Physical boundary conditions and cubed-sphere interpolation
-retain their own errors.
+`MeshBlockImpl::forward` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}) calls `exchange_ghost_zones` and
+then `advance_local`. `MeshBlockImpl::exchange_ghost_zones`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}) exchanges the conserved hydro state and the
+scalar densities with interpolation on. It then re-applies the non-outflow $x_1$ boundary functions on the tangential
+ghost slabs the exchange owns (the `refresh` closure; @sec-ch11-timing), and recomputes the scalar ratios. The mesh
+driver `MeshImpl::forward` ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}) advances first and exchanges afterwards
+(@sec-ch01-mesh). The wrapper changes when the ghosts are fresh, not the stencil order; physical boundary conditions
+and cubed-sphere interpolation keep their own errors.
 
-@fig-ch01-block-forward-flow shows the data or call sequence.
+@fig-ch01-block-forward-flow shows the call sequence.
 
 ```{python}
 #| label: fig-ch01-block-forward-flow
@@ -41,36 +56,60 @@ from snapy_report.ch01.fig_block_forward_flow import make_fig
 make_fig()
 ```
 
+**Why exchange first.** Two facts of the code decide the order.
+
+1. The reconstruction of a stage reads ghost cells (@sec-ch04), so the ghosts must hold the neighbours' current values
+   when the stage starts. The exchange at the top of `forward` guarantees that for a single block
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}).
+2. A driver may change the interior between two calls (the kinetics step of @sec-ch01-driver does). With the exchange
+   first, that change reaches the ghosts before the next reconstruction; with the mesh order it reaches them only
+   after the next stage.
+
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| forward | {{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}} | `forward` | API / see Summary |
-| exchange | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | API / see Summary |
-| corners | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `refresh` | API / see Summary |
-| meshforward | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `forward` | API / see Summary |
+| forward | {{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}} | `forward` | none |
+| exchange | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `exchange_ghost_zones` | none |
+| corners | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `refresh` | none |
+| mesh forward | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `forward` | none |
 
-: Implementation anchors for exchange before a single-block stage. {#tbl-ch01-block-forward-code}
+: Implementation anchors for the block-level forward. {#tbl-ch01-block-forward-code}
 
-1. Read `forward` for the forward part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}).
-2. Read `exchange_ghost_zones` for the exchange part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
-3. Read `refresh` for the corners part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
-4. Read `forward` for the meshforward part of this path ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}).
+1. Exchange, then advance: `forward` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}).
+2. Fill the layout ghosts, refresh the $x_1$ wall corners, recompute the scalar ratios:
+   `exchange_ghost_zones` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
+3. Compare with the mesh order, advance then exchange: `MeshImpl::forward`
+   ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}).
+
+**How to use it.** There is nothing to configure. The whole method is two calls
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}):
+
+```cpp
+void MeshBlockImpl::forward(Variables &vars, double dt, int stage) {
+  exchange_ghost_zones(vars);
+  advance_local(vars, dt, stage);
+}
+```
+
+A driver that edits `hydro_u` between calls must edit the interior only; ghost edits are overwritten by the
+exchange on the next call.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| No dedicated test | Missing evidence | Not applicable | Not applicable |
+| no dedicated test | missing evidence | not applicable | not applicable |
 
-: Source assertions for block-forward. {#tbl-ch01-block-forward-tests}
+: Source assertions for the block-level forward. {#tbl-ch01-block-forward-tests}
 
-No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
-the missing runs and the distinction between assertions and observations.
+No ctest isolates this order, and no report check exists for it: **missing evidence**; the ownership rule
+of the exchange and the corner refresh is tested in @sec-ch11-timing.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The source comment attributes a removed cubed-sphere seam bias to this placement; this chapter does not promote that
-comment to measured evidence. A regression isolating split sources between consecutive calls is still missing.
+The source comment on `forward` attributes a removed cubed-sphere seam bias to this placement; the chapter
+does not promote that comment to measured evidence. A regression that isolates driver-split sources between
+consecutive calls is missing.
 :::

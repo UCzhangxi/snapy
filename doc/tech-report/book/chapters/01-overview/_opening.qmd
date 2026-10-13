@@ -1,6 +1,12 @@
-This chapter follows one step from caller through MeshBlock or Mesh to the kernels, then maps storage, configuration, Python bindings and external dependencies. Its evidence is pinned source and explicitly identified tests; it makes no new runtime performance or convergence claim.
+This chapter is the map of snapy for a reader who has never opened it. It follows one time step from the caller's
+loop, through a `MeshBlock` or a `Mesh`, into the hydro and scalar kernels, and back out to the written outputs. It
+then says where the data lives in memory, how a run is configured, how Python reaches the same objects, and which
+external packages the code leans on. Every section is a code map read at the pin of `code_pin.yml`. It names the
+function that does each thing and the test that holds the claim up. It makes no new numerical claim of its own. The
+physics of each operator belongs to its own chapter, which the map points at.
 
-The dependency map is a call-ownership map. Numerical switch implications remain pending the editor-owned @sec-ch12-matrix.
+The dependency figure below is a call-ownership map: an arrow says who calls what, not that one numerical
+switch implies another. The switch couplings are in @sec-ch12-matrix.
 
 ```{python}
 #| label: fig-ch01-overview-dependencies
@@ -13,18 +19,21 @@ make_fig()
 
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
-| @sec-ch01-driver | `integration:` | external | N/A: map | `test_restart_cycle_limit` |
-| @sec-ch01-construction | `MeshBlockOptions` | caller options | N/A: map | `test_yaml_keys.release` |
-| @sec-ch01-initialization | `restart_file` | fresh start | N/A: map | `test_scalar.release` |
-| @sec-ch01-stage | `user_stage_forcings` | callbacks absent | N/A: map | `test_user_output.release` |
-| @sec-ch01-block-forward | `MeshBlock.forward` | exchange first | N/A: map | Missing dedicated test |
-| @sec-ch01-mesh | `distribute.blocks_per_process` | 1 block | N/A: map | `test_mesh_multi_block.release` |
-| @sec-ch01-hydro | `dynamics:` | per physics | N/A: map | Missing dedicated test |
-| @sec-ch01-scalar | `scalar:` | 0 scalars | N/A: map | `test_scalar.release` |
-| @sec-ch01-dispatch | `CUDA` | OFF / cpu | N/A: map | `test_weno5_cuda_line.release` |
-| @sec-ch01-layout | `NMASS / PartOptions` | 0 / exterior | N/A: map | `test_scalar.release` |
-| @sec-ch01-options | `from_yaml` | per reader | N/A: map | `test_yaml_keys.release` |
+| @sec-ch01-driver | `integration:` | external integrator | N/A: map | `test_check_redo_parallel.<b>` |
+| @sec-ch01-construction | `MeshBlockOptions` | caller options | N/A: map | `test_yaml_keys.<b>` |
+| @sec-ch01-initialization | `restart_file` | fresh start | N/A: map | `test_scalar.<b>` |
+| @sec-ch01-stage | `user_stage_forcings` | no callbacks | N/A: map | `test_user_output.<b>` |
+| @sec-ch01-block-forward | `MeshBlock.forward` | exchange first | N/A: map | missing evidence |
+| @sec-ch01-mesh | `distribute.blocks_per_process` | 1 block | N/A: map | `test_mesh_multi_block.<b>` |
+| @sec-ch01-hydro | `dynamics:` | per physics chapter | N/A: map | missing evidence |
+| @sec-ch01-scalar | `scalar:` | 0 scalars | N/A: map | `test_scalar.<b>` |
+| @sec-ch01-dispatch | `CUDA` | OFF / `cpu` | N/A: map | `test_weno5_cuda_line.<b>` |
+| @sec-ch01-layout | `NMASS` / `PartOptions` | 0 / exterior | N/A: map | `test_scalar.<b>` |
+| @sec-ch01-options | `from_yaml` | per reader | N/A: map | `test_yaml_keys.<b>` |
 | @sec-ch01-python | `import snapy` | float64 / 1 thread | N/A: map | `test_python_import_path_python` |
-| @sec-ch01-dependencies | `find_package` | see Summary | N/A: map | Missing dedicated test |
+| @sec-ch01-dependencies | `find_package` | see the section | N/A: map | missing evidence |
 
-: Chapter scope; operator order belongs to the physics chapters. {#tbl-ch01-overview-schemes}
+: Chapter scope; `<b>` is the build suffix (`release` by default). Operator order belongs to the physics chapters. {#tbl-ch01-overview-schemes}
+
+The ctests named here have not been run for this report at the pin. @sec-ch15-ch01 records their device and rank
+coverage and the runs that are missing; the chapter's own checks are ports that import no snapy.

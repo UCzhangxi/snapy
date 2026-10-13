@@ -1,6 +1,6 @@
 """Executable check of the key validation of the options readers (chapter 1, _options.qmd).
 
-What is checked: check_keys (src/input/check_keys.cpp:12-31 at snapy@e894700ff7aee30b52882e5202b16461413780b0),
+What is checked: check_keys (src/input/check_keys.cpp at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5),
 ported on Python dicts in place of YAML nodes, with the message format of the TORCH_CHECK. Claims C1-C3.
 
 Run: python3 options_check.py   (numpy only; exits with the number of failed claims)

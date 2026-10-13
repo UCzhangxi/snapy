@@ -1,40 +1,61 @@
 ## Follow the hydro increment through seven sections (`dynamics:`) {#sec-ch01-hydro}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
-sources: OUTLINE.md entry 1.7; pinned Code table
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md entry 1.7; src/hydro/hydro_forward.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
-Hydro converts conserved state to primitives, constructs directional fluxes, limits species transport, takes the
-geometric divergence, adds forcing and gravity work, and applies the optional vertical implicit correction. Its result
-is an increment, not an updated conserved state.
+The hydro operator is one long function that turns the conserved state of a block into the increment of one
+stage. It is organised in seven numbered sections, from the primitive conversion to the implicit correction,
+and every physics chapter of the book describes one piece of it. This section is the index of those seven
+sections, so a reader can find where a scheme runs and what it hands to the next piece.
 
 ::: {.callout-note title="At a glance"}
-Hydro converts conserved state to primitives, constructs directional fluxes, limits species transport, takes the
-geometric divergence, adds forcing and gravity work, and applies the optional vertical implicit correction.
-Physics choices are owned by their chapters and @sec-ch12-matrix.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A, a code map: primitives, $x_1$ flux, lateral states, lateral fluxes, divergence, forcing, implicit.
+
+**Data.** In: `hydro_u` with fresh ghosts and the stage index. Out: a time-integrated increment, not a new state.
+
+**Placement.** Once per stage, from `advance_local`; the sections run in the fixed order above.
+
+**Activation.** The `dynamics:` card and the switches of @sec-ch12; each piece is owned by its chapter.
+
+**Guarantee / limits.** A map; the implicit step is stage-weighted only for a three-stage integrator.
+
+**Evidence.** No dedicated test of the whole pipeline (missing evidence); each section cites its own tests.
 :::
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
-their owning chapters.
+No separate derivation: this section describes an interface or control-flow path, and the operators are derived
+in their owning chapters.
 
 ### Numerical method
 
-The seven sections are primitive conversion; x1 reconstruction, Riemann flux, sedimentation and process-seam
-averaging; horizontal left/right states and panel exchange; horizontal fluxes and positivity; divergence with
-geometric sources; forcing and gravity work; and implicit correction. Communication occurs inside this pipeline as
-well as in the driver wrapper: x1 process-seam fluxes, panel states and donor factors must be synchronized at their
-own use sites. Disabled directions and unresolved dimensions are gated separately. Orders and wall closures are
-derived by the owning physics chapters.
+`HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) runs these in order.
 
-@fig-ch01-hydro-flow shows the data or call sequence.
+1. The primitive conversion with the EOS and the solid marking (@sec-ch02, @sec-ch11-solids).
+2. The $x_1$ face states, the well-balanced reference and wall treatment (@sec-ch05, @sec-ch11-wb). Then the
+   $x_1$ Riemann flux (@sec-ch04), the sedimentation flux (@sec-ch10-sed) and the single-valued $x_1$ seam flux
+   across process seams (@sec-ch03-x1seams). A same-process seam is not averaged.
+3. The lateral face states, with the cross-panel exchange of the cubed sphere (@sec-ch03).
+4. The lateral fluxes with the face-flux covariance (@sec-ch04-fluxcov) and the tracer positivity limiter with its raw
+   donor-factor exchange (@sec-ch08).
+5. The flux divergence with the geometric sources (@sec-ch04).
+6. The forcing and the gravity work (@sec-ch09, @sec-ch06).
+7. The implicit correction (@sec-ch07). Its time step is the stage weight times $\Delta t$ for a three-stage
+   integrator and $\Delta t$ otherwise, with a one-time warning when the caller never published a stage.
+
+The function ends by accumulating the gravity-work fix with the stage weight `cw` of @eq-ch01-stage-weight.
+Communication happens inside this pipeline as well as in the driver wrapper. The $x_1$ seam fluxes, the panel states
+and the donor factors are synchronized at their own use sites. Disabled directions and unresolved dimensions are gated
+separately. Orders and wall closures are derived by the owning chapters.
+
+@fig-ch01-hydro-flow shows the call sequence.
 
 ```{python}
 #| label: fig-ch01-hydro-flow
@@ -45,49 +66,73 @@ from snapy_report.ch01.fig_hydro_flow import make_fig
 make_fig()
 ```
 
+**Why the seven sections are in this order.** Each section consumes what the one before it produced.
+
+1. The primitives come first because every later section reads $\mathbf W$, and the solid marking must be in
+   $\mathbf W$ before any reconstruction ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+2. The $x_1$ flux comes before the lateral ones because the lateral covariance of @sec-ch04-fluxcov reads the $x_1$
+   differences of the face states. The seam rows must already be single-valued.
+3. The positivity limiter runs after all three fluxes, because it scales the fluxes it has seen.
+4. The divergence, the forcing and the gravity work follow, because they are sources on the stage increment. The
+   implicit correction is last, because it acts on the assembled explicit increment.
+
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| hydro | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `forward` | API / see Summary |
-| reference | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_hydro_ref_x1` | per physics options |
-| reconstruction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `precon1` | per physics options |
-| riemann | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `priemann` | per physics options |
-| solve | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_apply_implicit_correction` | per physics options |
-| sed | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `psed` | API / see Summary |
-| lr | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `sync_opts` | API / see Summary |
-| flux | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_covariance` | `SNAP_FLUX_COVARIANCE` |
-| theta | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_positivity_theta` | EOS limiter, or face-flux covariance rows added |
-| div | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_div` | API / see Summary |
+| pipeline | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `forward` | `dynamics:` |
+| reference | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_hydro_ref_x1` | gravity on |
+| reconstruction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `precon1` | `reconstruct/vertical` |
+| riemann | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `priemann` | `riemann-solver` |
+| sedimentation | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `psed` | `sedimentation:` |
+| lateral states | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `sync_opts` | cubed sphere |
+| covariance | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_covariance` | `SNAP_FLUX_COVARIANCE` |
+| limiter | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_positivity_theta` | EOS limiter or covariance on |
+| divergence | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_div` | none |
 | implicit | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dt_corr` | `implicit-scheme` |
-| weights | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | API / see Summary |
+| weight | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cw` | none |
 
-: Implementation anchors for follow the hydro increment through seven sections. {#tbl-ch01-hydro-code}
+: Implementation anchors for the hydro pipeline. {#tbl-ch01-hydro-code}
 
-1. Read `forward` for the hydro part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-2. Read `psed` for the sed part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-3. Read `sync_opts` for the lr part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-4. Read `flux_covariance` for the flux part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-5. Read `flux_positivity_theta` for the theta part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-6. Read `_div` for the div part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-7. Read `dt_corr` for the implicit part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-8. Read `cw` for the weights part of this path ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+1. Sections (1) and (2): primitives, the $x_1$ states, flux and seam ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+2. Sections (3) and (4): lateral states, lateral fluxes, the covariance and the limiter
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+3. Sections (5) to (7): divergence, forcing and gravity work, the implicit correction with `dt_corr`, and the
+   accumulated weight `cw` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+
+**How to use it.** The `dynamics` block selects the pieces; the keys accepted at this level are
+`equation-of-state`, `reconstruct`, `riemann-solver`, `verbose`, `disable-flux-x1`, `disable-flux-x2`,
+`disable-flux-x3` and `wb-wall-clamp` ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}):
+
+```yaml
+dynamics:
+  equation-of-state: {type: ideal-gas}
+  reconstruct:
+    vertical: {type: weno5}
+    horizontal: {type: plm}
+  riemann-solver: {type: lmars}
+  wb-wall-clamp: true
+```
+
+Refused: any other key at this level, with its path in the error; the sub-block keys are listed with their
+defaults in @sec-ch12-yaml. The hydro call itself is `phydro->forward(dt, hydro_u, vars)` from `advance_local`,
+and a direct caller that does not publish `rk_stage` first gets the one-time warning described in Limits.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| No dedicated test | Missing evidence | Not applicable | Not applicable |
+| no dedicated test | missing evidence | not applicable | not applicable |
 
-: Source assertions for hydro. {#tbl-ch01-hydro-tests}
+: Source assertions for the hydro pipeline. {#tbl-ch01-hydro-tests}
 
-No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
-the missing runs and the distinction between assertions and observations.
+No ctest isolates the whole pipeline, and no report check exists for it: **missing evidence**. Each section
+of the pipeline cites its own tests in its chapter.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The implicit time step is stage-weighted only for an integrator with three stages. A direct hydro caller that has not
-published a valid stage receives a one-time warning and uses the full time step. Same-process x1 seam flux averaging
-is explicitly excluded by the cited code. Neither case is newly measured here.
+The implicit time step is stage-weighted only for an integrator with three stages. A direct hydro caller that
+has not published a valid stage receives a one-time warning and uses the full time step. Same-process $x_1$
+seam fluxes are not averaged, by the cited code. Neither case is measured here.
 :::
