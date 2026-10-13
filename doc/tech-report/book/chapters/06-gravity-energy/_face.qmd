@@ -33,8 +33,9 @@ implicit operator to carry it when an implicit scheme is on.
 :::
 
 Local symbols (flagged to the editor, ISSUES.md): $m_{1,i}=\rho_iv_{1,i}$ the $x_1$ momentum density of cell $i$
-[kg m$^{-2}$ s$^{-1}$] (NOTATION.md $m_1$; code `rhov`); $\mathcal K$ the curvature flux of NOTATION.md §3; $t_i$ the
-per-cell term of the conservation sum [J] and $k$ the number of roundings in one $t_i$.
+[kg m$^{-2}$ s$^{-1}$] (NOTATION.md $m_1$; code `rhov`); $\mathcal K$ the curvature flux of NOTATION.md §3; $b_i$ the
+per-cell term of the conservation sum [J], $N_{\mathrm{rd}}$ the number of roundings in one $b_i$ and $\eta_i$ its
+relative rounding error.
 
 With `gravity-work: face` the corrected-PE work of @sec-ch06-dwork is on by default
 (`SNAP_GRAVITY_WORK_RADIAL_EXACT`); this section describes the face form with that switch off, which is how the
@@ -70,19 +71,24 @@ The face form conserves $E_{\mathrm{tot}}+\mathrm{PE}_d$ exactly on a closed col
 4. $\mathcal K$ is a face flux, set to zero on both physical faces, so $\sum_iV_i\nabla_{\!1}\!\cdot g_1\mathcal K=0$ by
    the same telescoping.
 
-Round-off is the one place this shows. Write the computed per-cell terms as $\hat t_i=t_i(1+\theta_i)$, with
-$\sum_it_i=0$ exactly and $\lvert\theta_i\rvert\le k\,\tfrac12\epsilon_{\mathrm m}$ for the $k$ roundings of one cell term.
-Summing $n_1$ such terms adds one rounding per addition, and the error of a sum is $\sum_kB_k\delta_k$ to first order
-(as in @sec-ch09-framework), so
+Round-off is the one place this shows. Write the computed per-cell terms as $\hat b_i=b_i(1+\eta_i)$, with
+$\sum_ib_i=0$ exactly and $\lvert\eta_i\rvert\le N_{\mathrm{rd}}\,\tfrac12\epsilon_{\mathrm m}$ for the $N_{\mathrm{rd}}$ roundings of one
+cell term. Summing $n_1$ such terms adds one rounding per addition, and to first order the error of a sum is the sum
+over its additions of the partial sum times that addition's rounding (as in @sec-ch09-framework). The stage
+combination $w_0^{(s)}\mathbf U^n+w_1^{(s)}\mathbf U+w_2^{(s)}\Delta\mathbf U$ then rounds each $E_i$ five times, three products and
+two additions (`wght0`, [`pyharp integrator.cpp:120`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L120)), as the deposit of @sec-ch06-fixer rounds its addition to $E_i$. Together,
 
 $$
-\Big\lvert\sum_i\hat t_i\Big\rvert \le (k+n_1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert t_i\rvert .
+\Big\lvert\sum_i\hat b_i\Big\rvert \le (N_{\mathrm{rd}}+n_1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert b_i\rvert
++ 5\cdot\tfrac12\epsilon_{\mathrm m}\sum_iV_i\lvert E_i\rvert \quad\text{per stage}.
 $$
 
-Counting the floating-point operations of the face-work lines, plus the update of $E$ and the product with $V$,
-gives $k\le12$, an upper count, not a measurement. For $n_1=256$ the bound is $3.0\times10^{-14}$ of
-$\sum_i\lvert t_i\rvert$. `cellface_check.py` `[C1]` measures $3.9\times10^{-15}$ relative on Cartesian and
-spherical-polar columns, inside it; `[C4]` measures the $\mathcal K$ divergence sum at $1.3\times10^{-17}$. Its purpose
+Counting the floating-point operations of the face-work lines and the product with $V$ gives $N_{\mathrm{rd}}\le12$, an
+upper count, not a measurement. For $n_1=256$ the first term is $3.0\times10^{-14}$ of $\sum_i\lvert b_i\rvert$.
+`cellface_check.py` `[C1]` measures the work identity alone, $\lvert\sum_iV_i(W^{\mathrm{face}}_i+\phi_i\dot\rho_i)\rvert$ over
+$\sum_iV_i\lvert W^{\mathrm{face}}_i\rvert$, at $3.9\times10^{-15}$ on Cartesian and spherical-polar columns, inside the first
+term; the energy-update term is not part of that check. `[C4]` measures the $\mathcal K$ divergence sum at
+$1.3\times10^{-17}$. Its purpose
 is accuracy. A
 high-order reconstruction's face flux exceeds the point value $m_1$ by $\tfrac{h^2}{12}(\partial_1^2m_1+\dots)$, and the
 face form books that excess as work; $\nabla_{\!1}\!\cdot g_1\mathcal K$ removes the $\partial_1^2m_1$ part. Against
@@ -193,7 +199,7 @@ implicit operator" (also for `face` with `implicit-scheme: 0`).
 `[C1]` of `cellface_check.py` measures the conservation of the four steps; `[C3]` and `[C4]` the orders, 2.00 in all
 cells without $\mathcal K$ and 3.99 interior, 1.00 wall with it; `[C5]` the `face-wallc` defect.
 
-`vertical_gravity_work_removes_the_curvature_excess` sets a quadratic $m$ on six cells. It requires the off-wall
+`vertical_gravity_work_removes_the_curvature_excess` sets a quadratic $m_1$ on six cells. It requires the off-wall
 excess to equal $\Delta t\,\tfrac{h^2}{12}\cdot2\cdot0.04\cdot0.03$ for cp3 and five-point reconstructions
 and zero otherwise, to $10^{-9}$ absolute, as `expected` ({{< code tests/test_forcing.cpp vertical_gravity_work_removes_the_curvature_excess >}}). The
 plain face form is tested with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` set in the registration

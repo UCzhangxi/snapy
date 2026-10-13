@@ -31,10 +31,11 @@ cell form.
 **Evidence.** The Tests layer below, @tbl-ch06-fixer-tests.
 :::
 
-Local symbols (flagged to the editor, ISSUES.md): $w^{\mathrm{step}}_s$ [-] the weight of stage $s$'s increment in
-the step (code `cw`); $\mathcal D_s$ [J] the defect of stage $s$; $\mathcal D$ [J] the step's defect; $M$ [kg] the fluid
+Local symbols (flagged to the editor, ISSUES.md): $w^{(s)}_{\mathrm{step}}$ [-] the weight of stage $s$'s increment in
+the step (code `cw`); $\mathcal D^{(s)}$ [J] the defect of stage $s$; $\mathcal D$ [J] the step's defect; $M$ [kg] the fluid
 mass and $M_{\mathrm{wall}}$ [kg] the wall cells' mass (NOTATION.md); $N_{\mathrm f}$ the number of fluid cells of the
-domain; $\theta$ a relative rounding error, $\lvert\theta\rvert\le\tfrac12\epsilon_{\mathrm m}$ per operation.
+domain; $s'$ a later stage of the same step; $\eta$ a relative rounding error, $\lvert\eta\rvert\le\tfrac12\epsilon_{\mathrm m}$ per
+operation.
 
 It runs only with `gravity-work: cell` and $g_1\neq0$. Its terms leave out the boundary fluxes, so it refuses any
 step that moved more than a round-off amount of mass through an $x_1$ boundary face, and it refuses a periodic
@@ -45,22 +46,22 @@ as `fixgrav=`.[^ch06-fixer-src]
 
 ### Derivation
 
-Per stage $s$ the defect $\mathcal D_s$ is @eq-ch06-cell-defect plus, with an implicit scheme, the change of
+Per stage $s$ the defect $\mathcal D^{(s)}$ is @eq-ch06-cell-defect plus, with an implicit scheme, the change of
 $\sum_iV_i(E_i+\phi_i\rho_i)$ across the implicit solve. Its weight in the step follows in three steps.
 
 1. Stage $s$ forms $\mathbf U\leftarrow w_0^{(s)}\mathbf U^n+w_1^{(s)}\mathbf U+w_2^{(s)}\Delta\mathbf U^{(s)}$ (@sec-ch07-rk), so its
    increment enters the stage result with the factor $w_2^{(s)}$.
-2. Each later stage $t>s$ multiplies the current $\mathbf U$ by $w_1^{(t)}$ and adds terms that do not contain
-   $\Delta\mathbf U^{(s)}$, so the factor becomes $w^{\mathrm{step}}_s=w_2^{(s)}\prod_{t>s}w_1^{(t)}$.
+2. Each later stage $s'>s$ multiplies the current $\mathbf U$ by $w_1^{(s')}$ and adds terms that do not contain
+   $\Delta\mathbf U^{(s)}$, so the factor becomes $w^{(s)}_{\mathrm{step}}=w_2^{(s)}\prod_{s'>s}w_1^{(s')}$.
 3. A quantity linear in the state, such as $E_{\mathrm{tot}}+\mathrm{PE}_d$, therefore changes over the step by
-   $\sum_sw^{\mathrm{step}}_s\,\mathcal D_s$. For rk3 the weights are $1/6$, $1/6$, $2/3$ (`[C1]`, `[C2]`).
+   $\sum_sw^{(s)}_{\mathrm{step}}\,\mathcal D^{(s)}$. For rk3 the weights are $1/6$, $1/6$, $2/3$ (`[C1]`, `[C2]`).
 
 After the
 last stage the fixer applies
 
 $$
 \begin{aligned}
-\mathcal D &= \sum_sw^{\mathrm{step}}_s\,\mathcal D_s ,\\
+\mathcal D &= \sum_sw^{(s)}_{\mathrm{step}}\,\mathcal D^{(s)} ,\\
 E_i &\leftarrow E_i - \mathcal D\,\frac{\rho_i}{\sum_jV_j\rho_j},
 \end{aligned}
 $$ {#eq-ch06-fixer-fix}
@@ -70,14 +71,14 @@ applied in `apply_gravity_work_fixer` as `efix`
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
 Multiplying by $V_i$ and summing gives exactly $-\mathcal D$ (`[C3]`, $3.8\times10^{-16}$ relative).
 
-In floating point the deposit is exact to a derived bound. The code forms $\hat M=M(1+\theta_M)$ by a sum of $N_{\mathrm f}$
-positive terms, $\lvert\theta_M\rvert\le N_{\mathrm f}\,\tfrac12\epsilon_{\mathrm m}$; then `efix` $=-\mathcal D/\hat M$ with one more
-rounding $\theta_1$; then each cell's deposit with a rounding $\theta_{2,i}$; then the addition to $E_i$ with a rounding
-$\theta_{3,i}$. To first order,
+In floating point the deposit is exact to a derived bound. The code forms $\hat M=M(1+\eta_M)$ by a sum of $N_{\mathrm f}$
+positive terms, $\lvert\eta_M\rvert\le N_{\mathrm f}\,\tfrac12\epsilon_{\mathrm m}$; then `efix` $=-\mathcal D/\hat M$ with one more
+rounding $\eta_1$; then each cell's deposit with a rounding $\eta_{2,i}$; then the addition to $E_i$ with a rounding
+$\eta_{3,i}$. To first order,
 
 $$
-\sum_iV_i\,\Delta\hat E_i+\mathcal D = \mathcal D(\theta_M-\theta_1) - \sum_i\mathcal D\,\frac{V_i\rho_i}{M}\,\theta_{2,i}
-+ \sum_iV_iE^{\mathrm{new}}_i\,\theta_{3,i},
+\sum_iV_i\,\Delta\hat E_i+\mathcal D = \mathcal D(\eta_M-\eta_1) - \sum_i\mathcal D\,\frac{V_i\rho_i}{M}\,\eta_{2,i}
++ \sum_iV_iE^{\mathrm{new}}_i\,\eta_{3,i},
 $$
 
 so $\big\lvert\sum_iV_i\Delta\hat E_i+\mathcal D\big\rvert\le\tfrac12\epsilon_{\mathrm m}\big[(N_{\mathrm f}+2)\lvert\mathcal D\rvert+\sum_iV_i\lvert E^{\mathrm{new}}_i\rvert\big]$.
