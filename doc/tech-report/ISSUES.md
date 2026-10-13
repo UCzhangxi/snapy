@@ -47,6 +47,16 @@
 12. Chapter 2 source inventory corrects the commented-out 14-variable test in OUTLINE section 2.3.
     The draft does not treat it as active coverage. Publication follow-ups: compiled H2 heat-capacity plot,
     moist-mixture temperature-map regression, active-set evidence, editor skeleton integration and renders.
+13. PDF only: every `@sec-ch05` reference renders as a bare "1" instead of "Chapter 5" (the chapter 12 opening reads
+    "in Chapter 4, 1 and Chapter 6"); the HTML renders "Chapter 5". In the PDF build's .tex that sentence reads
+    `Chapter~\ref{sec-ch04}, 1 and Chapter~\ref{sec-ch06}`: the "1" is a literal written before LaTeX runs, not a
+    `\ref`. `\label{sec-ch05}` sits correctly on its `\chapter`, and the render prints no crossref warning. The
+    tip's CI PDF (run 38359493479, at fc0c6b69) already shows it. It reproduces in a minimal book (index, chapters 4,
+    5, 6 and 12, `eval: false`, Quarto 1.10.19, lualatex) and persists with the chapter 5 file reduced to its heading
+    `# Hydrostatic and well-balanced treatment {#sec-ch05}` plus one line of text, so chapter 5's content is ruled
+    out. Hypothesis, untested: the cause is outside chapter 5 (another chapter's content, the book configuration,
+    or Quarto's crossref resolution in the single-document PDF pass). Next step: bisect the other chapters of the
+    minimal book and the `_quarto.yml` options.
 
 
 ## Chapter 11 local notation and evidence
