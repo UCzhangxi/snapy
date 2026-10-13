@@ -1,9 +1,9 @@
 """Executable check of the tracer flux positivity limiter (chapter 8, _theta.qmd,
 _carry.qmd, _roundoff.qmd).
 
-Every function below is a numpy port, line for line, of src/hydro/flux_positivity.cpp at
-snapy@e894700ff7aee30b52882e5202b16461413780b0: flux_positivity_theta (:22-72),
-flux_positivity_scale_ (:74-104) and flux_positivity_carry_ (:106-149), with the two
+The explicit flux helpers below are numpy ports of src/hydro/flux_positivity.cpp at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5: flux_positivity_theta (:22-72),
+flux_positivity_scale_ (:74-104) and flux_positivity_carry_ (:106-149), C8 is a synthetic counterexample, not a port of VIC. The two
 round-off constants from src/hydro/flux_positivity.hpp:18-23.
 
 The claims test PROPERTIES of the ported operator against an independently computed
@@ -178,10 +178,9 @@ def check_C4():
     m32 = ULP_F32 * e32
     naive32 = ULP_F64 * e32
     report("C4", m64 < 1e-12 and 1e-6 < m32 < 1e-4 and naive32 > 1e-4,
-           "the margin is 4096 ulp in float64 and 64 ulp in float32, for a reason",
-           f"4096 ulp of float64 is {m64:.2e} of the cell's gas mass, negligible; the same "
-           f"4096 ulp in float32 would be {naive32:.2e}, which the header calls the size of "
-           f"a real repair, so float32 uses 64 ulp = {m32:.2e}")
+           "donor margins use 4096 ulp; event thresholds use 4096/64 ulp",
+           f"donor fractions: float64 {m64:.2e}, float32 {naive32:.2e}; "
+           f"event fractions of gas mass: float64 {m64:.2e}, float32 {m32:.2e}")
 
 
 # --- C5: the Runge-Kutta argument, from the shipped weights -------------------
@@ -277,15 +276,14 @@ def check_C8():
         u_imp = u_exp + d
         after_implicit = min(after_implicit, u_imp.min())
         dry += int((u_imp < 0.).any())
-        clamped = np.maximum(u_imp, 0.)              # the clamp with a record
+        clamped = np.maximum(u_imp, 0.)              # hypothetical pointwise floor, NOT the VIC transfer clamp
         invented = max(invented, float(((clamped - u_imp) * vol).sum()))
     report("C8", after_explicit >= 0. and after_implicit < 0. and dry > 0 and invented > 0.,
            "the per-stage guarantee does not reach past the explicit divergence",
            f"over 2000 columns the limited explicit update never goes negative (worst "
-           f"{after_explicit:.1e}); an implicit correction applied to that same state drives a "
-           f"cell dry in {dry} of them, worst {after_implicit:.1e}. The clamp that covers the gap "
-           f"is not conservative: it invents up to {invented:.1e} of mass in one column, which is "
-           f"why it keeps a record")
+           f"{after_explicit:.1e}); a synthetic redistribution applied to that same state drives a "
+           f"cell dry in {dry} of them, worst {after_implicit:.1e}. A hypothetical pointwise floor "
+           f"would invent up to {invented:.1e} of mass; this is not the conservative VIC transfer clamp")
 
 
 # --- C9: the dry-mass carry is not symmetric (_drycarry.qmd) ------------------

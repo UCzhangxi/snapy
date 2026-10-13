@@ -8,7 +8,7 @@ status: draft
 
 ### Summary
 
-Everything else in this chapter acts on explicit fluxes. The implicit correction of the time-integration chapter solves a
+The implicit correction of the time-integration chapter solves a
 column and hands back a mass change that no face limiter has seen, and that change can exceed what a
 cell holds. This section is the guard on that path.
 
@@ -21,33 +21,35 @@ cell holds. This section is the guard on that path.
 
 ### Derivation
 
-There is nothing to derive; the mechanism is a clamp with a record. What matters for the reader is the
-boundary of responsibility. The tracer limiter guarantees that *transport* cannot empty a cell, and that
-guarantee is per stage, for the explicit flux divergence. The implicit solve runs afterwards, on the
-same state, and its correction is outside that guarantee entirely. A cell that survived the explicit
-stage can still be driven dry by the implicit one, and that is the gap this clamp covers.
+The explicit limiter does not constrain the later implicit correction. The implicit path
+therefore converts its column correction into face transfers and limits each constituent's
+transfer by the donor's remaining availability. Each limited transfer is subtracted from
+one cell and added to its neighbour, conserving column mass.
 
-`[C8]` makes that boundary measurable. Over two thousand columns the limited explicit update never goes
-negative, worst exactly $0$; a conservative implicit redistribution applied to that same state drives a cell
-dry in $1999$ of them, worst $-1.4$. The clamp that covers the gap invents up to $2.2$ of mass in one column,
-which is why it is a clamp with a record rather than a conservative operation
-[check `src/snapy_report/ch08/positivity_check.py`, output `src/snapy_report/ch08/positivity_check.out`].
+`[C8]` in `positivity_check.py` is only a synthetic counterexample: an arbitrary conservative redistribution can
+undo explicit positivity, and a subsequent pointwise floor would create mass. It is not a
+port of the implicit solver and does not measure the implemented availability clamp.
 
 ### Numerical method
 
-The buffer is registered at `_dry_clamp_step` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::reset >}}) and updated at
-{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}, where it takes the running maximum of the clamp applied in
-this step rather than a count. Storing a magnitude rather than a flag is what lets the redo detector
-distinguish a round-off clamp from a real one.
+The actual dry clamp is pass 3a of
+{{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}.
+It clips the signed dry transfer to the interval from minus the upper donor's availability
+to the lower donor's running availability. The paired increments preserve mass; the clamp
+changes the requested transfer, rather than flooring the final density.
 
-It is read through the accessor at `dry_clamp_step` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::dry_clamp_step >}}) and cleared between steps at
-`reset_dry_clamp_step` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::reset_dry_clamp_step >}}), so the value a redo decision sees belongs to the step being
-judged.
+When a dry transfer is clipped, `MASS(IPR, donor)` is set to 1. The maximum copied into
+`_dry_clamp_step` by {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}
+is therefore a binary flag, not a mass magnitude. The redo detector tests whether it is
+positive ({{< code src/mesh/meshblock.cpp MeshBlockImpl::vic_dry_clamp_hit >}}).
+The accessor and reset are {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::dry_clamp_step >}}
+and {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::reset_dry_clamp_step >}}.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
+| the transfer clamp | {{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}} | `q` | implicit scheme on |
 | the buffer | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::reset >}} | `_dry_clamp_step` | implicit scheme on |
 | the running maximum | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_mass_corr` | |
 | the accessor | {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::dry_clamp_step >}} | `dry_clamp_step` | |
@@ -57,15 +59,18 @@ judged.
 
 ### Tests
 
-No test in the repository isolates this clamp. It is written here from reading.
+`test_backward_substitution.<b>` ({{< code tests/CMakeLists.txt >}}) contains
+`dry_only_transport_is_conservative_and_clamped`: it checks the limited transfer,
+donor flag, empty donor and conserved column integral to $10^{-12}$.
+`a_negative_dry_fraction_still_marks_the_clamped_donor` checks the flag when total and
+dry transfers disagree in sign ({{< code tests/test_backward_substitution.cpp >}}).
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-- The implicit path has no positivity guarantee, only this clamp and the redo detector it feeds.
+- Availability limiting prevents additional overdraw; it does not repair a state already negative before the implicit transfer.
 :::
 
 1. **Not ported.** This chapter's checks cover the explicit limiter and the floors. The implicit clamp
    is inside a solve this chapter does not reproduce, so its behaviour is recorded from the code.
-2. **A magnitude, not a budget.** The buffer records the largest clamp of a step. How much mass the
-   clamps created over a run is not tracked anywhere.
+2. **A flag, not a budget.** The buffer records whether a dry donor was emptied by clipping a transfer; it does not measure transferred mass.

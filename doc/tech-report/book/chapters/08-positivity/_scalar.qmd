@@ -17,25 +17,25 @@ counters, and a reader looking for it in the hydro path will not find it.
 - Switch: the same limiter switch; the scalar module runs its own call, which also runs whenever the scalar
   added its own covariance row (@sec-ch04-fluxcov).
 - The factors are exchanged as a raw copy, never interpolated, for the same reason as the hydro ones.
-- A scalar bounded above by its complement needs a second constraint, which is noted here, not derived.
+- A positive `upper-bound` enables a second limiter on the complement; it requires the EOS limiter.
 :::
 
 ### Derivation
 
-Nothing new: the derivation is @sec-ch08-theta, and the scalar module calls the same two functions. The
-argument for the ghost exchange being a raw copy rather than an interpolation is also the same, and the
-code comment points back to the hydro call site rather than repeating it.
+The first pass uses @sec-ch08-theta to keep scalar density non-negative. The optional second pass applies the same operator to a different conserved quantity.
 
-The one thing specific to scalars is the upper bound. A scalar that represents a fraction is bounded
-above by the positivity of its complement, so enforcing non-negativity on the scalar alone is not
-enough to keep it below one. The code comment at `the` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}) records this; the
-chapter records it as a stated design intent and does not claim a derivation, because none is committed.
+For a scalar density $s$, dry density $\rho_d$, and configured bound $b>0$, the ratio
+$r=s/\rho_d$ satisfies $r\le b$ when the complement $b\rho_d-s$ stays non-negative.
+Its flux is $bF_{\mathrm{dry}}-F_s$. The code limits this complement with a second factor,
+then adds the change in complement flux back to $F_s$. Thus it blends toward the
+bound's advecting flux, rather than stopping a plateau at the bound
+({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
-Because the derivation is @sec-ch08-theta's, so is its check: the guarantee `[C1]`, the inactivity away from
-depletion `[C2]`, the face-cancellation argument `[C3]` and the donor rule `[C7]` are the same claims for the
-scalar module, which calls the same two functions [check `src/snapy_report/ch08/positivity_check.py`, output
-`src/snapy_report/ch08/positivity_check.out`]. The upper bound of the paragraph above is not among them: it has
-no committed derivation to check.
+The lower-bound argument of @sec-ch08-theta applies to the first pass. With the second
+pass enabled, preserving both bounds requires a mass Courant number below one and dry
+density updated by the same explicit mass-flux divergence. The code explicitly excludes
+implicit corrections and dry-mass forcing from that premise. This chapter's `positivity_check.py` numpy checks
+cover the shared first pass, not this two-pass guarantee.
 
 ### Numerical method
 
@@ -57,14 +57,16 @@ The call runs when `limiter` is set or `cov` is
 | the scalar limiter call | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `flux_positivity_theta` | limiter on |
 | the factor exchange | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | |
 | the gate, with the scalar's covariance row | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `cov` | `limiter` or the scalar's row |
-| the complement bound, as intent | {{< code src/scalar/scalar.cpp ScalarImpl::reset >}} | `positivity` | |
+| the complement limiter | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `upper_bound` | |
 
 : Code map of the passive-scalar limiter. {#tbl-ch08-scalar-code}
 
 ### Tests
 
-No test in the repository selects the passive-scalar limiter on its own. Its behaviour follows from
-@sec-ch08-theta, whose checks cover the shared function. `test_scalar_flux_covariance` and
+`tests/test_scalar.cpp`, registered as `test_scalar.<b>` in {{< code tests/CMakeLists.txt >}},
+contains `scalar_upper_bound_holds_both_sides` ({{< code tests/test_scalar.cpp >}}).
+It checks both bounds, downstream motion of a top-hat, and preservation of a uniform channel
+with tolerances $10^{-5}$ in float32 and $10^{-12}$ in float64. `test_scalar_flux_covariance` and
 `test_scalar_cov_x1_split`
 ({{< code tests/CMakeLists.txt >}}) run passive scalars with `limiter: false` and the covariance on
 (`limiter` in {{< code tests/test_scalar_flux_covariance.py config >}}), so their
@@ -74,8 +76,9 @@ limiter's counters (@sec-ch04-fluxcov).
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-- The upper bound is not enforced. The limiter keeps a scalar non-negative; nothing in this path keeps
-  it below its complement, and the code comment describes that as the intent rather than the behaviour.
+- The upper bound is optional (`upper-bound` defaults to -1, disabled). A positive value requires
+  the EOS limiter; zero is rejected ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}).
+- With the complement pass enabled, both bounds depend on the transport premises above.
 :::
 
 1. **Untested path.** The two scalar covariance tests run the call, but no test asserts on its counters or its
