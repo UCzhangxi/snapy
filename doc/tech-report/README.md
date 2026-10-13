@@ -70,7 +70,10 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
   depends on `NOTATION.md` alone. Every value that several chapters decide (the totals, the per-chapter counts of
   the summary, the symbol counts, the "first used" column) is a `{{< generated ... >}}` shortcode, filled in at
   render from `book/_generated/*.json`, which the generators write in the pre-render step and which is not
-  committed. So two pull requests that edit different chapters touch different lines and git merges them
+  committed. The one-line statements that Appendix B gives for equations are one file per chapter too:
+  `tools/derivation-statements/chNN.json` holds the labels `eq-chNN-...` and no other (the generator refuses a
+  label in another chapter's file or given twice), so a new statement goes in its own chapter's file. So two pull
+  requests that edit different chapters touch different files or different lines, and git merges them
   (`tools/tests/test_chapter_prs_merge.py`). After a rebase or a merge of the target branch, never hand-merge a
   generated file: take either side, run `python3 tools/gen_derivation_index.py`, `python3
   tools/gen_notation_index.py` and, if your chapter's counts changed, `python3 tools/ratchet_gate.py update`, and
