@@ -71,8 +71,9 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 CHECKS = ("history", "offpin", "status", "xref")
-# generated navigation, not prose: its citations do not make a section cited from another chapter (xref)
-NAVIGATION = {"appf"}
+# generated navigation (the topic index, the task map), not prose: its citations do not make a section cited
+# from another chapter (xref)
+NAVIGATION = {"appf", "appg"}
 RECORD_HEAD = ("file", "kind", "reviewer", "author", "pin", "sha256", "date", "note")
 
 # Change history in body text. Built from STYLE.md (sections 1 and 3.2) and the phrases the Q1 re-read and the
