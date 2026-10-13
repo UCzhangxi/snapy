@@ -143,6 +143,7 @@ the symbol in math, and never let the two touch.
 
 | symbol | meaning | code |
 |---|---|---|
+| $g_{ab}$ | dimensionless panel metric: lowers a contravariant vector index; diagonal entries 1, $g_{23}=g_{32}=\cos\psi$, other off-diagonal entries 0 (identity on orthogonal grids); distinct from gravity $g_1,g_2,g_3$ | `coord_vec_lower_`, `cosine_cell_kj` |
 | $g_1, g_2, g_3$ | constant gravity components [m s$^{-2}$]; $g_1<0$ points to decreasing $x_1$ | `grav1`.. |
 | $\phi$ | gravitational potential, $\phi(x_1) = -g_1x_1$ (increases upward); never an angle | `phi_cell`, `phi_face` |
 | $\phi_i$, $\phi_{i\pm1/2}$ | $\phi$ at the centroid and at the faces | `phi_cell`, `phi_face` |

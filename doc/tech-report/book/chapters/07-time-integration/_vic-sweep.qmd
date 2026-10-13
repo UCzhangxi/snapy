@@ -31,7 +31,7 @@ factored by `ludcmp` with the pivot guard of @sec-ch07-vic-pivot. A refused bloc
 
 Local symbols: $\mathbf f_i=\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t_c$ is the right-hand side of row $i$;
 $\tilde{\mathsf C}_i$ the reduced upper block and $\tilde{\boldsymbol\delta}_i$ the forward value of row $i$; $\mathsf M$ the column
-operator without $\mathsf I/\Delta t_c$ (@sec-ch07-vic-stage); $n$ the number of layers of the column;
+operator without $\mathsf I/\Delta t_c$ (@sec-ch07-vic-stage); $n_{\mathrm{lay}}$ the number of layers of the column;
 $\zeta_n=n(\epsilon_{\mathrm m}/2)/(1-n\epsilon_{\mathrm m}/2)$ bounds the relative error of $n$ roundings. $\boldsymbol\delta_i$
 is in the units of $\Delta\mathbf U^{(0)}$ (total-mass basis), and $\mathbf f_i$ in those units per second.
 
@@ -45,7 +45,7 @@ between blocks runs in three steps:
    $\boldsymbol\delta_{i-1}=\tilde{\boldsymbol\delta}_{i-1}-\tilde{\mathsf C}_{i-1}\boldsymbol\delta_i$.
 2. Substituting into row $i$ gives
    $(\mathsf A_i-\mathsf B_i\tilde{\mathsf C}_{i-1})\boldsymbol\delta_i+\mathsf C_i\boldsymbol\delta_{i+1}=\mathbf f_i-\mathsf B_i\tilde{\boldsymbol\delta}_{i-1}$.
-3. Hence, for $i=0,1,\ldots,n-1$ with $\tilde{\mathsf C}_{-1}$ and $\tilde{\boldsymbol\delta}_{-1}$ taken as zero,
+3. Hence, for $i=0,1,\ldots,n_{\mathrm{lay}}-1$ with $\tilde{\mathsf C}_{-1}$ and $\tilde{\boldsymbol\delta}_{-1}$ taken as zero,
 
 $$
 \begin{aligned}
@@ -54,8 +54,8 @@ $$
 \end{aligned}
 $$ {#eq-ch07-vic-sweep}
 
-and the back pass is $\boldsymbol\delta_{n-1}=\tilde{\boldsymbol\delta}_{n-1}$,
-$\boldsymbol\delta_i=\tilde{\boldsymbol\delta}_i-\tilde{\mathsf C}_i\boldsymbol\delta_{i+1}$ from $i=n-2$ down to 0. The code stores
+and the back pass is $\boldsymbol\delta_{n_{\mathrm{lay}}-1}=\tilde{\boldsymbol\delta}_{n_{\mathrm{lay}}-1}$,
+$\boldsymbol\delta_i=\tilde{\boldsymbol\delta}_i-\tilde{\mathsf C}_i\boldsymbol\delta_{i+1}$ from $i=n_{\mathrm{lay}}-2$ down to 0. The code stores
 $\tilde{\mathsf C}_i$ in `a[i]` and overwrites `delta[i]` in place. Steps 1 to 3 are exact in rational arithmetic
 (`[C6]`).
 
@@ -66,8 +66,7 @@ $\tilde{\mathsf C}_i$ in `a[i]` and overwrites `delta[i]` in place. Steps 1 to 3
    $\Delta\mathbf U^{(0)}_{\mathrm{sv}}$ as $\Delta t_c\to0$ (`[C2]`). At the second rk3 stage, $\Delta t_c=\Delta t/4$, and the
    result differs from $(\mathsf I+\Delta t\mathsf M)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$ by 3.7 relative at $\Delta t=10$ s
    (`[C5]`).
-5. *Accuracy.* On 60 layers the two passes match a dense solve to $3.6\times10^{-16}$ ($N=3$) and $3.0\times10^{-16}$
-   ($N=5$) relative (`[C1]`).
+5. *Accuracy.* On 60 layers the two passes match a dense solve within $10^{-11}$ relative for both $N=3$ and $N=5$ (`[C1]`).
 6. *Round-off.* Each entry of $\mathsf A_i-\mathsf B_i\tilde{\mathsf C}_{i-1}$ is an $N$-term inner product subtracted from
    an entry, so it is within $\zeta_{N+1}$ of $\lvert\mathsf A_i\rvert+\lvert\mathsf B_i\rvert\lvert\tilde{\mathsf C}_{i-1}\rvert$ entrywise;
    the factorisation of that block adds the $\zeta_N$ backward error of @sec-ch07-vic-pivot. The forward error of
@@ -154,7 +153,7 @@ moves 30 of 30 layers with one change at the bottom; `[C5]` is the $\Delta t_c$ 
 CPU and CUDA sweeps share the header; only the CPU path ran.
 
 [^ch07-vic-sweep-run]: [sha: the code pin; deck: random diagonally dominant columns and a 2-layer assembled column; run:
-    `python3 src/snapy_report/ch07/vic_sweep_check.py`, CPU, double, 1 process; Python 3.12.10, numpy 2.5.3, sympy 1.14.0;
+    `python3 src/snapy_report/ch07/vic_sweep_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6, sympy 1.14.0;
     output identical to the committed `vic_sweep_check.out`].
 
 ### Limits

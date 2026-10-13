@@ -1,6 +1,7 @@
 """Check Chapter 2 ideal-gas identities at snapy 6fbb39750f62b83df096058a4746e77d0a634bc5 (the code pin).
 Run: python3 ideal-gas_check.py, from any directory. Independent algebra, not snapy runtime.
 The complete synthetic deck and tolerances are in formulas.py.
+Pin audit: the src/eos diff from e894700 to 6fbb3975 changes failure-count handling, not the thermodynamic algebra ported here.
 """
 from pathlib import Path
 import runpy

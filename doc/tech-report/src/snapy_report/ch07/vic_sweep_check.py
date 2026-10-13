@@ -66,13 +66,13 @@ def check_C2_rhs_is_the_explicit_tendency_over_dt():
         a, b, c = vp.assemble_full(W, gam, area, vol, dt)
         _, af, d = vp.forward_sweep(a, b, c, du / dt)
         delta = vp.backward_substitute(af, d)
-        J = dense(a, b, c) - np.eye(10) / dt
-        ref = np.linalg.solve(np.eye(10) + dt * J, du.ravel()).reshape(2, 5)
+        M = dense(a, b, c) - np.eye(10) / dt
+        ref = np.linalg.solve(np.eye(10) + dt * M, du.ravel()).reshape(2, 5)
         errs.append(np.abs(delta - ref).max() / np.abs(ref).max())
     small = vp.backward_substitute(*vp.forward_sweep(*vp.assemble_full(W, gam, area, vol, 1e-9), du / 1e-9)[1:])
     lim = np.abs(small - du).max() / np.abs(du).max()
     ok = max(errs) < 1e-10 and lim < 1e-5
-    return report("C2", ok, "with the right-hand side du/dt the sweep returns delta = (I + dt J)^-1 du, "
+    return report("C2", ok, "with the right-hand side du/dt the sweep returns delta = (I + dt M)^-1 du, "
                   "and delta -> du as dt -> 0", "relative errors %.1e (dt = 1e-3), %.1e (dt = 1e3); "
                   "|delta - du| / |du| at dt = 1e-9: %.1e" % (errs[0], errs[1], lim))
 
