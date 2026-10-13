@@ -23,12 +23,13 @@ divergence.
 
 **Activation.** `equation-of-state/limiter: true`, or any face-flux covariance row on (the default); tracer rows present.
 
-**Guarantee / limits.** $u_i + \Delta t\,\Delta u_i \ge 0$ per stage, explicit transport only; exactly conservative; nothing for density or pressure.
+**Guarantee / limits.** $u_i+\Delta t\,\Delta u_i\ge0$ per stage given $u_i\ge0$ at stage entry; explicit transport; tracers only.
 
-**Evidence.** `[C1]`, `[C2]`, `[C3]`, `[C5]`, `[C7]` of this chapter's check; the ctests of @tbl-ch08-theta-tests.
+**Evidence.** `[C1]`–`[C3]`, `[C5]`, `[C7]`, `[C10]`, `[C11]` of this chapter's check; the ctests of @tbl-ch08-theta-tests.
 :::
 
-Local symbols: $\mathrm{out}_i$ is what leaves cell $i$ per unit time [units of $u$ times volume per time]. $\Theta_i$
+Local symbols: $\mathrm{out}_i$ is what leaves cell $i$ per unit time [units of $u$ times volume per time], and
+$\mathrm{in}_i$ what enters it after limiting; $\eta$ is the donor margin of @sec-ch08-roundoff. $\Theta_i$
 is the dimensionless factor of cell $i$, never above 1. $u_i$, $V_i$, $A_f F_f$ and $\Delta t$ are the tracer density,
 the cell volume, a face area times its normal flux, and the stage step of @sec-ch04-divergence.
 
@@ -46,8 +47,22 @@ cell's tracer density, $V_i$ its volume, $A_f F_f$ a face area times its normal 
 step, all as defined in @sec-ch04-divergence. This section defines the other two. $\mathrm{out}_i$ is what leaves the
 cell per unit time, in units of $u$ times volume per time, and $\Theta_i$, a dimensionless factor never greater than
 1. @eq-ch08-theta-def is `flux_positivity_theta` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}),
-with the outgoing sum built from `relu` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}). Applying
-$\Theta$ of the donor cell to every face then gives $u_i + \Delta t\,\Delta u_i \ge 0$ cell by cell.
+with the outgoing sum built from `relu` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}).
+
+Applying $\Theta$ of the donor cell to every face bounds the update in two lines. Every face that drains cell $i$ takes
+$\Theta_i$, so the limited outflow is $\Theta_i\,\mathrm{out}_i$; the code's available mass is
+$(1-\eta)\max(u_i,0)V_i$ with the margin $\eta = 4096\,\epsilon_{\mathrm m}$ of @sec-ch08-roundoff (`avail`,
+{{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), so $\Delta t\,\Theta_i\,\mathrm{out}_i \le
+(1-\eta)\max(u_i,0)V_i$. With $\mathrm{in}_i \ge 0$ the limited inflow,
+
+$$
+V_i\,(u_i + \Delta t\,\Delta u_i) = u_iV_i - \Delta t\,\Theta_i\,\mathrm{out}_i + \Delta t\,\mathrm{in}_i
+\;\ge\; u_iV_i - (1-\eta)\max(u_i,0)V_i + \Delta t\,\mathrm{in}_i ,
+$$ {#eq-ch08-theta-bound}
+
+which is $\eta\,u_iV_i + \Delta t\,\mathrm{in}_i \ge 0$ given $u_i \ge 0$ at stage entry. A cell that enters negative
+has no available mass, so $\Theta_i = 0$ on every face it drains, and it stays negative unless its inflow covers the
+deficit (`[C10]`).
 
 `[C1]` checks the guarantee on the state rather than on the formula. Over four thousand random flux
 fields the unlimited update drives some cell negative in every one, worst $-5.879$; the limited update
@@ -69,8 +84,10 @@ donor rule is what buys positivity, and `[C7]` checks that rule separately on fo
 
 The step is limited at the full $\Delta t$ even inside a multi-stage integrator, and that is sound because of how the
 shipped integrators are built. `[C5]` reads their weights rather than assuming them. Each stage is
-$w_0 U^n + w_1(U + \alpha_{\mathrm{st}}\,\Delta U)$ with $w_0 + w_1 = 1$ and $\alpha_{\mathrm{st}} = w_2/w_1 \le 1$, a convex combination of a
-state already known non-negative and a damped full-step Euler update.
+$w_0 U^n + w_1(U + \alpha_{\mathrm{st}}\,\Delta U)$ with $w_0 + w_1 = 1$ and $\alpha_{\mathrm{st}} = w_2/w_1 \le 1$. The
+damped update splits as $U + \alpha_{\mathrm{st}}\Delta U = (1-\alpha_{\mathrm{st}})\,U + \alpha_{\mathrm{st}}(U + \Delta U)$
+(`[C11]`), a convex combination of $U$ and the full-step update that @eq-ch08-theta-bound keeps non-negative. With
+$U^n \ge 0$ the stage is then a convex combination of non-negative states.
 
 ### Numerical method
 
@@ -192,7 +209,7 @@ cell that drains nothing keeps the factor one. The gate in the stage is
 | `tests/test_flux_positivity_cubedsphere_moist.py` (`test_flux_positivity_cubedsphere_moist_python`) | the moist arm across seams | `DRIFT_TOL` $10^{-13}$, `SPECIES_MIN` $-10^{-15}$ | round-off: the docstring raises the pressure, so the column is warm and everywhere unsaturated. The cloud channel then stays zero and the saturation adjustment moves nothing, so the vapour and cloud total has to hold in both arms ({{< code tests/test_flux_positivity_cubedsphere_moist.py DRIFT_TOL >}}). |
 | `test_flux_positivity_python`, `test_flux_positivity_carry.<b>` | their unlimited arm, run with `SNAP_FLUX_COVARIANCE=0` because the covariance turns the limiter on | as the limited arm | the arm changes the switch, not the tolerance: row 1 of this table and @tbl-ch08-carry-tests |
 | `test_flux_positivity_cubedsphere_cov_off_python` | the unlimited base arm of the six-panel test, with the covariance off | `DRIFT_TOL` $10^{-13}$ | the same script and the same constant as row 2; the arm changes the switch, not the tolerance |
-| this section's check | `[C1]` the guarantee measured on the state; `[C2]` inactive away from depletion; `[C3]` conservation and its counter-example; `[C5]` the integrator argument; `[C7]` the donor rule | bitwise and round-off | the check's own bounds, all in `positivity_check.py`. `check_C2` compares $\Theta$ against 1 exactly. `check_C5` asserts the stage weights to $10^{-15}$. `check_C3` asserts relative conservation below $10^{-14}$. `check_C7` asserts the donor rule to $10^{-15}$ relative. |
+| this section's check | `[C1]` the guarantee measured on the state; `[C2]` inactive away from depletion; `[C3]` conservation and its counter-example; `[C5]` the integrator argument; `[C7]` the donor rule; `[C10]` the stage-entry precondition; `[C11]` the convex split | bitwise and round-off | the check's own bounds, all in `positivity_check.py`. `check_C2` compares $\Theta$ against 1 exactly. `check_C5` asserts the stage weights to $10^{-15}$. `check_C3` asserts relative conservation below $10^{-14}$. `check_C7` asserts the donor rule to $10^{-15}$ relative. |
 
 : Tests of the tracer flux positivity limiter. {#tbl-ch08-theta-tests}
 
@@ -210,11 +227,13 @@ $-5.879$, and the limited update never does, worst exactly $0$. `[C2]`: all $25\
 their outflow keep $\Theta = 1$ bitwise, and no cell that cannot was left unlimited. `[C3]`: on a closed block
 the limited tendency sums to $1.7\times10^{-16}$ of the flux scale, while a per-cell limiter leaks
 $8.5\times10^{-1}$. `[C5]`: every shipped integrator forms a stage as $w_0 U^n + w_1(U + \alpha_{\mathrm{st}}\,\Delta U)$
-with $\alpha_{\mathrm{st}} \le 1$. `[C7]`: $46\,000$ interior faces follow the donor rule with no mismatch. The ctests named
+with $\alpha_{\mathrm{st}} \le 1$. `[C7]`: $46\,000$ interior faces follow the donor rule with no mismatch. `[C10]`: the
+cells non-negative at stage entry end at worst exactly $0$, while $4150$ of $7839$ entry-negative cells are still
+negative after the limited step. `[C11]`: the convex split holds exactly in rational arithmetic. The ctests named
 above have not been run for this report at the pin: **pending a pinned ctest run**.
 
 [^ch08-theta-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
-    `positivity_check.out`, lines `[C1]`, `[C2]`, `[C3]`, `[C5]` and `[C7]`.
+    `positivity_check.out`, lines `[C1]`, `[C2]`, `[C3]`, `[C5]`, `[C7]`, `[C10]` and `[C11]`.
 
 ### Limits
 
