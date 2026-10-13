@@ -9,9 +9,13 @@ status: draft
 -->
 
 Local symbols: $\dot{\boldsymbol\omega}$ is the vector of reaction rates [$\mathrm{mol\,m^{-3}\,s^{-1}}$] and
-$\mathsf J_{\dot\omega}$ its Jacobian with respect to the molar concentrations; $x$ is the extent of a
-two-product evaporation to equilibrium [$\mathrm{mol\,m^{-3}}$]. Tracked in ISSUES.md. The subscript keeps
-$\mathsf J_{\dot\omega}$ apart from the $\mathsf J$ of the phase solve in @sec-ch02-saturation.
+$\mathsf J_{\dot\omega}$ its Jacobian with respect to the molar concentrations, at fixed temperature; the subscript
+keeps it apart from the $\mathsf J$ of the phase solve in @sec-ch02-saturation. For an evaporation reaction $k$,
+$c(k)$ is its condensate, $\nu^{+}_k$ its number of gaseous products (one or two), $\zeta_k$ [$\mathrm{mol\,m^{-3}}$] its
+extent to saturation (a reaction extent per volume, as in @sec-ch02-saturation), $K_{p,k}$ [$\mathrm{Pa}^{\nu^{+}_k}$] the equilibrium product of the gas partial pressures,
+$\Gamma_k$ [$\mathrm{m^3\,mol^{-1}\,s^{-1}}$] its rate coefficient, $D_k$ [$\mathrm{m^2\,s^{-1}}$] the diffusivity of
+its gases, $V_{\mathrm m,k}$ [$\mathrm{m^3\,mol^{-1}}$] the molar volume of the condensate (roman m, not the cell
+volume $V_i$) and $d_{\mathrm p,k}$ [m] the particle diameter.
 
 ### Summary
 
@@ -44,9 +48,11 @@ the reference energies, so the energy row is not touched.
 
 ### Derivation
 
-The rates are evaluated once, at the concentrations $\tilde{\mathbf c}$ of the step's end. Linearising
-$\dot{\boldsymbol\omega}$ about them and taking one backward-Euler step of
-$\mathrm{d}\tilde{\mathbf c}/\mathrm{d}t=\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c})$ gives
+The rates are evaluated once, at the concentrations $\tilde{\mathbf c}$ of the step's end. One backward-Euler step
+of $\mathrm{d}\tilde{\mathbf c}/\mathrm{d}t=\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c})$ is
+$\tilde{\mathbf c}+\Delta\tilde{\mathbf c}=\tilde{\mathbf c}+\Delta t\,\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c}+\Delta\tilde{\mathbf c})$.
+Linearising $\dot{\boldsymbol\omega}(\tilde{\mathbf c}+\Delta\tilde{\mathbf c})\approx\dot{\boldsymbol\omega}+\mathsf J_{\dot\omega}\Delta\tilde{\mathbf c}$
+and dividing by $\Delta t$ gives
 
 $$
 \Big(\frac{\mathsf I}{\Delta t}-\mathsf N\mathsf J_{\dot\omega}\Big)\Delta\tilde{\mathbf c} = \mathsf N\dot{\boldsymbol\omega}
@@ -58,26 +64,80 @@ kintera's `evolve_implicit_cell` as the matrix `A`, with `inv_dt` on its diagona
 partial pivoting, falling back to a minimum-norm least-squares solve for a singular cell, `dsolve_lu`
 ([`kintera evolve_implicit_impl.h:77`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L77)).
 For a linear rate law the step is exactly backward Euler (`[C2]`).[^kin-c] For the reversible linear reaction
-$A\rightleftharpoons B$ with rate constants $k_{\mathrm f}$, $k_{\mathrm b}$ it moves the distance to equilibrium by
+$A\rightleftharpoons B$ with rate constants $k_{\mathrm f}$, $k_{\mathrm b}$ [s$^{-1}$] it moves the distance to equilibrium by
 the factor $1/(1+\Delta t(k_{\mathrm f}+k_{\mathrm b}))$, which lies in $(0,1]$ for every $\Delta t$: one step never
 overshoots equilibrium, however large the step (`[C3]`). The driver converts the change to partial densities,
 $\Delta\rho_n=\mu_n\Delta\tilde c_n$; for a mass-balanced reaction $\sum_n\mu_n\nu_{nk}=0$, so the update has zero net
 mass (`[C4]`).
 
-For a condensate evaporating into two gases, $AB(s)\to A+B$, kintera's rate is proportional to the extent $x$ that
-would bring the gases to equilibrium, the positive root of $(\tilde c_A+x)(\tilde c_B+x)=K$. The code evaluates it
-in a form without cancellation,
+An evaporation reaction $k$ has one reactant, its condensate $c(k)$, and one or two gaseous products, all with
+coefficient 1; kintera refuses any other form, and with products counted positive in $\mathsf N$,
+$\nu_{c(k)k}=-1$ (the check `unit_reactant`, [`kintera evaporation.cpp:82-96`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L82-L96);
+the matrix `stoich_base`, [`kintera kinetics.cpp:105-120`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L105-L120)).
+Its equilibrium constant is the product of the saturation concentrations of its gases over the pure condensate,
 
 $$
-x = \frac{2\,(K-\tilde c_A\tilde c_B)}{\tilde c_A+\tilde c_B+\sqrt{(\tilde c_A-\tilde c_B)^2+4K}},
+K_k=\frac{K_{p,k}(T)}{(\mathcal RT)^{\nu^{+}_k}}\quad[\mathrm{mol}^{\nu^{+}_k}\,\mathrm m^{-3\nu^{+}_k}],
+$$ {#eq-ch10-kinetics-K}
+
+with $K_{p,k}=p_{\mathrm{sat},k}(T)$ [Pa] for one gas and the equilibrium product of the two partial pressures
+[$\mathrm{Pa^2}$] for two, read from the reaction's saturation function on the card; it depends on $T$ only. It is
+`ksat`
+([`kintera evaporation.cpp:148-154`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L148-L154));
+for $\mathrm{NH_4SH}$ the card's `nh3_h2s_lewis` returns $\ln K_{p,k}$ in $\mathrm{Pa^2}$
+([`kintera vapor_functions.h:81-82`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/vapors/vapor_functions.h#L81-L82)).
+
+The rate law is the steady diffusion of the gases away from monodisperse particles. A sphere of diameter
+$d_{\mathrm p,k}$ whose surface holds a gas at $\tilde c_{n,s}$, in still gas at $\tilde c_n$, loses
+$2\pi d_{\mathrm p,k}D_k(\tilde c_{n,s}-\tilde c_n)$ moles per second. The condensate fills the volume fraction
+$\tilde c_{c(k)}V_{\mathrm m,k}$, so there are $\tilde c_{c(k)}V_{\mathrm m,k}/(\pi d_{\mathrm p,k}^3/6)$ particles per
+unit volume, and the rate per unit volume is
+
+$$
+\dot\omega_k=\Gamma_k\,\tilde c_{c(k)}\,\zeta_k,\qquad
+\Gamma_k=\frac{12\,D_k\,V_{\mathrm m,k}}{d_{\mathrm p,k}^2},\qquad
+D_k=D_{0,k}\Big(\frac{T}{T_{\mathrm{ev}}}\Big)^{\alpha_{T,k}}\Big(\frac{p}{p_{\mathrm{ev}}}\Big)^{\alpha_{p,k}},
+$$ {#eq-ch10-kinetics-rate}
+
+where $\zeta_k=\tilde c_{n,s}-\tilde c_n$ is the excess of the gas at the surface over the air far away. With the surface
+at saturation, one gas gives $\zeta_k=K_k-\tilde c_n$. For two gases, $AB(s)\to A+B$, the solid dissolves congruently, so
+both gases leave at the same molar rate and both carry the same excess $\zeta_k$, and the surface equilibrium
+$(\tilde c_A+\zeta_k)(\tilde c_B+\zeta_k)=K_k$ fixes it: $\zeta_k$ is the root of
+$\zeta_k^2+(\tilde c_A+\tilde c_B)\zeta_k-(K_k-\tilde c_A\tilde c_B)=0$ that keeps both surface concentrations positive.
+Multiplying that root by its conjugate, with
+$(\tilde c_A-\tilde c_B)^2+4K_k-(\tilde c_A+\tilde c_B)^2=4(K_k-\tilde c_A\tilde c_B)$, gives a form without
+cancellation,
+
+$$
+\zeta_k = \frac{2\,(K_k-\tilde c_A\tilde c_B)}{\tilde c_A+\tilde c_B+\sqrt{(\tilde c_A-\tilde c_B)^2+4K_k}},
 $$ {#eq-ch10-kinetics-extent}
 
-and sets it to zero for supersaturated cells. @eq-ch10-kinetics-extent is computed in kintera's
-`EvaporationImpl::forward` as `x`, with the square root as `root`
-([`kintera evaporation.cpp:180-191`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L180-L191)).
-`[C1]` shows symbolically that it is the positive root. The full derivation of the steady-diffusion rate law behind
-it is in `sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md` section 4, written in symbols this report reserves for
-other quantities; its translation into the report's notation is still to be written.
+whose sign is that of $K_k-\tilde c_A\tilde c_B$. In both cases $\zeta_k$ is the extent of evaporation that would bring
+the air to saturation at fixed $T$, and the code sets it to zero where the air is already saturated, so this law only
+evaporates; condensate grows only through the saturation adjustment (@sec-ch10-satadj). $\Gamma_k$ is `kappa` and
+$\zeta_k$ is `eta`, with the two-product root as `x` and its square root as `root`
+([`kintera evaporation.cpp:142-194`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L142-L194));
+the factor $\tilde c_{c(k)}$ is kintera's mass-action product over the one reactant, `rate_f`
+([`kintera kinetics.cpp:420-423`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L420-L423)).
+The card sets $D_{0,k}$, $\alpha_{T,k}$, $\alpha_{p,k}$, $V_{\mathrm m,k}$ and $d_{\mathrm p,k}$ as `diff_c`, `diff_T`,
+`diff_P`, `vm` and `diameter` (defaults $2\times10^{-5}\ \mathrm{m^2\,s^{-1}}$, 1.75, $-1$,
+$1.8\times10^{-5}\ \mathrm{m^3\,mol^{-1}}$, $10^{-2}$ m); the reference state $T_{\mathrm{ev}}=300$ K,
+$p_{\mathrm{ev}}=10^5$ Pa is a constant of the evaporation options and not read from the card (the card values from
+`diff_c` on, [`kintera evaporation.cpp:50-57`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L50-L57); the constants `Tref` and `Pref`,
+[`kintera evaporation.hpp:54-73`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.hpp#L54-L73)).
+Ventilation, the Kelvin effect and kinetic corrections to the diffusion flux are not in the law.
+
+The Jacobian of @eq-ch10-kinetics-step holds the temperature fixed:
+$(\mathsf J_{\dot\omega})_{kn}=\tilde c_{c(k)}\,\partial(\Gamma_k\zeta_k)/\partial\tilde c_n+\delta_{n,c(k)}\Gamma_k\zeta_k$,
+with $\partial \zeta_k/\partial\tilde c_n=-1$ for one gas and
+$\partial \zeta_k/\partial\tilde c_A=-(\tilde c_B+\zeta_k)/(\tilde c_A+\tilde c_B+2\zeta_k)$ for two (and likewise for $B$), zero
+where $\zeta_k$ is clamped. kintera forms the first term by automatic differentiation and the second as the mass-action
+term, `jac`
+([`kintera kinetics.cpp:306-310`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L306-L310));
+its temperature term enters only with `evolve_temperature`, false by default and set by neither the card nor the
+drivers
+([`kintera kinetics.hpp:73`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.hpp#L73)).
+`[C1]` shows symbolically that @eq-ch10-kinetics-extent is the positive root.
 
 [^kin-c]: `python3 src/snapy_report/ch10/kinetics_check.py`, output `kinetics_check.out`, lines `[C1]`–`[C4]`; a
     numpy and sympy port of kintera's `evolve_implicit_cell` and `EvaporationImpl::forward` at
@@ -98,7 +158,7 @@ negative species the kinetics produced is repaired on the copy, sets the limiter
 round-off, and redoes the step with cause 4 in the same check
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). Without the limiter the negative
 species stays in the state. @fig-ch10-kinetics-extent compares
-the extent law with the plain law $K-\tilde c_A\tilde c_B$, the drive `eta` that kintera forms for every
+the extent law with the plain law $K_k-\tilde c_A\tilde c_B$, the drive `eta` that kintera forms for every
 reaction before it replaces the two-product ones by the extent.
 
 ```{python}
