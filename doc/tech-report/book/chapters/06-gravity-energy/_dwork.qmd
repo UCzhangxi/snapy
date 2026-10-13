@@ -20,31 +20,25 @@ $s_i$ the centroid slope of @eq-ch06-dwork-slope and $\sigma_i^2$ the variance o
 term is the work done by moving the mass of a cell whose density is not uniform inside it.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Add one term to the face form of the gravity work, @eq-ch06-dwork-d (with the centroid-offset term of
-@eq-ch06-dwork-cs on the cubed sphere), so that the booked work is consistent with the scheme's own $x_1$ mass
-fluxes to fourth order in every cell, wall cells included.
+**Purpose.** Adds one term to the face form, @eq-ch06-dwork-d, so the booked work is fourth order in every cell.
 
-**Data.** Reads the stage's $x_1$ density tendency of the interior cells, $\dot\rho\,\Delta t$ =
-`-dt * vertical_mass_div`, and the $x_1$ grid; at an internal $x_1$ seam one exchanged row of the neighbour's
-tendency. Writes $g_1\sigma^2s[\dot\rho]\Delta t$ [J m$^{-3}$] into the energy row; mass and momentum are
-untouched.
+**Data.** Reads the stage's $x_1$ density tendency and the $x_1$ grid; writes $g_1\sigma^2s[\dot\rho]\Delta t$ into the energy row.
 
-**Placement.** Each stage, in the gravity-work block of `HydroImpl::forward`, after the fluxes, the positivity
-limiter and the forcings; with an implicit scheme partly inside the VIC energy row and partly after the solve.
+**Placement.** Each stage, in the gravity-work block of `HydroImpl::forward`; with an implicit scheme partly in the VIC.
 
-**Activation.** Environment variable `SNAP_GRAVITY_WORK_RADIAL_EXACT`, read once per process, on unless `0`,
-`false`, `off` or `no`; acts with `forcing/const-gravity/gravity-work: face` (the default), $g_1\neq0$, geometry
-`cartesian`, `spherical-polar` or `gnomonic-equiangle`, and $n_1\ge3$ cells per block. Turns off the
-cp3/cp5/weno5 curvature flux $\mathcal K$.
+**Activation.** `SNAP_GRAVITY_WORK_RADIAL_EXACT` (on by default) with `gravity-work: face`, $g_1\ne0$, a grid with an $x_1$ measure.
 
-**Guarantee / limits.** $E_{\mathrm{tot}}+P$ to round-off per stage and per step, explicit and implicit, on closed columns; booked
-work $O(h^4)$ against the exact work of the scheme's fluxes, about second order in the VIC wall cells;
-$E_{\mathrm{tot}}+\mathrm{PE}_d$ is not conserved.
+**Guarantee / limits.** $E_{\mathrm{tot}}+P$ to the bound below per stage and step; work $O(h^4)$; $E_{\mathrm{tot}}+\mathrm{PE}_d$ not conserved.
 
-**Evidence.** `d_face_work_pe_check.py` (11 claims) and `d_cs_centroid_term_check.py` (2 claims);
-`test_gravity_work_radial_exact`, `test_x1_seam_split_radial_exact` and the tall-column test, read from the source,
-not run here.
+**Evidence.** The Tests layer below, @tbl-ch06-dwork-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $\Delta_{+,0}=x_{1,1}-x_{1,0}$ and $\Delta_{+,1}=x_{1,2}-x_{1,1}$ [m] the
+first two centroid spacings at a column end (NOTATION.md's $\Delta_+$ at cells 0 and 1, used only in the end-cell
+slope); $r_{\mathrm c}$ [m] the volume centroid and $x_{1v}$ [m] the stored cell centre `x1v` on a `gnomonic-equiangle`
+block; $t_i$ the per-cell term of the conservation sum and $k$ its number of roundings. Every other symbol of this
+section is NOTATION.md's ($P$, $\mathcal P$, $\mathrm{PE}_d$, $\sigma_i^2$, $s_i$, $\mathcal N_i$, $\Delta_\pm$, $\mathsf S$,
+$\tilde{\mathsf S}$, $W^{\mathrm D}$, $\delta_i$, $\Delta t_c$, $\boldsymbol\delta_i$, $\vartheta$, $\lambda_w$).
 
 The face form conserves total energy $E$ plus the discrete potential energy $\mathrm{PE}_d$ exactly, but
 $\mathrm{PE}_d$ is itself only a second-order approximation of the true potential energy of the cell averages.
@@ -81,9 +75,12 @@ a different, rejected two-point weight; "corrected-PE work", and "radial-exact" 
 ### Derivation
 
 Every closed form in this layer is checked by `d_face_work_pe_check.py`; the claim tags `[Cn]` point at its
-output lines. Every `[Cn]` number has the same provenance [sha: the code at the pin, ported line for line; at
-internal $x_1$ seams the port takes the one-sided slope, which the code keeps only on a periodic column (see the
-Check below); deck: the check itself; run: `python3 d_face_work_pe_check.py`, numpy 2.5.3, sympy 1.14.0, double].
+output lines; every `[Cn]` number has the same provenance.[^ch06-dwork-chk]
+
+[^ch06-dwork-chk]: [sha: the code pin, ported line for line; at internal $x_1$ seams the port takes the one-sided
+    slope, which the code keeps only on a periodic column (see the Check below); deck: the check itself; run:
+    `python3 src/snapy_report/ch06/d_face_work_pe_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6,
+    sympy 1.14.0; output identical to the committed file]. Output `d_face_work_pe_check.out`, lines `[C1]`–`[C11]`.
 Fitted orders use the last three resolutions ($n_1$ = 64, 128, 256) unless stated. Units: $g_1$ [m s$^{-2}$],
 $\rho$ [kg m$^{-3}$], $F$ [kg m$^{-2}$ s$^{-1}$], $h$ and $x_1$ [m], $\sigma^2$ [m$^2$], $\phi$ [m$^2$ s$^{-2}$],
 $W$ [W m$^{-3}$]; $E$ is the total energy density [J m$^{-3}$], and $E_{\mathrm{tot}}+\mathrm{PE}_d$ and
@@ -200,10 +197,12 @@ s_i[\bar\rho] = -\frac{\Delta_+}{\Delta_-(\Delta_-+\Delta_+)}\bar\rho_{i-1}
 + \frac{\Delta_-}{\Delta_+(\Delta_-+\Delta_+)}\bar\rho_{i+1},
 $$
 
-and at the first cell, with $a = x_{1,1}-x_{1,0}$ and $b = x_{1,2}-x_{1,1}$,
+and at the first cell, with $\Delta_{+,0} = x_{1,1}-x_{1,0}$ and $\Delta_{+,1} = x_{1,2}-x_{1,1}$,
 
 $$
-s_0[\bar\rho] = -\frac{2a+b}{a(a+b)}\bar\rho_0 + \frac{a+b}{ab}\bar\rho_1 - \frac{a}{(a+b)b}\bar\rho_2,
+s_0[\bar\rho] = -\frac{2\Delta_{+,0}+\Delta_{+,1}}{\Delta_{+,0}(\Delta_{+,0}+\Delta_{+,1})}\bar\rho_0
++ \frac{\Delta_{+,0}+\Delta_{+,1}}{\Delta_{+,0}\Delta_{+,1}}\bar\rho_1
+- \frac{\Delta_{+,0}}{(\Delta_{+,0}+\Delta_{+,1})\Delta_{+,1}}\bar\rho_2,
 $$
 
 mirrored at the last cell. `[C2]` checks these weights against the derivative of the Lagrange quadratic.
@@ -281,9 +280,13 @@ post-solve remainder and the logged `pe=`. With the term in the work but not in 
 keeps $\pm g_1V_i\delta_i\Delta\rho_i$, an $O(h^2/r)$ defect. Left out of both, $E_{\mathrm{tot}}+P$ still closes, but the work
 error is $-g_1\delta\dot\rho$, second order with a $1/r$ coefficient (same note, §12.7).
 
-`d_cs_centroid_term_check.py` ports the four helpers and checks both statements [sha: the formulas of the code
-at the pin, where the slope is evaluated through a cached stencil with the same weights and the same order of
-operations; deck: the check itself; run: `python3 d_cs_centroid_term_check.py`, numpy 2.4.6, double].
+`d_cs_centroid_term_check.py` ports the four helpers and checks both statements.[^ch06-dwork-cs-chk]
+
+[^ch06-dwork-cs-chk]: [sha: the formulas of the code pin, where the slope is evaluated through a cached stencil with
+    the same weights and the same order of operations; deck: the check itself; run:
+    `python3 src/snapy_report/ch06/d_cs_centroid_term_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6;
+    output identical to the committed file]. Output `d_cs_centroid_term_check.out`, lines `[CS1]`–`[CS2]`.
+
 `[CS1]`: one stage with random interior fluxes and closed walls gives
 $(\Delta E_{\mathrm{grav}}+\Delta P)/\sum|WV\Delta t|$ = $8.8\times10^{-16}$, $-1.9\times10^{-14}$ and
 $1.5\times10^{-13}$ at $r/H$ = 5, 60 and 1000, the last two at the cancellation floor of the large $\phi$; with the
@@ -299,6 +302,14 @@ $\sum_iW^{\mathrm{D}}_iV_i + \dot P = -\sum_i\Delta_i[A\phi F]
 = -(A\phi F)_{\mathrm{top}} + (A\phi F)_{\mathrm{bottom}} = 0$. No property of the slope weights, the grid or the
 flux enters. The energy fluxes other than gravity telescope as well. So in exact arithmetic
 $\sum_iV_iE_i + P$ is constant over one evaluation of the right-hand side.
+
+In floating point the same telescoping argument gives a derived bound. Each cell's term
+$t_i=V_i\big(\Delta t\,W^{\mathrm D}_i+\Delta P_i/V_i\big)+(\text{other energy fluxes})$ is computed with at most $k$
+roundings, and the column adds $n_1$ of them; as for the face form (@sec-ch06-face),
+$\big\lvert\widehat{\Delta(E_{\mathrm{tot}}+P)}\big\rvert\le(k+n_1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert t_i\rvert$ per stage.
+The slope term adds a three-point stencil per cell to $k$; $k$ is not counted here. `[C7]` measures at most
+$3.5\times10^{-16}$ of $E_{\mathrm{tot}}+P$ per step on a stretched Cartesian column, inside the bound for any $k$ of a few
+tens.
 
 snapy's RK stage is $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U
 + w_2^{(s)}\Delta t\,\mathcal L(\mathbf U)$ with $w_0^{(s)}+w_1^{(s)}=1$. For rk3 the weights
@@ -483,7 +494,7 @@ The third weight is moved onto the neighbour, in the `rx_lo`, `rx_hi` lumping bl
 {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}.
 Each cell's weights still sum to zero, so $\tilde s$ still annihilates a constant `[C8]`. At the end cells
 $\tilde s$ is not a consistent slope, though:
-$\tilde s_0 = \tfrac{2a+b}{a(a+b)}(\rho_1-\rho_0)$, which is $\tfrac{3}{2h}(\rho_1-\rho_0)$ on a uniform grid
+$\tilde s_0 = \tfrac{2\Delta_{+,0}+\Delta_{+,1}}{\Delta_{+,0}(\Delta_{+,0}+\Delta_{+,1})}(\rho_1-\rho_0)$, which is $\tfrac{3}{2h}(\rho_1-\rho_0)$ on a uniform grid
 `[C8]`. The post-solve remainder below is therefore not small in the two end cells. That part of the scheme stays
 explicit at the grid scale; the tall-column test is the evidence that this is stable.
 
@@ -676,6 +687,34 @@ term.
 : Order of accuracy of the booked work, by region and grid. {#tbl-ch06-dwork-orders}
 
 ### Code
+
+**A minimal input.** The corrected-PE work needs no YAML of its own: it acts with `gravity-work: face` (the
+default) on Cartesian, spherical-polar and gnomonic-equiangle grids, and is switched by the environment.
+
+```yaml
+forcing:
+  const-gravity:
+    grav1: -9.8        # gravity-work: face by default
+# environment: SNAP_GRAVITY_WORK_RADIAL_EXACT unset or 1 (on), 0/false/off/no (off)
+```
+
+**What the code refuses or warns, and why.** `SNAP_GRAVITY_WORK_RADIAL_EXACT` is read once per process, because every
+block must book the same work ({{< code src/hydro/hydro.cpp HydroImpl::gravity_work_radial_exact >}}). Nothing is
+refused. `HydroImpl::reset` warns once in two cases ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}):
+
+1. With a periodic $x_1$: $-g_1x_1$ jumps there, so the corrected $P$ is not defined.
+2. On a grid with no $x_1$ measure: the plain face work is kept.
+
+**The code, mapped to @eq-ch06-dwork-d** ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), the
+single-block branch (a split column calls `corrected_pe_work_seam` instead):
+
+```cpp
+bool radial_exact = !gw_cell && radial_exact_work();
+if (radial_exact) {
+  auto drho = -dt * vertical_mass_div;      // Delta t rho_dot = -Delta t Delta_i[AF]/V_i
+  face_gravity_work += corrected_pe_work(drho, x1f, x1v, is, ie, grav1, measure, &_pe_work);
+}                                           // += Delta t g1 sigma^2 s[rho_dot] (+ g1 delta rho_dot on radial_mid)
+```
 
 Every row cites the code at the pin of `code_pin.yml`, except the pyharp row, which is at
 pyharp@4721715855e937c1e8b218e964c0655f46e56e29. The symbol column is the citation's anchor: it is the identifier

@@ -9,6 +9,8 @@ author: Linfeng Li
 reviewer:
 -->
 
+### Summary
+
 The face form books, in cell $i$, the work the scheme's own $x_1$ mass fluxes do against gravity: each face's
 flux carries mass from the face potential to the cell's centroid potential. Its derivation is the template of
 @eq-ch06-dwork-booked with $P=\mathrm{PE}_d$, written out as @eq-ch06-dwork-face in @sec-ch06-dwork. This section
@@ -16,35 +18,23 @@ covers what the code does around it: it replaces the cell work the forcing added
 the high-order reconstructions, it keeps the cell work in the wall cells under `face-wallc`, and it needs the
 implicit operator to carry it when an implicit scheme is on.
 
-Local symbols: $m_i=\rho_iv_{1,i}$ is the $x_1$ mass flux density at cell $i$ (code `rhov`); $\mathcal K$ is the
-curvature flux of NOTATION section 3. Tracked in ISSUES.md.
-
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**Purpose.** Book the $x_1$ gravity work as the flux difference of potential energy across a cell's faces,
-@eq-ch06-dwork-face, so that, with the corrected-PE work off, $E_{\mathrm{tot}}+\mathrm{PE}_d$ is conserved exactly.
+**Purpose.** Books the $x_1$ gravity work as a potential-energy flux difference across a cell, @eq-ch06-dwork-face.
 
-**Data.** Reads the total $x_1$ mass flux $F$ [kg m$^{-2}$ s$^{-1}$] on the two faces of each cell (dry row plus the
-mass-carrying species rows), the face and centroid potentials, and with $\mathcal K$ the $m$ of three cells; writes
-the energy-row correction [W m$^{-3}$] of the interior cells.
+**Data.** Reads the total $x_1$ mass flux $F$ on the two faces, face and centroid potentials; writes the energy row.
 
-**Placement.** Each stage, after the $x_1$ flux is final (positivity limiter and sedimentation) and after the
-forcings; before the implicit solve when one runs with `face`, after it with `face-wallc`.
+**Placement.** Each stage, after the $x_1$ flux is final and after the forcings; replaces the cell work.
 
-**Activation.** `gravity-work: face`, the default (`gravity_work`,
-{{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}), or `face-wallc`, which keeps the cell
-work in the two $x_1$ wall cells. Turns off the gravity-work fixer; the corrected-PE work of @sec-ch06-dwork is on
-with it by default.
+**Activation.** `gravity-work: face` (the default) or `face-wallc`; turns the fixer off.
 
-**Guarantee / limits.** On a closed column: plain `face` with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` keeps
-$E_{\mathrm{tot}}+\mathrm{PE}_d$ exact; default `face`, with the corrected-PE work on, keeps $E_{\mathrm{tot}}+P$
-exact instead (@sec-ch06-dwork); `face-wallc` has no exact invariant, because of its two wall cells. Second order,
-fourth in the interior with the cp3/cp5/weno5 curvature flux, first in the wall cells.
+**Guarantee / limits.** Plain `face`: $E_{\mathrm{tot}}+\mathrm{PE}_d$ exact to round-off; second order, fourth interior with $\mathcal K$.
 
-**Evidence.** `cellface_check.py` `[C1]`, `[C3]`-`[C5]`; `test_forcing` curvature case, read from the source, not
-run here.
+**Evidence.** The Tests layer below, @tbl-ch06-face-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $m_{1,i}=\rho_iv_{1,i}$ the $x_1$ momentum density of cell $i$
+[kg m$^{-2}$ s$^{-1}$] (NOTATION.md $m_1$; code `rhov`); $\mathcal K$ the curvature flux of NOTATION.md §3; $t_i$ the
+per-cell term of the conservation sum [J] and $k$ the number of roundings in one $t_i$.
 
 With `gravity-work: face` the corrected-PE work of @sec-ch06-dwork is on by default
 (`SNAP_GRAVITY_WORK_RADIAL_EXACT`); this section describes the face form with that switch off, which is how the
@@ -60,31 +50,57 @@ the energy row receives
 $$
 \begin{aligned}
 \Delta E_i &\leftarrow \Delta E_i + \Delta t\,\big(W^{\mathrm{face}}_i - W^{\mathrm{cell}}_i - \nabla_{\!1}\!\cdot g_1\mathcal K\big),\\
-\mathcal K_{i-1/2} &= \tfrac{1}{12}(x_{1,i}-x_{1,i-1})(m_i-m_{i-1}),
+\mathcal K_{i-1/2} &= \tfrac{1}{12}(x_{1,i}-x_{1,i-1})(m_{1,i}-m_{1,i-1}),
 \end{aligned}
 $$ {#eq-ch06-face-energy}
 
-with $\mathcal K=0$ on every physical $x_1$ face and only for cp3, cp5 and weno5 reconstructions in $x_1$.
+with $\mathcal K=0$ on every physical $x_1$ face, and $\mathcal K$ present only for cp3, cp5 and weno5 reconstructions in
+$x_1$ and only with the corrected-PE work of @sec-ch06-dwork off.
 @eq-ch06-face-energy is booked as `gravity_energy_correction`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
 with the curvature term from `curv_flux1`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
-The face form conserves $E_{\mathrm{tot}}+\mathrm{PE}_d$ exactly on a closed column (`cellface_check.py` `[C1]`, to
-$3.9\times10^{-15}$ relative on Cartesian and spherical-polar columns). $\mathcal K$ does not change that: it is a
-flux, zero at both walls, so its divergence sums to zero (`[C4]`, $5\times10^{-17}$). Its purpose is accuracy. A
-high-order reconstruction's face flux exceeds the point value $m$ by $\tfrac{h^2}{12}(\partial_1^2m+\dots)$, and the
-face form books that excess as work; $\nabla_{\!1}\!\cdot g_1\mathcal K$ removes the $\partial_1^2m$ part. Against
-the exact cell average of $g_1m$ and with exact point fluxes, the face form is second order in interior and wall
+The face form conserves $E_{\mathrm{tot}}+\mathrm{PE}_d$ exactly on a closed column. The argument has four steps.
+
+1. The code forms $W^{\mathrm{face}}_i=\big(\phi_i\Delta_i[AF]-\Delta_i[A\phi F]\big)/V_i$ from one face product $A\phi F$ per
+   face, stored once and read by both neighbours (`potential_flux1`, `potential_flux_div`).
+2. The density changes by $V_i\dot\rho_i=-\Delta_i[AF]$, so $V_i(W^{\mathrm{face}}_i+\phi_i\dot\rho_i)=-\Delta_i[A\phi F]$.
+3. Summed over the column, $-\sum_i\Delta_i[A\phi F]$ telescopes to the two walls, where $F=0$: zero.
+4. $\mathcal K$ is a face flux, set to zero on both physical faces, so $\sum_iV_i\nabla_{\!1}\!\cdot g_1\mathcal K=0$ by
+   the same telescoping.
+
+Round-off is the one place this shows. Write the computed per-cell terms as $\hat t_i=t_i(1+\theta_i)$, with
+$\sum_it_i=0$ exactly and $\lvert\theta_i\rvert\le k\,\tfrac12\epsilon_{\mathrm m}$ for the $k$ roundings of one cell term.
+Summing $n_1$ such terms adds one rounding per addition, and the error of a sum is $\sum_kB_k\delta_k$ to first order
+(as in @sec-ch09-framework), so
+
+$$
+\Big\lvert\sum_i\hat t_i\Big\rvert \le (k+n_1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert t_i\rvert .
+$$
+
+Counting the floating-point operations of the face-work lines, plus the update of $E$ and the product with $V$,
+gives $k\le12$, an upper count, not a measurement. For $n_1=256$ the bound is $3.0\times10^{-14}$ of
+$\sum_i\lvert t_i\rvert$. `cellface_check.py` `[C1]` measures $3.9\times10^{-15}$ relative on Cartesian and
+spherical-polar columns, inside it; `[C4]` measures the $\mathcal K$ divergence sum at $1.3\times10^{-17}$. Its purpose
+is accuracy. A
+high-order reconstruction's face flux exceeds the point value $m_1$ by $\tfrac{h^2}{12}(\partial_1^2m_1+\dots)$, and the
+face form books that excess as work; $\nabla_{\!1}\!\cdot g_1\mathcal K$ removes the $\partial_1^2m_1$ part. Against
+the exact cell average of $g_1m_1$ and with exact point fluxes, the face form is second order in interior and wall
 cells, and the face form with $\mathcal K$ is fourth order in the interior and first order in the two wall cells,
 where $\mathcal K$ is present on one face only (`[C3]`, `[C4]`; orders 2.00 and 2.00, then 3.99 and 1.00, at
 $n_1$ = 128 to 256). `face-wallc` books $W^{\mathrm{cell}}$ in the two wall cells, so its defect is
-exactly their cell-minus-face work (`[C5]`). Provenance of every `[Cn]` as in @sec-ch06-cell.
+exactly their cell-minus-face work (`[C5]`). `[C26]` and `[C27]` of `derivation_check.py` check the first-order sum
+error and the telescoping.[^ch06-face-chk]
+
+[^ch06-face-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch06/cellface_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `cellface_check.out`, lines `[C1]`, `[C3]`–`[C5]`. The same for
+    `derivation_check.py`, lines `[C26]`–`[C27]`, with sympy 1.14.0.
 
 ### Numerical method
 
 @fig-ch06-face-stencil shows what the face form reads: the two $x_1$ face fluxes of cell $i$ after the positivity
-limiter and sedimentation, the face and centroid potentials, and, with $\mathcal K$, $m$ in cells $i-1$, $i$ and
+limiter and sedimentation, the face and centroid potentials, and, with $\mathcal K$, $m_1$ in cells $i-1$, $i$ and
 $i+1$. The fluxes are the total mass flux, the dry row plus every mass-carrying species row. Physical $x_1$ faces
 are the only ones where $\mathcal K$ is zeroed; seams between blocks keep it, reading the exchanged ghost. The
 work is explicit and added once per stage. With an implicit scheme and `gravity-work: face` the correction is
@@ -110,6 +126,34 @@ make_fig()
 ```
 
 ### Code
+
+**A minimal input.** `face` is the default, so the gravity block alone selects it:
+
+```yaml
+forcing:
+  const-gravity:
+    grav1: -9.8          # m s^-2; gravity-work: face is the default
+```
+
+The corrected-PE work of @sec-ch06-dwork is then on by default as well; to run the plain face form of this
+section, start the run with `SNAP_GRAVITY_WORK_RADIAL_EXACT=0` in the environment.
+
+**What the parser refuses, and why.** The same three checks as @sec-ch06-cell. Also,
+`gravity-work-fixer: true` is refused with `face` when $g_1\ne0$: the fixer repairs the cell form's defect, and the
+face form has none ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}).
+
+**The code, mapped to @eq-ch06-dwork-face** ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+auto phi_face = -grav1 * pmb->pcoord->x1f;
+auto phi_cell = -grav1 * pmb->pcoord->x1v;
+auto potential_flux1 = vertical_mass_flux1 * phi_face.narrow(0, 0, vertical_mass_flux1.size(-1));
+// vertical_mass_div  = Delta_i[A F] / V_i ;  potential_flux_div = Delta_i[A phi F] / V_i
+auto face_gravity_work = dt * (phi_cell.slice(0, is, ie) * vertical_mass_div - potential_flux_div);
+```
+
+`face_gravity_work` is $\Delta t\,W^{\mathrm{face}}_i$ in the form of step 1; `gravity_energy_correction` then adds it
+and removes $W^{\mathrm{cell}}$, @eq-ch06-face-energy.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -145,6 +189,9 @@ implicit operator" (also for `face` with `implicit-scheme: 0`).
 | `test_implicit_face_work_operator_python` | rest column, Courant 66-657 | $10^{-11}$ | `EPE_TOL` |
 
 : Tests of the face form; assertions read from the test sources at the pin, not run. {#tbl-ch06-face-tests}
+
+`[C1]` of `cellface_check.py` measures the conservation of the four steps; `[C3]` and `[C4]` the orders, 2.00 in all
+cells without $\mathcal K$ and 3.99 interior, 1.00 wall with it; `[C5]` the `face-wallc` defect.
 
 `vertical_gravity_work_removes_the_curvature_excess` sets a quadratic $m$ on six cells. It requires the off-wall
 excess to equal $\Delta t\,\tfrac{h^2}{12}\cdot2\cdot0.04\cdot0.03$ for cp3 and five-point reconstructions
