@@ -15,39 +15,40 @@ the solver object is constructed. A VIC run also needs the whole $x_1$ column on
 gravity.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Reads `integration/implicit-scheme` and decides whether a run has a vertically implicit correction
-(VIC), and whether it solves the 3 x 3 or the 5 x 5 column system; @eq-ch07-vic-size.
+**Purpose.** Decides whether a run has a vertically implicit correction (VIC) and its system size; @eq-ch07-vic-size.
 
-**Data.** In: `integration/implicit-scheme` [integer], `implicit-advection-cfl` and `shear-cfl` [-], and the
-$x_1$ block count `nb1` [count] from the YAML card, read once per block at construction. Out: the scheme type
-(`none`, `vic-partial`, `vic-full`) and the system size $N = 3$ or $5$. Units and mass basis: none, no physical
-quantity enters. Check cases: every value 0 to 9, the cfl key defaults and refusals, `nb1` 1 and 2.
+**Data.** Reads `integration/implicit-scheme` and the two bound keys once per block; writes the type and $N$.
 
-**Placement.** At setup.
+**Placement.** At setup; the one-block and gravity conditions at the first correction.
 
-**Activation.** `integration/implicit-scheme`: 0 or absent (explicit), 1 (`vic-partial`), 9 (`vic-full`);
-`implicit-advection-cfl` (default 1) and `shear-cfl` (default 0), see @sec-ch07-cfl.
+**Activation.** `integration/implicit-scheme`: 0 or absent (explicit), 1 (`vic-partial`), 9 (`vic-full`).
 
-**Guarantee / limits.** Any other value is refused.
+**Guarantee / limits.** Any other value is refused; $x_1$ only, one block in $x_1$, constant gravity.
 
-**Evidence.** Tests: `type()` is `none`, `vic-partial`, `vic-full` for 0, 1, 9 and 5 raises,
-{{< code tests/test_implicit_options_type.py main >}} (exact); 1 gives size 3 and 9 size 5,
-{{< code tests/test_backward_substitution.cpp implicit_options.parses_implicit_scheme_bits >}} (exact); 3 is refused
-at construction, {{< code tests/test_hydro_options.cpp hydro_options.reject_unsupported_implicit_scheme >}} (exact);
-not run at the pin. Check: `python3 src/snapy_report/ch07/vic_options_check.py`, output `vic_options_check.out` lines `[C1]`–`[C4]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
+**Evidence.** @tbl-ch07-vic-options-tests; `test_implicit_options_type_python`, `test_hydro_options.release`, `vic_options_check.py` `[C1]`–`[C4]`.
 :::
+
+Local symbols: $n_{\mathrm{vic}}$ [-] is the integer value of `implicit-scheme` ($s$ is the RK stage) and $N$ [-] the
+block size of the column system; `nb1` [count] is the number of blocks in $x_1$. No physical quantity enters, so
+there are no units or mass basis.
 
 ### Derivation
 
-There is nothing to derive. With $s$ the scheme value, the block size of the column system is
+There is nothing to derive. The block size of the column system is
 
 $$
-N(s) = 3 + 2\,\big(\lfloor s/8 \rfloor \bmod 2\big) ,
+N = 3 + 2\,\big(\lfloor n_{\mathrm{vic}}/8 \rfloor \bmod 2\big) ,
 $$ {#eq-ch07-vic-size}
 
-so `vic-partial` solves for $(\rho, \rho v_1, E)$ and `vic-full` for $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$, with $v_1$ the
-$x_1$ velocity [check `src/snapy_report/ch07/vic_options_check.py`, output `vic_options_check.out`, `[C1]`]. Here
-$\rho$ is the total density: the species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute).
+and the steps that fix what a value means are:
+
+1. *Bit 3.* $\lfloor n_{\mathrm{vic}}/8\rfloor \bmod 2$ is bit 3, so 1 gives $N=3$ and 9 gives $N=5$.
+2. *The variables.* `vic-partial` solves for $(\rho, \rho v_1, E)$ and `vic-full` for
+   $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$, with $v_1$ the $x_1$ velocity (`[C1]`). Here $\rho$ is the total density: the
+   species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute).
+3. *Which values build.* `type` names 0, 1 and 9 and refuses every other value, so a value with bit 1 or 2 set never
+   builds, although the time-step bound reads those bits (`[C1]`).
+4. *No round-off.* The value is an integer and $N$ a bit test, so nothing is rounded.
 
 In the code, @eq-ch07-vic-size is `size` ({{< code src/implicit/implicit_hydro.hpp ImplicitOptionsImpl::size >}}).
 
@@ -92,6 +93,50 @@ boundaries, since the column solve has no cross-rank coupling ({{< code src/hydr
 
 : Code map of the VIC options. {#tbl-ch07-vic-options-code}
 
+**How to use it.** The scheme is an integer in the `integration` block, not a name
+({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}}):
+
+```yaml
+forcing:
+  const-gravity: {grav1: -9.8}   # the solve needs a constant gravity
+integration:
+  type: rk3
+  implicit-scheme: 1             # 0 or absent: explicit; 1: vic-partial (N = 3); 9: vic-full (N = 5)
+```
+
+What is refused, and why:
+
+- A non-integer value such as `{type: vic}` is a YAML conversion error ("bad conversion"), because the reader takes
+  `node.as<int>()`.
+- Any value other than 0, 1 or 9 stops at construction with "Unsupported implicit scheme", because no other value
+  has a solver ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::type >}}).
+- At the first correction, a block that is not the whole $x_1$ column stops with "[Hydro] implicit scheme requires
+  nb1 = 1 (no x1 decomposition): the vertical solve has no cross-rank coupling."
+  ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}).
+- At the first correction, a run without constant gravity stops with "[ImplicitHydro] forcing does not have
+  const-gravity", because the operator carries the gravity Jacobian of @sec-ch06
+  ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
+
+On a build of the pin, values 1 and 9 build, 3 gives "Unsupported implicit scheme", `{type: vic}` gives "bad
+conversion", and a card without gravity still builds, so that refusal comes only at the first
+correction.[^ch07-vic-options-card] The last two refusals were read from the code, not run. @eq-ch07-vic-size is
+
+```cpp
+  int size() const {
+    if ((scheme() >> 3) & 1) {  // full
+      return 5;
+    } else {
+      return 3;
+    }
+  }
+```
+
+where `(scheme() >> 3) & 1` is $\lfloor n_{\mathrm{vic}}/8\rfloor \bmod 2$ of step 1.
+
+[^ch07-vic-options-card]: `MeshBlockOptions.from_yaml` and `MeshBlock` on the card with geometry, an ideal-moist
+    equation of state and reflecting $x_1$ walls added; snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 Release build,
+    CPU, Python 3.12.10.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -99,17 +144,20 @@ boundaries, since the column solve has no cross-rank coupling ({{< code src/hydr
 | `tests/test_implicit_options_type.py` (`test_implicit_options_type_python`) | `type()` is `none`, `vic-partial`, `vic-full` for 0, 1, 9; 5 raises; `type` cannot be set | exact | contract |
 | `tests/test_backward_substitution.cpp` (`test_backward_substitution.release`), `parses_implicit_scheme_bits` | 1 gives size 3, 9 gives size 5 | exact | contract |
 | `tests/test_hydro_options.cpp` (`test_hydro_options.release`), `reject_unsupported_implicit_scheme` | a MeshBlock builds with 1 and stops with "Unsupported implicit scheme" for 3 | exact | contract |
-| this section's check, `vic_options_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+| this section's check, `vic_options_check.py` | `[C1]`–`[C4]` | exact | integer logic (step 4) |
 
-: Tests of the VIC options. {#tbl-ch07-vic-options-tests}
+: Tests of the VIC options (@tbl-ch07-ctest-run for the run at the pin). {#tbl-ch07-vic-options-tests}
 
-::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `vic_options_check.py`, which ports, from the code at the pin, the option logic on Python dicts; deck: the check itself.[^ch07-vic-options-run] ctest cases: **pending: pinned
-ctest run**.
-**Coverage.** CPU; the option logic has no device path.
-:::
+The three ctest cases pass at the pin (@tbl-ch07-ctest-run): {{< code tests/test_implicit_options_type.py main >}},
+{{< code tests/test_backward_substitution.cpp implicit_options.parses_implicit_scheme_bits >}} and
+{{< code tests/test_hydro_options.cpp hydro_options.reject_unsupported_implicit_scheme >}}. `vic_options_check.py` ports
+the option logic on Python dicts.[^ch07-vic-options-run] `[C1]` builds 0, 1 ($N=3$) and 9 ($N=5$) and refuses 2 to 8
+and 10; `[C2]` gives the defaults 1 and 0 and refuses 4 of 4 bad values; `[C3]` refuses the bound keys without a
+scheme; `[C4]` builds `nb1` = 1, refuses `nb1` = 2, and runs scheme 0 at `nb1` = 2. The option logic has no device
+path.
 
-[^ch07-vic-options-run]: Run: `python3 src/snapy_report/ch07/vic_options_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/vic_options_check.out`.
+[^ch07-vic-options-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch07/vic_options_check.py`,
+    CPU, 1 process; Python 3.12.10, numpy 2.5.3; output identical to the committed `vic_options_check.out`].
 
 ### Limits
 
@@ -119,4 +167,5 @@ The VIC is $x_1$ only. A run cut into several blocks in $x_1$ cannot use it.
 
 1. **Bits that do not build.** Bits 1 and 2 are read by the time-step bound, but no value that sets them builds,
    so a $x_2$ or $x_3$ implicit direction cannot be reached.
-2. **Late nb1 check.** The one-block condition is checked at the first correction, not when the options are read.
+2. **Late checks.** The one-block and gravity conditions are checked at the first correction, not when the options
+   are read, so a deck that breaks them builds and stops on its first step.

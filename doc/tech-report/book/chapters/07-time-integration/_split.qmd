@@ -8,52 +8,65 @@ status: draft
 
 ### Summary
 
-The dynamics advance the conserved state over the whole step; the phase equilibrium of @sec-ch02 then adjusts the species at fixed density and internal energy density, the physical boundaries are refilled so the ghosts
-carry the adjusted composition, and the driver's kinetics integrate the reaction rates over the step on the
-refreshed primitives. Each piece sees the output of the previous one, which makes the step a sequential split.
-The details of the phase solve and the kinetics are @sec-ch10.
+The dynamics advance the conserved state over the whole step; the phase equilibrium of @sec-ch02 then adjusts the
+species at fixed density and internal energy density, the physical boundaries are refilled so the ghosts carry
+the adjusted composition, and the driver's kinetics integrate the reaction rates over the step on the refreshed
+primitives. Each piece sees the output of the previous one, which makes the step a sequential split. The details
+of the phase solve and the kinetics are @sec-ch10.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** After the dynamics of a step, applies the phase equilibrium (inside the last stage) and the driver's
-kinetics (after the stages) to the advanced state, each on the result of the one before; @eq-ch07-split-lie.
+**Purpose.** Applies the phase equilibrium and then the driver's kinetics to the advanced state; @eq-ch07-split-lie.
 
-**Data.** In: the conserved state after the last RK average, cell averages, total-mass basis; for the phase
-equilibrium the total density $\rho$ [kg m$^{-3}$], the internal energy density $\rho e$ [J m$^{-3}$] and the mass
-fractions $y_n$ [-] at each interior cell centre; for the kinetics the driver's post-step temperature [K], pressure
-[Pa] and molar concentrations $\tilde c_n$ [mol m$^{-3}$] per interior cell. Out: the species densities $\rho_n$
-[kg m$^{-3}$] of each interior cell (total-mass basis), with $E$ unchanged by the phase equilibrium. Check cases: a
-linear test problem at 20, 40, 80 steps, its Strang counterpart, and a commuting pair.
+**Data.** Reads the state after the last average; writes the species densities $\rho_n$, with $E$ kept by the phase step.
 
-**Placement.** The phase equilibrium in the last stage, before the boundary fill; the kinetics after the stages,
-before `check_redo`.
+**Placement.** Phase equilibrium in the last stage, before the boundary fill; kinetics after the stages, before `check_redo`.
 
-**Activation.** The saturation adjustment runs when the thermodynamics has reactions; the kinetics when the driver
-builds a kinetics model. Neither has its own key here.
+**Activation.** Saturation adjustment when the thermo card has reactions; kinetics when the driver builds a model.
 
-**Guarantee / limits.** First order in $\Delta t$ (a sequential, or Lie, split).
+**Guarantee / limits.** First order in $\Delta t$ (a sequential, or Lie, split) unless the pieces commute.
 
-**Evidence.** Tests: phase change next to a wall keeps the volume-integrated total energy and water,
-{{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} ($10^{-12}$
-relative); a failed saturation solve rejects the step, {{< code tests/test_check_redo_saturation.py main >}}
-(logical); not run at the pin. Check: `python3 src/snapy_report/ch07/split_check.py`, output `split_check.out` lines `[C1]`–`[C3]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
+**Evidence.** @tbl-ch07-split-tests; `test_wall_saturation.release`, `test_check_redo_saturation_python`, `split_check.py` `[C1]`–`[C4]`.
 :::
+
+Local symbols: $\mathcal M^{\mathrm{dyn}}_{\Delta t}$ is the dynamics over one step (all Runge-Kutta stages),
+$\mathcal S$ the saturation adjustment and $\mathcal M^{\mathrm{kin}}_{\Delta t}$ the driver's kinetics; on a linear model
+$\mathcal M^{\mathrm{dyn}}_{\Delta t}=e^{\Delta t\,\mathsf G_{\mathrm{dyn}}}$ and $\mathcal M^{\mathrm{kin}}_{\Delta t}=e^{\Delta t\,\mathsf G_{\mathrm{kin}}}$
+with generators $\mathsf G_{\mathrm{dyn}}$, $\mathsf G_{\mathrm{kin}}$ [s$^{-1}$], and
+$[\mathsf G_{\mathrm{kin}},\mathsf G_{\mathrm{dyn}}]=\mathsf G_{\mathrm{kin}}\mathsf G_{\mathrm{dyn}}-\mathsf G_{\mathrm{dyn}}\mathsf G_{\mathrm{kin}}$
+is their commutator; $t_{\mathrm{end}}$ [s] is the length of a run. The phase equilibrium reads the total density $\rho$, the
+internal energy density $\rho e$ and the mass fractions $y_n$ of each interior cell; the kinetics read the driver's
+post-step temperature [K], pressure [Pa] and molar concentrations [mol m$^{-3}$].
 
 ### Derivation
 
-Let $\mathcal D_{\Delta t}$ be the dynamics over one step, $\mathcal S$ the saturation adjustment and
-$\mathcal K_{\Delta t}$ the kinetics. One step is
+One step is
 
 $$
-\mathbf U^{n+1} = \mathcal K_{\Delta t}\,\mathcal S\,\mathcal D_{\Delta t}\,\mathbf U^n .
+\mathbf U^{n+1} = \mathcal M^{\mathrm{kin}}_{\Delta t}\,\mathcal S\,\mathcal M^{\mathrm{dyn}}_{\Delta t}\,\mathbf U^n .
 $$ {#eq-ch07-split-lie}
 
-For two flows $e^{A\Delta t}$ and $e^{B\Delta t}$ the product differs from $e^{(A+B)\Delta t}$ by
-$\tfrac12[B,A]\Delta t^2$ per step, so the global error is first order unless the operators commute. On two
-non-commuting $2\times2$ operators the fitted order of this split is 0.991, a symmetric (Strang) split would give
-2.000, and commuting operators split exactly [check `src/snapy_report/ch07/split_check.py`, output
-`split_check.out`, `[C1]`–`[C3]`]. The saturation adjustment is a projection onto equilibrium rather than a flow
-over $\Delta t$, so its split error is the error of applying equilibrium at the end of the step instead of
-throughout it; that error is not measured here.
+Why it is first order, on the linear model with the projection $\mathcal S$ left out:
+
+1. Expanding both exponentials to second order,
+   $e^{\Delta t\mathsf G_{\mathrm{kin}}}e^{\Delta t\mathsf G_{\mathrm{dyn}}}=\mathsf I+\Delta t(\mathsf G_{\mathrm{kin}}+\mathsf G_{\mathrm{dyn}})
+   +\tfrac{\Delta t^2}2(\mathsf G_{\mathrm{kin}}^2+2\mathsf G_{\mathrm{kin}}\mathsf G_{\mathrm{dyn}}+\mathsf G_{\mathrm{dyn}}^2)+O(\Delta t^3)$.
+   The exact flow is $e^{\Delta t(\mathsf G_{\mathrm{kin}}+\mathsf G_{\mathrm{dyn}})}=\mathsf I+\Delta t(\mathsf G_{\mathrm{kin}}+\mathsf G_{\mathrm{dyn}})
+   +\tfrac{\Delta t^2}2(\mathsf G_{\mathrm{kin}}+\mathsf G_{\mathrm{dyn}})^2+O(\Delta t^3)$.
+2. The square of the sum is $\mathsf G_{\mathrm{kin}}^2+\mathsf G_{\mathrm{kin}}\mathsf G_{\mathrm{dyn}}+\mathsf G_{\mathrm{dyn}}\mathsf G_{\mathrm{kin}}+\mathsf G_{\mathrm{dyn}}^2$,
+   so the difference of the two lines is the local error
+   $\tfrac{\Delta t^2}2(\mathsf G_{\mathrm{kin}}\mathsf G_{\mathrm{dyn}}-\mathsf G_{\mathrm{dyn}}\mathsf G_{\mathrm{kin}})
+   =\tfrac{\Delta t^2}2[\mathsf G_{\mathrm{kin}},\mathsf G_{\mathrm{dyn}}]$ per step, zero when the generators commute (`[C4]`).
+3. Over $t_{\mathrm{end}}/\Delta t$ steps the local errors add to $O(\Delta t)$, so the split is first order unless the
+   operators commute.
+4. *Round-off.* The split adds no arithmetic of its own: each piece rounds as its own section states (@sec-ch10),
+   and the kinetics' increment is added to `hydro_u` once, one rounding of at most $\epsilon_{\mathrm m}/2$ relative
+   per entry.
+
+On two non-commuting $2\times2$ generators the fitted order of this split is 0.991, a symmetric (Strang) split would
+give 2.000 (`[C1]`, `[C2]`), and commuting generators split exactly, to $5.6\times10^{-17}$ in floating point (`[C3]`).
+The saturation adjustment is a projection onto equilibrium rather than a flow over $\Delta t$, so its split error is
+the error of applying equilibrium at the end of the step instead of throughout it; that error is not measured
+here.
 
 In the code, the $\mathcal S$ of @eq-ch07-split-lie is the last-stage `ThermoY` solve of the block, `pthermo` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
@@ -89,23 +102,48 @@ make_fig()
 
 : Code map of the step-boundary split. {#tbl-ch07-split-code}
 
+**How to use it.** Neither piece has a key in this section. The saturation adjustment runs at the last stage when
+the thermodynamics card has reactions (@sec-ch10-satadj), through this test
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}):
+
+```cpp
+  if (stage == pintg->stages.size() - 1 && phydro->options->eos()->thermo() &&
+      phydro->options->eos()->thermo()->reactions().size() > 0) {
+```
+
+The kinetics run only if the driver builds a kinetics model from the card and calls it after the stages
+({{< code examples/run_hydro.cpp main >}}):
+
+```cpp
+    auto del_conc = kintera::evolve_implicit(rate, kinet->stoich, jac, dt);
+```
+
+The guard is $\mathcal S$ of @eq-ch07-split-lie, applied once at the last stage; `evolve_implicit` is
+$\mathcal M^{\mathrm{kin}}_{\Delta t}$, over the full step. A driver that skips this call has no
+$\mathcal M^{\mathrm{kin}}_{\Delta t}$. Refused: nothing at this level; the reaction and kinetics cards are read and
+checked by kintera (@sec-ch10).
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_wall_saturation.cpp` (`test_wall_saturation.release`) | phase change next to a wall keeps total energy and water | $10^{-12}$ relative | test threshold |
 | `tests/test_check_redo_saturation.py` (`test_check_redo_saturation_python`) | a failed saturation solve rejects the step | logical | contract |
-| this section's check, `split_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
+| this section's check, `split_check.py` | `[C1]`–`[C4]` | 0.1 in the order; $10^{-14}$; exact | stated in the check |
 
-: Tests of the step-boundary split. {#tbl-ch07-split-tests}
+: Tests of the step-boundary split (@tbl-ch07-ctest-run for the run at the pin). {#tbl-ch07-split-tests}
 
-::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `split_check.py`, which ports, from the code at the pin, the order of the pieces, modelled by two linear operators; deck: the check itself.[^ch07-split-run] ctest cases:
-**pending: pinned ctest run**.
-**Coverage.** CPU for the wall test; the saturation redo test also on CUDA. No test measures the split error.
-:::
+Both ctest cases pass at the pin (@tbl-ch07-ctest-run):
+{{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} and
+{{< code tests/test_check_redo_saturation.py main >}}. `split_check.py` models the order of the pieces by two linear
+operators.[^ch07-split-run] `[C1]` measures errors $1.63\times10^{-3}$, $8.26\times10^{-4}$, $4.15\times10^{-4}$ at 20,
+40 and 80 steps (order 0.991); `[C2]` gives 2.000 for the Strang order; `[C3]` splits commuting operators to
+$5.6\times10^{-17}$; `[C4]` checks steps 1 and 2 symbolically on generic $2\times2$ generators. No test measures the
+split error of a moist case.
 
-[^ch07-split-run]: Run: `python3 src/snapy_report/ch07/split_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/split_check.out`.
+[^ch07-split-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch07/split_check.py`,
+    CPU, double, 1 process; Python 3.12.10, numpy 2.5.3, sympy 1.14.0; output identical to the committed
+    `split_check.out`].
 
 ### Limits
 

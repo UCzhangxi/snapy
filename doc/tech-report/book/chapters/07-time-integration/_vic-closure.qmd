@@ -14,42 +14,58 @@ there to be the reflection of its neighbour's. That is a closed wall: no mass, t
 crosses it, and the normal momentum keeps the wall pressure.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Closes the column system at its bottom and top, and next to solid cells, by treating the unknown ghost
-increment as the mirror of the first interior one; @eq-ch07-vic-closure.
+**Purpose.** Closes each column's system at its ends and next to solids with a mirror ghost; @eq-ch07-vic-closure.
 
-**Data.** In: the increments $\boldsymbol\delta_0$, $\boldsymbol\delta_{n-1}$ of the first and last interior cells of
-each column, in the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$] (total-mass basis), and the mirror $\mathrm{Bnd}=\mathrm{diag}(1,-1,1,1,1)$ [-]; next to a
-solid, the solid flag of the neighbour. Out: the ghost increments $\boldsymbol\delta_{-1}$, $\boldsymbol\delta_n$ at
-the two wall ghost cells, same units, folded into the first and last rows. Check cases: an 8-layer moving column
-with mirror ghosts, zero gravity.
+**Data.** Reads $\mathsf B_0$, $\mathsf C_{n-1}$ and the solid flags; writes the first and last diagonal blocks.
 
-**Placement.** Inside the sweep, in the first and last rows.
+**Placement.** In the assembly, on the first and last rows of the column.
 
 **Activation.** None; fixed by the kernel, whatever the boundary condition of the explicit stage.
 
-**Guarantee / limits.** A reflecting closure in every case.
+**Guarantee / limits.** A reflecting closure in every case: mass, transverse momentum and energy do not cross it.
 
-**Evidence.** No dedicated ctest: the closure runs in every VIC column test, so its own tolerance is **missing
-evidence**. Check: `python3 src/snapy_report/ch07/vic_closure_check.py`, output `vic_closure_check.out` lines `[C1]`–`[C4]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
+**Evidence.** @tbl-ch07-vic-closure-tests; no dedicated ctest; `vic_closure_check.py` `[C1]`–`[C5]`.
 :::
+
+Local symbols: $\mathsf P_{\mathrm w}=\mathrm{diag}(1,-1,1,1,1)$ (or $\mathrm{diag}(1,-1,1)$) [-] is the wall parity of the solved
+variables, `Bnd` in the code; $\mathsf J_0$ and $\mathsf J_{-1}$ are the flux Jacobians $\partial\mathbf F/\partial\mathbf U_{\mathrm{sv}}$ at
+the first cell and at its mirror ghost, and $\mathsf J^{\mathrm{Roe}}$ the one at their Roe state (@sec-ch07-vic-assembly);
+$\boldsymbol\delta_{-1}$, $\boldsymbol\delta_n$ are the ghost increments and $n$ the number of layers. The increments are in the
+solved variables of @sec-ch07-vic-assembly, total-mass basis.
 
 ### Derivation
 
-With $\mathrm{Bnd} = \mathrm{diag}(1,-1,1,1,1)$ (or $\mathrm{diag}(1,-1,1)$ for the partial system), setting
-$\boldsymbol\delta_{-1} = \mathrm{Bnd}\,\boldsymbol\delta_0$ in the first row and $\boldsymbol\delta_n = \mathrm{Bnd}\,\boldsymbol\delta_{n-1}$ in the last
-gives
+Setting $\boldsymbol\delta_{-1} = \mathsf P_{\mathrm w}\,\boldsymbol\delta_0$ in the first row and
+$\boldsymbol\delta_n = \mathsf P_{\mathrm w}\,\boldsymbol\delta_{n-1}$ in the last gives
 
 $$
-\mathsf A_0 \leftarrow \mathsf A_0 + \mathsf B_0\,\mathrm{Bnd}, \quad \mathsf A_{n-1} \leftarrow \mathsf A_{n-1} + \mathsf C_{n-1}\,\mathrm{Bnd} .
+\mathsf A_0 \leftarrow \mathsf A_0 + \mathsf B_0\,\mathsf P_{\mathrm w}, \quad \mathsf A_{n-1} \leftarrow \mathsf A_{n-1} + \mathsf C_{n-1}\,\mathsf P_{\mathrm w} .
 $$ {#eq-ch07-vic-closure}
 
-This equals solving with the ghosts kept and eliminated, to $7\times10^{-15}$ relative [check
-`src/snapy_report/ch07/vic_closure_check.py`, output `vic_closure_check.out`, `[C1]`]. When the ghost state is the
-mirror of the edge cell, the Roe state at the wall has zero normal velocity (`[C4]`). The flux Jacobian then
-satisfies $J_g\,\mathrm{Bnd} = -\mathrm{Bnd}\,J_0$, so the linearised wall flux of every row with
-$\mathrm{Bnd} = +1$ cancels. On a moving, layered Cartesian column, the column sums of the mass, transverse
-momentum and energy rows of the closed operator vanish to $2\times10^{-16}$. The normal momentum row keeps an
-order-one wall term (`[C2]`). Without the closure the column loses mass through its ends (`[C3]`).
+Row 0 is $\mathsf B_0\boldsymbol\delta_{-1}+\mathsf A_0\boldsymbol\delta_0+\mathsf C_0\boldsymbol\delta_1=\mathbf f_0$; with
+$\boldsymbol\delta_{-1}=\mathsf P_{\mathrm w}\boldsymbol\delta_0$ it becomes
+$(\mathsf A_0+\mathsf B_0\mathsf P_{\mathrm w})\boldsymbol\delta_0+\mathsf C_0\boldsymbol\delta_1=\mathbf f_0$, and the last row likewise with
+$\mathsf C_{n-1}$. This equals solving with the ghosts kept and eliminated, to $2.1\times10^{-13}$ relative (`[C1]`).
+Without the closure the column loses mass through its ends (`[C3]`).
+
+Why the wall carries no mass, transverse momentum or energy:
+
+1. The Euler flux is odd under the mirror: $\mathbf F(\mathsf P_{\mathrm w}\mathbf U)=-\mathsf P_{\mathrm w}\mathbf F(\mathbf U)$.
+   Differentiating, $\mathsf J_{-1}\mathsf P_{\mathrm w}=-\mathsf P_{\mathrm w}\mathsf J_0$ for a ghost that mirrors the first cell.
+2. The Roe state of a mirrored pair has zero normal velocity (`[C4]`). There the eigenvalues are $-c_s$, 0 and $+c_s$,
+   so $\mathsf A^-=\mathsf R\lvert\Lambda\rvert\mathsf R^{-1}=(\mathsf J^{\mathrm{Roe}})^2/c_s$, since $\lvert\lambda\rvert=\lambda^2/c_s$ for each of
+   them. At zero normal velocity $\mathsf J^{\mathrm{Roe}}$ anticommutes with $\mathsf P_{\mathrm w}$ (step 1 with the two states
+   equal), so its square, and $\mathsf A^-$, commute with $\mathsf P_{\mathrm w}$.
+3. The linearised face flux is $\tfrac12(\mathsf J_{-1}\boldsymbol\delta_{-1}+\mathsf J_0\boldsymbol\delta_0)-\tfrac12\mathsf A^-(\boldsymbol\delta_0-\boldsymbol\delta_{-1})$.
+   With $\boldsymbol\delta_{-1}=\mathsf P_{\mathrm w}\boldsymbol\delta_0$ and step 1 it is
+   $\tfrac12(\mathsf I-\mathsf P_{\mathrm w})\mathsf J_0\boldsymbol\delta_0-\tfrac12(\mathsf I-\mathsf P_{\mathrm w})\mathsf A^-\boldsymbol\delta_0$ by step 2. The
+   factor $\mathsf I-\mathsf P_{\mathrm w}$ is zero in every row with $\mathsf P_{\mathrm w}=+1$, so those rows of the wall flux
+   vanish (`[C5]`, for $N=3$ and 5).
+4. On a moving, layered Cartesian column, the column sums of the mass, transverse momentum and energy rows of the
+   closed operator vanish to $1.9\times10^{-16}$. The normal momentum row keeps an order-one wall term, the wall
+   pressure (`[C2]`).
+5. *Round-off.* $\mathsf B_0\mathsf P_{\mathrm w}$ only flips the sign of a column, which is exact; adding it to $\mathsf A_0$
+   rounds each entry once, within $\epsilon_{\mathrm m}/2$ of $|\mathsf A_0|+|\mathsf B_0|$ entrywise.
 
 In the code, @eq-ch07-vic-closure is the closure with `Bnd` ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}).
 
@@ -59,7 +75,7 @@ See @fig-ch07-vic-closure for the bottom end.
 
 ```{python}
 #| label: fig-ch07-vic-closure
-#| fig-cap: "The bottom of a column. The ghost increment (purple, dashed) is the mirror $\\mathrm{Bnd}\\,\\boldsymbol\\delta_0$ of the first cell's, $\\mathrm{Bnd}=\\mathrm{diag}(1,-1,1,1,1)$, so its coupling $\\mathsf B_0\\boldsymbol\\delta_{-1}$ folds into the diagonal block as in @eq-ch07-vic-closure. The top is the same with $\\mathsf C_{n-1}$."
+#| fig-cap: "The bottom of a column. The ghost increment (purple, dashed) is the mirror $\\mathsf P_{\\mathrm w}\\,\\boldsymbol\\delta_0$ of the first cell's, $\\mathsf P_{\\mathrm w}=\\mathrm{diag}(1,-1,1,1,1)$, so its coupling $\\mathsf B_0\\boldsymbol\\delta_{-1}$ folds into the diagonal block as in @eq-ch07-vic-closure. The top is the same with $\\mathsf C_{n-1}$."
 #| fig-alt: "A dashed purple ghost cell left of a thick wall line and two interior cells to its right, with an arrow from the first cell to the ghost and the closure formula beside them."
 #| echo: false
 from snapy_report.ch07.fig_vic_closure import make_fig
@@ -69,7 +85,7 @@ make_fig()
 The full kernel sets `Bnd` with $-1$ on the normal momentum ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}). It
 adds the closure at the first and last cell of the column and next to a solid cell, unless the block is not the
 first or last in $x_1$ or the direction is periodic. The dispatch always passes `periodic` as false
-({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}). The partial kernel does the same with its 3 x 3 `Bnd`
+({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}). The partial kernel does the same with its $3\times3$ `Bnd`
 ({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}). The blocks next to a solid cell use a mirror of the fluid
 cell instead of the solid's state, so the solid acts as a wall from inside the column, through `solid_lower`
 ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}).
@@ -86,21 +102,42 @@ cell instead of the solid's state, so the solid acts as a wall from inside the c
 
 : Code map of the VIC column closure. {#tbl-ch07-vic-closure-code}
 
+**How to use it.** There is no key, and the closure ignores the YAML boundary condition of $x_1$: an open or outflow
+explicit boundary still gets a reflecting implicit wall (Limits 1). @eq-ch07-vic-closure is these lines
+({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}):
+
+```cpp
+  Bnd.setConstant(1.);
+  Bnd(IVX + dir) = -1;
+  ...
+  if ((i == is || solid_lower) && first_block && !periodic)
+    a[i] += b[i] * Bnd.asDiagonal();
+  if ((i == ie || solid_upper) && last_block && !periodic)
+    a[i] += c[i] * Bnd.asDiagonal();
+```
+
+`Bnd.asDiagonal()` is $\mathsf P_{\mathrm w}$, with $-1$ on the normal momentum `IVX + dir`; the two updates are the bottom
+and top halves of @eq-ch07-vic-closure, also applied next to a solid cell. Refused: nothing.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| none dedicated | the closure is exercised by every VIC column test; the gravity column tests of @sec-ch06 check rest states with walls | — | — |
-| this section's check, `vic_closure_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+| none dedicated | the closure is exercised by every VIC column test; the gravity column tests of @sec-ch06 check rest states with walls | as there | @sec-ch06 |
+| this section's check, `vic_closure_check.py` | `[C1]`–`[C5]` | $10^{-12}$, $10^{-13}$, $10^{-15}$; exact for `[C5]` | stated in the check |
 
 : Tests of the VIC column closure. {#tbl-ch07-vic-closure-tests}
 
-::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `vic_closure_check.py`, which ports, from the code at the pin, the closure with zero gravity; deck: an 8-layer moving column with mirror ghosts.[^ch07-vic-closure-run] ctest cases: **pending: pinned ctest run**.
-**Coverage.** CPU and CUDA share the headers.
-:::
+No ctest checks the closure on its own, so its own tolerance is missing evidence. `vic_closure_check.py` ports the
+closure with zero gravity on an 8-layer moving column with mirror ghosts.[^ch07-vic-closure-run] `[C1]` matches the
+explicit-ghost solve to $2.1\times10^{-13}$; `[C2]` gives column sums of $1.5\times10^{-16}$ to $1.9\times10^{-16}$ for mass,
+transverse momentum and energy and 0.57 for the normal momentum; `[C3]` loses $1.24\times10^{-2}$ of the mass without
+the closure; `[C4]` gives a Roe normal velocity of 0 at both walls; `[C5]` checks steps 1 to 3 exactly. CPU and CUDA
+share the headers; only the CPU path ran.
 
-[^ch07-vic-closure-run]: Run: `python3 src/snapy_report/ch07/vic_closure_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/vic_closure_check.out`.
+[^ch07-vic-closure-run]: [sha: the code pin; deck: an 8-layer moving column with mirror ghosts; run:
+    `python3 src/snapy_report/ch07/vic_closure_check.py`, CPU, double, 1 process; Python 3.12.10, numpy 2.5.3, sympy
+    1.14.0; output identical to the committed `vic_closure_check.out`].
 
 ### Limits
 

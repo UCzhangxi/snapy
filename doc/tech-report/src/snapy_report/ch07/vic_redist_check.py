@@ -1,16 +1,17 @@
 """Executable check of the VIC constituent redistribution (chapter 7, _vic-redistribute.qmd).
 
 What is checked: vic_constituent_column and vic_redistribute_cell (src/implicit/vic_redistribute_impl.h:77-185)
-and the clamp-residual diagnostic (src/implicit/implicit_hydro.cpp:358-378) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported in vic_port.py. A column of 12 layers with dry gas and
-two species. Claims C1-C5.
+and the clamp-residual diagnostic (src/implicit/implicit_hydro.cpp:394-414) at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported in vic_port.py. A column of 12 layers with dry gas and
+two species. Claims C1-C6; C6 is exact (sympy).
 
-Run: python3 vic_redist_check.py   (numpy only; exits with the number of failed claims)
+Run: python3 vic_redist_check.py   (numpy and sympy; exits with the number of failed claims)
 """
 import os
 import sys
 
 import numpy as np
+import sympy as sp
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vic_port as vp  # noqa: E402
@@ -100,10 +101,26 @@ def check_C5_species_keep_margin():
                   "double %.6g, float32 %.6g" % (1 - keep64, float(1 - keep32)))
 
 
+def check_C6_telescoping_in_closed_form():
+    """Derivation of _vic-redistribute.qmd: summing eq-ch07-vic-faces over the n cells gives
+    T_top = -sum phi_i + DM sum m_i / sum m = 0, with phi_i the cell's extra mass and DM = sum phi_i."""
+    n = 6
+    phi = sp.symbols("phi0:%d" % n)
+    m = sp.symbols("m0:%d" % n, positive=True)
+    DM = sum(phi)
+    T = sp.Integer(0)
+    for i in range(n):
+        T = T - (phi[i] - DM * m[i] / sum(m))
+    ok = sp.simplify(T) == 0
+    return report("C6", ok, "the face transfers of eq-ch07-vic-faces telescope: T at the top face is -DM + DM = 0 in "
+                  "closed form", "6 cells, symbolic: T_top = %s" % sp.simplify(T))
+
+
 def main():
     checks = [check_C1_top_face_telescopes_to_zero, check_C2_every_constituent_is_conserved,
               check_C3_cell_change_is_the_face_divergence, check_C4_drained_donor_stays_nonnegative,
-              check_C5_species_keep_margin]
+              check_C5_species_keep_margin,
+              check_C6_telescoping_in_closed_form]
     sys.exit(sum(not c() for c in checks))
 
 

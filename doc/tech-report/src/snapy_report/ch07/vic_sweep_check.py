@@ -2,14 +2,15 @@
 
 What is checked: ForwardSweep (src/implicit/forward_sweep_impl.h:25-139), vic_backward_substitute
 (src/implicit/vic_redistribute_impl.h:27-36) and the failed-column sentinel (src/implicit/vic_solve_failure.h:13-19)
-at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported in vic_port.py. Claims C1-C4.
+at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported in vic_port.py. Claims C1-C6; C6 is exact (sympy).
 
-Run: python3 vic_sweep_check.py   (numpy only; exits with the number of failed claims)
+Run: python3 vic_sweep_check.py   (numpy and sympy; exits with the number of failed claims)
 """
 import os
 import sys
 
 import numpy as np
+import sympy as sp
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vic_port as vp  # noqa: E402
@@ -103,9 +104,70 @@ def check_C4_serial_dependency():
                   "so the column is solved serially, one thread per column", "layers changed: %d of 30" % moved)
 
 
+def check_C5_the_solve_runs_with_dt_c():
+    """The right-hand side and the diagonal carry the same dt, which is dt_c = wght2 dt under rk3
+    (hydro_forward.cpp:1065-1080, forward_sweep_impl.h:36-48), so the sweep returns (I + dt_c M)^-1 du."""
+    rng5 = np.random.default_rng(51)
+    W = np.array([[1.2, 3., 0., 0., 9e4], [1., 2., 0., 0., 8e4], [.8, 1., 0., 0., 7e4], [.7, 0., 0., 0., 6e4]])
+    gam = np.full(4, 1.4)
+    area, vol = np.ones(3), np.ones(2) * 100.
+    du = rng5.normal(size=(2, 5)) * 1e-2
+    dt, w2 = 10., 0.25                                   # rk3, second stage
+    dt_c = w2 * dt
+    a, b, c = vp.assemble_full(W, gam, area, vol, dt_c)
+    delta = vp.backward_substitute(*vp.forward_sweep(a, b, c, du / dt_c)[1:])
+    M = dense(a, b, c) - np.eye(10) / dt_c
+
+    def solve(step):
+        return np.linalg.solve(np.eye(10) + step * M, du.ravel()).reshape(2, 5)
+
+    e_c = np.abs(delta - solve(dt_c)).max() / np.abs(delta).max()
+    e_full = np.abs(delta - solve(dt)).max() / np.abs(delta).max()
+    ok = e_c < 1e-10 and e_full > 1e-3
+    return report("C5", ok, "with dt_c = wght2 dt in both the diagonal and the right-hand side, the sweep returns "
+                  "(I + dt_c M)^-1 du, not (I + dt M)^-1 du", "rk3 stage 2, dt = 10: relative difference %.1e from "
+                  "(I + dt_c M)^-1 du, %.1e from (I + dt M)^-1 du" % (e_c, e_full))
+
+
+def check_C6_row_substitution_is_exact():
+    """Derivation steps 1-3 of _vic-sweep.qmd: the forward recursion and the back pass in rational arithmetic on a
+    3-row system of 2 x 2 blocks reproduce the exact solution."""
+    rngx = np.random.default_rng(7)
+
+    def blk(shift=0):
+        return sp.Matrix(2, 2, [sp.Integer(int(v)) + shift for v in rngx.integers(-9, 10, 4)])
+
+    A = [blk() + 40 * sp.eye(2) for _ in range(3)]
+    B = [blk() for _ in range(3)]
+    C = [blk() for _ in range(3)]
+    f = [sp.Matrix([sp.Integer(int(v)) for v in rngx.integers(-9, 10, 2)]) for _ in range(3)]
+    Ct, dl = [None] * 3, [None] * 3
+    for i in range(3):
+        piv = A[i] - (B[i] * Ct[i - 1] if i else sp.zeros(2))
+        Ct[i] = piv.inv() * C[i]
+        dl[i] = piv.inv() * (f[i] - (B[i] * dl[i - 1] if i else sp.zeros(2, 1)))
+    x = [None, None, dl[2]]
+    for i in (1, 0):
+        x[i] = dl[i] - Ct[i] * x[i + 1]
+    big, rhs = sp.zeros(6), sp.zeros(6, 1)
+    for i in range(3):
+        big[2 * i:2 * i + 2, 2 * i:2 * i + 2] = A[i]
+        if i:
+            big[2 * i:2 * i + 2, 2 * i - 2:2 * i] = B[i]
+        if i < 2:
+            big[2 * i:2 * i + 2, 2 * i + 2:2 * i + 4] = C[i]
+        rhs[2 * i:2 * i + 2, 0] = f[i]
+    exact = big.LUsolve(rhs)
+    ok = sp.Matrix.vstack(*x) == exact
+    return report("C6", ok, "the reduced blocks C~_i, the forward values delta~_i and the back pass reproduce the exact "
+                  "solution of a 3-row system of 2 x 2 blocks", "rational arithmetic, difference %s"
+                  % ("0" if ok else "non-zero"))
+
+
 def main():
     checks = [check_C1_sweep_equals_dense_solve, check_C2_rhs_is_the_explicit_tendency_over_dt,
-              check_C3_singular_block_fails_the_whole_column, check_C4_serial_dependency]
+              check_C3_singular_block_fails_the_whole_column, check_C4_serial_dependency,
+              check_C5_the_solve_runs_with_dt_c, check_C6_row_substitution_is_exact]
     sys.exit(sum(not c() for c in checks))
 
 

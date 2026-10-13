@@ -2,15 +2,16 @@
 
 What is checked: the Lie (sequential) split of MeshBlockImpl::advance_local and the example driver
 (src/mesh/meshblock.cpp:795-841, examples/run_hydro.cpp:166-191 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0): the dynamics advance a whole step, then the saturation
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5): the dynamics advance a whole step, then the saturation
 adjustment, then the kinetics, each on the result of the one before. Two non-commuting linear operators stand in
-for them. Claims C1-C3.
+for them. Claims C1-C4; C4 is exact (sympy).
 
-Run: python3 split_check.py   (numpy only; exits with the number of failed claims)
+Run: python3 split_check.py   (numpy and sympy; exits with the number of failed claims)
 """
 import sys
 
 import numpy as np
+import sympy as sp
 
 
 def report(tag, ok, label, numbers):
@@ -66,9 +67,29 @@ def check_C3_commuting_operators_split_exactly():
                   "error %.1e" % err)
 
 
+def check_C4_commutator_is_the_local_error():
+    """Derivation steps 1-2 of _split.qmd on generic 2 x 2 generators, exponentials to third order."""
+    h = sp.Symbol("h")
+    Gd = sp.Matrix(2, 2, sp.symbols("a0:4"))   # dynamics, applied first
+    Gk = sp.Matrix(2, 2, sp.symbols("b0:4"))   # kinetics, applied last
+
+    def exp3(X):
+        return sp.eye(2) + X + X * X / 2 + X * X * X / 6
+
+    diff = (exp3(h * Gk) * exp3(h * Gd) - exp3(h * (Gk + Gd))).applyfunc(sp.expand)
+    low = [diff.applyfunc(lambda e, n=n: e.coeff(h, n)) for n in (0, 1)]
+    c2 = diff.applyfunc(lambda e: e.coeff(h, 2))
+    stated = (Gk * Gd - Gd * Gk) / 2          # step 2: (h^2 / 2) [G_kin, G_dyn]
+    ok = all(m == sp.zeros(2) for m in low) and (c2 - stated).applyfunc(sp.expand) == sp.zeros(2) \
+        and c2 != sp.zeros(2)
+    return report("C4", ok, "e^{h G_kin} e^{h G_dyn} - e^{h (G_kin + G_dyn)} = (h^2/2) [G_kin, G_dyn] + O(h^3) on generic "
+                  "2 x 2 generators", "orders h^0 and h^1 vanish; the h^2 term equals the commutator over 2 entry by entry")
+
+
 def main():
     checks = [check_C1_lie_split_is_first_order, check_C2_strang_for_contrast,
-              check_C3_commuting_operators_split_exactly]
+              check_C3_commuting_operators_split_exactly,
+              check_C4_commutator_is_the_local_error]
     sys.exit(sum(not c() for c in checks))
 
 
