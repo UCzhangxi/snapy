@@ -20,7 +20,7 @@ that keeps the books straight.
 
 **Placement.** In `HydroImpl::forward`, right before `flux_positivity_scale_`, every stage the limiter runs.
 
-**Activation.** With the limiter, and only when the equation of state defines a species enthalpy.
+**Activation.** Whenever the tracer limiter runs (`limiter: true` or a covariance row) and a species enthalpy exists.
 
 **Guarantee / limits.** The withheld mass keeps its own enthalpy and momentum; nothing is said about its kinetic energy.
 
@@ -52,7 +52,10 @@ momentum over two thousand face sets.
 The donor is chosen per face and per part of the flux, not per cell. In $x_1$ the flux carries two physically distinct
 pieces, an advected part and a settling part from sedimentation, and they need not move in the same direction. A
 species may be advected upward while settling downward through the same face. Each part therefore takes its own donor,
-which is why the code applies the withholding twice in $x_1$ and once elsewhere.
+which is why the code applies the withholding twice in $x_1$ and once elsewhere. The settling part is kept apart only
+with `limiter: true`: the stage records it as `fsed1` only then
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). When the covariance gate alone runs the limiter, the $x_1$ flux is withheld as one net flux with one donor,
+settling included.
 
 ### Numerical method
 
@@ -65,7 +68,8 @@ the lower or upper cell according to the sign of the part being withheld.
 
 The $x_1$ split is `sed` ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}): when a sedimentation flux is given, the
 advected part is the net flux minus it, and `withhold` is called once on each. The other two
-directions have no settling flux and take the single branch.
+directions have no settling flux and take the single branch, and so does $x_1$ when no settling flux was recorded,
+which is the case under the covariance gate with `limiter: false`.
 
 The species enthalpy comes from the equation of state at `species_enthalpy`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), computed on the primitive state with ghosts included.
@@ -77,8 +81,9 @@ is a measurement, not a derivation, and it is recorded as such.
 1. The share $(1 - \Theta_d)$ is taken from the donor of the *net* flux, the same choice `flux_positivity_scale_`
    makes, so the mass accounted for is the mass actually withheld
    ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}).
-2. In $x_1$ the species flux is split into an advected part $F - F_{\mathrm{sed}}$ and a settling part
-   $F_{\mathrm{sed}}$, each with its own donor. The two may cross the face in opposite directions.
+2. With `limiter: true`, in $x_1$ the species flux is split into an advected part $F - F_{\mathrm{sed}}$ and a
+   settling part $F_{\mathrm{sed}}$, each with its own donor; the two may cross the face in opposite directions. Under
+   the covariance gate with `limiter: false` the settling flux is not recorded, and both parts take the net donor.
 3. The enthalpy is computed on the primitive state with ghosts included and is not exchanged; the code comment records
    that exchanging it changed no bit ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. Each correction is a product $\mathrm{d}m\,\hat h_n$ rounded once and a subtraction rounded once, so its
@@ -88,16 +93,17 @@ is a measurement, not a derivation, and it is recorded as such.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| the carry | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `flux_positivity_carry_` | limiter on, species enthalpy defined |
+| the carry | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `flux_positivity_carry_` | tracer limiter running, species enthalpy defined |
 | the withheld share, from the net donor | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `share` | |
 | energy and momentum subtraction | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `withhold` | |
-| the $x_1$ advected and settling split | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `fsed` | $x_1$ only |
+| the $x_1$ advected and settling split | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `fsed` | $x_1$ only, `limiter: true` |
 | the species enthalpy | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `species_enthalpy` | |
 
 : Code map of the carry. {#tbl-ch08-carry-code}
 
-**How to use it.** There is no switch of its own. The carry runs whenever the limiter runs and the equation of
-state returns a species enthalpy; these are the lines of the stage
+**How to use it.** There is no switch of its own. The carry runs whenever the tracer limiter runs, under
+`limiter: true` or under the covariance gate of @sec-ch08-theta, and the equation of state returns a species enthalpy.
+The $x_1$ advected and settling split needs `limiter: true`. These are the lines of the stage
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
 
 ```cpp
