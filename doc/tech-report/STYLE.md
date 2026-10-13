@@ -144,15 +144,9 @@ any that does not resolve; it is the render's pre-render step and a CI step.
   citation, and the "symbol" column of the Code table. A citation the surrounding sentence does not name is a
   review failure even when it resolves.
 - Hand-written line numbers are forbidden in a `.qmd`, in both the link form and the `path:lines@sha` notation.
-  The STYLE 10.6 link survives in exactly one place: a repository with no code pin. Everything in a repository
-  that has a pin is cited by symbol.
-- **The enclosing definition.** Where the thing a sentence names is not a citable symbol at the pin - a local
-  variable, a lambda, a label inside a function, a macro, or a passage of top-level code - cite the enclosing
-  definition instead, and keep the named thing in backticks in the prose so the reader still has the anchor:
-  `sqrtdl` ({{< code src/riemann/roe_impl.h roe_impl >}}). A citation of this kind is registered in
-  `reviews/code-anchors-unmapped.tsv` with the symbol actually cited and the reason the named anchor is not one,
-  so the coarser citation is a recorded decision rather than an accident. Where no definition encloses the lines
-  either, cite the file as a whole, `{{< code <path> >}}`, and register that.
+  The STYLE 10.6 link survives in exactly two places: a repository with no code pin, and the passages listed in
+  `reviews/code-anchors-unmapped.tsv` (lines spanning several symbols, lines outside any symbol). Both are
+  listed, not improvised; adding a new one needs an entry in that file and a reason.
 - Tests are cited by file and ctest name: `tests/test_gravity_work_radial_exact.py` (ctest
   `test_gravity_work_radial_exact_python`).
 
