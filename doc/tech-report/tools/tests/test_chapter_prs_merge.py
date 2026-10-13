@@ -1,10 +1,14 @@
 """Two pull requests that edit different chapters merge without a conflict (README, "Generated files and rebasing").
 
 On a copy of this report, two branches from the same base each edit one chapter (ch04 and ch05): a labelled
-equation in a Derivation layer, written in a NOTATION.md symbol that no chapter uses yet, and the removal of a
-change-history phrase that the ratchet counts. Each branch runs the generators and `ratchet_gate.py update`, as
-an author does, and commits. `git merge` of the two must be conflict-free, and the generators and the ratchet
-on the merged tree must reproduce the committed files exactly.
+equation in a Derivation layer, written in a NOTATION.md symbol that no chapter uses yet, a given statement for
+that equation, and the removal of a change-history phrase that the ratchet counts. Each branch runs the
+generators and `ratchet_gate.py update`, as an author does, and commits. `git merge` of the two must be
+conflict-free, and the generators and the ratchet on the merged tree must reproduce the committed files exactly.
+
+The statements go where chapter blocks meet, as in #117 and #119 (batch 13): ch04's ends its chapter's
+entries and ch05's starts its chapter's, so in one shared statements file the two edits touch the same place,
+and in one file per chapter they touch different files.
 """
 
 import hashlib
@@ -44,6 +48,21 @@ def _derivation_file(tree, chapter):
                 if re.search(r"^### Derivation\s*$", f.read_text(), re.M))
 
 
+def _add_statement(tree, chapter, label, text, last):
+    """Give `label` a statement, after (or before) the first run of its chapter's entries, in the file the tree
+    keeps it in: the chapter's own tools/derivation-statements/chNN.json, or the one shared file of the older
+    layout, where that run is followed by the next chapter's entries."""
+    split = tree / "tools" / "derivation-statements"
+    f = split / f"ch{chapter}.json" if split.is_dir() else tree / "tools" / "derivation-statements.json"
+    given = list(json.loads(f.read_text(encoding="utf-8")).items()) if f.exists() else []
+    own = [i for i, (k, _) in enumerate(given) if k.startswith(f"eq-ch{chapter}-")]
+    at = own[0] if own else len(given)
+    while last and own and at in own:
+        at += 1
+    given.insert(at, (label, text))
+    f.write_text(json.dumps(dict(given), indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def _copy_report(dst):
     skip = shutil.ignore_patterns("_book", "_freeze", ".quarto", "_generated", "__pycache__", "*.pyc", "tests")
     for d in ("book", "tools", "src/snapy_report", "reviews"):
@@ -71,6 +90,7 @@ def test_prs_on_different_chapters_merge_and_stay_current(tmp_path):
         added = f"\nThe merge test adds the stencil spacing relation\n\n$$\n{SYMBOL} = h_i\n$$ {{#eq-ch{ch}-mergetest}}\n"
         text = re.sub(r"^### Derivation\s*\n", lambda m: m.group(0) + added, f.read_text(), count=1, flags=re.M)
         f.write_text(text.replace(f"\n\n{PHRASE}\n", "\n"))
+        _add_statement(tree, ch, f"eq-ch{ch}-mergetest", f"The merge test's statement for chapter {ch}.", ch == "04")
         _regenerate(tree)
         _git(tree, "add", "-A")
         _git(tree, "commit", "-q", "-m", f"ch{ch} edit")
@@ -89,5 +109,6 @@ def test_prs_on_different_chapters_merge_and_stay_current(tmp_path):
     appa = json.loads((tree / "book/_generated/appa.json").read_text())
     assert appb["ch04.equations"] != "0" and appb["ch05.equations"] != "0"
     for ch in ("04", "05"):
-        assert f"@eq-ch{ch}-mergetest" in (tree / f"book/chapters/17-appendices/_appb-ch{ch}.qmd").read_text()
+        rows = (tree / f"book/chapters/17-appendices/_appb-ch{ch}.qmd").read_text()
+        assert f"@eq-ch{ch}-mergetest" in rows and f"The merge test's statement for chapter {ch}." in rows
     assert appa["first-" + hashlib.sha1(SYMBOL.encode()).hexdigest()[:12]].startswith("@sec-ch04-")
