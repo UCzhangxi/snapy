@@ -81,6 +81,7 @@ import sys
 import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for book_chapters
+import generated_values  # noqa: E402  (render-time values of the generated appendices)
 
 # things that are defects, not taste
 FATAL = {
@@ -391,12 +392,17 @@ def _xrefs(book):
                 if m:
                     deep[m.group(1)] = (_rel(book, q), 0, "on a heading INSIDE a fenced div, which "
                                         "is not a section -- reference the div itself")
-    used = {}
+    used, values = {}, None
     for q in _chapter_sources(book):
+        text = q.read_text()
+        # a generated appendix's render-time values (a symbol's first use) are references the reader gets too
+        if generated_values.SHORTCODE.search(text):
+            values = values if values is not None else generated_values.computed(book)
+            text = generated_values.expand(text, values)
         # ⚠️ a trailing hyphen belongs to the PROSE, not the label: `@eq-foo--` is
         # `@eq-foo` followed by a markdown en-dash, and a greedy `[\w-]+` invents two
         # dangling references in ch09 that do not exist. The label cannot end in a hyphen.
-        for lab in re.findall(r"@((?:sec|eq|fig|tbl|exr|exm|thm|prp|lem)-(?:[\w-]*\w)?)", q.read_text()):
+        for lab in re.findall(r"@((?:sec|eq|fig|tbl|exr|exm|thm|prp|lem)-(?:[\w-]*\w)?)", text):
             used.setdefault(lab, set()).add(_rel(book, q))
     return used, defined, deep
 
