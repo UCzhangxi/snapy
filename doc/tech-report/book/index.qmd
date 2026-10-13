@@ -10,3 +10,63 @@ Code is cited by file and symbol, resolved at one pinned commit of
 [`chengcli/snapy`](https://github.com/chengcli/snapy). That commit is recorded in `doc/tech-report/code_pin.yml`
 and nowhere else, so this page does not restate it; read it there. What the pin means, and how a citation is
 written, are in STYLE.md section 3.1.
+
+## Install and run {#sec-preface-install .unnumbered}
+
+Every input file, switch and command in this book is written for snapy at the pin above, built from source. The
+releases on PyPI (`pip install snapy`) are older than the pin. They lack the environment switches of chapters 4 to
+6 (`SNAP_WB_REF4`, `SNAP_X1_CENTROID_EXACT`, `SNAP_X1_MASS_COVARIANCE`, `SNAP_GRAVITY_WORK_RADIAL_EXACT`), and a
+switch the code does not know is ignored without a message. Older releases also refuse the `gravity-work` keys of
+chapter 6. So build the pin, as below, before you try any example.
+
+**What you need.** Python 3.10 to 3.13, CMake 3.20 or later, a C++17 compiler, and the NetCDF C library (on macOS,
+`brew install netcdf`). The Python packages are PyTorch 2.10.0 and kintera 2.6.2 or later; configuration stops
+with "Could NOT find Kintera" when kintera is older.
+
+**Build.** The pin is the `sha:` line of `code_pin.yml`. It is also the commit in every code link of this book,
+for example {{< code README.md >}}; the 40 characters after `blob/` in the link are the pin.
+
+```bash
+python3.13 -m venv snapy-env && source snapy-env/bin/activate
+pip install numpy pyyaml "kintera>=2.6.2" torch==2.10.0
+git clone https://github.com/chengcli/snapy && cd snapy
+git checkout <pin>
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DNETCDF=ON -DUCX=OFF
+cmake --build build --parallel 6
+pip install .
+```
+
+`-DUCX=OFF` builds the Gloo backend only, which is all a single machine needs; @sec-ch14-backends describes UCX.
+The build also compiles the tests (`BUILD_TESTS` is on by default). A test named in a Tests layer runs with
+`ctest --test-dir build -R <name>`. The last line installs the Python package from the same build, which the Python
+listings of the chapters import (`import snapy`), and puts the tools `pd-run`, `pd-combine` and `pd-inspect` on
+the path.
+
+**Run a deck.** The build puts one driver program per example in `build/bin`, next to links to the decks of
+`examples/`. A *deck* is a YAML input file, and a *driver* is the program that reads it, sets the initial state
+and steps the model. The Straka cold bubble runs on one process with
+
+```bash
+cd build/bin
+./straka.release straka_single.yaml
+```
+
+It prints one line per ten cycles and stops at 900 s of model time, after about 3700 cycles (half a minute on six
+CPU cores). It writes `straka_single.out0.00000.nc` and `straka_single.out0.00001.nc`, the start and the end state.
+A deck split into several blocks runs on several processes, launched with `torchrun`. The number of processes $N$
+is the number of blocks divided by `blocks_per_process`. `straka_proc2.yaml` has two blocks along $x_2$ and one
+block per process, so $N = 2$ (about 20 s):
+
+```bash
+torchrun --no-python --nproc-per-node=2 --master-port=29573 ./straka.release straka_proc2.yaml
+```
+
+Pick any free port for `--master-port` (@sec-ch14-launch). A process count that does not match the deck stops at
+construction with "world_size (1) does not match layout partitioning (2)".
+
+**Which driver for which deck.** `straka.release` runs dry Cartesian decks such as `straka_single.yaml`;
+`bryan.release` runs the moist `bryan.yaml`; `run_hydro.release -i <deck>` needs a deck with a `reactions:` card,
+such as `jupiter_evap_precip_1d.yaml`, and stops on a dry deck. A "minimal input" in a chapter is a fragment, not
+a deck: add its keys to a copy of a complete deck (`straka_single.yaml` for a dry run, `bryan.yaml` for a moist
+one) and run that copy. An environment switch goes in front of the driver, as in
+`SNAP_WB_REF4=1 ./straka.release deck.yaml`.
