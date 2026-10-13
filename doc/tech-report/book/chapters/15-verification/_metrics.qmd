@@ -1,0 +1,187 @@
+## Reading verification evidence
+
+Verification asks whether the implementation solves its stated discrete problem. This chapter separates
+an assertion in source, an independent algebra check and a measured execution of a pinned build.
+A tolerance is an acceptance criterion; it is not an observed error.
+
+<!-- PROVENANCE
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
+sources: tests/test_wb_ref_wall.cpp; tests/test_wall_saturation.cpp; src/coord/coordinate.cpp
+status: draft
+-->
+
+### Summary
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Interpret conservation residuals and convergence ratios.
+
+**Data.** Cell averages, face fluxes and a named reference solution.
+
+**Placement.** Analysis after a test, outside the solver step.
+
+**Activation.** No solver switch; select a test and record its environment.
+
+**Guarantee / limits.** Algebra checks do not execute a compiled solver.
+
+**Evidence.** `metrics_check.py` checks every algebraic identity below.
+:::
+
+This is a selected catalogue, organized by the existing chapter entries. The generated test index in
+@sec-appc provides a broader historical inventory; read its recorded provenance before using it at a new pin. A missing row here does not mean a test is absent.
+The chapter adds no compiled CPU, CUDA or multi-rank results at the code pin.
+
+### Derivation
+
+#### Why a volume-weighted conservation check is necessary
+
+Take a fixed, one-dimensional column with no mass source. Total density is $\rho$ in
+$\mathrm{kg\,m^{-3}}$, velocity is $v_1$ in $\mathrm{m\,s^{-1}}$, cell volume is $V_i$ in
+$\mathrm{m^3}$ and face area is $A_{i\pm1/2}$ in $\mathrm{m^2}$.
+With $\mathbf n$ the dimensionless outward unit normal, the continuity equation and its volume integral are
+
+$$
+\begin{aligned}
+\partial_t\rho+\nabla\cdot(\rho\mathbf v)&=0,\\
+\frac{d}{dt}\int_{V_i}\rho\,dV
+  &=-\int_{\partial V_i}\rho\mathbf v\cdot\mathbf n\,dA.
+\end{aligned}
+$$
+
+For a column, assume that the lateral boundary contributes
+no mass flux. Let $F_{i\pm1/2}$ denote the numerical total-mass flux density in
+$\mathrm{kg\,m^{-2}\,s^{-1}}$, oriented toward increasing $x_1$.
+Replace each face integral by its area times the numerical face-average flux. With fixed volumes,
+$\bar\rho_i$ is the stored density average and a dot denotes its semidiscrete time derivative:
+
+$$
+\begin{aligned}
+V_i\dot{\bar\rho}_i
+ &=-A_{i+1/2}F_{i+1/2}+A_{i-1/2}F_{i-1/2},\\
+\dot{\bar\rho}_i
+ &=-\frac{\Delta_i[AF]}{V_i}.
+\end{aligned}
+$$
+
+The positive face difference divided by volume is the operator in `CoordinateImpl::divergence`
+({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).
+The statement here concerns that flux-form operator; it does not claim a particular reconstruction order.
+
+Sum adjacent cells before evaluating a relative error. The upper-face contribution of one cell and the
+lower-face contribution of its neighbour have the same area and flux and opposite signs:
+
+$$
+\begin{aligned}
+V_i\dot{\bar\rho}_i+V_{i+1}\dot{\bar\rho}_{i+1}
+ &= A_{i-1/2}F_{i-1/2}-A_{i+1/2}F_{i+1/2}\\
+ &\qquad +A_{i+1/2}F_{i+1/2}-A_{i+3/2}F_{i+3/2},\\
+ &= A_{i-1/2}F_{i-1/2}-A_{i+3/2}F_{i+3/2}.
+\end{aligned}
+$$
+
+Let $\mathcal I$ denote all interior cells in the column. Repeating that cancellation over every internal face gives
+
+$$
+\sum_{i\in\mathcal I}V_i\dot{\bar\rho}_i=-[AF]_{\mathrm{walls}}.
+$$ {#eq-ch15-budget}
+
+The face differences in @eq-ch15-budget come from `CoordinateImpl::divergence`
+({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).
+Thus the right-hand side is zero at closed walls. The identity is exact in real arithmetic if both cells use
+the same face transfer. It does not hold by cancellation when the two blocks use different seam fluxes.
+Floating-point sums can leave a residual. Summing density without volumes tests a different quantity on
+an unequal-volume grid. The algebra check uses unequal volumes to expose that mistake.
+
+#### Relative drift and a zero reference
+
+Let $\mathcal O$ be the initial, nonzero mass oracle in kilograms. The relative drift can be written either
+as a difference divided by the reference magnitude or as a ratio minus one:
+
+$$
+\begin{aligned}
+\left|\frac{\sum_i V_i\bar\rho_i}{\mathcal O}-1\right|
+ &=\left|\frac{\sum_i V_i\bar\rho_i-\mathcal O}{\mathcal O}\right|,\\
+ &=\frac{\left|\sum_i V_i\bar\rho_i-\mathcal O\right|}{|\mathcal O|}.
+\end{aligned}
+$$
+
+The same steps apply to a nonzero energy reference in joules or a water-mass reference in kilograms.
+`WallSaturation.phase_change_preserves_energy_and_water` constructs volume-weighted totals and applies
+this ratio form ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
+For a zero reference the division is undefined. Use an explicitly chosen dimensional absolute tolerance;
+do not infer one from a relative threshold. The catalogue keeps each test's own normalization.
+
+#### What a two-grid order estimate means
+
+Use a fixed physical domain and uniform cell width $h_i$ in metres. Let $\mathcal O$ now denote the exact
+density oracle evaluated with the same averaging convention as $\bar\rho^{(h_i)}$.
+The local symbols $\nu_{15}$ (dimensionless convergence exponent) and $C_{15}>0$
+(error coefficient, density units divided by $\mathrm m^{\nu_{15}}$) are proposed additions, flagged in
+`ISSUES.md`. They do not reuse $p$ (pressure), $e$ (specific internal energy) or $\mathcal E$ (energy functional).
+
+Assume a nonzero leading error with a single power over the grids being compared:
+
+$$
+\begin{aligned}
+\lVert\bar\rho^{(h_i)}-\mathcal O\rVert_\infty&=C_{15}h_i^{\nu_{15}},\\
+\lVert\bar\rho^{(h_i/2)}-\mathcal O\rVert_\infty&=C_{15}(h_i/2)^{\nu_{15}},\\
+\frac{\lVert\bar\rho^{(h_i)}-\mathcal O\rVert_\infty}
+ {\lVert\bar\rho^{(h_i/2)}-\mathcal O\rVert_\infty}
+ &=\frac{C_{15}h_i^{\nu_{15}}}{C_{15}h_i^{\nu_{15}}2^{-\nu_{15}}},\\
+ &=2^{\nu_{15}},\\
+\log_2\!\left(
+\frac{\lVert\bar\rho^{(h_i)}-\mathcal O\rVert_\infty}
+ {\lVert\bar\rho^{(h_i/2)}-\mathcal O\rVert_\infty}\right)&=\nu_{15}.
+\end{aligned}
+$$ {#eq-ch15-order}
+
+The same ratio applies to a nonzero scalar face error. `faces_next_to_the_walls_are_second_order` uses
+`log2(a / b)` ({{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}}).
+@eq-ch15-order is exact only under the single-power assumption. Higher-order terms, temporal error and
+roundoff change the measured ratio. At least three resolutions give two adjacent ratios and allow a check
+that the apparent order is stabilizing. Two grids provide one estimate, not proof of an asymptotic regime.
+
+### Numerical method
+
+@fig-ch15-evidence separates the evidence paths. First inspect the source assertion and the registration.
+Next verify the binary or package origin. Then run the selected arm and preserve passes, failures and skips.
+Record the full code commit, deck, compiler and library versions, precision, device, process count and environment.
+
+```{python}
+#| label: fig-ch15-evidence
+#| fig-cap: "Two verification paths. Symbolic checks establish identities; solver tests require a build at the pin and a recorded execution. Neither path substitutes for the other."
+#| fig-alt: "Two parallel paths lead from algebra to identity evidence and from pinned source to runtime evidence."
+#| echo: false
+from snapy_report.ch15.fig_evidence import make_fig
+make_fig()
+```
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| Flux divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `CoordinateImpl::divergence` | test input |
+| Relative drift | {{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} | `WallSaturation.phase_change_preserves_energy_and_water` | test input |
+| Order ratio | {{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}} | `faces_next_to_the_walls_are_second_order` | test input |
+
+: Definitions for interpreting the catalogue. {#tbl-ch15-metrics-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `metrics_check.py` (report only) | Weighted cancellation; unweighted counterexample | exact symbolic zero/nonzero | Derived flux sum |
+| same script | Ratio and difference forms agree | exact symbolic zero | Nonzero positive reference |
+| same script | Refinement ratio and logarithmic order | exact symbolic zero | Single-power error model |
+
+: Algebra checks for the verification metrics. {#tbl-ch15-metrics-tests}
+
+Run `PYTHONPATH=src python src/snapy_report/ch15/metrics_check.py` from the report directory.
+The sibling output records the checks; the run environment and command are recorded in
+`reviews/ch15-verification-evidence.md`. These checks import SymPy, not snapy.
+
+### Limits
+
+Exact algebra cannot establish device parity, communication correctness, nonlinear stability or physical
+validation. The catalogue states selected acceptance contracts, not an exhaustive coverage matrix.
+The independent report checks can also fail because a stored output contains machine-dependent roundoff digits;
+inspect the residual and its bound before interpreting that as a failed physical identity.

@@ -1,75 +1,83 @@
-## Hydrostatic and well-balanced treatment: test evidence {#sec-ch15-ch05-tests}
+## Hydrostatic and well-balanced evidence {#sec-ch15-ch05-tests}
+
+A balanced atmosphere should remain at rest, including near a wall and a block seam.
+The tests of @sec-ch05 use both a rest residual and a deliberately unbalanced control.
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 15.5; tests/CMakeLists.txt; the test files named below
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
+sources: tests named in the Code table
 status: draft
 -->
 
-This catalogue accompanies @sec-ch05. It lists every ctest entry that carries a claim of that chapter at the pin
-`snapy@e894700ff7aee30b52882e5202b16461413780b0`, with what it asserts, its tolerance and the outcome of one run, and
-the claims of the chapter's executable check.
+### Summary
 
-### The run
+::: {.callout-note title="At a glance"}
+**Purpose.** Connect the chapter's claims to executable assertions.
 
-All entries below were run once [sha `e894700ff7aee30b52882e5202b16461413780b0`; run: `ctest -V` on a Release build of
-the pin with CUDA off, 2026-10-10, CPU, double; 1 rank, the `_mp` entries 2 ranks under `torchrun`]. The 26 C++ and
-CMake entries passed. The two Python entries failed under ctest, because the interpreter imported an older installed
-snapy instead of the pin's build (`unknown key 'forcing/const-gravity/gravity-work'`); run directly against the pin's
-build (`python tests/test_wb_ref4_order.py`, `python tests/test_x1_centroid_rest.py`) both pass. Every `_cuda` case was
-skipped by the build. **Pending: a CUDA run at the pin, and a ctest run of the two Python entries with the import path
-set to the pin's build.**
+**Data.** Test inputs and thresholds; no new solver measurements.
 
-### ctest entries
+**Placement.** Verification outside the simulation step.
 
-| test (ctest name) | what it asserts | tolerance | outcome |
-|----------------|-------------|-----|-----|
-| `test_hydro_ref_x1.release` | CPU path equals the tensor path; with the wall clamp ghosts do not reach the interior, without it they do; thin blocks; wall reference independent of the block size | $2\times10^{-12}$ double; exact; $10^{-14}$ | pass (6), CUDA case skipped |
-| `test_hydro_options.release` | `wb-wall-clamp` ships enabled and changes the reference | differ $>10^{-13}$ | pass (11), CUDA case skipped |
-| `test_wb_ref_wall.release` | $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$ at faces 1-2 next to both walls second order, $n_1$ 32 $\to$ 64; wall faces within $1.5\times$ the interior | order $\ge1.7$ | pass; orders 1.81-2.12 |
-| `test_wb_ref4_order_python` | switch on: order $\ge2.75$ at 1 and 3 e-folds; off: $<2.5$ | `ORDER_ON 2.75`, `ORDER_OFF 2.5` | pass when run against the pin; orders on 3.88-4.07, off 2.04-2.21 |
-| `test_x1_centroid_rest_python` | switch on: rest force $<10^{-10}$; off: $>10^{-8}$ at $r_0/H=5$ | `TOL_ON 1e-10`, `TOL_OFF 1e-8` | pass when run against the pin; on $\le3.3\times10^{-14}$, off $2.4\times10^{-5}$ |
-| `test_pref_local_seam.release` | $p_{\mathrm{ref}}$ continuous at an in-process seam; four blocks equal one after 200 steps | $10^{-6}$; $10^{-12}$ | pass (2) |
-| `test_x1_seam_split.release` | the switches-off arm sets up with $n_g=1$ | runs | pass |
-| `test_x1_seam_split_x1_centroid.release` | split equals one block, $n_h$ 1 and 0 | $10^{-13}$ | pass; gap 0 |
-| `test_x1_seam_split_wb_ref4.release` | split with the resolution flag at the seam equals one block | $10^{-13}$ | pass; gaps $6.8\times10^{-15}$, $1.7\times10^{-15}$ |
-| `test_x1_seam_split_wb_ref4_gravity_0.release` | gravity off, $n_g=1$ steps under the switch | runs | pass |
-| `test_x1_seam_split_mp.release`, `_x1_centroid`, `_wb_ref4` (2 ranks) | two ranks equal two blocks and one block | $10^{-13}$ | pass; gaps 0 to $6.8\times10^{-15}$ |
-| `test_stencil_cache_small_block_python` (main after chengcli/snapy#303) | `SNAP_WB_REF4` and `SNAP_X1_CENTROID_EXACT` stencil caches on blocks of 2 to 4 $x_1$ cells survive the second Runge-Kutta stage (chengcli/snapy#298) | runs | no per-test status in the body (suite status below); 13 of 13 cases, 5 of which crashed before the fix |
-| `test_pref_local_seam_flux_covariance.release` (main after chengcli/snapy#303) | four $x_1$ blocks equal one after 200 steps with `SNAP_FLUX_COVARIANCE=1` | $10^{-12}$ | no per-test status in the body (suite status below); relative $\rho$ gap $4.6\times10^{-15}$, $4.42\times10^{-6}$ before the change |
-| `test_x1_seam_split_vic_refuses_split.release` (main after chengcli/snapy#303) | an implicit scheme refuses an $x_1$ split | exception | no per-test status in the body (suite status below) |
-| `test_face_floor.release`, `_wb_ref4`, `_x1_centroid` | adjacent-density floor; switched fluxes; unresolved column flux $2.83191\times10^{-8}$ | $10^{-3}$ abs; $10^{-3}$, $10^{-5}$ relative | pass (2 each); flux $2.8319\times10^{-8}$ in all arms |
-| `test_balance_column.release`, `_wb_ref4`, `_x1_centroid` | transfer to a block bitwise; marched and moist columns come out at rest; fixed point; refusals; switch predicates | bitwise; $10^{-10}$; $10^{-14}$ | pass (11 each), CUDA cases skipped |
-| `test_hydrostatic.release` | cubed-sphere atmosphere at rest, `non-hydrostatic: 0.` | $10^{-8}$ | pass; $7.84\times10^{-15}$ |
-| `test_wb_wall_corner.release` | balanced polytrope keeps $\lvert u_2\rvert/c_s$, $\lvert v\rvert/c_s\le10^{-12}$; $x_2$ split equals one block | $10^{-12}$; exact | pass (4), CUDA cases skipped |
-| `test_bryan_balance_ic` | one pass fails with the cap error; default converges; dry case projects once | exit status, output | pass; default stops after pass 6 |
-| `test_straka_redo` | straka at CFL 1.6 to 60 s exits 0 and redoes a step | exit status, output | pass |
+**Activation.** Select the named tests; this catalogue changes no defaults.
 
-: The ctest entries of @sec-ch05 at the pin and the outcome of one CPU run. The radial-exact seam arms and the
-mass-covariance arm of `test_x1_seam_split` belong to @sec-ch06 and @sec-ch04. {#tbl-ch15-ch05-ctest}
+**Guarantee / limits.** Source coverage does not establish a runtime pass.
 
-The three rows marked "main after chengcli/snapy#303" describe main at chengcli/snapy `9ad0936779ae001dba65c9eafccaa7c058686c97`, while the rest of this table is pinned at `e894700ff7aee30b52882e5202b16461413780b0`. Their status is the one the body of chengcli/snapy#303 states: CPU `ctest -j1` 114 of 115 on the branch (the body does not name the commit of that run, so it is not shown to include every row marked here), the one failure `test_straka` (no `pd-combine` on that machine), with the gaps quoted [source: chengcli/snapy#303 body; sha: snapy@546b1afd80d47a437a92ead745ef525f8335094a (PR head); deck/run: the ctest arms named, run counts and machine as the body states them, deck not stated in the body]. The other tests that chengcli/snapy#303 adds or changes check the gravity work and the implicit solve, whose chapters have no file in this chapter yet.
+**Evidence.** The Tests layer distinguishes report checks from solver tests.
+:::
 
-The CUDA registrations of these files (`test_wb_ref4_order_cuda`, `test_x1_centroid_rest_cuda`, the `_cuda` seam arms
-and the `_cuda` gtest cases inside the CPU binaries) were not run.
+### Derivation
 
-### The chapter's executable check
+The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
+these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
 
-`python3 src/snapy_report/ch05/wbref_check.py` runs on CPU without importing snapy; its committed output is
-`src/snapy_report/ch05/wbref_check.out`, and `src/tests/test_ch05.py` runs it with the chapter's figure tests. One run
-[numpy 2.2.4, sympy 1.14.0, double] passes all 21 claims.
+### Numerical method
 
-| output label | assertion | tolerance | what it does not establish |
-|----------------|-------------|-----|-----|
-| `[C1]`, `[C2]` | six-face interior and wall-row weights | exact rationals | the guards around them |
-| `[C3]`, `[C7]`, `[C8]` | filter moments, cubic wall values, quartic-primitive face weights | exact rationals | the code's stencil assembly |
-| `[C4]`–`[C6]` | repeated wall cell first order; continuation second order; continuation bounds | exact; sampled | non-uniform grids |
-| `[C9]`, `[C10]`, `[C20]` | log-mean, top anchor, uniform test | $10^{-14}$; closed form | stretched-grid dynamics |
-| `[C11]` | independent rebuild reproduces `test_wb_ref_wall`'s 40 printed numbers | $6\times10^{-4}$ relative (printed digits) | the solver's $\rho_L$, $\rho_R$ |
-| `[C12]`–`[C14]` | wall orders; six-face order 5.87; face-density offset formula, base order 2.00 and `SNAP_WB_REF4` order 4.68 | fitted orders | solver dynamics |
-| `[C15]` | `balance_column`'s iteration converges on a perturbed column | residual $<10^{-10}$ | a convergence proof |
-| `[C16]`–`[C18]` | plain-mean conversion exactness; pressure-source identities; centroid offset | $10^{-12}$; exact | compiled ghost behaviour |
-| `[C19]` | hydrostatic-mode correction cancels at rest | $10^{-12}$ | behaviour away from rest |
-| `[C21]` | Favre ratio of $r^2$ means against the plain mean | exact | the size of the $1/R$ remainder |
+Read the assertion and its registration, then run the selected test in a build of the code pin.
+Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
+formula check cannot establish that the compiled implementation ran.
 
-: Claims of the @sec-ch05 check and their limits. {#tbl-ch15-ch05-check}
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| 1 | {{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts >}} | `HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts` | test selection |
+| 2 | {{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}} | `faces_next_to_the_walls_are_second_order` | test selection |
+| 3 | {{< code tests/test_wb_ref4_order.py main >}} | `main` | test selection |
+| 4 | {{< code tests/test_x1_centroid_rest.py main >}} | `main` | test selection |
+| 5 | {{< code tests/test_balance_column.cpp BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest >}} | `BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest` | test selection |
+| 6 | {{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}} | `HydroRefX1.in_process_split_matches_one_block_after_200_steps` | test selection |
+
+: Assertion definitions for this catalogue. {#tbl-ch15-ch05-tests-sources}
+
+The numbered source entries above map directly to the Tests table. CTest registration names and environments
+come from `setup_test`, `snapy_add_python_test` and the explicit entries in
+{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
+other configurations use their build suffix through `setup_test`
+({{< code cmake/macros/macro_setup_test.cmake >}}).
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_hydro_ref_x1.release` | Wall-clamped interior reference ignores ghost perturbations | bitwise equality | Source assertion 1 |
+| `test_wb_ref_wall.release` | Near-wall face errors decrease on refinement | order at least 1.7; reference error at most 1.5 times interior | Source assertion 2 |
+| `test_wb_ref4_order_python` | Enabled reference has high-order convergence; control remains distinguishable | `ORDER_ON` and `ORDER_OFF` | Source assertion 3 |
+| `test_x1_centroid_rest_python` | Centroid correction separates rest and non-rest controls | `TOL_ON` and `TOL_OFF` | Source assertion 4 |
+| `test_balance_column.release` | Moist column balances without changing species; solver remains at rest | rest below $10^{-10}$; vapour change below $10^{-12}$ | Source assertion 5 |
+| `test_pref_local_seam_flux_covariance.release` | Four local blocks match one block after 200 steps | maximum normalized state gap at most $10^{-12}$ | Source assertion 6 |
+
+: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch05-tests-assertions}
+
+The order thresholds are 2.75 for the enabled arm and 2.5 for the control
+({{< code tests/test_wb_ref4_order.py ORDER_ON >}}; {{< code tests/test_wb_ref4_order.py ORDER_OFF >}}).
+The centroid-rest thresholds are $10^{-10}$ and $10^{-8}$
+({{< code tests/test_x1_centroid_rest.py TOL_ON >}}; {{< code tests/test_x1_centroid_rest.py TOL_OFF >}}).
+These are source thresholds. The earlier run record is not evidence of execution at the current pin.
+`src/snapy_report/ch05/wbref_check.py` retains the independent rational-weight, wall-continuation,
+pressure-source, centroid and balance-iteration checks.
+
+### Limits
+
+The wall assertion compares two grids. A new report claim of asymptotic order needs at least three resolutions,
+with temporal and solver error controlled. This catalogue supplies no new CPU, CUDA or distributed run of
+the well-balanced tests.
