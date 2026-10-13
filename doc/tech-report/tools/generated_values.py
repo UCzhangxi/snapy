@@ -94,8 +94,7 @@ def computed(book: Path) -> dict[str, dict[str, str]]:
     import gen_notation_index as gn  # noqa: PLC0415
 
     report = book.parent
-    statements = report / "tools" / "derivation-statements.json"
-    stmts = json.loads(statements.read_text()) if statements.exists() else {}
+    stmts = gd.load_statements(report / "tools" / "derivation-statements")
     out = {"appb": gd.outputs(gd.collect(book, stmts, report / "src" / "snapy_report"))[1]}
     notation = report / "NOTATION.md"
     if notation.exists():
