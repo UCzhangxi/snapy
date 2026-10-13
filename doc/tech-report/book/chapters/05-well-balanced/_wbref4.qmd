@@ -103,7 +103,7 @@ $\rho_{\mathrm{ref},i_0..i_0+3}$ is $(25,-23,13,-3)/12$ at $l_{\mathrm f}=0$ (th
 $(-1,7,7,-1)/12$ at $l_{\mathrm f}=2$ (the interior face, window $i_0=f-2$) (`[C8]`). The face is exact for cubic
 point profiles on any grid, so $\eta_{\rho,f}=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
 mid-column offset $3.22\times10^{-12}$, $5.18\times10^{-14}$, $6.91\times10^{-16}$ relative at $n_1$ = 32, 64, 128, orders
-5.96 and 6.23, against order 2.00 for the kernel; at $n_1=256$ it is $1.38\times10^{-16}$, below $\epsilon_{\mathrm l_{\mathrm f}}$, so
+5.96 and 6.23, against order 2.00 for the kernel; at $n_1=256$ it is at round-off level, $1.38\times10^{-16}$ in this run, so
 that level measures round-off, not truncation). @eq-ch05-wbref4-face is built as the weights `awt`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
 and applied by `wb_ref4_faces`
@@ -156,7 +156,7 @@ the standard dot-product bound $(\mathsf F\chi)_i$ is off by at most $5\epsilon_
 $p_{\mathrm{ref}}$. The face weights are computed in double by `lagrange_deriv`, so they carry a rounding of their own
 that is not bounded here; their four-term sum adds at most $4\epsilon_{\mathrm m}\sum_l\lvert a_l\rvert\max\rho_{\mathrm{ref}}
 =\tfrac{16}{3}\epsilon_{\mathrm m}\max\rho_{\mathrm{ref}}$ in the interior, with $\sum_l\lvert a_l\rvert=16/12$ for the
-weights $a_l=(-1,7,7,-1)/12$. The $n_1=256$ level of `[C14]`, $1.38\times10^{-16}$, lies inside both.
+weights $a_l=(-1,7,7,-1)/12$. The $n_1=256$ level of `[C14]`, at round-off level, lies inside both.
 
 *Exact and truncated.* Exact: the end-cell identity, the face weights for cubics, @eq-ch05-wbref4-pnu for cubics.
 $O(\Delta x_1^4)$: $\rho_{\mathrm{ref}}$ and $\eta_{\rho,f}$ in the interior. At the three faces next to a wall the note
@@ -257,7 +257,8 @@ d.copy_(torch::where(ok, face, d));
 ```
 
 `r` is $\chi$, `fr` is $\mathsf F\chi$ and `p_new * fr` the first line of @eq-ch05-wbref4-dref; `fl` is the dilated
-flag and `ok` the range guard, both of which keep the kernel's `d_old`. `face` is $\partial_1\Pi(x_{1,f})$ of
+flag, which keeps the kernel's `d_old`, and `ok` the range guard, which keeps `keep`: `d_old` on a uniform grid and
+`p_new * (d_old / p_old)` otherwise ({{< code src/hydro/wb_ref4.cpp wb_ref4_cells >}}). `face` is $\partial_1\Pi(x_{1,f})$ of
 @eq-ch05-wbref4-face with the weights `awt`, written to $\rho_{\mathrm{sf}}$ (`d`) where its own guard passes.
 
 | what | code link | symbol | switch |

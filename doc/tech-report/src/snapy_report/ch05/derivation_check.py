@@ -104,6 +104,15 @@ pp,K,g,gam=sp.symbols('p K g gamma',positive=True)
 aa=(gam-1)/gam; rho_=(pp/K)**(1/gam)
 ok("LG-1 d(p^a)/dx = a p^(a-1)(-rho g) = -a g / K^(1/gamma)", sp.simplify(aa*pp**(aa-1)*(-rho_*g)+aa*g/K**(1/gam))==0)
 
+# --- LG-2: first-order rounding count of the n_g ghost steps (HydroImpl::_revise_x1inner_ghost, hydro.cpp:477-495)
+# per step: the second term of Upsilon rounds 4 times (two products, K^(1/gamma), the division); the first term
+# p^a carries a times the previous step's error plus its pow; the sum of two positive terms adds one; then
+# p = Upsilon^(1/a) multiplies by 1/a and adds its pow
+_a=R(2,7); _E=0
+for _n in range(3):
+    _E=(sp.Max(_a*_E+1,4)+1)/_a+1
+ok("LG-2 ghost-step count for gamma = 7/5, n_g = 3: %s roundings, not the (3 n_g/a + 1) = %s of a three-roundings-per-step count" % (_E, 3*3/_a+1), _E==R(69,2) and 3*3/_a+1!=_E)
+
 # --- XC-4: float64 round-off of the constant-pressure source identity (x1_pressure_source_stencils)
 import numpy as np
 _gx, _gw = np.polynomial.legendre.leggauss(4)

@@ -7,7 +7,7 @@ reference from the formulas of the chapter, in numpy, without reading or importi
 analytic column and with the numbers snapy's own test prints; C16-C21 are the spherical-polar, hydrostatic-mode,
 grid-classification and Favre-ratio identities.
 
-Formulas mirrored: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy),
+Formulas mirrored: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy),
   src/hydro/hydro_ref_x1_impl.h (scan, six-face cell pressure, binomial with the wall continuation, dsf/dref),
   src/hydro/wb_ref4.cpp (F filter, cubic wall values, quartic-primitive face weights),
   src/coord/x1_centroid.cpp (plain-mean conversion, x1 pressure source),
@@ -24,7 +24,7 @@ import sys
 import numpy as np
 import sympy as sp
 
-PIN = "e894700ff7aee30b52882e5202b16461413780b0"
+PIN = "6fbb39750f62b83df096058a4746e77d0a634bc5"
 x = sp.symbols("x")
 RESULTS = []
 
@@ -299,7 +299,7 @@ def cell_pressure_ref(rho, p, dz):
 
 def check_C11_reproduces_the_cpp_table():
     """the rebuilt dsf errors equal the order table tests/test_wb_ref_wall.cpp prints at the pin (beta 0.5 and 0)"""
-    # printed by ctest test_wb_ref_wall.release, CPU, double, snapy@e894700ff7aee30b52882e5202b16461413780b0 (WbRefWall.order_table):
+    # printed by ctest test_wb_ref_wall.release, CPU, double, snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (WbRefWall.order_table):
     # nz: face1 dsf, face2 dsf, top1 dsf, top2 dsf, interior max dsf (>= 3 faces from each wall)
     cpp = {0.5: {16: (8.040e-04, 9.827e-04, 1.457e-03, 2.003e-03, 1.958e-03),
                  32: (1.950e-04, 2.335e-04, 3.864e-04, 5.427e-04, 5.471e-04),
