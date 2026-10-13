@@ -20,7 +20,7 @@ are part of the positivity story rather than part of the interpolation.
 
 **Placement.** At the end of `ReconstructImpl::forward`, before the Riemann solver, every direction and stage.
 
-**Activation.** `equation-of-state/limiter: true`; density and pressure only when the caller passes `floor`, tracers always.
+**Activation.** `limiter: true` and `shock` false; density, pressure only with `floor`. The scalar path clamps all rows always.
 
 **Guarantee / limits.** None: a clamp at the face invents mass, exactly as the cell floors of @sec-ch08-eoslimiter do.
 
@@ -36,11 +36,18 @@ output `src/snapy_report/ch08/floors_check.out`]. That is the shared property; t
 a branch structure, read from the code and not measured. What is worth recording is the asymmetry
 between the three row groups, because it is not what a reader would guess.
 
-Density and pressure are floored only when the caller asked for floors. Tracers are clamped at zero
+Two early returns come first. A reconstruction with no hydro parent, the passive-scalar one
+(@sec-ch08-scalar), clamps every row of its face states at zero, whatever the limiter, and returns (`phydro`,
+{{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}). A reconstruction with `shock` set returns before any
+floor (`shock`, {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}); `shock` is a key of the reconstruct
+block, false by default from YAML ({{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}}) and true
+by default for options built in C++ (`shock`, {{< code src/recon/reconstruct.hpp ReconstructOptionsImpl >}}).
+
+Past them, density and pressure are floored only when the caller asked for floors. Tracers are clamped at zero
 whenever the limiter is on, *regardless* of what the caller asked, at
 `clamp_min_` ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}). The well-balanced path of @sec-ch05 calls the reconstruction with
 floors switched off precisely so that it can handle its own perturbation variables, and it still gets
-its tracers clamped.
+its tracers clamped, unless `shock` is set.
 
 ### Numerical method
 
@@ -53,8 +60,9 @@ from the reconstruction options, which carry floor members that `forward` never 
 
 1. The floor values are read from the equation-of-state options and not from the reconstruction options, so the
    face and cell floors are the same absolute numbers ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}).
-2. The tracer clamp is gated on the limiter alone, not on the caller's `floor` argument, so the well-balanced path
-   that passes `floor=false` still has its tracer face states clamped.
+2. With `shock` false and a hydro parent, the tracer clamp is gated on the limiter alone, not on the caller's `floor`
+   argument, so the well-balanced path that passes `floor=false` still has its tracer face states clamped. With
+   `shock` set no row is floored, and the passive-scalar reconstruction clamps every row with the limiter off too.
 3. A clamp can only add; the mass it invents at a face is bounded by the overshoot it removes, and `[C2]` measures
    the cell-floor analogue strictly positive.
 
@@ -104,8 +112,8 @@ The shared property is measured by `[C2]` of the chapter's check on the cell flo
 
 ### Limits
 
-1. **The tracer clamp ignores its caller.** A path that switches floors off to protect its own variables
-   still has its tracer face states clamped. Whether that is intended is not recorded anywhere; the
+1. **The tracer clamp ignores its caller.** Unless `shock` is set, a path that switches floors off to protect its own
+   variables still has its tracer face states clamped. Whether that is intended is not recorded anywhere; the
    chapter records the behaviour.
 2. **Same absolute values.** The face floors use the same absolute numbers as the cell floors, so the
    scaling caveat of @sec-ch08-eoslimiter applies to them unchanged.
