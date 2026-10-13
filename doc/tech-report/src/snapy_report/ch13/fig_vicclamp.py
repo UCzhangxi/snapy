@@ -1,5 +1,5 @@
 """The two-cell column of vicclamp_check with its species starved: the solve asks for a transfer M through the
-face, only the dry fraction moves, and each cell misses M sum(y), which is the clamp residual
+face, only the dry fraction moves, and each cell misses M sum_n(y_n), which is the clamp residual
 (src/implicit/implicit_hydro.cpp:358-378 at snapy@e894700ff7aee30b52882e5202b16461413780b0). A cartoon; it
 reads no data.
 """
@@ -17,9 +17,9 @@ def make_fig():
     ax.plot([0.3, 2.3], [1.1, 1.1], color=fs.ORANGE, lw=2.0)
     ax.annotate("", xy=(2.7, 1.45), xytext=(2.7, 0.75), arrowprops=dict(arrowstyle="->", color=fs.ORANGE, lw=1.2))
     ax.text(2.85, 1.1, r"asked: $M$", fontsize=fs.LABEL_PT, va="center", color=fs.ORANGE)
-    ax.text(4.3, 1.45, r"dry moves $M(1-\sum y)$", fontsize=fs.LABEL_PT, color=fs.GREEN)
+    ax.text(4.3, 1.45, r"dry moves $M(1-\sum_n y_n)$", fontsize=fs.LABEL_PT, color=fs.GREEN)
     ax.text(4.3, 1.05, r"species starved: move 0", fontsize=fs.LABEL_PT, color=fs.VERMILLION)
-    ax.text(4.3, 0.55, r"residual $=|M(1-\sum y) - M|/|M| = \sum y$", fontsize=fs.LABEL_PT)
+    ax.text(4.3, 0.55, r"vicclamp $=|M(1-\sum_n y_n) - M|/|M| = \sum_n y_n$", fontsize=fs.LABEL_PT)
     ax.set_xlim(0.2, 9.0)
     ax.set_ylim(0.1, 2.2)
     return fig

@@ -7,6 +7,11 @@ sources: OUTLINE.md 13.3; src/implicit/implicit_hydro.cpp; src/implicit/implicit
 status: draft
 -->
 
+The implicit solver moves gas and species between neighbouring cells, but never more than a cell holds. When it
+has to hold back, the cells no longer gain exactly what the faces deliver. This meter reports how large that
+mismatch ever got in the run, so a user can see whether the limit on the transfers acted. It reads 0 when nothing
+was held back.
+
 ### Summary
 
 ::: {.callout-note title="At a glance"}
@@ -17,31 +22,26 @@ change after the VIC redistribution and the face transfers $M_{i-1/2} - M_{i+1/2
 **Defining equation.** @eq-ch13-vicclamp.
 :::
 
-The implicit solver moves gas and species between neighbouring cells, but never more than a cell holds. When it
-has to hold back, the cells no longer gain exactly what the faces deliver. This meter reports how large that
-mismatch ever got in the run, so a user can see whether the limit on the transfers acted. It reads 0 when nothing
-was held back.
-
 The redistribution is @sec-ch07-vic-redistribute. Without a clamp, every cell's total change equals its face
-divergence exactly. When every species of a donor is starved, the meter reads $\sum y$, the donor's species mass
-fraction.
+divergence exactly. When every species of a donor is starved, the meter reads the donor's species mass fraction.
 
 ### Derivation
 
-Let $\Delta m_i = \sum_c \Delta\rho_{c,i}V_i$ [kg] be the total constituent change of cell $i$ from the
-redistribution, summed over dry gas and every species $c$. Here $\Delta\rho_{c,i}$ [kg m$^{-3}$] is the density
-change of constituent $c$ and $V_i$ [m$^3$] the cell volume. Let $M_{i\mp1/2}$ [kg] be the solved face transfers.
-The meter, a pure number, is
+Let $\Delta\rho_i$ [kg m$^{-3}$] be the total density change of cell $i$ after the redistribution and the clamps,
+dry gas plus every species, and $V_i$ [m$^3$] the cell volume, so $\Delta\rho_iV_i$ [kg] is the cell's mass change.
+Let $M_{i\mp1/2}$ [kg] be the face transfers of @eq-ch07-vic-faces, positive upward. The meter, a pure number
+written by its log name, is
 
 $$
-r = \max_i \frac{\big|\Delta m_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
+\mathrm{vicclamp} = \max_i \frac{\big|\Delta\rho_iV_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
 $$ {#eq-ch13-vicclamp}
 
-maximised over the run, with $f$ [kg] a floor against empty faces. Without a clamp, $r$ is zero to round-off [check
+maximised over the run, with $f$ [kg] a floor against empty faces. Without a clamp, $\mathrm{vicclamp}$ is zero to
+round-off [check
 `src/snapy_report/ch13/vicclamp_check.py`, output `vicclamp_check.out`, `[C1]`]. If the species of a donor are
-starved, its species transfer is clamped to zero. With $y$ the species mass fractions of the donor [-], only the
-dry fraction $M(1-\sum y)$ moves, so each cell
-misses $M\sum y$, and $r = \sum y$. That is 0.03 for $y = (0.01, 0.02)$ (`[C2]`). The floor is the smallest
+starved, its species transfer is clamped to zero. With $y_n$ [-] the species mass fractions of the donor, only the
+dry part $M_{i+1/2}(1-\sum_ny_n)$ of a transfer $M_{i+1/2}$ moves. Each of the two cells then misses
+$M_{i+1/2}\sum_ny_n$, and $\mathrm{vicclamp} = \sum_ny_n$. That is 0.03 for $(y_1, y_2) = (0.01, 0.02)$ (`[C2]`). The floor is the smallest
 normal float in float32, where $10^{-300}$ rounds to zero, and $10^{-300}$ in float64 (`[C3]`).
 
 In the code, @eq-ch13-vicclamp is the update of `_clamp_residual` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
@@ -52,7 +52,7 @@ See @fig-ch13-vicclamp for the starved case.
 
 ```{python}
 #| label: fig-ch13-vicclamp
-#| fig-cap: "A two-cell column whose donor has its species starved. The solve asks for a transfer $M$ through the face (orange); the dry gas moves $M(1-\\sum y)$ (green), the species nothing (vermillion), so each cell misses $M\\sum y$ and the meter reads $\\sum y$."
+#| fig-cap: "A two-cell column whose donor has its species starved. The solve asks for a transfer $M$ through the face (orange); the dry gas moves $M(1-\\sum_ny_n)$ (green), the species nothing (vermillion), so each cell misses $M\\sum_ny_n$ and the meter reads $\\sum_ny_n$."
 #| fig-alt: "Two stacked cells with an orange face between them and an upward arrow labelled M, and three lines of text giving the dry transfer, the starved species and the residual."
 #| echo: false
 from snapy_report.ch13.fig_vicclamp import make_fig
