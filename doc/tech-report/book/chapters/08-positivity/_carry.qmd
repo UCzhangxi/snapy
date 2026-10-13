@@ -24,11 +24,12 @@ that keeps the books straight.
 
 **Guarantee / limits.** The withheld mass keeps its own enthalpy and momentum; nothing is said about its kinetic energy.
 
-**Evidence.** `[C6]` of this chapter's check; `test_flux_positivity_carry.<b>` (relative $10^{-12}$).
+**Evidence.** `[C6]`, `[C12]` of this chapter's check; `test_flux_positivity_carry.<b>` (relative $10^{-12}$).
 :::
 
 Local symbols: $F$ is the unscaled species face flux, $\Theta_d$ the factor of the face's donor and $\mathrm{d}m$ the
-withheld mass flux. $\hat h_n$ is the species enthalpy per unit mass and $v$ the velocity, both of the donor.
+withheld mass flux ($\mathrm{d}m_n$ for species $n$); $F_{\mathrm{IPR}}$ is the face's energy flux. $\hat h_n$ (the species
+enthalpy per unit mass), $v$ (the velocity), both of the donor, and $N_y$ are NOTATION.md's.
 
 ### Derivation
 
@@ -86,8 +87,14 @@ is a measurement, not a derivation, and it is recorded as such.
    the covariance gate with `limiter: false` the settling flux is not recorded, and both parts take the net donor.
 3. The enthalpy is computed on the primitive state with ghosts included and is not exchanged; the code comment records
    that exchanging it changed no bit ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-4. Each correction is a product $\mathrm{d}m\,\hat h_n$ rounded once and a subtraction rounded once, so its
-   relative error is at most $2\cdot\tfrac12\epsilon_{\mathrm m}$; `[C6]` measures $1.8\times10^{-15}$.
+4. The energy correction is `flux[IPR] -= (share*part*h).sum(0)` with `share` $=1-\Theta_d$
+   ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}). Per species, `share`, its product with the
+   part and the product with $\hat h_n$ round once each; the sum over the $N_y$ species rounds $N_y-1$ times and the
+   subtraction once. To first order the corrected energy flux is off by at most
+   $(N_y+3)\,\tfrac12\epsilon_{\mathrm m}\,\bigl(\lvert F_{\mathrm{IPR}}\rvert + \sum_n\lvert\mathrm{d}m_n\,\hat h_n\rvert\bigr)$,
+   with $F_{\mathrm{IPR}}$ the face's energy flux. The bound is not relative to the result, which the subtraction can
+   cancel. `[C12]` measures at most $3.67$ of the $11$ units for $N_y=8$; relative to the result the error reaches
+   $2\times10^{9}$ units where the subtraction cancels.
 
 ### Code
 
@@ -122,17 +129,19 @@ the $x_1$ species flux. The carry runs first because it needs the unscaled fluxe
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_flux_positivity_carry.cpp` (`test_flux_positivity_carry.<b>`) | the carry of energy and momentum with withheld mass | relative $10^{-12}$ | set in the shared helper the test cases call, as $10^{-12}$ times the larger of the face value and the increment ({{< code tests/test_flux_positivity_carry.cpp expect_carried >}}); the file gives no reason |
-| this chapter's check | `[C6]` the withheld energy and momentum match the withheld mass at the same face and donor | round-off | the check's own bound: `positivity_check.py` `check_C6` asserts the worst energy and momentum residual below $10^{-13}$ |
+| this chapter's check | `[C6]` the withheld energy and momentum match the withheld mass at the same face and donor; `[C12]` the round-off of the energy correction | round-off | the check's own bounds: `positivity_check.py` `check_C6` asserts the worst energy and momentum residual below $10^{-13}$; `check_C12` asserts the derived $(N_y+3)$ bound |
 
 : Tests of the carry. {#tbl-ch08-carry-tests}
 
 The chapter's check ports the withholding on random face sets.[^ch08-carry-run] `[C6]`: the energy removed equals
 the unscaled-minus-scaled mass flux times the donor's enthalpy to $1.8\times10^{-15}$, and the momentum to
-$8.9\times10^{-16}$, over 2000 face sets. `test_flux_positivity_carry.<b>` has not been run for this report at
+$8.9\times10^{-16}$, over 2000 face sets. `[C12]`: against exact rationals the energy correction stays within
+$1.88$, $2.68$, $2.86$ and $3.67$ units of $\tfrac12\epsilon_{\mathrm m}(\lvert F_{\mathrm{IPR}}\rvert + \sum_n\lvert\mathrm{d}m_n\hat h_n\rvert)$ for
+$N_y = 1, 2, 4, 8$, below the bounds $4$, $5$, $7$ and $11$. `test_flux_positivity_carry.<b>` has not been run for this report at
 the pin: **pending a pinned ctest run**.
 
 [^ch08-carry-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
-    `positivity_check.out`, line `[C6]`.
+    `positivity_check.out`, lines `[C6]` and `[C12]`.
 
 ### Limits
 
