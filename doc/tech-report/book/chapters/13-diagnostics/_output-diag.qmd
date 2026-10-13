@@ -28,7 +28,8 @@ column path to follow a species. No potential-energy or budget field is written.
 :::
 
 Local symbols (flagged to the editor, ISSUES.md): $R_{\mathrm{mix}}$ [J kg$^{-1}$ K$^{-1}$] the gas constant of the
-mixture; $A_{\mathrm{bottom}}$ [m$^2$] the area of a column's bottom face. $\theta_p$, $\theta_v$, $R_{\mathrm d}$, $p$, $\rho$,
+mixture; $A_{\mathrm{bottom}}$ [m$^2$] the area of a column's bottom face; $v_{\max}$ [m s$^{-1}$] the largest
+$\lvert v_1\rvert$ of cells $i-1..i+1$. $A_{i\pm1/2}$, $\theta_p$, $\theta_v$, $R_{\mathrm d}$, $p$, $\rho$,
 $T$, $\rho_{y,i}$, $V_i$, $v_{1,i}$, $\Delta x_1$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
 
 ### Derivation
@@ -59,12 +60,27 @@ Why a linear field is exact everywhere but on the first face, in three steps:
 3. *The difference is the coordinate divergence of those faces*, which for a uniform or linear $v_1$ on a Cartesian
    grid gives 0 and the slope (`[C2]`).
 
-*Round-off.* The mean rounds once (the factor $\tfrac12$ is exact), the difference once and the division once, so
-$(\nabla\cdot\mathbf v)_i$ is off by at most about $2\epsilon_{\mathrm m}\max\lvert v_1\rvert/\Delta x_1$, to first
-order. `[C2]` reads exactly 0 on its fields, whose values are exact in binary.
-
 In the code, @eq-ch13-div-face is `interp_to_face` ({{< code src/output/load_diag_output_data.cpp interp_to_face >}}) followed by the
 coordinate `divergence` of the face values ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
+
+*Round-off.* The code divides an area-weighted face difference by the cell volume, so the count includes the face
+area and the volume. To first order, with $\tfrac12\epsilon_{\mathrm m}$ per rounding:
+
+1. each face mean rounds once (the factor $\tfrac12$ is exact; `interp_to_face`);
+2. the face area $\Delta x_3\Delta x_2$ rounds once ({{< code src/coord/coordinate.cpp CoordinateImpl::face_area1 >}});
+3. each area times face velocity rounds once, so with steps 1 and 2 each face product carries three roundings, six
+   for both faces ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}});
+4. their difference rounds once, at most one rounding of $2A_{i\pm1/2}v_{\max}$; adding it to the zeroed result is
+   exact;
+5. the volume $\Delta x_3(\Delta x_2\Delta x_1)$ rounds twice ({{< code src/coord/coordinate.cpp CoordinateImpl::cell_volume >}});
+6. the division rounds once; with step 5 that is three relative roundings of a quotient of at most
+   $2v_{\max}/\Delta x_1$.
+
+The total is $(6+2+6)\cdot\tfrac12\epsilon_{\mathrm m}$, so $(\nabla\cdot\mathbf v)_i$ is off by at most
+$7\epsilon_{\mathrm m}v_{\max}/\Delta x_1$. For a smooth field the terms that scale with the face difference
+shrink, leaving about $3\epsilon_{\mathrm m}v_{\max}/\Delta x_1$. On random non-dyadic spacings the largest error
+measured is $2.13\,\epsilon_{\mathrm m}v_{\max}/\Delta x_1$ (`[C5]`), above the $2\epsilon_{\mathrm m}$ that the mean, the
+difference and the division alone would give. `[C2]` reads exactly 0 on its fields, whose values are exact in binary.
 
 ### Numerical method
 
@@ -139,22 +155,22 @@ face.index_put_(dst, 0.5 * (value.index(lo) + value.index(hi)));      // v_{i-1/
 | same file, `divergence_of_uniform_cartesian_velocity_is_zero` | `div` and `div_h` vanish for a uniform velocity | see the test | round-off |
 | same file, `cartesian_curl_of_solid_body_rotation` | the curl components of a solid-body rotation | see the test | round-off |
 | same file, `gnomonic_diagnostics_are_finite` | the fields are finite on a gnomonic block | finiteness | contract |
-| this section's check, `output_diag_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+| this section's check, `output_diag_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
 
 : Tests of the output-field diagnostics. {#tbl-ch13-output-diag-tests}
 
 `[C1]` of `output_diag_check.py` shows the exact interior faces and the copied first face; `[C2]` the divergence of a
 uniform and a linear velocity; `[C3]` $\theta_v$ for dry air and a mixture with $R_{\mathrm{mix}}=1.02\,R_{\mathrm d}$; `[C4]` the
-column path.
+column path; `[C5]` the round-off of `div` against exact rationals, 4000 random blocks of six cells.
 
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers from `output_diag_check.py` (lines `[C1]`–`[C4]`).[^ch13-out-chk] ctest cases:
+**Evidence.** Check numbers from `output_diag_check.py` (lines `[C1]`–`[C5]`).[^ch13-out-chk] ctest cases:
 **pending: pinned ctest run**.
 **Coverage.** Cartesian only; curved and gnomonic grids use the coordinate operators of @sec-ch03.
 :::
 
 [^ch13-out-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch13/output_diag_check.py`, CPU, double,
-    1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `output_diag_check.out`, lines `[C1]`–`[C4]`.
+    1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `output_diag_check.out`, lines `[C1]`–`[C5]`.
 
 ### Limits
 
