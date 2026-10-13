@@ -24,7 +24,7 @@ EDGES = [
     ("recon", "weno", "implies"), ("weno", "cp", "implies"),
     ("riemann", "facep", "implies"), ("facep", "sources", "requires"),
     ("divergence", "seam", "requires"),
-    ("fluxcov", "facep", "requires"), ("fluxcov", "sources", "requires"),
+    ("fluxcov", "sources", "requires"),
     ("x1cov", "recon", "requires"),
 ]
 STYLE = {"requires": (fs.BLACK, "-"), "implies": (fs.GREEN, "--"),
