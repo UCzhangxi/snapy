@@ -18,13 +18,18 @@ ghosts are fresh after each stage but not after a change the driver makes betwee
 ::: {.callout-note title="At a glance"}
 **Purpose.** Fills the ghost cells of every block from its neighbours once per stage; N/A as an equation, the
 invariant is stated in the Derivation layer.
+
 **Data.** In: the interior cell averages of the neighbouring blocks next to each block side, the conserved state
 $\mathbf U$: $\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$] (total-mass basis) and the passive-scalar densities $\rho_{\mathrm d}r_n$ [kg m$^{-3}$] (dry-mass
 basis). Out: the ghost cell averages of each block, same quantities, units and bases, refreshed once per stage.
 Check cases: a two-block model with and without a source applied next to the seam between steps.
+
 **Placement.** `MeshBlockImpl::forward` exchanges before the stage, `MeshImpl::forward` after it.
+
 **Activation.** None: the order is fixed by the driver API.
+
 **Guarantee / limits.** Both orders exchange once per stage.
+
 **Evidence.** Test: after a Mesh exchange every ghost side of every local block holds its neighbour's value on 2 ranks,
 {{< code tests/test_mesh_multi_block.cpp Mesh.multi_block_exchange >}} (`torch::allclose` defaults: exact copies);
 not run at the pin. Check: `python3 src/snapy_report/ch07/exchange_check.py`, output `exchange_check.out` lines `[C1]`–`[C3]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
