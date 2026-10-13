@@ -1,144 +1,160 @@
 ## Spatial discretization evidence {#sec-ch15-ch04-tests}
 
-Spatial checks separate reconstruction, flux correction and flux divergence. A constant-field check can catch
-an indexing error, but cannot establish the convergence order discussed in @sec-ch04.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+The spatial scheme of @sec-ch04 has three parts that fail in different ways: the reconstruction of face states,
+the face-flux corrections, and the divergence that turns fluxes into a tendency. A cheap test can catch an
+indexing error, for example by feeding a constant field and demanding a constant back, but it cannot show the
+convergence order the chapter derives. This section collects the tests that check the three parts, says what
+each one establishes, and keeps the chapter's own algebra checks, which run without snapy, apart from the
+registered solver tests.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 4 claims (reconstruction, face corrections, divergence) to five registered tests and three report checks.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Synthetic input arrays and conserved totals of the fixtures; tolerances read from the source.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; the covariance arms set `SNAP_FLUX_COVARIANCE` themselves.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** A constant-field pass is not a convergence order; a ported formula is not the dispatched kernel.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch04-tests-assertions.
 :::
 
-**Local symbols.** `w` is the synthetic constant input array and `result` contains its two reconstructed face states.
-The fixture assigns no dimensional unit to its value 2; `dim` is a tensor-axis selector, not a spatial length.
+Local symbols (flagged to the editor, ISSUES.md): none; `w` is the test's constant input array (value 2, no
+unit), `result` its two reconstructed face states and `dim` a tensor-axis selector.
+
+The five solver tests cover constant preservation by three reconstructions, agreement of a long CUDA line with
+the CPU, the exactness of the curved-face moments, and the covariance corrections through their rest, uniform
+and offset arms. The three report checks port the chapter's formulas and run on numpy.
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, each step tied to the source at the pin.
 
-1. Test preservation before convergence: `DeviceTest.reconstruct_preserves_a_constant_field` supplies a
-   constant array to donor-cell, PLM and WENO5 reconstruction
-   ({{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}}).
-2. Check layout separately from values. That test inserts a leading dimension of size two into the expected
-   shape, then compares the output with a constant array in each selected direction.
-3. Do not infer order from a zero residual on constants. The same assertion has only a constant input;
-   smooth-grid refinement evidence must come from the other checks and their stated scope.
+1. *Test preservation before convergence.* `DeviceTest.reconstruct_preserves_a_constant_field`
+   ({{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}}) feeds a constant array to
+   the donor-cell, PLM and WENO5 reconstructions in each direction and requires the output to equal that
+   constant by `allclose` at its library defaults, and to have the two-sided face shape.
+2. *Do not read an order from a zero residual on a constant.* Every reconstruction reproduces a constant
+   exactly in exact arithmetic, so the row establishes the plumbing, not the order of @sec-ch04.
+3. *Read the device row as a comparison, not a reference.* `expect_matches_cpu`
+   ({{< code tests/test_weno5_cuda_line.cpp expect_matches_cpu >}}) bounds the largest absolute difference
+   between the CUDA and CPU reconstructions of lines of 32 to 1280 cells by $10^{-12}$; it is registered only in
+   a CUDA build ({{< code tests/CMakeLists.txt >}}).
+4. *Read the moment row as an exact-integral check.*
+   `RadialFaceMoments.closed_forms_match_the_exact_integrals`
+   ({{< code tests/test_radial_face_moments.cpp RadialFaceMoments.closed_forms_match_the_exact_integrals >}})
+   accepts the closed forms within $10^{-14}$ of the exact integrals, relative.
+5. *Read the covariance rows by their arms.* `main` of {{< code tests/test_flux_covariance_rows.py main >}}
+   requires a rest state to stay below `REST_TOL` $= 10^{-9}$ in $|v|/c_s$, a uniform species fraction to move
+   by less than `UNIFORM_TOL` $= 10^{-13}$, the two energy offsets to agree within `OFFSET_TOL` $= 10^{-10}$
+   with the switch on, and the Cartesian onset value to match its reference within `CART_TOL` $= 2\times10^{-3}$.
+   `main` of {{< code tests/test_horizontal_flux_covariance.py main >}} requires the off arm's onset error to
+   lie in the window `BASE` $= [-0.32, -0.20]$, the on arm's below `FIXED` $= 0.04$, and the energy drift at
+   most `EPE_TOL` $= 10^{-12}$ (the ratio form of @sec-ch15).
 
-Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
-They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
-and equality contracts have no tolerance budget to enlarge.
+The round-off bound of @sec-ch15 covers the reductions inside the budget rows; `allclose` defaults are not
+derived bounds.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
-
-#### How to use this evidence
-
-From the repository root, replace `build` with the configured build of the code pin. First list the selection,
-then run it; require a nonempty list and inspect skips in the output:
-
-```bash
-ctest --test-dir build -C Release -N -R '^test_plm\.release$'
-ctest --test-dir build -C Release --output-on-failure -R '^test_plm\.release$'
-```
-
-No YAML is needed for this assertion: it creates reconstruction options programmatically and loops over
-`dc`, `plm` and `weno5`. Device availability remains a fixture precondition; skipped device cases do not
-establish CPU/CUDA agreement ({{< code tests/device_testing.hpp >}}).
-
-The excerpt from `DeviceTest.reconstruct_preserves_a_constant_field`
-({{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}}) shows the assertion's inputs and contract:
-
-```cpp
-auto result = recon->forward(w, dim);
-      auto shape = w.sizes().vec();
-      shape.insert(shape.begin(), 2);
-      EXPECT_EQ(result.sizes().vec(), shape) << type << " dim=" << dim;
-      EXPECT_TRUE(torch::allclose(result, torch::full_like(result, 2.)))
-          << type << " dim=" << dim;
-```
-
-`shape` tests the two-sided face layout; `allclose` tests constant preservation. Neither line computes
-the two-resolution order in @eq-ch15-order. Library-default tolerances are not derived round-off bounds.
+Read the assertion and its registration, then run the selection in a build configured from the code pin
+(@fig-ch15-evidence, @sec-ch15). `DeviceTest` parametrises the C++ cases over device and precision and skips a
+device that is not available ({{< code tests/device_testing.hpp >}}); the Python tests create their own
+child processes per switch arm. Record device, precision, process count and every skip separately.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| 1 | {{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}} | `DeviceTest.reconstruct_preserves_a_constant_field` | test selection |
-| 2 | {{< code tests/test_weno5_cuda_line.cpp expect_matches_cpu >}} | `expect_matches_cpu` | test selection |
-| 3 | {{< code tests/test_radial_face_moments.cpp RadialFaceMoments.closed_forms_match_the_exact_integrals >}} | `RadialFaceMoments.closed_forms_match_the_exact_integrals` | test selection |
-| 4 | {{< code tests/test_flux_covariance_rows.py main >}} | `main` | test selection |
-| 5 | {{< code tests/test_horizontal_flux_covariance.py main >}} | `main` | test selection |
+| constant field preserved | {{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}} | `DeviceTest.reconstruct_preserves_a_constant_field` | none |
+| long CUDA line equals CPU | {{< code tests/test_weno5_cuda_line.cpp expect_matches_cpu >}} | `expect_matches_cpu` | `CUDA` build |
+| curved-face moments | {{< code tests/test_radial_face_moments.cpp RadialFaceMoments.closed_forms_match_the_exact_integrals >}} | `RadialFaceMoments.closed_forms_match_the_exact_integrals` | none |
+| covariance rows | {{< code tests/test_flux_covariance_rows.py main >}} | `main` | `SNAP_FLUX_COVARIANCE` |
+| horizontal covariance | {{< code tests/test_horizontal_flux_covariance.py main >}} | `main` | `SNAP_FLUX_COVARIANCE` |
+| PPM placeholder | {{< code src/recon/interp_simple.hpp interp_ppm >}} | `interp_ppm` | none |
 
-: Assertion definitions for this catalogue. {#tbl-ch15-ch04-tests-sources}
+: Assertions this catalogue reads. {#tbl-ch15-ch04-tests-sources}
 
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
+
+```bash
+ctest --test-dir build -N -R '^test_plm\.release$'
+ctest --test-dir build --output-on-failure -R '^test_plm\.release$'
+```
+
+The other rows are selected the same way:
+
+```bash
+ctest --test-dir build -N -R '^test_weno5_cuda_line\.release$'
+ctest --test-dir build -N -R '^test_radial_face_moments\.release$'
+ctest --test-dir build -N -R '^test_flux_covariance_rows_python$'
+ctest --test-dir build -N -R '^test_horizontal_flux_covariance_python$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`.
+No YAML is needed for the reconstruction case: it builds its options in C++ and loops over `dc`, `plm` and
+`weno5`. A CUDA-only registration is absent from a CPU build and a skipped device case is not a CPU/CUDA
+agreement; an empty selection prints "No tests were found!!!" and is not a result (@sec-ch15).
+
+The contract of the reconstruction case, from `DeviceTest.reconstruct_preserves_a_constant_field`
+({{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}}):
+
+```cpp
+auto result = recon->forward(w, dim);
+auto shape = w.sizes().vec();
+shape.insert(shape.begin(), 2);
+EXPECT_EQ(result.sizes().vec(), shape) << type << " dim=" << dim;
+EXPECT_TRUE(torch::allclose(result, torch::full_like(result, 2.)))
+    << type << " dim=" << dim;
+```
+
+`shape` tests the two-sided face layout and `allclose` the constant; neither line forms the two-grid ratio of
+@eq-ch15-order.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_plm.release` | Donor cell, PLM and WENO5 preserve a constant in all directions | library-default allclose; exact shape | Source assertion 1 |
-| `test_weno5_cuda_line.release` | Long CUDA line agrees with the CPU reconstruction | absolute error below $10^{-12}$ | Source assertion 2 |
-| `test_radial_face_moments.release` | Curved-face moments match the integral oracle | relative $10^{-14}$ | Source assertion 3 |
-| `test_flux_covariance_rows_python` | Rest, uniform fraction and offset arms | per arm in `main` | Source assertion 4 |
-| `test_horizontal_flux_covariance_python` | Horizontal onset ladder and energy budget | per arm in `main` | Source assertion 5 |
-| `recon_check.py` (report only) | Polynomial/WENO identities, slope bounds and face-order ladders | script assertions | Independent reconstruction check |
-| `covariance_check.py` (report only) | Moment identities, centroid correction, rest and wall slope | script assertions | Independent covariance check |
-| `operator_check.py` (report only) | Geometry/divergence, LMARS and species/row bookkeeping | script assertions | Independent operator check |
+| `test_plm.release` | donor cell, PLM and WENO5 return a constant for a constant, with the face shape | `allclose` defaults; exact shape | the test |
+| `test_weno5_cuda_line.release` | long CUDA lines agree with the CPU reconstruction | absolute $<10^{-12}$ | the test |
+| `test_radial_face_moments.release` | curved-face moments match the exact integrals | relative $10^{-14}$ | the test |
+| `test_flux_covariance_rows_python` | rest, uniform-fraction, offset and Cartesian-onset arms | $10^{-9}$, $10^{-13}$, $10^{-10}$, $2\times10^{-3}$ | the script's constants |
+| `test_horizontal_flux_covariance_python` | onset error off in $[-0.32, -0.20]$, on below 0.04; energy drift | `BASE`, `FIXED`, `EPE_TOL` $= 10^{-12}$ | the script's constants |
+| `recon_check.py` (report only) | polynomial and WENO identities, slope bounds, face-order ladders | script assertions | the ported formulas |
+| `covariance_check.py` (report only) | moment identities, centroid correction, rest and wall slope | script assertions | the ported formulas |
+| `operator_check.py` (report only) | divergence, LMARS and species-row bookkeeping | script assertions | the ported formulas |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch04-tests-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch04-tests-assertions}
 
-The independent report checks retain the reconstruction, covariance and operator coverage of this catalogue.
-Run the three scripts named below through `src/tests/test_checks.py`; their full derivations remain in @sec-ch04.
-A synthetic convergence ladder is evidence about the ported formula, not a compiled solver order.
+The three report checks run through `src/tests/test_checks.py` and import no snapy; their derivations are in
+@sec-ch04. `recon_check.py` covers polynomial reproduction, the linear WENO3 and WENO5 combinations, the face
+orders at smooth and critical points, the harmonic PLM slope, the PPM placeholder and the donor-cell ladder;
+`covariance_check.py` the product-average expansion, the Cartesian and curved-face moments, the centroid
+offsets, the mass-weighted velocity correction, rest cancellation and the one-sided wall slope;
+`operator_check.py` constant and radial divergence, exact radial volumes, the boundary-flux sum, equal-state
+LMARS consistency, the two interface jump terms and the species and momentum-row bookkeeping. The flux-sum
+identity behind the conservation checks is @eq-ch15-budget.
 
-`recon_check.py` checks polynomial reproduction, the linear WENO3/WENO5 combinations, smooth and critical-point
-face orders, the harmonic PLM slope, the donor-cell PPM placeholder and the donor-cell convergence ladder.
-The PPM placeholder is `interp_ppm` ({{< code src/recon/interp_simple.hpp interp_ppm >}});
-the test of a formula port does not establish which reconstruction a running deck selects.
+`[C1]` The reconstruction row covers constant preservation and shape for the three named methods. `[C2]` The
+report checks test formula identities on ports; a port can agree with its own algebra and still differ from the
+dispatched kernel.[^ch15-ch04-run]
 
-`covariance_check.py` checks the product-average expansion, Cartesian and curved-face second moments,
-centroid offsets, the mass-weighted velocity correction, rest cancellation and the one-sided wall slope.
-`operator_check.py` checks constant-flux divergence, radial divergence, exact radial volumes, the boundary-flux
-sum, equal-state LMARS consistency, the two interface jump terms, species mass bookkeeping and momentum-row
-permutations. The flux-sum derivation in @eq-ch15-budget explains the conservation check.
-The detailed assertions and synthetic inputs are recorded with the executable scripts, not as solver runs.
-
-[C1] The reconstruction assertion covers constant preservation and shape for the three named methods.
-[C2] The independent report checks in the table test formula identities; their success cannot establish compiled dispatch.[^ch15-ch04-five-choice]
-
-[^ch15-ch04-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
-    the commands above are reproduction instructions, not a solver run record. No compiled test, device
-    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
-    ranks, switch environment and skips with any future result.
+[^ch15-ch04-run]: [sha: the code pin; the selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record.
 
 ### Limits
 
-The selected assertions do not establish end-to-end corrected-flux order, HLLC contact resolution, Roe
-accuracy, plume-Roe coverage or the error hidden by seam averaging. Those require dedicated runtime evidence.
-A port can agree with its own algebra while differing from the dispatch or device kernel.
+The selected tests do not establish the end-to-end order of the corrected fluxes, HLLC contact resolution, Roe
+accuracy, plume-Roe coverage, or the error hidden by seam averaging; those need dedicated runs at the pin.

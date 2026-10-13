@@ -1,114 +1,151 @@
 ## Hydrostatic and well-balanced evidence {#sec-ch15-ch05-tests}
 
-A balanced atmosphere should remain at rest, including near a wall and a block seam.
-The tests of @sec-ch05 use both a rest residual and a deliberately unbalanced control.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+A balanced atmosphere should stay at rest, and it should stay at rest next to a wall and across a block seam as
+well as in the interior. The tests of @sec-ch05 ask for that in two complementary ways: a residual that must be
+small when a reference switch is on, and a deliberately unbalanced control that must stay large when it is
+off, so that a misspelt or ignored switch cannot pass by accident. This section collects those tests, their
+thresholds, and what a pass does and does not establish.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 5 claims (reference clamp, wall order, fourth-order reference, centroid, balance, seams) to six registered tests.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Rest residuals, two-grid orders and block-to-block gaps of the fixtures; thresholds read from the source.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; the Python tests run both switch arms in child processes.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** The thresholds separate the on and off arms; they are not round-off bounds.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch05-tests-assertions.
 :::
 
-Local symbols: the order estimate is the dimensionless exponent defined in @eq-ch15-order; the rest residual is the diagnostic used by the cited test. No new state variable is introduced.
+Local symbols (flagged to the editor, ISSUES.md): none; the order estimate is the exponent $\zeta_{15}$ of
+@eq-ch15-order and the rest residual is each test's own diagnostic.
+
+The six tests fall into three groups: exact contracts of the reference (the wall clamp keeps ghosts out of the
+interior; a split column matches one block), two-grid and three-grid orders of the near-wall and fourth-order
+references, and rest residuals of the centroid correction and the balanced column.
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, each step tied to the source at the pin.
 
-1. A small rest residual alone could pass when the reference switch is ignored. `main` in {{< code tests/test_wb_ref4_order.py main >}} therefore runs both enabled and unset arms.
-2. Successive residual ratios give the exponent in @eq-ch15-order. The enabled arm checks every adjacent order against `ORDER_ON`; the unset arm checks the last against `ORDER_OFF` ({{< code tests/test_wb_ref4_order.py main >}}).
-3. The two thresholds test separation of behaviors, not a floating-point error bound. Near round-off, ratios cease to measure truncation order; use the summation bound in @sec-ch15 and inspect raw residuals before interpreting an order.
+1. *Run both arms, not one.* `main` of {{< code tests/test_wb_ref4_order.py main >}} runs the fourth-order
+   reference enabled and unset in child processes. A small rest residual in one arm would also pass if the
+   switch were ignored; the control arm is what makes the test specific.
+2. *Read an order from adjacent ratios.* The enabled arm requires every adjacent two-grid order of
+   @eq-ch15-order to reach `ORDER_ON` $= 2.75$ over both doublings; the unset arm requires the last order to
+   stay below `ORDER_OFF` $= 2.5$ ({{< code tests/test_wb_ref4_order.py ORDER_ON >}},
+   {{< code tests/test_wb_ref4_order.py ORDER_OFF >}}). Near round-off a ratio stops measuring truncation; read
+   the raw residuals against the bound of @sec-ch15 before reading the order.
+3. *Read the near-wall row as a two-grid estimate.* `faces_next_to_the_walls_are_second_order`
+   ({{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}}) requires the order from
+   32 to 64 cells to be at least 1.7 and the reference error at the finer grid to be at most 1.5 times the
+   largest interior error; two grids give one estimate, not an asymptotic order.
+4. *Read the centroid row as a separation test.* `main` of {{< code tests/test_x1_centroid_rest.py main >}}
+   requires the rest force below `TOL_ON` $= 10^{-10}$ with the centroid switch on, in the interior and at the
+   walls, and above `TOL_OFF` $= 10^{-8}$ in the interior with it off
+   ({{< code tests/test_x1_centroid_rest.py TOL_ON >}}, {{< code tests/test_x1_centroid_rest.py TOL_OFF >}}).
+5. *Read the exact rows as exact.* `HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts`
+   ({{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts >}})
+   compares the interior reference with and without perturbed ghosts by `torch::equal`.
+   `BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest`
+   ({{< code tests/test_balance_column.cpp BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest >}})
+   requires the rest residual below $10^{-10}$, the species rows unchanged bit for bit and the temperature within
+   $10^{-14}$. `HydroRefX1.in_process_split_matches_one_block_after_200_steps`
+   ({{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}})
+   bounds the relative difference of four blocks against one after 200 steps by $10^{-12}$.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
+Read the assertion and its registration, then run the selection in a build configured from the code pin
+(@fig-ch15-evidence, @sec-ch15). The flux-covariance arm of the seam test is its own registration,
+`test_pref_local_seam_flux_covariance.release`, which sets `SNAP_FLUX_COVARIANCE=1` and requires exactly one
+passing case ({{< code tests/CMakeLists.txt >}}). Record device, precision, process count and every skip
+separately.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| 1 | {{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts >}} | `HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts` | test selection |
-| 2 | {{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}} | `faces_next_to_the_walls_are_second_order` | test selection |
-| 3 | {{< code tests/test_wb_ref4_order.py main >}} | `main` | test selection |
-| 4 | {{< code tests/test_x1_centroid_rest.py main >}} | `main` | test selection |
-| 5 | {{< code tests/test_balance_column.cpp BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest >}} | `BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest` | test selection |
-| 6 | {{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}} | `HydroRefX1.in_process_split_matches_one_block_after_200_steps` | test selection |
+| wall clamp keeps ghosts out | {{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts >}} | `HydroRefX1Dispatch.wall_clamp_keeps_the_interior_free_of_the_ghosts` | `wb-wall-clamp` |
+| near-wall order | {{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}} | `faces_next_to_the_walls_are_second_order` | none |
+| fourth-order reference | {{< code tests/test_wb_ref4_order.py main >}} | `main` | `SNAP_WB_REF4` |
+| centroid rest | {{< code tests/test_x1_centroid_rest.py main >}} | `main` | `SNAP_X1_CENTROID_EXACT` |
+| moist column at rest | {{< code tests/test_balance_column.cpp BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest >}} | `BalanceColumn.a_moist_column_with_one_condensable_comes_out_at_rest` | none |
+| four blocks equal one | {{< code tests/test_pref_local_seam.cpp HydroRefX1.in_process_split_matches_one_block_after_200_steps >}} | `HydroRefX1.in_process_split_matches_one_block_after_200_steps` | `SNAP_FLUX_COVARIANCE` |
 
-: Assertion definitions for this catalogue. {#tbl-ch15-ch05-tests-sources}
+: Assertions this catalogue reads. {#tbl-ch15-ch05-tests-sources}
 
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
-
-#### How to use
-
-No user YAML is required for this assertion: `main` constructs the test runs and chooses both switch arms
-({{< code tests/test_wb_ref4_order.py main >}}). From a configured build at the code pin, select:
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
 
 ```bash
-ctest --output-on-failure -R '^test_wb_ref4_order_python$'
+ctest --test-dir build -N -R '^test_wb_ref4_order_python$'
+ctest --test-dir build --output-on-failure -R '^test_wb_ref4_order_python$'
 ```
 
-The `main` entry point refuses an unavailable CUDA device by returning 125; that is not evidence of a CPU or CUDA pass.
-The same entry point implements @eq-ch15-order with:
+The other rows are selected the same way:
+
+```bash
+ctest --test-dir build -N -R '^test_hydro_ref_x1\.release$'
+ctest --test-dir build -N -R '^test_wb_ref_wall\.release$'
+ctest --test-dir build -N -R '^test_x1_centroid_rest_python$'
+ctest --test-dir build -N -R '^test_balance_column\.release$'
+ctest --test-dir build -N -R '^test_pref_local_seam_flux_covariance\.release$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`. Do not set `SNAP_WB_REF4` or
+`SNAP_X1_CENTROID_EXACT` by hand for the Python rows: each script starts one child process per arm with the
+variable set or unset, and a value inherited from the shell would make the control arm meaningless. An empty
+selection prints "No tests were found!!!" and is not a result (@sec-ch15).
+
+The contract of the order test, from `main` ({{< code tests/test_wb_ref4_order.py main >}}):
 
 ```python
-order = [math.log2(abs(v[i]) / abs(v[i + 1])) for i in range(len(v) - 1)]
+if switch and min(order) < ORDER_ON:
+    failures.append(f"{n:g} e-folds, switch on: order {min(order):.2f} < {ORDER_ON}")
+if not switch and not order[-1] < ORDER_OFF:
+    failures.append(f"{n:g} e-folds, switch off: order {order[-1]:.2f} >= {ORDER_OFF}")
 ```
 
-Here `v` holds the diagnostic residuals over successive resolutions. The absolute-value ratio removes the residual sign;
-a zero residual makes the logarithmic interpretation invalid. Do not substitute a different YAML deck and retain the same claim.
+`order` holds the adjacent two-grid exponents of @eq-ch15-order over the resolutions; the on arm is judged on
+its smallest, the off arm on its last.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_hydro_ref_x1.release` | Wall-clamped interior reference ignores ghost perturbations | bitwise equality | Source assertion 1 |
-| `test_wb_ref_wall.release` | Near-wall face errors decrease on refinement | order at least 1.7; reference error at most 1.5 times interior | Source assertion 2 |
-| `test_wb_ref4_order_python` | Enabled reference has high-order convergence; control remains distinguishable | `ORDER_ON` and `ORDER_OFF` | Source assertion 3 |
-| `test_x1_centroid_rest_python` | Centroid correction separates rest and non-rest controls | `TOL_ON` and `TOL_OFF` | Source assertion 4 |
-| `test_balance_column.release` | Moist column balances without changing species; solver remains at rest | rest below $10^{-10}$; vapour change below $10^{-12}$ | Source assertion 5 |
-| `test_pref_local_seam_flux_covariance.release` | Four local blocks match one block after 200 steps | maximum normalized state gap at most $10^{-12}$ | Source assertion 6 |
+| `test_hydro_ref_x1.release` | the wall-clamped interior reference ignores perturbed ghosts | exact (`torch::equal`) | the test |
+| `test_wb_ref_wall.release` | near-wall face errors shrink on refinement | order $\ge 1.7$; reference error $\le 1.5\times$ interior | the test |
+| `test_wb_ref4_order_python` | the enabled reference converges at high order; the control does not | `ORDER_ON` $= 2.75$; `ORDER_OFF` $= 2.5$ | the script's constants |
+| `test_x1_centroid_rest_python` | the centroid correction separates rest from the control | `TOL_ON` $= 10^{-10}$; `TOL_OFF` $= 10^{-8}$ | the script's constants |
+| `test_balance_column.release` | a moist column balances without changing its species and stays at rest | residual $<10^{-10}$; species exact; $T$ within $10^{-14}$ | the test |
+| `test_pref_local_seam_flux_covariance.release` | four local blocks match one block after 200 steps | relative difference $\le10^{-12}$ | the test |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch05-tests-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch05-tests-assertions}
 
-The order thresholds are 2.75 for the enabled arm and 2.5 for the control
-({{< code tests/test_wb_ref4_order.py ORDER_ON >}}; {{< code tests/test_wb_ref4_order.py ORDER_OFF >}}).
-The centroid-rest thresholds are $10^{-10}$ and $10^{-8}$
-({{< code tests/test_x1_centroid_rest.py TOL_ON >}}; {{< code tests/test_x1_centroid_rest.py TOL_OFF >}}).
-These are source thresholds. The earlier run record is not evidence of execution at the current pin.
-`src/snapy_report/ch05/wbref_check.py` retains the independent rational-weight, wall-continuation,
-pressure-source, centroid and balance-iteration checks.
+The report-only `src/snapy_report/ch05/wbref_check.py` checks the rational weights, the wall continuation, the
+pressure source, the centroid and the balance iteration on ports and imports no snapy.
 
-[C1] The enabled/unset comparison tests whether the convergence oracle distinguishes the reference paths.
-[C2] The wall, centroid and seam rows test separate contracts; passing one does not establish the others.
-These statements describe source assertions, not new executions.[^ch15-ch05-provenance]
+`[C1]` The enabled and unset arms together test whether the order oracle distinguishes the two reference paths.
+`[C2]` The wall, centroid, balance and seam rows are separate contracts; passing one establishes none of the
+others.[^ch15-ch05-run]
 
-[^ch15-ch05-provenance]: Source read at `6fbb39750f62b83df096058a4746e77d0a634bc5`; no compiled solver run was performed for this rewrite. The command above is a reproduction instruction, not a run record. Existing report-check provenance remains in `reviews/ch15-verification-evidence.md`.
+[^ch15-ch05-run]: [sha: the code pin; the selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record.
 
 ### Limits
 
-The wall assertion compares two grids. A new report claim of asymptotic order needs at least three resolutions,
-with temporal and solver error controlled. This catalogue supplies no new CPU, CUDA or distributed run of
-the well-balanced tests.
+The wall row compares two grids; a claim of asymptotic order needs at least three resolutions with the time
+and solver errors controlled. This section adds no CPU, CUDA or distributed run of the well-balanced tests.
