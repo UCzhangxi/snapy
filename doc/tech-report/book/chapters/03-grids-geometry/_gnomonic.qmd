@@ -306,8 +306,10 @@ In step order (@tbl-ch03-gnomonic-code):
    components ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::flux2global2_ >}}); likewise for $x_1$ and $x_3$.
 5. `forward` adds the radial, $m_2$ and $m_3$ sources ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}).
 
-**How to use it.** Six panels, one block each, in one process; the tangential faces must be named `custom`
-(@sec-ch03-physfaces), because the default `reflecting` would act on the panel edges:
+**How to use it — construction card.** Six panels, one block each, in one process. Replace `geometry`,
+`distribute` and `boundary-condition.external` in a copy of `straka_single.yaml` with the following. This card
+is not runnable with the `straka` driver: its initial state treats $x_1$ as height, not radius. The tangential
+faces must be named `custom` (@sec-ch03-physfaces), because the default `reflecting` would act on the panel edges:
 
 ```yaml
 geometry:
@@ -320,7 +322,13 @@ boundary-condition:
              x2-inner: custom, x2-outer: custom, x3-inner: custom, x3-outer: custom}
 ```
 
-Build it through `Mesh`; a single `MeshBlock` stops with "MeshBlockImpl: world_size (1) does not match layout
+With the source-built Python interface, construct the mesh without initializing or advancing the Straka state:
+
+```bash
+python -c 'import snapy; mesh = snapy.Mesh(snapy.MeshOptions.from_yaml("straka_single.yaml")); print(len(mesh.blocks))'
+```
+
+This builds **6 blocks**. Build it through `Mesh`; a single `MeshBlock` stops with "MeshBlockImpl: world_size (1) does not match layout
 partitioning (6)." Refused, each with its message:
 
 - `nx2` unequal to `nx3`: "GnomonicEquiangleImpl::reset(): nx2 must equal nx3";
