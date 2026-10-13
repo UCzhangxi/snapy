@@ -1,47 +1,59 @@
 ## External tabulated EOS interface (`aneos`) {#sec-ch02-aneos}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: OUTLINE.md section 2; code links below
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md section 2; src/eos/aneos.cpp, src/eos/aneos/aneos_thermo.hpp,
+         src/eos/aneos/aneos_thermo_dummy.cpp at the pin
 status: draft
 -->
 
-
 ### Summary
 
-The wrapper delegates thermodynamics to an external table provider. Its shipped weak symbols throw, so the wrapper alone supplies no material accuracy evidence. The factory alias is `aneos`.
+ANEOS-type equations of state describe materials such as rock or iron at high pressure through tables, not
+formulas. snapy does not ship such a table. It ships a wrapper that asks an external provider for pressure,
+temperature, internal energy and sound speed, and a placeholder provider whose every function throws. A user who
+links a real provider gets a working EOS; without one, selecting `aneos` stops at construction. Nothing in this
+tree therefore says how accurate the material model is.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** An external tabulated equation of state behind the `aneos` alias: the wrapper delegates every thermodynamic map to a table provider supplied outside this tree.
+**Purpose.** Delegates every thermodynamic map to an external table provider; defines $\gamma=c_s^2\rho/p$, @eq-ch02-aneos-gamma.
 
-**Data.** In: the cell averages of five rows, total density $\rho$ [kg m$^{-3}$] (`IDN`), the three momentum densities $m_1, m_2, m_3$ [kg m$^{-2}$ s$^{-1}$] (`IVX`, `IVY`, `IVZ`) and the total energy density $E$ [J m$^{-3}$] (`IPR`) of `hydro_u`, or $\rho$ [kg m$^{-3}$], $v_1, v_2, v_3$ [m s$^{-1}$] and $p$ [Pa] of `hydro_w`; no species row is read, so the basis is the total mass of the cell; plus the `eos-file` path. Out, in the same cells: the other representation in those five rows; the internal energy per unit volume [J m$^{-3}$] (`W->I`, `UT->I`); $T$ [K] (`W->T`); $c_s$ [m s$^{-1}$] (`W->L`); the adiabatic index $c_s^2\rho/p$ [-] (`WL->A`). The provider is asked for $(p, T, c_s)$, $(T, e\rho, c_s)$ or $(p, e\rho, c_s)$ from $(\rho, e\rho)$, $(\rho, p)$ or $(\rho, T)$; this tree computes none of those values.
+**Data.** Reads five rows ($\rho$, $m_a$ or $v_a$, $E$ or $p$) and `eos-file`; writes the other representation, $T$, $c_s$.
 
-**Placement.** Wherever the EOS is evaluated; the provider replaces the shipped weak symbols at link time.
+**Placement.** At every conversion; the provider replaces the shipped weak symbols at link time.
 
-**Activation.** `type: aneos` with `eos-file`; the default EOS stays `moist-mixture`.
+**Activation.** `type: aneos` with `eos-file`; default EOS `moist-mixture`.
 
-**Guarantee / limits.** No accuracy is available from this tree: the shipped weak symbols throw, so the wrapper alone computes nothing.
+**Guarantee / limits.** None from this tree: the shipped provider throws in its constructor.
 
-**Evidence.** None: no ctest entry exercises the wrapper, and no linked implementation exists in this tree (missing evidence); the report-only `aneos_check.py` is run with its committed output `src/snapy_report/ch02/aneos_check.out`.
+**Evidence.** @tbl-ch02-aneos-tests: no ctest; `aneos_check.py` prints a labelled illustration `[I1]`, not a check.
 :::
+
+Local symbols: none.
 
 ### Derivation
 
-No thermodynamic model is shipped to derive. The wrapper defines the effective adiabatic index from the
-external sound speed, pressure and density:
+No material model is shipped, so none is derived. The wrapper fixes only how its questions are posed, in two steps.
+
+1. *Three provider calls.* `DU->PTL` returns $(p,T,c_s)$ from $(\rho,\rho e)$; `DP->TUL` returns $(T,\rho e,c_s)$
+   from $(\rho,p)$; `DT->PUL` returns $(p,\rho e,c_s)$ from $(\rho,T)$.
+2. *The effective adiabatic index* is defined from the provider's answers, not from a heat-capacity ratio:
+
 $$
 \gamma=c_s^2\rho/p
 $$ {#eq-ch02-aneos-gamma}
 
 @eq-ch02-aneos-gamma is implemented by `cs` in {{< code src/eos/aneos.cpp ANEOSImpl::compute >}}.
-This is an interface identity, not a claim that the external material has constant heat capacity.
-`aneos_check.py` prints an explicitly labelled illustration only; it provides no validation of a material table.
+
+For an ideal gas this returns $\gamma_{\mathrm d}$; for a tabulated material it is a definition, not a claim that
+the heat capacity is constant.
 
 ### Numerical method
 
-`DU->PTL` supplies pressure, temperature and speed from density and internal energy density.
-`DP->TUL` supplies temperature, internal energy and speed from density and pressure. `DT->PUL` handles
-the temperature-floor request. All are cell-local external calls. No internal interpolation stencil is shipped.
+`_cons2prim` applies the conserved floors, divides the momenta by $\rho$, subtracts the kinetic energy and calls
+`DU->PTL`; it caches the returned $T$ for a later `W->T`. `_prim2cons` multiplies and adds the kinetic energy back
+after `DP->TUL`. The temperature floor calls `DT->PUL`. Every call is cell-local; no interpolation stencil is
+shipped. There is no metric raise or lower, so on a nonorthogonal grid the kinetic energy is wrong.
 
 ```{python}
 #| label: fig-ch02-aneos-flow
@@ -54,42 +66,75 @@ make_fig()
 
 ### Code
 
+**A minimal input.** It loads, and then stops at construction unless a provider is linked:
+
+```yaml
+dynamics:
+  equation-of-state:
+    type: aneos
+    eos-file: forsterite.tab   # read by the linked provider, not by snapy
+```
+
+**What is refused, and why.**
+
+1. *No linked provider.* `reset` builds `ANEOSThermoImpl`, whose shipped weak constructor throws
+   "ANEOSThermoImpl constructor is not implemented"; its `compute` would throw "ANEOSThermoImpl::compute is not
+   implemented". A run without a real table never computes a wrong state.
+2. *A key the wrapper lacks.* `W->A`, `W->E` and `U->K` throw "Unknown abbreviation: " and the key; a caller must
+   use `W->L` and then `WL->A`.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
-| keys | {{< code src/eos/aneos.cpp ANEOSImpl::compute >}} | `compute` | `aneos` |
-| conserved map | {{< code src/eos/aneos.cpp ANEOSImpl::_cons2prim >}} | `_cons2prim` | `aneos` |
-| throwing stubs | {{< code src/eos/aneos/aneos_thermo_dummy.cpp ANEOSThermoImpl::ANEOSThermoImpl >}} | `ANEOSThermoImpl` | `aneos` |
+| conversion keys | {{< code src/eos/aneos.cpp ANEOSImpl::compute >}} | `compute` | `aneos` |
+| conserved to primitive | {{< code src/eos/aneos.cpp ANEOSImpl::_cons2prim >}} | `_cons2prim` | `aneos` |
+| temperature floor call | {{< code src/eos/aneos.cpp ANEOSImpl::_temp2intEng >}} | `_temp2intEng` | `aneos` |
+| throwing provider | {{< code src/eos/aneos/aneos_thermo_dummy.cpp ANEOSThermoImpl::ANEOSThermoImpl >}} | `ANEOSThermoImpl` | `aneos` |
 
-: Code map. {#tbl-ch02-aneos-code}
+: Code map of the ANEOS wrapper. {#tbl-ch02-aneos-code}
 
+**The excerpt.** `ANEOSImpl::_cons2prim`:
 
-Read the implementation in this order:
+```cpp
+apply_conserved_limiter_(cons);
 
-1. Keys: `compute` in {{< code src/eos/aneos.cpp ANEOSImpl::compute >}}.
-2. Conserved map: `_cons2prim` in {{< code src/eos/aneos.cpp ANEOSImpl::_cons2prim >}}.
-3. Throwing stubs: `ANEOSThermoImpl` in {{< code src/eos/aneos/aneos_thermo_dummy.cpp ANEOSThermoImpl::ANEOSThermoImpl >}}.
+prim[IDN] = cons[IDN];
+
+auto out = prim.narrow(0, IVX, 3);
+torch::div_out(out, cons.narrow(0, IVX, 3), prim[IDN]);
+
+auto ke = 0.5 * (prim.narrow(0, IVX, 3) * cons.narrow(0, IVX, 3)).sum(0);
+auto ie = cons[IPR] - ke;
+
+auto [P, T, L] = pthermo->compute("DU->PTL", {cons[IDN], ie});
+prim[IPR] = P;
+
+pthermo->cache["temp"] = T;
+
+apply_primitive_limiter_(prim);
+```
+
+`ie` is $\rho e$; the `compute` line is provider call 1 of the Derivation; there is no raise between `div_out` and
+`ke`, which is the nonorthogonal limit of the Numerical method.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| none | external table behavior | missing evidence | no linked implementation tested |
+| none | external table behaviour | missing evidence | no linked provider is tested |
+| `aneos_check.py` `[I1]` (this report) | an illustration of @eq-ch02-aneos-gamma | none | labelled as an illustration |
 
-: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-aneos-tests}
+: Tests of the ANEOS wrapper. {#tbl-ch02-aneos-tests}
 
-::: {.callout-important title="Check"}
-The non-validating illustration is `src/snapy_report/ch02/aneos_check.py`;
-its committed output is `src/snapy_report/ch02/aneos_check.out`, line `[I1]`.
+The script prints one labelled illustration and validates nothing.[^an-run] `[I1]`: $c_s=500$ m s$^{-1}$,
+$\rho=2$ kg m$^{-3}$ and $p=10^5$ Pa give $\gamma=5.0$.
 
-No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
-:::
+[^an-run]: [sha: the code pin; deck: the script itself; run: `python3 src/snapy_report/ch02/aneos_check.py`, CPU,
+    double, 1 process; Python 3.11.13; output identical to the committed file]. Output `aneos_check.out`,
+    line `[I1]`.
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-The shipped constructor throws. The wrapper lacks moist species and metric raising/lowering. It does not
-implement `W->A`; callers must use `W->L` then `WL->A`. The base heat-capacity method returns zero.
-No external ANEOS, wall, seam or forcing compatibility run is claimed.
-Switch-combination coverage remains pending in @sec-ch12-matrix.
-:::
+1. **No provider, no evidence.** No external ANEOS run, and no wall, seam or forcing compatibility run, is claimed.
+2. **Partial API.** No moist species; no `W->A`; the base heat-capacity method returns zero.
+3. **Nonorthogonal grids.** No metric raise or lower (Numerical method).
+4. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.

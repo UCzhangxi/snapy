@@ -1,40 +1,55 @@
 ## EOS interface and dispatch (`type`) {#sec-ch02-interface}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: OUTLINE.md section 2; code links below
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md section 2; src/eos/equation_of_state.cpp, src/eos/equation_of_state.hpp,
+         src/input/check_keys.cpp and the five concrete EOS files at the pin
 status: draft
 -->
 
-
 ### Summary
 
-The EOS factory selects a set of tensor conversion operations. Unsupported keys fail at dispatch, so selecting an EOS also selects which downstream operations are available. The factory key is `type`.
+The equation of state (EOS) is the module that converts between the conserved state the solver advances and the
+primitive state it reconstructs, and that answers questions such as "what is the temperature here". The key
+`type` picks one of five EOS classes. Each class answers a fixed set of questions, named by short conversion keys
+such as `U->W`. A question the selected class cannot answer is an error at the call, so choosing an EOS also
+chooses which other parts of the model can run with it.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A (a factory): the EOS key `type` selects one of five concrete types, each implementing a set of tensor conversion keys; an unsupported key fails at dispatch.
+**Purpose.** N/A (a factory): `type` builds one of five EOS classes, each answering a fixed set of conversion keys.
 
-**Data.** No physical quantity of its own. In: YAML `dynamics/equation-of-state` with `type`, the floors (density [kg m$^{-3}$], pressure [Pa], temperature [K]) and, for the moist types, the thermo options. Out: the EOS module whose conversion keys the rest of the step may call on the cell averages (the table in the Numerical method layer).
+**Data.** Reads the YAML map `dynamics/equation-of-state`; writes the EOS module the step calls on cell tensors.
 
-**Placement.** At option construction; the selected module is called at every conversion.
+**Placement.** Built once with the hydro options; called at every conversion of every stage.
 
-**Activation.** `type` defaults to `moist-mixture`; the moist types require thermo options.
+**Activation.** `type`, default `moist-mixture`; the two moist classes also need the species and reactions cards.
 
-**Guarantee / limits.** A factory; no discretization order or single defining equation. Selecting an EOS also selects which downstream operations exist.
+**Guarantee / limits.** Unknown keys, unknown types and unsupported conversion keys throw; no order applies.
 
-**Evidence.** `test_hydro_options.release` asserts that unknown dynamics keys are rejected (exception); `test_eos.release` asserts the selected EOS behaviour per type (see the per-type sections); no run of these ctest entries is recorded for this chapter at the pin (missing evidence).
+**Evidence.** @tbl-ch02-interface-tests: three parser ctests by source reading; no report check (no derivation).
 :::
+
+Local symbols: none. The conversion keys are API labels, not mathematical symbols: `W` the primitive state
+$\mathbf W$, `U` the conserved state $\mathbf U$, `I` the internal energy density $\rho e$, `T` the temperature,
+`A` the adiabatic index $\gamma$, `L` the sound speed $c_s$, `K` the specific kinetic energy and `E` the species
+energy densities.
 
 ### Derivation
 
-No physical derivation applies to dispatch. The caller and selected implementation must agree on both key
-and tensor representation. `W` denotes primitive state, `U` conserved state, `I` internal energy density,
-`T` temperature, `A` adiabatic index, `L` sound speed, `K` kinetic energy density and `E` species energy density.
-These are API labels, not additional mathematical symbols.
+None: dispatch has no physics to derive. What it must guarantee is a contract between the caller and the selected
+class, in three steps.
+
+1. *A caller asks by key.* Every consumer (the hydro step, the limiter, the forcings, the phase solve) calls
+   `compute(key, tensors)` and never a class method directly.
+2. *Each class answers a fixed list.* `compute` of every class is an `if` chain over its keys, ending in
+   `TORCH_CHECK(false, "Unknown abbreviation: ", ab)`.
+3. *Hence a missing answer is loud.* A key the class lacks throws at the first call; there is no silent default.
+   The one exception is shallow water's `W->T` and `W->A`, which return an undefined tensor (@tbl-ch02-interface-keys).
 
 ### Numerical method
 
-Dispatch is pointwise on cell tensors, including ghost entries passed by the caller; it performs no halo exchange.
+Dispatch is pointwise on cell tensors, ghost cells included when the caller passes them; it performs no halo
+exchange. @tbl-ch02-interface-keys lists which class answers which key at the pin.
 
 | key family | ideal gas | moist types | ANEOS | shallow water |
 |---|---|---|---|---|
@@ -47,11 +62,10 @@ Dispatch is pointwise on cell tensors, including ghost entries passed by the cal
 
 : Supported conversion branches, as cited in each type's Code layer. {#tbl-ch02-interface-keys}
 
-Unknown keys throw. YAML validates map structure and known keys. A present EOS map supplies `gammad=1.4`,
-`weight=0.029` in $\mathrm{kg\,mol^{-1}}$, density floor $10^{-6}$ in $\mathrm{kg\,m^{-3}}$,
-pressure floor $10^{-3}$ in $\mathrm{Pa}$, temperature floor $20$ in $\mathrm K$, `limiter=false`,
-and empty `eos-file`. If the map is absent, the struct defaults remain: density and pressure floors are both
-$10^{-10}$ in their respective units. Moist resets replace `gammad` and `weight` from their thermo.
+A present EOS map supplies these defaults in `from_yaml`: `gammad` 1.4, `weight` 0.029 kg mol$^{-1}$, density
+floor $10^{-6}$ kg m$^{-3}$, pressure floor $10^{-3}$ Pa, temperature floor 20 K, `limiter` false and an empty
+`eos-file`. When the map is absent, the struct defaults stay: density and pressure floors of $10^{-10}$ in their
+units. The two moist classes overwrite `gammad` and `weight` from the dry species of their thermo in `reset`.
 
 ```{python}
 #| label: fig-ch02-interface-flow
@@ -64,41 +78,82 @@ make_fig()
 
 ### Code
 
+**A minimal input.** One key selects the class; the floors are optional:
+
+```yaml
+dynamics:
+  equation-of-state:
+    type: ideal-gas          # ideal-gas | ideal-moist | moist-mixture | aneos | shallow-water
+    density-floor: 1.e-10    # kg m^-3
+    pressure-floor: 1.e-10   # Pa
+    limiter: true            # apply the floors at every conversion
+```
+
+**What is refused, and why.** `EquationOfStateOptionsImpl::from_yaml` and `EquationOfStateImpl::create`
+({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}},
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}}) refuse, in this order:
+
+1. *A `dynamics` or `equation-of-state` entry that is not a map*, with "EquationOfStateOptions: dynamics must be a
+   map." or "EquationOfStateOptions: dynamics/equation-of-state must be a map.". A scalar there would otherwise be
+   read as an empty block and run the defaults.
+2. *An unknown key*, by `check_keys` ({{< code src/input/check_keys.cpp check_keys >}}), with "unknown key
+   'dynamics/equation-of-state/KEY'. Valid keys: …; read by kintera: max-iter, ftol, uv-solver.". A misspelt floor
+   would otherwise load silently and run without it.
+3. *An invalid `uv-solver`*, by kintera when it parses the same block, with "Invalid UV solver: " and the value
+   (`uv_solver` in [`kintera thermo_options.cpp:105-111`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_options.cpp#L105-L111)).
+4. *An unknown `type`*, at construction, with "EquationOfState: Unknown type: " and the value.
+5. *A moist class without thermo options*, in `reset`, with "[IdealMoist] thermo pointer is null" or
+   "[MoistMixture] thermo pointer is null".
+6. *A conversion key the class lacks*, at the call, with "Unknown abbreviation: " and the key.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
-| YAML validation/defaults | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `from_yaml` | `type` |
-| struct defaults | {{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}} | `density_floor` | `type` |
+| YAML validation and defaults | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `check_keys` | every key |
+| struct defaults | {{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}} | `density_floor` | map absent |
 | factory | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}} | `create` | `type` |
-| base fallback | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::specific_heat_cv >}} | `specific_heat_cv` | `type` |
+| base fallback | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::specific_heat_cv >}} | `specific_heat_cv` | `aneos`, `shallow-water` |
 
-: Code map. {#tbl-ch02-interface-code}
+: Code map of the EOS interface. {#tbl-ch02-interface-code}
 
+**The excerpt.** The factory in `EquationOfStateImpl::create`:
 
-Read the implementation in this order:
+```cpp
+if (opts->type() == "ideal-gas") {
+  return p->register_module(name, IdealGas(opts, p));
+} else if (opts->type() == "ideal-moist") {
+  return p->register_module(name, IdealMoist(opts, p));
+} else if (opts->type() == "moist-mixture") {
+  return p->register_module(name, MoistMixture(opts, p));
+} else if (opts->type() == "aneos") {
+  return p->register_module(name, ANEOS(opts, p));
+} else if (opts->type() == "shallow-water") {
+  return p->register_module(name, ShallowWater(opts, p));
+} else {
+  TORCH_CHECK(false, "EquationOfState: Unknown type: ", opts->type());
+}
+```
 
-1. Yaml validation/defaults: `from_yaml` in {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}.
-2. Struct defaults: `density_floor` in {{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}}.
-3. Factory: `create` in {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}}.
-4. Base fallback: `specific_heat_cv` in {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::specific_heat_cv >}}.
+Each branch is one column of @tbl-ch02-interface-keys (the two moist classes share one); the last line is
+refusal 4.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_hydro_options.release` | unknown dynamics keys rejected | exception | configuration contract |
-| `test_eos.release` | selected EOS behavior | per-type | see the per-type sections |
+| {{< code tests/test_hydro_options.cpp hydro_options.reject_unknown_equation_of_state_keys >}} (`test_hydro_options.release`) | `tracer-floor`, a typo and a wrong-case key are each refused, and the message names the key | exact (throws) | a parser contract |
+| {{< code tests/test_hydro_options.cpp hydro_options.every_equation_of_state_key_is_accepted_and_read >}} (`test_hydro_options.release`) | every listed key loads and reaches its option, kintera's three included | exact (equality) | a parser contract |
+| {{< code tests/test_hydro_options.cpp hydro_options.invalid_uv_solver_is_refused_by_kintera >}} (`test_hydro_options.release`) | `uv-solver: bogus` throws "Invalid UV solver" | exact (throws) | a parser contract |
 
-: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-interface-tests}
+: Tests of the EOS interface. {#tbl-ch02-interface-tests}
 
-::: {.callout-important title="Check"}
-No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
-:::
+No report check is attached: the section derives nothing. The three ctest cases run on CPU, one rank, and have not
+been run for this report at the pin: **pending a pinned ctest run**. No ctest asserts refusal 4 or refusal 6.
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-Temperature-floor positivity and finiteness are not validated in `from_yaml`. Selecting the default moist EOS
-without thermo options fails during reset. ANEOS and shallow water do not satisfy the full moist API.
-Switch-combination coverage remains pending in @sec-ch12-matrix.
-:::
+1. **Temperature floor.** `from_yaml` does not check that the temperature floor is positive and finite.
+2. **Default needs a card.** The default `moist-mixture` without species fails in `reset` (refusal 5), not in the
+   parser.
+3. **Partial APIs.** ANEOS and shallow water do not answer the full moist API; a forcing or diagnostic that asks
+   them for `W->E` or `U->K` throws at the call.
+4. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.

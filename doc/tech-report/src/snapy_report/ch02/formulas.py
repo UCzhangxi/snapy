@@ -1,14 +1,23 @@
-"""Independent formula checks and an isolated pressure-loop port; no compiled solver execution.
+"""Independent formula checks, symbolic derivations and round-off ports; no compiled solver execution.
 
-Formulas: snapy e894700ff7aee30b52882e5202b16461413780b0;
+Formulas: snapy 6fbb39750f62b83df096058a4746e77d0a634bc5 (the code pin);
 kintera c55b13b2204997d2d09e04498558ab9495d8ee77. See chapter Code tables.
-Synthetic inputs in this file are the complete decks. All arithmetic uses CPU
-float64. Relative tolerance 1e-12 allows accumulated floating-point round-off
-in small well-conditioned sums. Rotor central differences use 2e-6 relative:
-finite-difference truncation and cancellation, not an EOS runtime tolerance.
+Synthetic inputs in this file are the complete decks; the random decks use
+numpy's default_rng with the seed named in each check. All floating-point
+arithmetic uses CPU float64. Relative tolerance 1e-12 allows accumulated
+round-off in small well-conditioned sums. Rotor central differences use 2e-6
+relative: finite-difference truncation and cancellation, not an EOS runtime
+tolerance. Round-off claims compare a float64 port of the code's operation
+order with exact rational arithmetic (fractions.Fraction) on the same float
+inputs, and pass when every measured error is inside the bound the chapter
+derives (first order in the unit round-off EPS_M/2).
 """
+from fractions import Fraction as Q
+
 import numpy as np
 import sympy as sp
+
+EPS_M = 2.0**-52  # machine epsilon of float64; one rounding is within EPS_M/2
 
 
 def check_C1_laws():
@@ -183,4 +192,251 @@ def check_C1_shallow_water():
     residual = np.max(np.abs(recovered-velocity))
     ok = residual < 1e-12
     print(f'[C1] {"PASS" if ok else "FAIL"} depth momentum round trip residual={residual:.3e}')
+    return ok
+
+
+def check_C2_laws():
+    # Symbolic: the volume-weighted sum of the flux-only increments of six cells
+    # leaves only the two boundary face products (eq-ch02-laws-increment).
+    n = 6
+    dt = sp.symbols('Delta_t', positive=True)
+    face = sp.symbols('P0:%d' % (n + 1))
+    total = sum(-dt * (face[i + 1] - face[i]) for i in range(n))
+    exact = sp.simplify(total + dt * (face[n] - face[0])) == 0
+    print(f'[C2] {"PASS" if exact else "FAIL"} symbolic telescoping over {n} cells exact={exact}')
+    return exact
+
+
+def check_C3_laws():
+    # Round-off of the flux-only increment, ported in the order of
+    # CoordinateImpl::divergence and HydroImpl::forward: P = A*F once per face,
+    # d = P[i+1] - P[i], div = d / V, du = (-dt) * div. Seed 2.
+    rng = np.random.default_rng(2)
+    worst = 0.
+    for _ in range(200):
+        n = 32
+        area = rng.uniform(.5, 2., n + 1)
+        flux = rng.normal(0., 1., n + 1) * 10.**rng.uniform(-3, 3, n + 1)
+        vol = rng.uniform(.5, 2., n)
+        dt = float(rng.uniform(1e-3, 1.))
+        face = area * flux
+        du = (-dt) * ((face[1:] - face[:-1]) / vol)
+        defect = sum(Q(v) * Q(d) for v, d in zip(vol, du)) + Q(dt) * (Q(face[-1]) - Q(face[0]))
+        bound = 1.5 * EPS_M * dt * float(np.abs(face[1:] - face[:-1]).sum())
+        worst = max(worst, abs(float(defect)) / bound)
+    ok = worst <= 1.
+    print(f'[C3] {"PASS" if ok else "FAIL"} conservation defect / derived bound max={worst:.3f} (200 random rows of 32 cells)')
+    return ok
+
+
+def check_C2_ideal_gas():
+    # Symbolic: eliminating T from e = cv T and p = rho R T with R = (gamma-1) cv
+    # gives p = (gamma-1) rho e; along an isentrope p = K rho**gamma,
+    # dp/drho = gamma p / rho.
+    rho, e, cv, g, temp, k = sp.symbols('rho e c_v gamma T K', positive=True)
+    p = rho * (g - 1) * cv * temp
+    first = sp.simplify(p.subs(temp, e / cv) - (g - 1) * rho * e) == 0
+    q = k * rho**g
+    second = sp.simplify(sp.diff(q, rho) - g * q / rho) == 0
+    ok = first and second
+    print(f'[C2] {"PASS" if ok else "FAIL"} symbolic pressure and isentropic sound speed exact={ok}')
+    return ok
+
+
+def check_C3_ideal_gas():
+    # Round-off of p = (gamma-1) (E - K), ported in the order of
+    # ideal_gas_cons2prim on an orthogonal cell (the raise is exact there).
+    # Derived bound: |p_hat/p - 1| <= EPS_M (1 + 2 K / (rho e)). Seed 3.
+    rng = np.random.default_rng(3)
+    gamma = 1.4
+    worst, ratio_max = 0., 0.
+    for _ in range(2000):
+        rho = float(10.**rng.uniform(-3, 2))
+        pres = float(10.**rng.uniform(1, 6))
+        mach = float(10.**rng.uniform(-2, 1.5))
+        speed = mach * np.sqrt(gamma * pres / rho)
+        direction = rng.normal(size=3)
+        vel = speed * direction / np.linalg.norm(direction)
+        mom = rho * vel
+        energy = pres / (gamma - 1) + .5 * float(vel @ mom)
+        v = mom / rho
+        ke = .5 * (v[0] * mom[0] + v[1] * mom[1] + v[2] * mom[2])
+        p_hat = (gamma - 1.) * (energy - ke)
+        k_exact = sum(Q(m) * Q(m) for m in mom) / (2 * Q(rho))
+        ie_exact = Q(energy) - k_exact
+        p_exact = (Q(gamma) - 1) * ie_exact
+        bound = EPS_M * (1. + 2. * float(k_exact / ie_exact))
+        worst = max(worst, abs(float((Q(p_hat) - p_exact) / p_exact)) / bound)
+        ratio_max = max(ratio_max, float(k_exact / ie_exact))
+    ok = worst <= 1.
+    print(f'[C3] {"PASS" if ok else "FAIL"} pressure round-off / derived bound max={worst:.3f}; K/(rho e) up to {ratio_max:.0f}')
+    return ok
+
+
+def check_C2_ideal_moist():
+    # Symbolic: two vapours and one condensate. Sum the gas partial pressures and
+    # the heat capacities of all species; divide by rho R_d T and rho c_vd.
+    rho, temp, big_r = sp.symbols('rho T mathcal_R', positive=True)
+    mu = sp.symbols('mu_d mu_1 mu_2', positive=True)
+    cv = sp.symbols('c_vd c_v1 c_v2 c_v3', positive=True)
+    y = sp.symbols('y1:4', nonnegative=True)
+    yd = 1 - sum(y)
+    rd = big_r / mu[0]
+    pres = rho * temp * big_r * (yd / mu[0] + y[0] / mu[1] + y[1] / mu[2])
+    feps = 1 + y[0] * (mu[0] / mu[1] - 1) + y[1] * (mu[0] / mu[2] - 1) - y[2]
+    fsig = 1 + sum(y[n] * (cv[n + 1] / cv[0] - 1) for n in range(3))
+    rho_cv = rho * (yd * cv[0] + sum(y[n] * cv[n + 1] for n in range(3)))
+    first = sp.simplify(pres - rho * rd * feps * temp) == 0
+    second = sp.simplify(rho_cv - rho * cv[0] * fsig) == 0
+    gamma_d = 1 + rd / cv[0]
+    gamma = 1 + (pres / (rho * temp)) / (rho_cv / rho)
+    third = sp.simplify(gamma - (1 + (gamma_d - 1) * feps / fsig)) == 0
+    ok = first and second and third
+    print(f'[C2] {"PASS" if ok else "FAIL"} symbolic f_eps, f_sig and frozen gamma exact={ok}')
+    return ok
+
+
+def check_C3_ideal_moist():
+    # Round-off of the thermal energy rho e_th = E - K - rho_d u_d - sum_n rho_n u_n,
+    # ported in the order of IdealMoistImpl::_cons2prim. Derived bound:
+    # |error| <= (N_y + 8) (EPS_M/2) Xi with Xi = |E| + K + sum |rho_n u_n| (dry included).
+    # Seed 4; two vapours and one condensate, reference energies up to 3e6 J/kg.
+    rng = np.random.default_rng(4)
+    worst, lam_max = 0., 0.
+    ny = 3
+    for _ in range(2000):
+        rho_d = float(10.**rng.uniform(-2, 1))
+        rho_s = rho_d * rng.uniform(0., .1, ny)
+        u0 = np.concatenate([[rng.uniform(-1e5, 1e5)], rng.uniform(-3e6, 3e6, ny)])
+        rho = rho_d + rho_s.sum()
+        thermal = rho * float(rng.uniform(1e4, 1e6))
+        vel = rng.normal(0., 1., 3) * 10.**rng.uniform(0, 3)
+        mom = rho * vel
+        offs = rho_d * u0[0] + float((rho_s * u0[1:]).sum())
+        energy = thermal + offs + .5 * float(vel @ mom)
+        v = mom / rho
+        ke = .5 * (v[0] * mom[0] + v[1] * mom[1] + v[2] * mom[2])
+        ie = energy - ke
+        ie = ie - rho_d * u0[0]
+        ie = ie - (rho_s * u0[1:]).sum()
+        rho_x = Q(rho_d) + sum(Q(r) for r in rho_s)
+        k_exact = sum(Q(m) * Q(m) for m in mom) / (2 * rho_x)
+        ie_exact = Q(energy) - k_exact - Q(rho_d) * Q(u0[0]) - sum(Q(r) * Q(u) for r, u in zip(rho_s, u0[1:]))
+        a = abs(energy) + float(k_exact) + abs(rho_d * u0[0]) + float(np.abs(rho_s * u0[1:]).sum())
+        bound = (ny + 8) * EPS_M / 2 * a
+        worst = max(worst, abs(float(Q(float(ie)) - ie_exact)) / bound)
+        lam_max = max(lam_max, a / abs(float(ie_exact)))
+    ok = worst <= 1.
+    print(f'[C3] {"PASS" if ok else "FAIL"} thermal-energy round-off / derived bound max={worst:.3f}; Xi/(rho e_th) up to {lam_max:.1f}')
+    return ok
+
+
+def check_C3_consistency():
+    # Symbolic: dry air, two vapours, one condensate with constant capacities.
+    # The per-species carried enthalpies (u* + c_v T + K/rho, plus R_n T for a gas)
+    # sum to E + p, with E = W->I + K and p from the gases only.
+    temp, ke = sp.symbols('T k', positive=True)  # ke: specific kinetic energy
+    rho = sp.symbols('rho_d rho_1 rho_2 rho_3', positive=True)
+    ustar = sp.symbols('u_d u_1 u_2 u_3', real=True)
+    cv = sp.symbols('c_vd c_v1 c_v2 c_v3', positive=True)
+    rg = sp.symbols('R_d R_1 R_2', positive=True)
+    gas = [True, True, True, False]
+    rgas = list(rg) + [0]
+    carried = sum(rho[n] * (ustar[n] + cv[n] * temp + (rgas[n] * temp if gas[n] else 0) + ke) for n in range(4))
+    internal = sum(rho[n] * (ustar[n] + cv[n] * temp) for n in range(4))
+    energy = internal + sum(rho) * ke
+    pres = sum(rho[n] * rgas[n] * temp for n in range(4))
+    ok = sp.simplify(carried - (energy + pres)) == 0
+    print(f'[C3] {"PASS" if ok else "FAIL"} symbolic carried enthalpy sum equals E + p exact={ok}')
+    return ok
+
+
+def check_C4_moist_mixture():
+    # Symbolic: (a) at fixed composition c_n = rho w_n, so
+    # dp/drho|_T = (R T / rho) sum_n c_n (Z_n + c_n dZ_n/dc_n) for Z_n = Z_n(c_n);
+    # (b) one Newton step on rho e - U(T) is the update of eq-ch02-moist-mixture-newton.
+    rho, temp, big_r = sp.symbols('rho T mathcal_R', positive=True)
+    w = sp.symbols('w1:4', positive=True)
+    z = [sp.Function('Z%d' % n) for n in range(1, 4)]
+    conc = [rho * wn for wn in w]
+    pres = big_r * temp * sum(c * zn(c) for c, zn in zip(conc, z))
+    cn = sp.symbols('c1:4', positive=True)
+    target = big_r * temp / rho * sum(c * (zn(c) + c * sp.diff(zn(c), c)) for c, zn in zip(cn, z))
+    target = target.subs({cn[i]: conc[i] for i in range(3)})
+    first = sp.simplify(sp.diff(pres, rho) - target.doit()) == 0
+    t0, energy = sp.symbols('T_0 E_th', positive=True)
+    u = sp.Function('U')
+    newton = t0 - (u(t0) - energy) / sp.diff(u(t0), t0)
+    update = t0 + (energy - u(t0)) / sp.diff(u(t0), t0)
+    second = sp.simplify(newton - update) == 0
+    ok = first and second
+    print(f'[C4] {"PASS" if ok else "FAIL"} symbolic isothermal sound speed and Newton update exact={ok}')
+    return ok
+
+
+def check_C5_moist_mixture():
+    # Stopping rule of _intEng_to_temp (ftol 1e-6, 10 iterations) on a volumetric
+    # capacity C(T) = C0 (1 + b (T - 300)). Derived bound on the error left when
+    # the relative step falls below ftol: (Lambda/2) (ftol T / (1 - beta))^2 plus an
+    # allowance 4 EPS_M T, Lambda = max|C'| / min C, beta = (Lambda/2) |first error| < 1/2. Seed 5.
+    rng = np.random.default_rng(5)
+    ftol, worst = 1e-6, 0.
+    for _ in range(200):
+        c0 = float(rng.uniform(5e2, 5e3))
+        b = float(rng.uniform(1e-4, 2e-3))
+        u0 = float(rng.uniform(-1e6, 1e6))
+        target = float(rng.uniform(150., 1500.))
+        cap = lambda t: c0 * (1. + b * (t - 300.))
+        energy_of = lambda t: u0 + c0 * (t + b * (t - 300.)**2 / 2 - b * 300.**2 / 2)
+        energy = energy_of(target)
+        temp = (energy - u0) / c0
+        first_error = abs(temp - target)
+        lo, hi = min(temp, target), max(temp, target)
+        m = c0 * b / cap(lo)
+        q = m / 2 * first_error
+        for _it in range(10):
+            prev = temp
+            temp = temp + (energy - energy_of(temp)) / cap(temp)
+            if abs(1. - prev / temp) < ftol:
+                break
+        bound = m / 2 * (ftol * hi / (1 - q))**2 + 4 * EPS_M * hi
+        if not q < .5:
+            return print('[C5] FAIL contraction q >= 1/2') or False
+        worst = max(worst, abs(temp - target) / bound)
+    ok = worst <= 1.
+    print(f'[C5] {"PASS" if ok else "FAIL"} Newton stop error / derived bound max={worst:.3f} (200 random capacities)')
+    return ok
+
+
+def check_C3_saturation():
+    # Symbolic: differentiate the fixed-energy constraint
+    # rho e = sum_n mu_n c_n e_n(T), e_n = u*_n + c_vn T (dry included), at fixed rho e.
+    temp = sp.symbols('T', positive=True)
+    n = 3
+    c = sp.symbols('c0:%d' % n, positive=True)
+    dc = sp.symbols('dc0:%d' % n, real=True)
+    mu = sp.symbols('mu0:%d' % n, positive=True)
+    us = sp.symbols('u0:%d' % n, real=True)
+    cv = sp.symbols('cv0:%d' % n, positive=True)
+    dt = sp.symbols('dT', real=True)
+    e = [us[i] + cv[i] * temp for i in range(n)]
+    energy = sum(mu[i] * c[i] * e[i] for i in range(n))
+    differential = sum(sp.diff(energy, c[i]) * dc[i] for i in range(n)) + sp.diff(energy, temp) * dt
+    solved = sp.solve(sp.Eq(differential, 0), dt)[0]
+    stated = -sum(mu[i] * e[i] * dc[i] for i in range(n)) / sum(mu[i] * c[i] * cv[i] for i in range(n))
+    ok = sp.simplify(solved - stated) == 0
+    print(f'[C3] {"PASS" if ok else "FAIL"} symbolic fixed-energy temperature differential exact={ok}')
+    return ok
+
+
+def check_C2_shallow_water():
+    # Symbolic: with d = g * depth stored in the IDN slot, the one-dimensional
+    # shallow-water flux (d v, d v^2 + d^2/2) has eigenvalues v -+ sqrt(d).
+    d, v = sp.symbols('d v', positive=True)
+    q1, q2 = sp.symbols('q1 q2', positive=True)
+    flux = sp.Matrix([q2, q2**2 / q1 + q1**2 / 2])
+    jac = flux.jacobian([q1, q2]).subs({q1: d, q2: d * v})
+    eig = sorted(jac.eigenvals().keys(), key=sp.default_sort_key)
+    ok = {sp.simplify(x) for x in eig} == {v - sp.sqrt(d), v + sp.sqrt(d)}
+    print(f'[C2] {"PASS" if ok else "FAIL"} symbolic gravity-wave speeds v -+ sqrt(d) exact={ok}')
     return ok

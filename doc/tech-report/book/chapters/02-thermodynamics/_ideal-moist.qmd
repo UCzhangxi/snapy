@@ -1,36 +1,49 @@
 ## Constant-heat-capacity moist mixture (`ideal-moist`) {#sec-ch02-ideal-moist}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: OUTLINE.md section 2; code links below
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md section 2; src/eos/ideal_moist.cpp at the pin
 status: draft
 -->
 
-
 ### Summary
 
-The constant-capacity mixture includes dry gas, vapor and condensate energies while only gases contribute pressure. Composition therefore changes the pressure-to-energy factor. The factory alias is `ideal-moist`.
+The ideal-moist EOS is a mixture of dry air, vapours and condensates, each with its own constant heat capacity
+and its own energy zero. All species carry mass and heat; only the gases push, so only they contribute to the
+pressure. The composition of a cell therefore changes the factor that turns thermal energy into pressure. Two
+dimensionless mixture factors carry that dependence, and the whole conversion is exact algebra with no
+iteration.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** The constant-heat-capacity moist mixture: dry gas, vapour and condensate energies, with only the gases contributing pressure (@eq-ch02-ideal-moist-energy, @eq-ch02-ideal-moist-factors).
+**Purpose.** Converts conserved and primitive moist states with the factors $f_\varepsilon$, $f_\sigma$, @eq-ch02-ideal-moist-energy.
 
-**Data.** In: the cell averages with the species rows: conserved $\rho_{\mathrm d}$, $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$], or primitive $\rho$, $\mathbf v$, $p$ [Pa] and $y_n$ [-] per unit total mass; the thermo options. Out: $p$ [Pa], $T$ [K], the species reference energies $u^{\star}_n$ and enthalpies $\hat h_n$ [J kg$^{-1}$] per unit mass of the species; composition sets the pressure-to-energy factor.
+**Data.** Reads $\mathbf U$ or $\mathbf W$ with the species rows and the thermo card; writes the other, $T$, $\gamma$, $u^{\star}_n$, $\hat h_n$.
 
-**Placement.** At every state conversion of the step; the reference energies are set once in `reset`.
+**Placement.** At every state conversion of every stage; the reference energies are built once in `reset`.
 
-**Activation.** `type: ideal-moist`, which requires thermo options; the default EOS stays `moist-mixture`.
+**Activation.** `type: ideal-moist` with a species card; default EOS `moist-mixture`.
 
-**Guarantee / limits.** The fixed-composition relation is exact algebra; no spatial order applies. Condensates carry mass and heat but no pressure share.
+**Guarantee / limits.** Exact algebra at fixed composition; the offsets subtract, so round-off scales with $\lvert E\rvert+K+\sum\lvert\rho_nu^{\star}_n\rvert$.
 
-**Evidence.** `test_eos.release` asserts the dry offset and linearity ($10^{-6}$); `test_eos_temp2inteng_python` asserts the temperature map ($10^{-12}$ relative); `test_eos_species_registry_python` asserts the own species table ($10^{-14}$ relative); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `ideal-moist_check.py` is report-only, run with its committed output `src/snapy_report/ch02/ideal-moist_check.out`.
+**Evidence.** @tbl-ch02-ideal-moist-tests: three ctests by source reading, `ideal-moist_check.py` `[C1]`–`[C3]`.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $\rho e_{\mathrm{th}}=\rho c_{v,\mathrm d}f_\sigma T$ the thermal
+part of the internal energy density [J m$^{-3}$]; $K$ the kinetic energy density [J m$^{-3}$]; $\Xi$ the sum of the
+magnitudes that enter the subtraction [J m$^{-3}$]; $\eta_j$ the relative error of one rounding.
 
 ### Derivation
 
-Let $y_n$ be mass fraction per total mass, not mixing ratio per dry mass. The dry density is
-$\rho_{\mathrm d}=\rho(1-\sum_n y_n)$ in $\mathrm{kg\,m^{-3}}$.
-Add the partial gas pressures and the heat capacities of all species. Dividing the first sum by
-$\rho R_{\mathrm d}T$ and the second by $\rho c_{v,\mathrm d}$ yields
+#### From the species to the mixture factors
+
+Let $y_n$ be the mass fraction per total mass, so the dry density is $\rho_{\mathrm d}=\rho(1-\sum_ny_n)$.
+
+1. *Pressure from the gases.* Dalton's law sums partial pressures over dry air and the vapours,
+   $p=\sum_{\mathrm d,\,n\in\mathcal V}\rho_nR_nT$ with $R_n=\mathcal R/\mu_n$. Condensates add nothing.
+2. *Normalize by the dry gas.* Divide by $\rho R_{\mathrm d}T$. Dry air contributes $1-\sum_ny_n$, each vapour
+   $y_n\mu_{\mathrm d}/\mu_n$, each condensate nothing. Collecting: $p=\rho R_{\mathrm d}f_\varepsilon T$.
+3. *Heat capacity from all species.* $\rho c_v=\sum_{\mathrm d,n}\rho_nc_{v,n}$; dividing by $\rho c_{v,\mathrm d}$
+   gives $c_v=c_{v,\mathrm d}f_\sigma$.
 
 $$
 \begin{aligned}
@@ -41,8 +54,12 @@ $$ {#eq-ch02-ideal-moist-factors}
 
 @eq-ch02-ideal-moist-factors is implemented by `f_eps` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::f_eps >}}.
 
-The reference energies $u_n^\star$ have units $\mathrm{J\,kg^{-1}}$ and enter additively, including dry air.
-Using $R_{\mathrm d}=(\gamma_{\mathrm d}-1)c_{v,\mathrm d}$ gives
+#### From the factors to the pressure
+
+4. *Add the energy zeros.* Each species has internal energy $u^{\star}_n+c_{v,n}T$ per unit mass, dry air
+   included. Summing with the partial densities gives the first row below.
+5. *Eliminate $T$.* Solve step 2 for $T$, substitute into step 4, and use
+   $R_{\mathrm d}=(\gamma_{\mathrm d}-1)c_{v,\mathrm d}$.
 
 $$
 \begin{aligned}
@@ -56,26 +73,47 @@ $$ {#eq-ch02-ideal-moist-energy}
 
 @eq-ch02-ideal-moist-energy is implemented by `_cons2prim` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}}.
 
-For frozen composition, $c_p-c_v=R_{\mathrm d}f_\varepsilon$; divide by
-$c_v=c_{v,\mathrm d}f_\sigma$ to obtain
+6. *The frozen heat ratio.* At fixed composition $c_p-c_v=R_{\mathrm d}f_\varepsilon$; divide by
+   $c_v=c_{v,\mathrm d}f_\sigma$:
 
 $$
 \gamma=1+(\gamma_{\mathrm d}-1)f_\varepsilon/f_\sigma
 $$ {#eq-ch02-ideal-moist-gamma}
 
-@eq-ch02-ideal-moist-gamma is implemented by `gammad` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::compute >}}.
+@eq-ch02-ideal-moist-gamma is implemented by `f_sig` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::compute >}}.
 
-Species thermal energy is $u_n^\star+c_{v,n}T$. A gas adds $R_nT$ to form specific enthalpy;
-a condensate does not. The carried energy adds the specific kinetic energy to either result, as derived in
-@sec-ch02-consistency. These are exact constant-capacity identities for a uniform cell, without quadrature or
-iteration. `ideal-moist_check.py` verifies the factors, energy recovery and frozen-composition heat ratio.
+7. *The carried enthalpy.* A species carries $u^{\star}_n+c_{v,n}T$ plus the specific kinetic energy, and a gas
+   adds $R_nT$; @sec-ch02-consistency shows that these sum to $E+p$.
+
+#### Round-off of the thermal energy
+
+`_cons2prim` forms $\rho e_{\mathrm{th}}$ by three subtractions from $E$: the kinetic energy, the dry offset and the
+sum of the species offsets. One rounding returns $\mathrm{fl}(a\circ b)=(a\circ b)(1+\eta_j)$ with
+$\lvert\eta_j\rvert\le\epsilon_{\mathrm m}/2$. Let $\Xi=\lvert E\rvert+K+\lvert\rho_{\mathrm d}u^{\star}_{\mathrm d}\rvert
++\sum_n\lvert\rho_nu^{\star}_n\rvert$, which bounds every partial result.
+
+1. *Kinetic energy.* At most $4K\epsilon_{\mathrm m}/2$, as in @sec-ch02-ideal-gas; $K\le\Xi$.
+2. *Three subtractions.* One rounding each of a partial result, each at most $\Xi$: $3\Xi\epsilon_{\mathrm m}/2$.
+3. *The offsets.* $N_y+1$ products and $N_y-1$ additions in the species sum, each term at most $\Xi$:
+   $(N_y+1)\Xi\epsilon_{\mathrm m}/2$ to first order.
+
+So, to first order,
+
+$$
+\lvert\widehat{\rho e}_{\mathrm{th}}-\rho e_{\mathrm{th}}\rvert\le(N_y+8)\,\frac{\epsilon_{\mathrm m}}{2}\,\Xi .
+$$
+
+The relative error is this divided by $\rho e_{\mathrm{th}}$, so large energy zeros cost precision: a condensate
+with $u^{\star}_n$ of a few $10^6$ J kg$^{-1}$ in a cold cell can make $\Xi/\rho e_{\mathrm{th}}$ reach hundreds.
+The pressure inherits this relative error plus a few $\epsilon_{\mathrm m}$ from $f_\varepsilon/f_\sigma$.
 
 ### Numerical method
 
-Both conversion directions use total density for velocity, while the conserved density row stores only dry air.
-The pressure calculation subtracts all reference energies after kinetic energy. The inverse adds them.
-There is no neighbour stencil; floors bracket the maps. Thermo reference buffers are populated at reset,
-so a later process-global species-table change must not alter this EOS.
+Both directions use the total density for the velocity, while the conserved density row stores only dry air.
+`_cons2prim` subtracts the kinetic energy, then every energy zero, then scales by
+$(\gamma_{\mathrm d}-1)f_\varepsilon/f_\sigma$; `_prim2cons` adds them back. There is no neighbour stencil; the
+floors bracket both maps. `reset` copies the reference energies and the capacity ratios into buffers of the EOS,
+so a later change of the process-wide species table does not change this EOS.
 
 ```{python}
 #| label: fig-ch02-ideal-moist-flow
@@ -88,48 +126,96 @@ make_fig()
 
 ### Code
 
+**A minimal input.** The species card is required; this is the wall-saturation test deck's card:
+
+```yaml
+reference-state: {Tref: 0., Pref: 1.e5}
+species:
+  - name: dry
+    composition: {O: 0.42, N: 1.56, Ar: 0.01}
+    cv_R: 2.5                # c_v,d / R_d
+  - name: H2O
+    composition: {H: 2, O: 1}
+    cv_R: 1.534301
+    u0_R: 0.                 # u*_n mu_n / R
+  - name: H2O(l)
+    composition: {H: 2, O: 1}
+    cv_R: 7.52031
+    u0_R: -6786.6602
+dynamics:
+  equation-of-state: {type: ideal-moist}
+```
+
+**What is refused, and why.**
+
+1. *No species card.* `reset` stops with "[IdealMoist] thermo pointer is null": the factors need the species.
+2. *A key outside the list*, by `check_keys`, as in @sec-ch02-interface.
+3. *A key the class lacks* throws "Unknown abbreviation: " and the key.
+
+Not refused but overridden: `gammad` and `weight` of the EOS block are replaced in `reset` by the dry species of
+the card, so values typed there have no effect.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | reset and reference energies | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::reset >}} | `u0` | `ideal-moist` |
-| offset | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::internal_energy_offset >}} | `internal_energy_offset` | `ideal-moist` |
-| maps | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}} | `_cons2prim` | `ideal-moist` |
-| species energy/enthalpy | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::species_enthalpy >}} | `species_enthalpy` | `ideal-moist` |
-| temperature map | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_temp2intEng >}} | `_temp2intEng` | `ideal-moist` |
+| energy offset | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::internal_energy_offset >}} | `internal_energy_offset` | `ideal-moist` |
+| conserved to primitive | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}} | `_cons2prim` | `ideal-moist` |
+| mixture factors | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::f_eps >}} | `f_eps` | `ideal-moist` |
+| species enthalpy | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::species_enthalpy >}} | `species_enthalpy` | `ideal-moist` |
 
-: Code map. {#tbl-ch02-ideal-moist-code}
+: Code map of the ideal-moist mixture. {#tbl-ch02-ideal-moist-code}
 
+**The excerpt.** The energy-to-pressure part of `IdealMoistImpl::_cons2prim`:
 
-Read the implementation in this order:
+```cpp
+auto ke = 0.5 * (prim.narrow(0, IVX, 3) * cons.narrow(0, IVX, 3)).sum(0);
+auto ie = cons[IPR] - ke;
 
-1. Reset and reference energies: `u0` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::reset >}}.
-2. Offset: `internal_energy_offset` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::internal_energy_offset >}}.
-3. Maps: `_cons2prim` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}}.
-4. Species energy/enthalpy: `species_enthalpy` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::species_enthalpy >}}.
-5. Temperature map: `_temp2intEng` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_temp2intEng >}}.
+ie -= cons[IDN] * u0[0];
+
+std::vector<int64_t> vec(cons.dim(), 1);
+vec[0] = -1;
+ie -= (cons.narrow(0, ICY, ny) * u0.narrow(0, 1, ny).view(vec)).sum(0);
+
+auto gammad =
+    (pthermo->options->cref_R()[0] + 1) / pthermo->options->cref_R()[0];
+
+auto yfrac = prim.narrow(0, ICY, ny);
+prim[IPR] = (gammad - 1) * ie * f_eps(yfrac) / f_sig(yfrac);
+```
+
+`ke` is $K$; the three updates of `ie` are the three subtractions of the round-off derivation, ending at
+$\rho e_{\mathrm{th}}$; `gammad` is $\gamma_{\mathrm d}=1+R_{\mathrm d}/c_{v,\mathrm d}$ from the card; the last
+line is the third row of @eq-ch02-ideal-moist-energy.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_eos.release` | dry offset and linearity | $10^{-6}$ | test-selected `allclose` |
-| `test_eos_temp2inteng_python` | temperature map | $10^{-12}$ relative | algebra regression threshold |
-| `test_eos_species_registry_python` | own species table | $10^{-14}$ relative | regression threshold |
+| {{< code tests/test_eos.cpp DeviceTest.ideal_moist_internal_energy_offset >}} (`test_eos.release`) | dry offset $\rho_{\mathrm d}u^{\star}_{\mathrm d}$, and linearity of the offset | $10^{-6}$ abs. and rel. | `torch::allclose`, set in the test; sized for the single-precision arm |
+| `test_eos_temp2inteng_python` | `UT->I` at a state's own $T$ reproduces `W->I` | $10^{-12}$ relative | the script's `--rtol` default |
+| `test_eos_species_registry_python` | a rewrite of the global species table leaves the EOS unchanged | $10^{-14}$ relative | the script's threshold |
+| `ideal-moist_check.py` `[C1]`–`[C3]` (this report) | factors and recovery; symbolic factors and $\gamma$; thermal-energy round-off inside the derived bound | $10^{-12}$; exact; bound above | stated in the check |
 
-: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-ideal-moist-tests}
+: Tests of the ideal-moist mixture. {#tbl-ch02-ideal-moist-tests}
 
-::: {.callout-important title="Check"}
-The independent derivation check is `src/snapy_report/ch02/ideal-moist_check.py`;
-its committed output is `src/snapy_report/ch02/ideal-moist_check.out`, line `[C1]`.
+The check is independent algebra and a float64 port of the subtraction.[^im-run] `[C1]`: a three-species state
+recovers its pressure with residual 0. `[C2]`: sympy confirms steps 2, 3 and 6 for two vapours and one
+condensate. `[C3]`: over 2000 random states with $\Xi/\rho e_{\mathrm{th}}$ up to 444.5, the measured error is at
+most 0.182 of the derived bound.
 
-No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
-:::
+The ctest cases have not been run for this report at the pin: **pending a pinned ctest run**. The offset case uses
+a dry card, so it does not test the species offsets.
+
+[^im-run]: [sha: the code pin; deck: the check itself, seed 4; run: `python3 src/snapy_report/ch02/ideal-moist_check.py`,
+    CPU, double, 1 process; Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file].
+    Output `ideal-moist_check.out`, lines `[C1]`–`[C3]`.
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-Constant heat capacities are assumed even if a thermo card requests temperature-dependent options. The TODO
-about iteration in the pressure maps is not a measured defect of this constant-capacity identity.
-The offset test uses a dry card; it does not by itself test all species offsets.
-Switch-combination coverage remains pending in @sec-ch12-matrix.
-:::
+1. **Constant capacities.** The class ignores the temperature-dependent options of the card (`use-nasa9-cp`,
+   `use-h2-cp`); @sec-ch02-moist-mixture is the class that uses them.
+2. **Source TODO.** The code marks the pressure maps "iteration needed here"; for constant capacities the map is
+   exact and no iteration is missing.
+3. **Species offsets untested** by a ctest (Tests above).
+4. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.

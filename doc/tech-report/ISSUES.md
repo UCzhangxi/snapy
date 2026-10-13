@@ -39,7 +39,12 @@
    capacity $c_{v,n}^{\mathrm{ref}}$; integration temperature $T_{\mathrm{int}}$; rotor level $J$,
    Boltzmann constant $k_{\mathrm B}$, and normalized finite-ensemble brackets; shallow-water depth-like
    state $d_{\mathrm{sw}}$; reaction extent $\zeta_k$, linearized residual $\mathbf b$, Jacobian $\mathsf J$,
-   KKT multipliers $\boldsymbol\lambda$, and flux-only increment $\Delta\mathbf U^{\mathrm{flux}}$. Owners: Chapter 2 / editor. Remove local notes when settled.
+   KKT multipliers $\boldsymbol\lambda$, and flux-only increment $\Delta\mathbf U^{\mathrm{flux}}$; the round-off
+   derivations add the face product $[A\mathbf F_1]_{i+1/2}$, the kinetic energy density $K$, the Mach number
+   $\mathrm{Ma}$, the thermal energy $\rho e_{\mathrm{th}}$, the magnitude sum $\Xi$, the volumetric heat capacity
+   $C(T)$ with $\Lambda=\max\lvert C'\rvert/\min C$ and contraction factor $\beta$, the compressibility $Z_n$, the
+   isothermal speed $c_T$ and the shallow-water depth $D_{\mathrm{sw}}$. Owners: Chapter 2 / editor. Remove local
+   notes when settled.
 11. NOTATION section 2a's sentence describes the API tensor `V` as molar concentration, but at the pinned
    snapy code `MoistMixtureImpl::_adiabatic_index` multiplies `V` by inverse molar mass before using it.
    Chapter 2 describes `V` as partial mass densities and reserves the existing concentration symbol for

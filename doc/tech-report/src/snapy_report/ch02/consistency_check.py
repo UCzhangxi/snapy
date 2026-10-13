@@ -1,4 +1,4 @@
-"""Check Chapter 2 consistency identities at snapy e894700ff7aee30b52882e5202b16461413780b0.
+"""Check Chapter 2 consistency identities at snapy 6fbb39750f62b83df096058a4746e77d0a634bc5 (the code pin).
 Run: python3 consistency_check.py, from any directory. Independent algebra, not snapy runtime.
 The complete synthetic deck and tolerances are in formulas.py.
 """
