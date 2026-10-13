@@ -1,48 +1,58 @@
 ## Build options from YAML and reject unknown keys (`from_yaml`) {#sec-ch01-options}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
-sources: OUTLINE.md entry 1.11; pinned Code table
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md entry 1.11; src/add_arg.h; src/input/check_keys.cpp; src/mesh/meshblock_options.cpp; src/layout/layout.cpp;
+         src/scalar/scalar_options.cpp; tests/test_yaml_keys.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
-`ADD_ARG` supplies chainable setters and const or mutable getters. YAML readers build the module tree and selected
-readers reject keys outside their fixed list. The root reader delegates layout, hydro, scalar, integration, output,
-coordinates and boundaries.
+Every module of snapy is configured through an options object with one setter and getter per field. The YAML card is
+read into those objects by one reader per module. A reader checks its block against a fixed list of keys, so a
+misspelt key stops the run with the key's path instead of being ignored. This section shows the macro behind the
+options objects, the key check, and how the readers delegate to each other.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A (a code map): `ADD_ARG` supplies chainable setters and getters; YAML readers build the module tree, and selected readers reject keys outside their fixed list.
+**Purpose.** N/A, a code map: `ADD_ARG` fields, `check_keys`, and the root reader's delegation.
 
-**Data.** No physical quantity. In: a YAML node. Out: the options tree, with layout, hydro, scalar, integration, output, coordinates and boundaries delegated to their own readers; units of the physical options are those of the keys they set (@sec-ch12-yaml).
+**Data.** In: a YAML node. Out: the options tree; physical units belong to the keys (@sec-ch12-yaml).
 
 **Placement.** At option construction, before the block is built.
 
-**Activation.** Always on the YAML path; a direct Python construction bypasses the readers. Each reader owns its own default.
+**Activation.** Always on the YAML path; a direct Python construction bypasses the readers.
 
-**Guarantee / limits.** A map; no convergence order. Unknown keys in a checked block are refused with the key path in the error.
+**Guarantee / limits.** An unknown key in a checked block is refused with its path; non-map nodes pass unchecked.
 
-**Evidence.** `test_yaml_keys.release` asserts that an unknown key path appears in the error (exact substring); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `options_check.py` `[C1]`-`[C3]` (the validation rule, on a port) is report-only, run with its committed output `src/snapy_report/ch01/options_check.out`.
+**Evidence.** `test_yaml_keys.<b>` (exact substring) and `options_check.py` `[C1]`-`[C3]`; see the Tests layer.
 :::
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
-their owning chapters.
-
-A port of `check_keys` on Python dicts checks the validation rule. A sequence, a scalar or a null node passes
-unchecked [check `src/snapy_report/ch01/options_check.py`, output `options_check.out`, `[C1]`]. An unknown key is
-refused with its path, the valid keys and the delegated reader's keys (`[C2]`). Keys of either reader pass
-(`[C3]`).
+No separate derivation: this section describes an interface or control-flow path, and the operators are derived in
+their owning chapters. A port of `check_keys` on Python dicts checks the validation rule. A sequence, a scalar or a
+null node passes unchecked [check `src/snapy_report/ch01/options_check.py`, output `options_check.out`, `[C1]`]. An
+unknown key is refused with its path, the valid keys and the delegated reader's keys (`[C2]`), and keys of either
+reader pass (`[C3]`).
 
 ### Numerical method
 
-Validate at the reader that owns the key. `check_keys` ignores non-map nodes and otherwise reports the unknown key
-together with valid keys and any delegated reader. The root options reader has no equivalent whole-document whitelist.
-This is configuration validation, with no numerical stencil, stage or accuracy order.
+The macro `ADD_ARG` ({{< code src/add_arg.h >}}) gives an options struct, for each field, two chainable setters (by
+const reference and by rvalue) and a const and a mutable getter. `check_keys`
+({{< code src/input/check_keys.cpp check_keys >}}) returns at once for a node that is not a map. Otherwise it refuses
+the first key that is in neither the reader's list nor the delegated reader's list, naming the path. The root reader
+`MeshBlockOptionsImpl::from_yaml` ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}})
+delegates the layout, hydro, scalar, integrator, outputs, coordinates, internal boundary and external boundaries to
+their own readers. Two examples are `LayoutOptionsImpl::from_yaml`
+({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}) and `ScalarOptionsImpl::from_yaml`
+({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}). It has no whole-document whitelist of its
+own. Each reader owns its defaults (@sec-ch12-yaml). This is configuration validation, with no stencil, stage or
+accuracy order.
 
-@fig-ch01-options-flow shows the data or call sequence.
+@fig-ch01-options-flow shows the call sequence.
 
 ```{python}
 #| label: fig-ch01-options-flow
@@ -53,42 +63,96 @@ from snapy_report.ch01.fig_options_flow import make_fig
 make_fig()
 ```
 
+**Why the check is per reader.** Three facts of the code.
+
+1. Each reader knows only its own keys, so the check must run where the keys are known; `check_keys` is called by
+   every reader with its own list ({{< code src/input/check_keys.cpp check_keys >}}).
+2. A block two readers share (`integration`, read by snapy and by pyharp) passes a second list. A key of either reader
+   is then accepted, and the error names both lists.
+3. A node that is not a map is passed through unchecked, because a scalar or a sequence has no keys to check. This is
+   why the root has no whole-document whitelist.
+
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| args | [`add_arg.h:3-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/add_arg.h#L3-L25) | `ADD_ARG` | API / see Summary |
-| keys | {{< code src/input/check_keys.cpp check_keys >}} | `check_keys` | API / see Summary |
-| yaml | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `from_yaml` | API / see Summary |
-| layoutopts | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `from_yaml` | API / see Summary |
-| scalaropts | {{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}} | `from_yaml` | API / see Summary |
+| fields | {{< code src/add_arg.h >}} | `ADD_ARG` | none |
+| keys | {{< code src/input/check_keys.cpp check_keys >}} | `check_keys` | none |
+| root | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `from_yaml` | the YAML card |
+| layout | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `from_yaml` | `distribute:` |
+| scalar | {{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}} | `from_yaml` | `scalar:` |
 
-: Implementation anchors for build options from yaml and reject unknown keys. {#tbl-ch01-options-code}
+: Implementation anchors for the options readers. {#tbl-ch01-options-code}
 
-1. Read `ADD_ARG` for the args part of this path ([`add_arg.h:3-25`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/add_arg.h#L3-L25)).
-2. Read `check_keys` for the keys part of this path ({{< code src/input/check_keys.cpp check_keys >}}).
-3. Read `from_yaml` for the yaml part of this path ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}).
-4. Read `from_yaml` for the layoutopts part of this path ({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}).
-5. Read `from_yaml` for the scalaropts part of this path ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}).
+1. Define the fields: `ADD_ARG` ({{< code src/add_arg.h >}}).
+2. Validate a block: `check_keys` ({{< code src/input/check_keys.cpp check_keys >}}).
+3. Delegate from the root reader: `MeshBlockOptionsImpl::from_yaml`
+   ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}).
+
+**How to use it.** Set a field programmatically through its chainable setter, or let the reader do it from
+the card; both go through `ADD_ARG`:
+
+```cpp
+auto op = MeshBlockOptionsImpl::from_yaml("case.yaml");   // the readers, with their key checks
+op->coord()->nghost(3).nx1(64);                           // chainable setters of ADD_ARG fields
+```
+
+Refused: an unknown key in any checked block, with the message `unknown key '<path>/<key>'. Valid keys: ...`
+({{< code src/input/check_keys.cpp check_keys >}}); the check itself is these lines:
+
+```cpp
+void check_keys(YAML::Node const& node, std::string const& path,
+                std::vector<std::string> const& keys, std::string const& other,
+                std::vector<std::string> const& other_keys) {
+  if (!node.IsMap()) return;
+  auto joined = [](std::vector<std::string> const& list) {
+    std::string s;
+    for (auto const& k : list) s += (s.empty() ? "" : ", ") + k;
+    return s;
+  };
+  for (auto const& item : node) {
+    auto key = item.first.as<std::string>();
+    auto listed = [&key](std::vector<std::string> const& list) {
+      return std::find(list.begin(), list.end(), key) != list.end();
+    };
+    TORCH_CHECK(listed(keys) || listed(other_keys), "unknown key '", path, "/",
+                key, "'. Valid keys: ", joined(keys),
+                other.empty() ? "" : "; read by " + other + ": ",
+                joined(other_keys), ".");
+  }
+}
+```
+
+The early return is `[C1]`, the `TORCH_CHECK` is `[C2]`, and `listed(other_keys)` is `[C3]` of the check.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_yaml_keys.release` | Unknown key path appears in error | exact substring | Configuration contract |
-| this chapter's check, `options_check.py` | `[C1]`-`[C3]` the validation rule, on a port | exact | logic port |
+| `test_yaml_keys.<b>` | an unknown key's path appears in the error, block by block | exact substring | the configuration contract |
+| this chapter's check, `options_check.py` | `[C1]`-`[C3]`: the validation rule, on a port | exact | logic port |
 
-: Source assertions for options. {#tbl-ch01-options-tests}
+: Source assertions for the options readers. {#tbl-ch01-options-tests}
 
-The assertion anchor `expect_refused` is in {{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}}, {{< code tests/test_yaml_keys.cpp expect_refused overload=2 >}}.
+The refusal helper is `expect_refused` ({{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}},
+{{< code tests/test_yaml_keys.cpp expect_refused overload=2 >}}).
 
-No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
-the missing runs and the distinction between assertions and observations.
+The check is a port of `check_keys` on Python dictionaries.[^ch01-options-run] `[C1]`: a sequence, a scalar
+or a null node passes unchecked (4 of 4). `[C2]`: an unknown key is refused with its path, the valid keys and the
+delegated reader's keys, for example `unknown key 'integration/cfll'. Valid keys: implicit-scheme,
+implicit-advection-cfl, shear-cfl; read by pyharp: type, cfl, tlim, nlim, ncycle_out, verbose.` `[C3]`: keys of
+either reader pass.
+
+The ctest runs on CPU, one rank; it has not been run for this report at the pin: **pending a pinned ctest run**.
+
+[^ch01-options-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch01/options_check.py`,
+    CPU, 1 process; Python 3.11.13; output identical to the committed file]. Output `options_check.out`, lines
+    `[C1]` to `[C3]`.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The accepted `distribute.backend` spelling does not set the backend: the layout reads `BACKEND` instead. Programmatic
-defaults and YAML defaults must be compared per reader; this chapter does not equate them. Numerical
-environment-switch coverage is in @sec-ch12-matrix and @sec-appd.
+The accepted `distribute/backend` key does not set the backend: the layout reads `BACKEND` instead
+(@sec-ch12-layout). Programmatic defaults and YAML defaults are compared per reader; this chapter does not
+equate them. The numerics switches are in @sec-ch12-matrix and @sec-appd.
 :::

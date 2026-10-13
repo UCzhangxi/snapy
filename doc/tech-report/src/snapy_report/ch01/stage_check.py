@@ -1,10 +1,10 @@
 """Check Chapter 1 stage algebra without snapy.
 
-Formula pin: snapy@e894700ff7aee30b52882e5202b16461413780b0.
+Formula pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 Run: python3 stage_check.py from any working directory.
-C1 checks the coefficient product in src/hydro/hydro_forward.cpp:985-995.
-C2 mirrors the upwind/shift/difference in src/mesh/meshblock.cpp:663-675.
-C3 checks src/mesh/meshblock.cpp:633-645, including its zero-base fallback.
+C1 checks the coefficient product cw in HydroImpl::forward (src/hydro/hydro_forward.cpp).
+C2 mirrors the upwind/shift/difference of MeshBlockImpl::advance_local (src/mesh/meshblock.cpp).
+C3 checks carry_dry_source in MeshBlockImpl::advance_local, including its zero-base fallback.
 These are symbolic identities and numpy formula checks, not C++ runtime tests.
 All cited ranges are at the full formula pin above.
 """
