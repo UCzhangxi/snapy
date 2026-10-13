@@ -117,11 +117,11 @@ def test_the_gate_lists_file_and_line(tmp_path, capsys):
     bad = tmp_path / "bad.qmd"
     bad.write_text(JOINED)
     good = tmp_path / "good.qmd"
-    good.write_text(FIXED)
+    good.write_text(importlib.import_module("fix_glance_order").fix_text(FIXED))
     assert check_glance_boxes.main([str(good)]) == 0
     assert check_glance_boxes.main([str(bad), str(good)]) == 1
     out = capsys.readouterr().out
-    assert f"{bad}:7:" in out and f"{bad}:9:" in out and f"{bad}:10:" in out and str(good) not in out
+    assert f"{bad}:7:" in out and f"{bad}:9:" in out and f"{bad}:10:" in out and f"{good}:7: field label" not in out
 
 
 def test_the_fix_script_rewrites_files_in_place(tmp_path):
@@ -132,3 +132,88 @@ def test_the_fix_script_rewrites_files_in_place(tmp_path):
     before = p.read_bytes()
     fix_glance_boxes.main([str(p)])
     assert p.read_bytes() == before
+
+# Ordering fixtures also run in the existing ratchet CI test entry point.
+import importlib
+import pytest
+
+BOX = '::: {.callout-note title="At a glance"}\n**Purpose.** A.\n:::\n\n'
+
+@pytest.mark.parametrize('prefix', [BOX, 'Local symbols: $x$ is a coordinate.\n\n' + BOX,
+    '::: {.callout-note title="Local symbols"}\n$x$: coordinate.\n:::\n\n' + BOX])
+def test_order_moves_exact_paragraph_and_is_idempotent(prefix):
+    order = importlib.import_module('fix_glance_order')
+    prose = 'The first paragraph has $x$,  two spaces,\nand a second line.\n\n'
+    text = '## Section {#sec-test}\n\n' + prefix + prose + 'Another paragraph.\n'
+    want = '## Section {#sec-test}\n\n' + prose + prefix + 'Another paragraph.\n'
+    assert order.fix_text(text) == want
+    assert order.fix_text(want) == want
+
+
+def test_order_skips_nonprose_and_keeps_section_boundary():
+    order = importlib.import_module('fix_glance_order')
+    prefix = ('## A\n\n<!-- provenance\ncomment -->\n\n' + BOX +
+              '```python\n## fake\ntext\n```\n\n$$\nx=1\n$$\n\n| A | B |\n|---|---|\n\n- item\n\n')
+    text = prefix + '## B\n\nReal prose.\n'
+    assert order.fix_text(text) == text
+    assert len(order.analyze(text)[1]) == 1
+
+
+def test_order_local_symbols_before_summary():
+    order = importlib.import_module('fix_glance_order')
+    text = '## A\n\nLocal symbols: $x$.\n\n### Summary\n\n' + BOX + 'Opening prose.\n\n### Derivation\n\nLater prose.\n'
+    assert order.fix_text(text).startswith('## A\n\nOpening prose.\n\nLocal symbols:')
+
+
+def test_order_gate_and_report_only(tmp_path, capsys):
+    order = importlib.import_module('fix_glance_order')
+    p = tmp_path / 'order.qmd'
+    p.write_text('## A\n\n' + BOX + 'Opening prose.\n')
+    assert check_glance_boxes.main([str(p)]) == 1
+    order.main([str(p)])
+    assert check_glance_boxes.main([str(p)]) == 0
+    p.write_text('## Empty\n\n' + BOX.replace('**Purpose.** A.', '\n'.join(['line'] * 7)))
+    assert order.main(['--check', str(p)]) == 0
+    output = capsys.readouterr().out
+    assert 'no prose' in output and 'over 6 lines' in output
+
+
+def test_order_preserves_crlf_bytes(tmp_path):
+    order = importlib.import_module('fix_glance_order')
+    p = tmp_path / 'crlf.qmd'
+    text = ('## A\n\n' + BOX + 'Opening prose.\n\n').replace('\n', '\r\n')
+    p.write_bytes(text.encode())
+    order.main([str(p)])
+    assert p.read_bytes() == ('## A\n\nOpening prose.\n\n' + BOX).replace('\n', '\r\n').encode()
+
+
+def test_order_table_caption_is_not_prose():
+    order = importlib.import_module('fix_glance_order')
+    text = '## Table only\n\n' + BOX + '| A | B |\n|---|---|\n\n: Table caption.\n{#tbl-test}\n'
+    assert order.fix_text(text) == text
+    assert len(order.analyze(text)[1]) == 1
+
+
+def test_order_finds_first_prose_beyond_template_subheading():
+    order = importlib.import_module('fix_glance_order')
+    text = '## A\n\n### Summary\n\n' + BOX + '### Derivation\n\nFirst prose.\n\n### Numerical method\n\nSecond prose.\n'
+    want = '## A\n\n### Summary\n\nFirst prose.\n\n' + BOX + '### Derivation\n\n### Numerical method\n\nSecond prose.\n'
+    assert order.fix_text(text) == want
+    assert order.analyze(text)[1] == []
+
+
+@pytest.mark.parametrize('prefix', ['```markdown\n', '~~~markdown\n'])
+def test_order_ignores_boxes_and_headings_in_code(prefix):
+    order = importlib.import_module('fix_glance_order')
+    text = prefix + '## Fake\n\n' + BOX + prefix[:3] + '\n\n## Real\n\nProse first.\n\n' + BOX
+    assert order.fix_text(text) == text
+    assert order.analyze(text)[:2] == ([], [])
+
+
+def test_order_multiple_sections_and_local_note_without_box():
+    order = importlib.import_module('fix_glance_order')
+    a = '## A\n\nLocal symbols: $x$.\n\nFirst prose.\n\n'
+    b = '## B\n\n' + BOX + 'Second prose.\n\n'
+    want = '## A\n\nFirst prose.\n\nLocal symbols: $x$.\n\n## B\n\nSecond prose.\n\n' + BOX
+    assert order.fix_text(a + b) == want
+    assert order.fix_text(want) == want

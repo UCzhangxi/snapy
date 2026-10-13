@@ -130,3 +130,13 @@ def test_every_render_regenerates_the_fragment():
 def test_the_committed_fragment_matches_a_fresh_generation():
     """Quarto needs the fragment in the tree before pre-render runs, so it is committed; it must not drift."""
     assert g.main(["--check"]) == 0, "run python3 tools/gen_derivation_index.py and commit the fragment"
+
+
+def test_empty_derivation_retains_relocated_opening_statement(tmp_path):
+    path = tmp_path / 'sections.qmd'
+    path.write_text('## First {#sec-ch02-first}\n\nUnrelated prose.\n\n### Derivation\n\n'
+                    '## Second {#sec-ch02-second}\n\n### Summary\n\nNo physical derivation applies.\n\n'
+                    '::: {.callout-note title="At a glance"}\nSummary.\n:::\n\n### Derivation\n\n### Code\n')
+    schemes = g.scan_file(path, 'sec-ch02')
+    row = g.scheme_rows(schemes[1], {}, tmp_path)[0]
+    assert row.statement == 'No physical derivation applies.'

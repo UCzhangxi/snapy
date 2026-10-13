@@ -4,6 +4,9 @@
 Fails, listing file:line, for a line inside an `::: {.callout-note title="At a glance"}` block that starts with a
 bold field label (`**Word(s).**`) and is not preceded by a blank line or by the opening fence.
 `python3 tools/fix_glance_boxes.py` fixes every such line.
+Also requires opening prose before glance boxes and local-symbols notes;
+`python3 tools/fix_glance_order.py` moves the paragraph without reflow.
+Missing prose and boxes over six content lines are reported without failing.
 
     python3 tools/check_glance_boxes.py              # every .qmd under book/
     python3 tools/check_glance_boxes.py FILE.qmd ... # the files given
@@ -13,6 +16,7 @@ from __future__ import annotations
 import sys
 
 from fix_glance_boxes import label_lines, targets
+from fix_glance_order import check_text
 
 
 def problems(text: str) -> list[tuple[int, str]]:
@@ -24,12 +28,17 @@ def problems(text: str) -> list[tuple[int, str]]:
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     bad = 0
+    order_bad = 0
     for path in targets(argv):
+        order_bad += check_text(path.read_bytes().decode("utf-8"), str(path))
         for line, text in problems(path.read_text()):
             print(f"{path}:{line}: field label not preceded by a blank line: {text[:60]}")
             bad += 1
     if bad:
         print(f"check_glance_boxes: FAIL, {bad} label lines (python3 tools/fix_glance_boxes.py fixes them)")
+        return 1
+    if order_bad:
+        print(f"check_glance_boxes: FAIL, {order_bad} sections (run tools/fix_glance_order.py)")
         return 1
     print("check_glance_boxes: pass")
     return 0
