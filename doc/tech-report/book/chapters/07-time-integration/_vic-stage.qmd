@@ -21,7 +21,7 @@ full $\Delta t$, so that the implicit operator matches the increment the stage a
 **Data.** In: the explicit increment $\Delta\mathbf U^{(0)}$ of the stage at every cell of the column, in
 the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$] (total-mass basis), and the stage weight $w_2^{(s)}$ [-] of the integrator. Out: $\Delta t_c$ [s] handed
 to the solve, one per stage, and the solved increment $\boldsymbol\delta$ per cell, same units. Check cases: rk1,
-rk2, rk3, rk3s4 on a stiff mode $z = 10^8$ and on $z$ from $10^{-3}$ to $10^8$.
+rk2, rk3, rk3s4 on a stiff mode $\mathcal Z = 10^8$ and on $\mathcal Z$ from $10^{-3}$ to $10^8$.
 
 **Placement.** Every stage with a VIC, after the explicit increment.
 
@@ -41,9 +41,22 @@ the solve and leaves the explicit tendency at the full step.
 
 ### Derivation
 
-With $\Delta\mathbf U^{(0)} = \Delta t\,\mathcal L$ the explicit increment and $J$ the operator of @eq-ch07-vic-blocks
-without its $\mathsf I/\Delta t$, the solve of @sec-ch07-vic-sweep returns
-$\boldsymbol\delta = (\mathsf I + \Delta t_cJ)^{-1}\Delta\mathbf U^{(0)}$, and the stage adds $w_2^{(s)}\boldsymbol\delta$. With
+With $\Delta\mathbf U^{(0)} = \Delta t\,\mathcal L$ the explicit increment, in the conserved layout of $\mathbf U$
+(first row the dry density $\rho_{\mathrm d}$, then $m_1, m_2, m_3$, $E$ and the species densities $\rho_n$), the solve
+works in the solved variables $\mathbf U_{\mathrm{sv}}$ of @sec-ch07-vic-assembly, whose first entry is the total
+density. Its right-hand side is the explicit increment
+in those variables,
+
+$$
+\Delta\mathbf U^{(0)}_{\mathrm{sv},i} = \Big(\Delta^{\mathrm{stg}}\rho_i,\ \Delta\mathbf U^{(0)}[m_1]_i,\ \big[\Delta\mathbf U^{(0)}[m_2]_i,\ \Delta\mathbf U^{(0)}[m_3]_i\big],\ \Delta\mathbf U^{(0)}[E]_i\Big), \qquad
+\Delta^{\mathrm{stg}}\rho_i = \Delta\mathbf U^{(0)}[\rho_{\mathrm d}]_i + \sum_{n}\Delta\mathbf U^{(0)}[\rho_n]_i ,
+$$
+
+with the sum over every mass-carrying species row and the bracketed momenta only for $N = 5$; the density entry is on the
+total-mass basis. This is how `ForwardSweep` forms its right-hand side, `rhs(0) = DU(IDN) + sum DU(ICY+n)`
+({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). With $J$ the operator of @eq-ch07-vic-blocks without its
+$\mathsf I/\Delta t$, the solve of @sec-ch07-vic-sweep returns $\boldsymbol\delta = (\mathsf I + \Delta t_cJ)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$,
+and the stage adds $w_2^{(s)}\boldsymbol\delta$. With
 $\Delta t_c = w_2^{(s)}\Delta t$,
 
 $$
@@ -54,9 +67,10 @@ which is one backward-Euler-linearised step of the stage's own length $w_2^{(s)}
 $5\times10^{-16}$ in the check [check `src/snapy_report/ch07/vic_stage_check.py`, output `vic_stage_check.out`,
 `[C1]`]. The factors per stage are 1, 1/4, 2/3 for rk3. Every other integrator keeps the full step (`[C2]`).
 
-On a stiff decay $\mathrm du/\mathrm dt = -\lambda u$ handled entirely by the correction, rk3 damps a mode with
-$z = \lambda\Delta t \to \infty$ to $1/12$ per step with the weighting and to $1/3$ without it (`[C3]`). Every
-integrator keeps $|R(z)| \le 1$ on $z\in[10^{-3},10^8]$, and the decay converges at first order (`[C4]`).
+On a stiff decay $\mathrm d\mathcal Y/\mathrm dt = -\mathcal G \mathcal Y$ (scalar $\mathcal Y$ [-], rate $\mathcal G$ [$\mathrm{s^{-1}}$], as in
+@sec-ch07-rk) handled entirely by the correction, with $\mathcal S(\mathcal Z)$ the one-step amplification, rk3 damps a mode with
+$\mathcal Z = \mathcal G\Delta t \to \infty$ to $1/12$ per step with the weighting and to $1/3$ without it (`[C3]`). Every
+integrator keeps $|\mathcal S(\mathcal Z)| \le 1$ on $\mathcal Z\in[10^{-3},10^8]$, and the decay converges at first order (`[C4]`).
 
 In the code, the weighted step of @eq-ch07-vic-stage is `dt_corr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
@@ -66,8 +80,8 @@ See @fig-ch07-vic-stage for the two choices compared.
 
 ```{python}
 #| label: fig-ch07-vic-stage
-#| fig-cap: "One-step amplification $|R(z)|$ of rk3 on $\\mathrm du/\\mathrm dt=-\\lambda u$ when the whole decay is handled by the implicit correction, $z=\\lambda\\Delta t$. Green: the correction runs with $w_2^{(s)}\\Delta t$, as snapy does for rk3; vermillion dashed: with the full $\\Delta t$. Blue dotted: the exact $e^{-z}$. Grey lines mark the stiff limits $1/12$ and $1/3$."
-#| fig-alt: "Two decreasing curves of amplification against z on a log axis, levelling off at 1/12 for the weighted correction and 1/3 for the full-step one, with the exact exponential below both."
+#| fig-cap: "One-step amplification $|\\mathcal S(\\mathcal Z)|$ of rk3 on $\\mathrm d\\mathcal Y/\\mathrm dt=-\\mathcal G \\mathcal Y$ when the whole decay is handled by the implicit correction, $\\mathcal Z=\\mathcal G\\Delta t$. Green: the correction runs with $w_2^{(s)}\\Delta t$, as snapy does for rk3; vermillion dashed: with the full $\\Delta t$. Blue dotted: the exact $e^{-\\mathcal Z}$. Grey lines mark the stiff limits $1/12$ and $1/3$."
+#| fig-alt: "Two decreasing curves of amplification against the stability argument on a log axis, levelling off at 1/12 for the weighted correction and 1/3 for the full-step one, with the exact exponential below both."
 #| echo: false
 from snapy_report.ch07.fig_vic_stage import make_fig
 make_fig()
@@ -78,7 +92,7 @@ only the step handed to the correction, by `wght2` ({{< code src/hydro/hydro_for
 published, a direct caller gets a one-time warning and the full step, through `TORCH_WARN_ONCE`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The weighted step goes into `_apply_implicit_correction`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Inside the solve it sets both the $\mathsf I/\Delta t$ diagonal
-of @eq-ch07-vic-blocks and the right-hand side $\Delta\mathbf U^{(0)}/\Delta t$ of @sec-ch07-vic-sweep. The stage
+of @eq-ch07-vic-blocks and the right-hand side $\Delta\mathbf U^{(0)}_{\mathrm{sv}}/\Delta t$ of @sec-ch07-vic-sweep. The stage
 combination itself is the integrator's, with `wght2` ([`pyharp integrator.cpp:101-122`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L101-L122)).
 
 ### Code

@@ -43,11 +43,13 @@ face work) are part of @sec-ch06 and are not described here.
 
 ### Derivation
 
-Write the Roe flux at face $i+\tfrac12$ as
-$\hat F_{i+1/2} = \tfrac12(F_i + F_{i+1}) - \tfrac12\mathsf A^+(\mathbf q_{i+1}-\mathbf q_i)$, with
+Let $\mathbf U_{\mathrm{sv}} = (\rho, \rho v_1, [\rho v_2, \rho v_3,] E)$ be the solved variables of a cell, with the total
+density $\rho$ first (total-mass basis; the conserved $\mathbf U$ starts with the dry density instead). Write the Roe
+flux at face $i+\tfrac12$ as
+$\hat F_{i+1/2} = \tfrac12(F_i + F_{i+1}) - \tfrac12\mathsf A^+(\mathbf U_{\mathrm{sv},i+1}-\mathbf U_{\mathrm{sv},i})$, with
 $\mathsf A^{\pm} = \mathsf R\lvert\Lambda\rvert\mathsf R^{-1}$ at the Roe average of the two cells. The update of cell $i$ with face areas $A_i$,
-$A_{i+1}$ and volume $V_i$ is $\mathbf q_i/\Delta t + (A_{i+1}\hat F_{i+1/2} - A_i\hat F_{i-1/2})/V_i$.
-Differentiating with $\mathsf A^{\pm}$ frozen and writing $J_i = \partial F/\partial\mathbf q$ at cell $i$ gives the three
+$A_{i+1}$ and volume $V_i$ is $\mathbf U_{\mathrm{sv},i}/\Delta t + (A_{i+1}\hat F_{i+1/2} - A_i\hat F_{i-1/2})/V_i$.
+Differentiating with $\mathsf A^{\pm}$ frozen and writing $J_i = \partial F/\partial\mathbf U_{\mathrm{sv}}$ at cell $i$ gives the three
 blocks of row $i$:
 
 $$
@@ -64,8 +66,8 @@ of the frozen-$\mathsf A^{\pm}$ residual. They agree to $8\times10^{-9}$ of the 
 the construction:
 
 1. The coded left eigenvectors invert the right ones (`[C1]`).
-2. $R\Lambda R^{-1}$ with signed eigenvalues is the flux Jacobian at the Roe state, and it has the Roe property
-   $\hat A(\mathbf q_R-\mathbf q_L) = F_R - F_L$ for one $\gamma$ (`[C2]`).
+2. $\mathsf R\Lambda\mathsf R^{-1}$ with signed eigenvalues is the flux Jacobian at the Roe state, and it has the Roe property
+   $\hat A(\mathbf U_{\mathrm{sv}}^{\mathrm R}-\mathbf U_{\mathrm{sv}}^{\mathrm L}) = F^{\mathrm R} - F^{\mathrm L}$ for one $\gamma$ (`[C2]`).
 3. With no transverse velocity the 3 x 3 partial system is the full one restricted to $(\rho,\rho v_1,E)$. With
    transverse velocity the partial solve drops the coupling, by $3.7\times10^{-3}$ relative at 50 m/s in the
    check (`[C4]`).

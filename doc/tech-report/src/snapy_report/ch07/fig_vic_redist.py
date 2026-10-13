@@ -1,5 +1,5 @@
 """The constituent redistribution of one column of vic_redist_check: the total-mass increments phi_i, the face
-transfers M_(i-1/2) built from them, and the dry and species changes moved donor-upwind
+transfers T_(i-1/2) built from them, and the dry and species changes moved donor-upwind
 (vic_constituent_column, src/implicit/vic_redistribute_impl.h:77-161 at
 snapy@e894700ff7aee30b52882e5202b16461413780b0). Computed with vic_port.constituent_column.
 """
@@ -19,9 +19,9 @@ def make_fig():
     phi = (d0 - du.sum(1)) * vol
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(fs.DOUBLE, 2.5), sharey=True)
     k = np.arange(n)
-    a1.barh(k, phi, height=0.6, color=fs.SKY, label=r"$(\delta\rho_i-\Delta\mathbf{U}^{(0)}_{i,0})V_i$ (cell)")
+    a1.barh(k, phi, height=0.6, color=fs.SKY, label=r"$(\delta\rho_i-\Delta^{\mathrm{stg}}\rho_i)V_i$ (cell)")
     a1.plot(np.append(M, top), np.arange(n + 1) - 0.5, color=fs.ORANGE, marker="o", ms=3,
-            label=r"$M_{i-1/2}$ (face)")
+            label=r"$\mathcal{T}_{i-1/2}$ (face)")
     a1.axvline(0, color=fs.BLACK, lw=0.5)
     a1.set_xlabel("mass per step")
     a1.set_ylabel("layer")

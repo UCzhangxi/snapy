@@ -23,7 +23,7 @@ state, the current stage state and one full-step increment; @eq-ch07-rk-stage.
 $\Delta t\,\mathcal L$, cell averages with ghosts of $\mathbf U$: $\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$] (total-mass basis); the passive-scalar densities
 $\rho_{\mathrm d}r_n$ [kg m$^{-3}$] (dry-mass basis); the pyharp stage weights $w_0^{(s)}, w_1^{(s)}, w_2^{(s)}$
 [-] of `integration/type`. Out: the next stage state and scalars, cell averages, same units and bases. Check cases:
-$\mathrm du/\mathrm dt = \lambda u$, a nonlinear ODE at 40, 80, 160 steps, a nonnegativity test up to $\Delta t = C$.
+$\mathrm d\mathcal Y/\mathrm dt = \mathcal G \mathcal Y$, a nonlinear ODE at 40, 80, 160 steps, a nonnegativity test up to $\Delta t = C$.
 
 **Placement.** The whole step: stage 0 saves the step-start state; each stage ends with the average.
 
@@ -64,10 +64,11 @@ implemented as `pintg->forward(stage, _hydro_u0, hydro_u, fut_hydro_du)`
 
 : Stage weights $(w_0^{(s)},w_1^{(s)},w_2^{(s)})$ of the four integrator types. {#tbl-ch07-rk-weights}
 
-*Order.* On $\mathrm d u/\mathrm dt=\lambda u$ with $z=\lambda\Delta t$, @eq-ch07-rk-stage multiplies $u$ per
-step by the stability polynomial $1+z$ (`rk1`), $1+z+z^2/2$ (`rk2`), $1+z+z^2/2+z^3/6$ (`rk3`) and
-$1+z+z^2/2+z^3/6+z^4/48$ (`rk3s4`). The first three agree with $e^z$ to the order of the scheme; `rk3s4` agrees
-to $z^3$ and its $z^4$ coefficient is $1/48$, not $1/24$, so it is third order. On a nonlinear equation the
+*Order.* On the test equation $\mathrm d \mathcal Y/\mathrm dt=\mathcal G \mathcal Y$, for a scalar $\mathcal Y$ [-] and a constant
+rate $\mathcal G$ [$\mathrm{s^{-1}}$], with $\mathcal Z=\mathcal G\Delta t$ [-], @eq-ch07-rk-stage multiplies $\mathcal Y$ per
+step by the stability polynomial $1+\mathcal Z$ (`rk1`), $1+\mathcal Z+\mathcal Z^2/2$ (`rk2`), $1+\mathcal Z+\mathcal Z^2/2+\mathcal Z^3/6$ (`rk3`) and
+$1+\mathcal Z+\mathcal Z^2/2+\mathcal Z^3/6+\mathcal Z^4/48$ (`rk3s4`). The first three agree with $e^{\mathcal Z}$ to the order of the scheme; `rk3s4` agrees
+to $\mathcal Z^3$ and its $\mathcal Z^4$ coefficient is $1/48$, not $1/24$, so it is third order. On a nonlinear equation the
 fitted orders are 1.01, 2.01, 3.02 and 3.01 [check `src/snapy_report/ch07/rk_check.py`, output
 `rk_check.out`, `[C1]` and `[C2]`].
 
@@ -81,7 +82,7 @@ is a convex combination of $\mathbf U^n$ and a forward-Euler step of size $(w_2^
 stage $\mathbf U^{(0)}=\mathbf U^n$, so the step there has size $w_2^{(s)}\Delta t/(w_0^{(s)}+w_1^{(s)})$. A convex functional
 that a forward-Euler step does not increase for $\Delta t\le\Delta t_{\mathrm{FE}}$ is therefore not increased by
 the scheme for $\Delta t\le C\,\Delta t_{\mathrm{FE}}$, with $C$ the smallest ratio over the stages: 1 for `rk1`,
-`rk2` and `rk3`, and 2 for `rk3s4` (`[C3]`). On $\mathrm du/\mathrm dt=-u$, where forward Euler keeps $u\ge0$ for $\Delta t\le1$,
+`rk2` and `rk3`, and 2 for `rk3s4` (`[C3]`). On $\mathrm d\mathcal Y/\mathrm dt=-\mathcal Y$, where forward Euler keeps $\mathcal Y\ge0$ for $\Delta t\le1$,
 `rk3` keeps it up to 1 and `rk3s4` up to 2 (`[C4]`).[^ch07-rk-ssp] $w_2^{(s)}\le w_1^{(s)}$ is the property the positivity limiter states for every shipped integrator, in its comment on `wght2` ({{< code src/hydro/flux_positivity.hpp flux_positivity_theta >}}).
 
 [^ch07-rk-ssp]: The argument is that of `sources/canoe__POSITIVITY_TECH_REPORT.md` §3, written out here.

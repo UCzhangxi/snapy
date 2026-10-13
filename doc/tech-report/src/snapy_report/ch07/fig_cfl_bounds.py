@@ -25,7 +25,7 @@ def make_fig():
     ax.text(3.4, 1.6, r"$\Delta t_1=C_{\mathrm{adv}}\,\Delta x_1/|v_1|$ (implicit $x_1$)", fontsize=8)
     ax.text(3.4, 1.15, r"$\Delta t_2=C\,\Delta x_2/(|v_2|+c_s)$ (explicit $x_2$)", fontsize=8)
     ax.text(3.4, 0.7, r"$\Delta t_{\mathrm{sh}}=C_{\mathrm{sh}}\,c_f\,\Delta x_2/(|v_{2,i}||v_{2,i+1}|)$", fontsize=8)
-    ax.text(3.4, 0.25, r"$\Delta t=2^{-r}\min(\Delta t_1,\Delta t_2,\Delta t_{\mathrm{sh}},\Delta t_{\nu})$, all ranks",
+    ax.text(3.4, 0.25, r"$\Delta t=2^{-n_{\mathrm{redo}}}\min(\Delta t_1,\Delta t_2,\Delta t_{\mathrm{sh}},\Delta t_{\nu})$, all ranks",
             fontsize=8)
     ax.set_xlim(-1.6, 9.6)
     ax.set_ylim(-0.45, 2.4)

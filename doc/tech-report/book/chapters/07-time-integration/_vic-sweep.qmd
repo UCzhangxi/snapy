@@ -35,29 +35,31 @@ $5$, $\Delta t$ from $10^{-9}$ to $10^3$, a singular block at layer 12 of 20.
 :::
 
 The right-hand side is the explicit increment of the stage over the step. So the sweep returns the corrected
-increment $\boldsymbol\delta = (\mathsf I+\Delta t\,J)^{-1}\Delta\mathbf U^{(0)}$, which is the explicit one when $\Delta t\to0$. Every
+increment $\boldsymbol\delta = (\mathsf I+\Delta t\,J)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$, which is the explicit one, in the solved variables
+of @sec-ch07-vic-stage, when $\Delta t\to0$. Every
 block it inverts is first factored by `ludcmp` with the pivot guard of @sec-ch07-vic-pivot. A refused block
 marks the whole column as failed.
 
 ### Derivation
 
-With the right-hand side $\Delta\mathbf U^{(0)}_i/\Delta t$ in the solved variables, block Gaussian elimination without pivoting
+With the right-hand side $\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t$ in the solved variables (@sec-ch07-vic-stage), block Gaussian elimination without pivoting
 between blocks gives, for $i = 0, 1, \ldots, n-1$, with $\mathsf A_{-1}'$ and $\boldsymbol\delta_{-1}$ taken as zero,
 
 $$
 \begin{aligned}
 \mathsf A_i' &= \big(\mathsf A_i - \mathsf B_i \mathsf A_{i-1}'\big)^{-1} \mathsf C_i , \\
-\boldsymbol\delta_i &= \big(\mathsf A_i - \mathsf B_i \mathsf A_{i-1}'\big)^{-1}\big(\Delta\mathbf U^{(0)}_i/\Delta t - \mathsf B_i\,\boldsymbol\delta_{i-1}\big) ,
+\boldsymbol\delta_i &= \big(\mathsf A_i - \mathsf B_i \mathsf A_{i-1}'\big)^{-1}\big(\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t - \mathsf B_i\,\boldsymbol\delta_{i-1}\big) ,
 \end{aligned}
 $$ {#eq-ch07-vic-sweep}
 
 and then $\boldsymbol\delta_i \leftarrow \boldsymbol\delta_i - \mathsf A_i'\,\boldsymbol\delta_{i+1}$ from $i=n-2$ down to 0. On 60 layers the two passes
 match a dense solve to $4\times10^{-16}$ relative for $N=3$ and $N=5$ [check
 `src/snapy_report/ch07/vic_sweep_check.py`, output `vic_sweep_check.out`, `[C1]`]. With the assembled blocks the
-result is $(\mathsf I+\Delta t\,J)^{-1}\Delta\mathbf U^{(0)}$, and it tends to $\Delta\mathbf U^{(0)}$ as $\Delta t\to0$ (`[C2]`).
+result is $(\mathsf I+\Delta t\,J)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$, and it tends to $\Delta\mathbf U^{(0)}_{\mathrm{sv}}$ as $\Delta t\to0$ (`[C2]`).
 
-The first entry of $\Delta\mathbf U^{(0)}_i/\Delta t$ is the increment of the total density $\rho$, dry plus every species that carries
-mass, over $\Delta t$. The species are
+The first entry of $\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t$ is $\Delta^{\mathrm{stg}}\rho_i/\Delta t$, the increment of the total density
+$\rho$, dry plus every species that carries mass; it is not the first row $\Delta\mathbf U^{(0)}[\rho_{\mathrm d}]_i$ of the
+conserved layout, which is the dry density alone. The species are
 not in the system; they follow in @sec-ch07-vic-redistribute.
 
 In the code, @eq-ch07-vic-sweep is `ForwardSweep` ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}) followed by `vic_backward_substitute` ({{< code src/implicit/vic_redistribute_impl.h vic_backward_substitute >}}).
