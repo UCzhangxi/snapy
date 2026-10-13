@@ -19,11 +19,17 @@ These transfer symbols are proposed in the @sec-ch01 item in `ISSUES.md`.
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-`advance_local` publishes the stage, saves the initial state on stage zero, assembles hydro and scalar increments,
-applies user increments, combines the stage and enforces the conserved limiter.
-No callbacks unless installed; integrator stages are external.
-Order: code map; no independent measured convergence order.
-Defining identities: @eq-ch01-stage-weight, @eq-ch01-stage-transfer and @eq-ch01-stage-dry.
+**Purpose.** `advance_local` publishes the stage, saves the step-start state on stage zero, assembles the hydro and scalar increments, applies user increments, combines the stage and enforces the conserved limiter (@eq-ch01-stage-weight, @eq-ch01-stage-transfer, @eq-ch01-stage-dry).
+
+**Data.** In: the conserved cell averages `hydro_u` and the scalar rows ($\rho_{\mathrm d}$, $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$]; passive scalars as densities [kg m$^{-3}$], ratios per unit dry mass), the stage weights $w^{(s)}_0, w^{(s)}_1, w^{(s)}_2$ [-] and any installed increments in the same units per stage. Out: the stage-combined state in the same rows, interior cells; last-stage thermodynamic adjustment and the gravity-work fixer precede the final physical boundary fill.
+
+**Placement.** Once per RK stage, inside the block's advance.
+
+**Activation.** User increments only when callbacks are installed (`user_stage_forcings`); the integrator stages are external.
+
+**Guarantee / limits.** The combine is an affine recurrence in the stage weights, exact in arithmetic; no spatial order applies.
+
+**Evidence.** `test_user_output.release` asserts the ordered hydro/scalar increments (rtol = atol = $10^{-12}$) and that a shared callback works and bad keys throw; `test_jit_user_forcing_python` asserts a nested scripted module's increment (`assert_close` defaults); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `stage_check.py` `[C1]`-`[C3]` is report-only, run with its committed output `src/snapy_report/ch01/stage_check.out`.
 :::
 
 ### Derivation
@@ -59,63 +65,36 @@ of supplied increments, not a linearization of their nonlinear state dependence.
 is at {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}; the actual integrator coefficients are external, so this chapter does not assert them
 from a snapy call site. Check `[C1]` expands a generic three-stage affine recurrence symbolically.
 
-For implicit tracer transfer, start with the conservative passive-tracer law in a fixed cell:
-
-$$
-\frac{\mathrm{d}}{\mathrm{d}t}\int_{V_i}\rho_n\,\mathrm{d}V
-= -\int_{\partial V_i}\rho_n\mathbf v\cdot\mathrm{d}\mathbf A.
-$$
-
-Integrating over the implicit correction and orienting both x1 faces upward turns the surface integral into
-an incoming transfer minus an outgoing transfer. The code takes the already-clamped dry transfer from the
-implicit mass-correction buffer. Multiplying by the donor ratio gives
+The tracer transfer and its dry-source complement are derived in @sec-ch10-tracer; this section keeps only the call
+interface and the three identities the code evaluates. The transfer of tracer $n$ through an $x_1$ face is the
+clamped dry transfer $J^{\mathrm{d}}$ of the implicit mass-correction buffer times the ratio of the donor cell,
 
 $$
 J^{\mathrm{tr}}_{n,i+1/2} = J^{\mathrm{d}}_{i+1/2}
 \begin{cases}
 r_{n,i}, & J^{\mathrm{d}}_{i+1/2}>0,\\
-r_{n,i+1}, & J^{\mathrm{d}}_{i+1/2}\le 0.
+r_{n,i+1}, & J^{\mathrm{d}}_{i+1/2}\le 0,
 \end{cases}
 $$ {#eq-ch01-stage-upwind}
 
-@eq-ch01-stage-upwind is the upwind `P` constructed in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
-At zero transfer the branch choice has no effect. Dividing the net transfer by cell volume
-$V_i$ [$\mathrm{m^3}$] yields the increment added to the scalar tendency:
+the upwind `P` of {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}; the increment of a cell is the net
+transfer over its volume $V_i$ [$\mathrm{m^3}$],
 
 $$
-\Delta\rho_{n,i} = \frac{J^{\mathrm{tr}}_{n,i-1/2}-J^{\mathrm{tr}}_{n,i+1/2}}{V_i}.
+\Delta\rho_{n,i} = \frac{J^{\mathrm{tr}}_{n,i-1/2}-J^{\mathrm{tr}}_{n,i+1/2}}{V_i},
 $$ {#eq-ch01-stage-transfer}
 
-@eq-ch01-stage-transfer is the `P - P_above` update in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
-Multiplying by $V_i$ and summing cancels every common internal face. The remaining sum is the lower-boundary
-transfer minus the upper-boundary transfer; closed ends therefore conserve tracer mass exactly in real arithmetic.
-The code's shifted buffers supply zero beyond stored ends; the physical column closure and seam consistency are
-additional conditions, not consequences of this local telescoping proof. Upwinding approximates the face ratio;
-no spatial convergence order of the coupled implicit solve is measured here. Check `[C2]` tests both signs on
-unequal cell volumes with closed ends and with specified boundary transfers.
-
-Dry-source carry has a different purpose: removing dry mass must not increase a tracer ratio. The code computes
-a source-free RK result using the hydro increment minus the dry source and the saved scalar increment. If its
-dry density is nonzero, its ratio is $\rho^{\mathrm{base}}_n/\rho^{\mathrm{base}}_{\mathrm{d}}$.
-For a negative source it uses this ratio; for a nonnegative source it uses the entry ratio. For zero source-free
-dry density it falls back to the entry ratio rather than using the quotient. Thus the additional supplied
-scalar increment uses the selected ratio $r^{\mathrm{carry}}_n$ (dimensionless):
+the `P - P_above` update of the same function; and a supplied dry-mass source carries the tracers at the selected
+carry ratio $r^{\mathrm{carry}}_n$ (dimensionless),
 
 $$
 \Delta\rho^{\mathrm{source}}_n = r^{\mathrm{carry}}_n
-\Delta\rho^{\mathrm{source}}_{\mathrm{d}}.
+\Delta\rho^{\mathrm{source}}_{\mathrm{d}},
 $$ {#eq-ch01-stage-dry}
 
-@eq-ch01-stage-dry is implemented by `carry_dry_source` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}.
-For removal the final dry and tracer densities are their source-free values plus $w_2^{(s)}$ times the
-respective source increments. Substituting the first branch factors the tracer density into the source-free
-ratio times the final dry density. Dividing recovers the original ratio whenever that final density is nonzero.
-This is exact algebra, with floating-point round-off in evaluation; it does not license removing more dry mass
-than is available. Check `[C3]` verifies the factorization symbolically and the addition and zero-base branches
-numerically. An independent user scalar source is retained because the callback path saves the scalar base
-before adding callbacks. These checks live in `src/snapy_report/ch01/stage_check.py`; their committed output is
-`src/snapy_report/ch01/stage_check.out`. They check formulas without importing snapy.
-
+`carry_dry_source` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}. Checks `[C2]` and `[C3]` of
+`src/snapy_report/ch01/stage_check.py` exercise the two identities on a port, with the committed output
+`src/snapy_report/ch01/stage_check.out`; they import no snapy.
 
 ### Numerical method
 
@@ -171,7 +150,7 @@ make_fig()
 
 The assertion anchor `scripted_stage_forcings_add_tendencies_in_list_order` is in {{< code tests/test_user_output.cpp UserForcing.scripted_stage_forcings_add_tendencies_in_list_order >}}.
 
-The assertion anchor `scripted_module_is_shared_across_parallel_blocks` is in [`test_user_output.cpp:611-667`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L611-L667).
+The assertion anchor `scripted_module_is_shared_across_parallel_blocks` is in {{< code tests/test_user_output.cpp UserForcing.scripted_module_is_shared_across_parallel_blocks >}}.
 
 The assertion anchor `expected` is in {{< code tests/test_jit_user_forcing.py main >}}.
 

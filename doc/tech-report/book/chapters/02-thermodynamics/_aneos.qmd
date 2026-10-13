@@ -12,9 +12,17 @@ status: draft
 The wrapper delegates thermodynamics to an external table provider. Its shipped weak symbols throw, so the wrapper alone supplies no material accuracy evidence. The factory alias is `aneos`.
 
 ::: {.callout-note title="At a glance"}
-Explicit `type: aneos` and `eos-file`; default EOS remains `moist-mixture`.
-An external implementation must replace the throwing weak symbols.
-No tabulated accuracy is available from this tree.
+**Purpose.** An external tabulated equation of state behind the `aneos` alias: the wrapper delegates every thermodynamic map to a table provider supplied outside this tree.
+
+**Data.** In: the cell averages of five rows, total density $\rho$ [kg m$^{-3}$] (`IDN`), the three momentum densities $m_1, m_2, m_3$ [kg m$^{-2}$ s$^{-1}$] (`IVX`, `IVY`, `IVZ`) and the total energy density $E$ [J m$^{-3}$] (`IPR`) of `hydro_u`, or $\rho$ [kg m$^{-3}$], $v_1, v_2, v_3$ [m s$^{-1}$] and $p$ [Pa] of `hydro_w`; no species row is read, so the basis is the total mass of the cell; plus the `eos-file` path. Out, in the same cells: the other representation in those five rows; the internal energy per unit volume [J m$^{-3}$] (`W->I`, `UT->I`); $T$ [K] (`W->T`); $c_s$ [m s$^{-1}$] (`W->L`); the adiabatic index $c_s^2\rho/p$ [-] (`WL->A`). The provider is asked for $(p, T, c_s)$, $(T, e\rho, c_s)$ or $(p, e\rho, c_s)$ from $(\rho, e\rho)$, $(\rho, p)$ or $(\rho, T)$; this tree computes none of those values.
+
+**Placement.** Wherever the EOS is evaluated; the provider replaces the shipped weak symbols at link time.
+
+**Activation.** `type: aneos` with `eos-file`; the default EOS stays `moist-mixture`.
+
+**Guarantee / limits.** No accuracy is available from this tree: the shipped weak symbols throw, so the wrapper alone computes nothing.
+
+**Evidence.** None: no ctest entry exercises the wrapper, and no linked implementation exists in this tree (missing evidence); the report-only `aneos_check.py` is run with its committed output `src/snapy_report/ch02/aneos_check.out`.
 :::
 
 ### Derivation
@@ -49,8 +57,8 @@ make_fig()
 | what | code link | symbol | switch |
 |---|---|---|---|
 | keys | {{< code src/eos/aneos.cpp ANEOSImpl::compute >}} | `compute` | `aneos` |
-| conserved map | [`aneos.cpp:71-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/aneos.cpp#L71-L109) | `_cons2prim` | `aneos` |
-| throwing stubs | [`aneos_thermo_dummy.cpp:14-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/aneos/aneos_thermo_dummy.cpp#L14-L32) | `ANEOSThermoImpl` | `aneos` |
+| conserved map | {{< code src/eos/aneos.cpp ANEOSImpl::_cons2prim >}} | `_cons2prim` | `aneos` |
+| throwing stubs | {{< code src/eos/aneos/aneos_thermo_dummy.cpp ANEOSThermoImpl::ANEOSThermoImpl >}} | `ANEOSThermoImpl` | `aneos` |
 
 : Code map. {#tbl-ch02-aneos-code}
 
@@ -58,8 +66,8 @@ make_fig()
 Read the implementation in this order:
 
 1. Keys: `compute` in {{< code src/eos/aneos.cpp ANEOSImpl::compute >}}.
-2. Conserved map: `_cons2prim` in [`aneos.cpp:71-109`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/aneos.cpp#L71-L109).
-3. Throwing stubs: `ANEOSThermoImpl` in [`aneos_thermo_dummy.cpp:14-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/aneos/aneos_thermo_dummy.cpp#L14-L32).
+2. Conserved map: `_cons2prim` in {{< code src/eos/aneos.cpp ANEOSImpl::_cons2prim >}}.
+3. Throwing stubs: `ANEOSThermoImpl` in {{< code src/eos/aneos/aneos_thermo_dummy.cpp ANEOSThermoImpl::ANEOSThermoImpl >}}.
 
 ### Tests
 

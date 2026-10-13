@@ -12,9 +12,17 @@ status: draft
 The constant-capacity mixture includes dry gas, vapor and condensate energies while only gases contribute pressure. Composition therefore changes the pressure-to-energy factor. The factory alias is `ideal-moist`.
 
 ::: {.callout-note title="At a glance"}
-Explicit `type: ideal-moist`; requires thermo; default EOS remains `moist-mixture`.
-Condensates carry mass and heat but no pressure share.
-The fixed-composition relation is @eq-ch02-ideal-moist-energy; no spatial order applies.
+**Purpose.** The constant-heat-capacity moist mixture: dry gas, vapour and condensate energies, with only the gases contributing pressure (@eq-ch02-ideal-moist-energy, @eq-ch02-ideal-moist-factors).
+
+**Data.** In: the cell averages with the species rows: conserved $\rho_{\mathrm d}$, $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$], or primitive $\rho$, $\mathbf v$, $p$ [Pa] and $y_n$ [-] per unit total mass; the thermo options. Out: $p$ [Pa], $T$ [K], the species reference energies $u^{\star}_n$ and enthalpies $\hat h_n$ [J kg$^{-1}$] per unit mass of the species; composition sets the pressure-to-energy factor.
+
+**Placement.** At every state conversion of the step; the reference energies are set once in `reset`.
+
+**Activation.** `type: ideal-moist`, which requires thermo options; the default EOS stays `moist-mixture`.
+
+**Guarantee / limits.** The fixed-composition relation is exact algebra; no spatial order applies. Condensates carry mass and heat but no pressure share.
+
+**Evidence.** `test_eos.release` asserts the dry offset and linearity ($10^{-6}$); `test_eos_temp2inteng_python` asserts the temperature map ($10^{-12}$ relative); `test_eos_species_registry_python` asserts the own species table ($10^{-14}$ relative); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `ideal-moist_check.py` is report-only, run with its committed output `src/snapy_report/ch02/ideal-moist_check.out`.
 :::
 
 ### Derivation
@@ -31,7 +39,7 @@ f_\sigma&=1+\sum_n y_n(c_{v,n}/c_{v,\mathrm d}-1).
 \end{aligned}
 $$ {#eq-ch02-ideal-moist-factors}
 
-@eq-ch02-ideal-moist-factors is implemented by `f_eps` in [`ideal_moist.cpp:319-346`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L319-L346).
+@eq-ch02-ideal-moist-factors is implemented by `f_eps` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::f_eps >}}.
 
 The reference energies $u_n^\star$ have units $\mathrm{J\,kg^{-1}}$ and enter additively, including dry air.
 Using $R_{\mathrm d}=(\gamma_{\mathrm d}-1)c_{v,\mathrm d}$ gives
@@ -46,7 +54,7 @@ p&=\frac{(\gamma_{\mathrm d}-1)f_\varepsilon}{f_\sigma}
 \end{aligned}
 $$ {#eq-ch02-ideal-moist-energy}
 
-@eq-ch02-ideal-moist-energy is implemented by `_cons2prim` in [`ideal_moist.cpp:164-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L164-L233).
+@eq-ch02-ideal-moist-energy is implemented by `_cons2prim` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}}.
 
 For frozen composition, $c_p-c_v=R_{\mathrm d}f_\varepsilon$; divide by
 $c_v=c_{v,\mathrm d}f_\sigma$ to obtain
@@ -84,8 +92,8 @@ make_fig()
 |---|---|---|---|
 | reset and reference energies | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::reset >}} | `u0` | `ideal-moist` |
 | offset | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::internal_energy_offset >}} | `internal_energy_offset` | `ideal-moist` |
-| maps | [`ideal_moist.cpp:164-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L164-L233) | `_cons2prim` | `ideal-moist` |
-| species energy/enthalpy | [`ideal_moist.cpp:235-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L235-L280) | `species_enthalpy` | `ideal-moist` |
+| maps | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}} | `_cons2prim` | `ideal-moist` |
+| species energy/enthalpy | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::species_enthalpy >}} | `species_enthalpy` | `ideal-moist` |
 | temperature map | {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_temp2intEng >}} | `_temp2intEng` | `ideal-moist` |
 
 : Code map. {#tbl-ch02-ideal-moist-code}
@@ -95,8 +103,8 @@ Read the implementation in this order:
 
 1. Reset and reference energies: `u0` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::reset >}}.
 2. Offset: `internal_energy_offset` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::internal_energy_offset >}}.
-3. Maps: `_cons2prim` in [`ideal_moist.cpp:164-233`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L164-L233).
-4. Species energy/enthalpy: `species_enthalpy` in [`ideal_moist.cpp:235-280`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_moist.cpp#L235-L280).
+3. Maps: `_cons2prim` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}}.
+4. Species energy/enthalpy: `species_enthalpy` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::species_enthalpy >}}.
 5. Temperature map: `_temp2intEng` in {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_temp2intEng >}}.
 
 ### Tests

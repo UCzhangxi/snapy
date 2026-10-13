@@ -13,11 +13,17 @@ exchanges primitive ghosts and then converts to conserved state. Passive scalar 
 dry-air density.
 
 ::: {.callout-note title="At a glance"}
-Fresh initialization validates primitive shapes, captures any radiating-boundary reference, fills physical ghosts,
-exchanges primitive ghosts and then converts to conserved state.
-Absent: initialize from primitives; present: load restart.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A (a code map): fresh initialization validates primitive shapes, captures any radiating-boundary reference, fills physical ghosts, exchanges primitive ghosts and converts to the conserved state.
+
+**Data.** In: the primitive cell averages of the interior, `hydro_w` ($\rho$ [kg m$^{-3}$], $\mathbf v$ [m s$^{-1}$], $p$ [Pa], $y_n$ [-] per unit total mass), or a restart file (@sec-ch14-restart). Out: the conserved cell averages `hydro_u` ($\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$]) with the ghost cells filled, and the passive scalar densities [kg m$^{-3}$] seeded from the conserved dry-air density (ratios per unit dry mass).
+
+**Placement.** Once, after construction and before the first step.
+
+**Activation.** `restart_file` absent: initialize from primitives; present: load the restart (@sec-ch14-restart).
+
+**Guarantee / limits.** A map; no convergence order.
+
+**Evidence.** `test_scalar.release` asserts initialization, shape and a finite increment (`allclose` defaults, exact shape); `test_mesh_multi_block.release` asserts the local and remote neighbour ghosts (`allclose` defaults); no run of these ctest entries is recorded for this chapter at the pin (missing evidence).
 :::
 
 ### Derivation
@@ -49,7 +55,7 @@ make_fig()
 | what | code link | symbol | switch |
 |---|---|---|---|
 | init | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize >}} | `initialize` | API / see Summary |
-| initlocal | [`meshblock.cpp:401-451`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L451) | `initialize_local` | API / see Summary |
+| initlocal | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}} | `initialize_local` | API / see Summary |
 | initfinal | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}} | `finalize_initialization` | API / see Summary |
 | meshinit | {{< code src/mesh/mesh.cpp MeshImpl::initialize >}} | `initialize` | API / see Summary |
 | restart | {{< code src/output/restart.cpp RestartOutput::write_output_file >}} | `out_vars` | API / see Summary |
@@ -57,7 +63,7 @@ make_fig()
 : Implementation anchors for initialize primitives, ghosts and conserved states. {#tbl-ch01-initialization-code}
 
 1. Read `initialize` for the init part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize >}}).
-2. Read `initialize_local` for the initlocal part of this path ([`meshblock.cpp:401-451`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L401-L451)).
+2. Read `initialize_local` for the initlocal part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}}).
 3. Read `finalize_initialization` for the initfinal part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}}).
 4. Read `initialize` for the meshinit part of this path ({{< code src/mesh/mesh.cpp MeshImpl::initialize >}}).
 5. Read `out_vars` for the restart part of this path ({{< code src/output/restart.cpp RestartOutput::write_output_file >}}).
@@ -73,7 +79,7 @@ make_fig()
 
 The assertion anchor `scalar_s` is in {{< code tests/test_scalar.cpp DeviceTest.initialize_and_transport_scalar >}}.
 
-The assertion anchor `side_is_uniform` is in [`test_mesh_multi_block.cpp:19-95`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_mesh_multi_block.cpp#L19-L95).
+The assertion anchor `side_is_uniform` is in {{< code tests/test_mesh_multi_block.cpp side_is_uniform >}}.
 
 No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
 the missing runs and the distinction between assertions and observations.

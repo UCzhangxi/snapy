@@ -16,9 +16,17 @@ finite ensemble average. These additions are tracked in ISSUES.md.
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-Default `type: moist-mixture`; thermo options required.
-Temperature inversions and heat capacities come from kintera.
-Sound speed follows @eq-ch02-moist-mixture-speed; accuracy is limited by inversion tolerance.
+**Purpose.** The temperature-dependent moist mixture: temperature inversion before pressure and sound speed, with heat capacities and inversions from kintera (@eq-ch02-moist-mixture-speed, @eq-ch02-moist-mixture-newton).
+
+**Data.** In: the cell averages with the species rows (conserved $\rho_{\mathrm d}$, $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$]; primitive $y_n$ [-] per unit total mass) and the thermo options. Out: $T$ [K], $p$ [Pa], $c_s$ [m s$^{-1}$], the species enthalpies $\hat h_n$ [J kg$^{-1}$] per unit mass of the species; a cache keyed on the state avoids repeated inversions.
+
+**Placement.** At every state conversion of the step; `reset` builds the kintera objects once.
+
+**Activation.** The default, `type: moist-mixture`; thermo options required.
+
+**Guarantee / limits.** Consistency of the local maps is limited by the inversion tolerance; no spatial order applies.
+
+**Evidence.** `test_eos.release` asserts the round trip and the cache invalidation ($10^{-6}$ absolute and relative); `test_flux_positivity_carry.release` asserts the NASA/H2 enthalpy sum ($10^{-9}$ relative); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `moist-mixture_check.py` is report-only, run with its committed output `src/snapy_report/ch02/moist-mixture_check.out`.
 :::
 
 ### Derivation
@@ -41,7 +49,7 @@ c_s&=\sqrt{\gamma}\,c_T.
 \end{aligned}
 $$ {#eq-ch02-moist-mixture-speed}
 
-@eq-ch02-moist-mixture-speed is implemented by `_adiabatic_index` in [`moist_mixture.cpp:245-272`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L245-L272).
+@eq-ch02-moist-mixture-speed is implemented by `_adiabatic_index` in {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_adiabatic_index >}}.
 
 The supported evidence here is restricted to $Z_n=1$, for which the speed reduces to $c_s^2=\gamma p/\rho$.
 The nonideal expression above describes the implementation, not a verified general isentropic closure.
@@ -130,7 +138,7 @@ make_fig()
 | conserved map | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_cons2prim >}} | `_cons2prim` | `moist-mixture` |
 | enthalpy | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::species_enthalpy >}} | `species_enthalpy` | `moist-mixture` |
 | temperature map | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_temp2intEng >}} | `_temp2intEng` | `moist-mixture` |
-| cache | [`moist_mixture.cpp:275-294`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L275-L294) | `_ensure_cache` | `moist-mixture` |
+| cache | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_ensure_cache >}} | `_ensure_cache` | `moist-mixture` |
 | pressure Newton | [`kintera thermo_y.cpp:439-472`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L439-L472) | `_pres_to_temp` | `moist-mixture` |
 | NASA polynomial | [`kintera eval_uhs.cpp:24-58`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L24-L58) | `nasa9_cp_R` | `moist-mixture` |
 | rotor modes | [`kintera eval_uhs.cpp:95-147`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L95-L147) | `eval_h2cp` | `moist-mixture` |
@@ -144,7 +152,7 @@ Read the implementation in this order:
 2. Conserved map: `_cons2prim` in {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_cons2prim >}}.
 3. Enthalpy: `species_enthalpy` in {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::species_enthalpy >}}.
 4. Temperature map: `_temp2intEng` in {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_temp2intEng >}}.
-5. Cache: `_ensure_cache` in [`moist_mixture.cpp:275-294`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/moist_mixture.cpp#L275-L294).
+5. Cache: `_ensure_cache` in {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_ensure_cache >}}.
 6. Pressure newton: `_pres_to_temp` in [`kintera thermo_y.cpp:439-472`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L439-L472).
 7. Nasa polynomial: `nasa9_cp_R` in [`kintera eval_uhs.cpp:24-58`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L24-L58).
 8. Rotor modes: `eval_h2cp` in [`kintera eval_uhs.cpp:95-147`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L95-L147).

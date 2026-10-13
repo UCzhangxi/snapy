@@ -38,7 +38,7 @@ $$ {#eq-ch14-schedule-moments}
 By induction, $\bar q_i = \sum_{j \le i} w_j q_j / W_i$ and $M_{2,i} = \sum_{j \le i} w_j (q_j - \bar q_i)^2$, the
 weighted mean and the weighted sum of squared deviations; $M_2/W$ is the population variance, with no small-sample
 correction. Each state is weighted by the step that ends at it (a right-endpoint rule in time). @eq-ch14-schedule-moments
-is `update_weighted_moments` and `PrimStatStd` ([`output_type.cpp:282-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L282-L360)).
+is `update_weighted_moments` and `PrimStatStd` ({{< code src/output/output_type.cpp OutputType::PrimStatStd >}}, {{< code src/output/output_type.cpp update_weighted_moments >}}).
 A port of the recurrence and of `AccumulateStats` agrees with the two-pass weighted mean and deviation to
 $2\times10^{-15}$ relative over 200 unequal steps [check `src/snapy_report/ch14/schedule_check.py`, output
 `schedule_check.out`, `[C1]`]. The state at the first call carries no weight (`[C2]`), and $\sigma$ has no
@@ -59,7 +59,7 @@ until it catches up.
 
 **Statistics.** `AccumulateStats` starts the clock at its first call. From then on it
 applies @eq-ch14-schedule-moments to `hydro_w` (and `scalar_r`) with the time since its previous call as the weight. Calls with
-zero elapsed time are skipped. `ResetStats` zeroes the sums at each write ([`output_type.cpp:297-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L297-L345)).
+zero elapsed time are skipped. `ResetStats` zeroes the sums at each write ({{< code src/output/output_type.cpp OutputType::ResetStats >}}).
 Before the first accumulated interval the mean is the current state and the deviation zero.
 
 **Termination.** The driver loop runs while pyharp's integrator does not stop. It stops when $n_\text{lim} \ge 0$
@@ -75,8 +75,8 @@ time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl:
 | what | code link | symbol | switch |
 |---|---|---|---|
 | when an output fires | {{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}} | `MeshBlockImpl::make_outputs` | `dt` |
-| weighted moments | [`output_type.cpp:282-360`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L282-L360) | `update_weighted_moments` | `*_stat` |
-| accumulate and reset | [`output_type.cpp:297-345`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/output/output_type.cpp#L297-L345) | `AccumulateStats` | `*_stat` |
+| weighted moments | {{< code src/output/output_type.cpp OutputType::PrimStatStd >}}, {{< code src/output/output_type.cpp update_weighted_moments >}} | `update_weighted_moments` | `*_stat` |
+| accumulate time-weighted moments | {{< code src/output/output_type.cpp OutputType::AccumulateStats >}} | `AccumulateStats` | `*_stat` |
 | driver loop | {{< code examples/straka.cpp main >}} | `make_outputs` | `tlim`, `nlim` |
 | caught signals | {{< code src/utils/signal_handler.cpp SignalHandler::SignalHandler >}} | `SIGALRM` | none |
 | final write and reason | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}} | `MeshBlockImpl::finalize` | none |

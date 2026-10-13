@@ -13,10 +13,17 @@ time loop inside a MeshBlock. The C++ example applies kinetics after all dynamic
 decision.
 
 ::: {.callout-note title="At a glance"}
-The driver chooses the time step, executes every stage, checks rejection, and writes accepted states.
-Caller supplied; integration defaults belong to pyharp.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A (a code map): the driver chooses the time step, executes every stage, checks for rejection and writes accepted states; there is no main time loop inside a block.
+
+**Data.** In: a block or mesh, the integration limits (`tlim` [s], `nlim`, a count) and the output schedule. Out: the accepted states written by `make_outputs` (files, @sec-ch14-schedule), the logged time [s] and cycle (a count), the final write and the exit reason; no field is transformed here.
+
+**Placement.** The outermost loop of a run: `max_time_step`, the stages, `check_redo`, `make_outputs`, `finalize`.
+
+**Activation.** Caller supplied; the integration defaults belong to pyharp.
+
+**Guarantee / limits.** A map; no convergence order. The example applies kinetics after all dynamics stages and before the rejection decision.
+
+**Evidence.** `test_restart_cycle_limit` asserts the resume cycle and the logged values (absolute $10^{-12}$, time $10^{-9}$); `test_check_redo_parallel.release` asserts the collective redo and rollback (exact); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `driver_check.py` `[C1]`-`[C3]` (clock, step halving and stop, on a port of the loop) is report-only, run with its committed output `src/snapy_report/ch01/driver_check.out`.
 :::
 
 ### Derivation
@@ -55,7 +62,7 @@ make_fig()
 | driver | {{< code examples/run_hydro.cpp main >}} | `check_redo` | API / see Summary |
 | straka | {{< code examples/straka.cpp main >}} | `forward` | API / see Summary |
 | dt | {{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}} | `max_time_step` | API / see Summary |
-| redo | [`meshblock.cpp:1278-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1304) | `check_redo` | API / see Summary |
+| redo | {{< code src/mesh/meshblock.cpp MeshBlockImpl::check_redo >}} | `check_redo` | API / see Summary |
 | output | {{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}} | `make_outputs` | API / see Summary |
 | final | {{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}} | `finalize` | API / see Summary |
 
@@ -64,7 +71,7 @@ make_fig()
 1. Read `check_redo` for the driver part of this path ({{< code examples/run_hydro.cpp main >}}).
 2. Read `forward` for the straka part of this path ({{< code examples/straka.cpp main >}}).
 3. Read `max_time_step` for the dt part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}).
-4. Read `check_redo` for the redo part of this path ([`meshblock.cpp:1278-1304`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1278-L1304)).
+4. Read `check_redo` for the redo part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::check_redo >}}).
 5. Read `make_outputs` for the output part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}}).
 6. Read `finalize` for the final part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}).
 

@@ -12,9 +12,17 @@ status: draft
 The EOS factory selects a set of tensor conversion operations. Unsupported keys fail at dispatch, so selecting an EOS also selects which downstream operations are available. The factory key is `type`.
 
 ::: {.callout-note title="At a glance"}
-YAML `dynamics/equation-of-state/type` defaults to `moist-mixture`.
-Five concrete types implement different conversion keys; moist types require thermo options.
-No discretization order or single defining equation applies to a factory.
+**Purpose.** N/A (a factory): the EOS key `type` selects one of five concrete types, each implementing a set of tensor conversion keys; an unsupported key fails at dispatch.
+
+**Data.** No physical quantity of its own. In: YAML `dynamics/equation-of-state` with `type`, the floors (density [kg m$^{-3}$], pressure [Pa], temperature [K]) and, for the moist types, the thermo options. Out: the EOS module whose conversion keys the rest of the step may call on the cell averages (the table in the Numerical method layer).
+
+**Placement.** At option construction; the selected module is called at every conversion.
+
+**Activation.** `type` defaults to `moist-mixture`; the moist types require thermo options.
+
+**Guarantee / limits.** A factory; no discretization order or single defining equation. Selecting an EOS also selects which downstream operations exist.
+
+**Evidence.** `test_hydro_options.release` asserts that unknown dynamics keys are rejected (exception); `test_eos.release` asserts the selected EOS behaviour per type (see the per-type sections); no run of these ctest entries is recorded for this chapter at the pin (missing evidence).
 :::
 
 ### Derivation
@@ -61,7 +69,7 @@ make_fig()
 | YAML validation/defaults | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `from_yaml` | `type` |
 | struct defaults | {{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}} | `density_floor` | `type` |
 | factory | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}} | `create` | `type` |
-| base fallback | [`equation_of_state.cpp:165-173`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L165-L173) | `specific_heat_cv` | `type` |
+| base fallback | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::specific_heat_cv >}} | `specific_heat_cv` | `type` |
 
 : Code map. {#tbl-ch02-interface-code}
 
@@ -71,7 +79,7 @@ Read the implementation in this order:
 1. Yaml validation/defaults: `from_yaml` in {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}.
 2. Struct defaults: `density_floor` in {{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}}.
 3. Factory: `create` in {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}}.
-4. Base fallback: `specific_heat_cv` in [`equation_of_state.cpp:165-173`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/equation_of_state.cpp#L165-L173).
+4. Base fallback: `specific_heat_cv` in {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::specific_heat_cv >}}.
 
 ### Tests
 
