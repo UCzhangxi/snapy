@@ -33,8 +33,8 @@ def make_fig():
     for i in range(2):
         b.add_patch(plt.Rectangle((i, 0), 1, 1, fc="#EAF5FC", ec=fs.BLACK, lw=0.8))
     b.plot([1, 1], [0, 1], color=fs.ORANGE, lw=2.5)
-    b.text(0.5, 1.14, "$\\theta_{i-1}$", ha="center", fontsize=fs.SMALL_PT, color=fs.GREEN)
-    b.text(1.5, 1.14, "$\\theta_i$", ha="center", fontsize=fs.SMALL_PT, color=fs.BLUE)
+    b.text(0.5, 1.14, "$\\Theta_{i-1}$", ha="center", fontsize=fs.SMALL_PT, color=fs.GREEN)
+    b.text(1.5, 1.14, "$\\Theta_i$", ha="center", fontsize=fs.SMALL_PT, color=fs.BLUE)
     b.annotate("", xy=(1.42, 0.66), xytext=(0.58, 0.66),
                arrowprops=dict(arrowstyle="->", color=fs.GREEN, lw=1.5))
     b.text(1.0, 0.76, "$F>0$", ha="center", fontsize=fs.SMALL_PT, color=fs.GREEN)
