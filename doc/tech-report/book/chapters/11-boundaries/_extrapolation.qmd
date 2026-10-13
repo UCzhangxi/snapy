@@ -16,17 +16,17 @@ boundary cannot or need not split, which is why the outflow callback routes auxi
 shallow-water system through it.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Fills every ghost layer with the boundary-adjacent owned cell: the zero-gradient copy
-condition.
+**Purpose.** Repeat the nearest owned value; @eq-ch11-extrapolation-copy.
 
-**Switch.** Face name `extrapolation`; off by default.
+**Data.** One owned cell supplies all ghost depths; units unchanged.
 
-**Requires / implies / turns off.** Nothing. The `outflow` callback of @sec-ch11-outflow falls back to it for
-`kScalar` input and for the shallow-water EOS.
+**Placement.** Physical fill, also the scalar and shallow-water outflow fallback.
 
-**Order.** Ghost values consistent to $O(h)$ for a smooth field; no solver convergence order is measured.
+**Activation.** Set `extrapolation` on an external face; default off.
 
-**Defining equation.** @eq-ch11-extrapolation-copy.
+**Guarantee / limits.** Constant preserving; no characteristic selection.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -70,6 +70,29 @@ make_fig()
 
 ### Code
 
+**How to use.** Use this fragment for an open face with a zero-gradient copy. It supplies no exterior pressure and
+does not remove incoming acoustic modes.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: extrapolation
+    x1-outer: extrapolation
+```
+
+**Refusals and prerequisites.** The callback has no state-admissibility refusal and returns for a collapsed
+direction. The parser rejects unknown names and keys as described in @sec-ch11-registry.
+
+**Read the implementation.** `extrapolation_inner` ({{< code src/bc/bc_func.cpp >}}) contains:
+
+```cpp
+var.narrow(dim, 0, nghost) = var.narrow(dim, nghost, 1);
+```
+
+Broadcasting the width-one donor realizes @eq-ch11-extrapolation-copy at every ghost depth.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | extrap | [`bc_func.cpp:52-66`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/bc/bc_func.cpp#L52-L66) | `extrapolation_inner` | `extrapolation` |
@@ -89,14 +112,25 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_radiating_boundary.release` | The pulse test runs an extrapolation arm beside the outflow arm for comparison | no assertion on the extrapolation arm | test design |
+| `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for extrapolation; no runtime results. {#tbl-ch11-extrapolation-tests}
+: Source-test assertions and report-only checks for extrapolation. {#tbl-ch11-extrapolation-tests}
 
 The only assertion of the pulse test, `EXPECT_LT` on the reflected fraction, is guarded by the face name
 `outflow` in {{< code tests/test_radiating_boundary.cpp radiating.acoustic_pulses >}}.
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C1]` establish that copy, parity, idempotence and corner ownership hold
+exactly.[^ch11-extrapolation-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-extrapolation-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
 ### Limits
 

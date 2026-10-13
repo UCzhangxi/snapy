@@ -21,17 +21,17 @@ then nulls the callbacks of the faces that another block or a periodic wrap supp
 and "callback present" mean the same thing from then on.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Maps the six face names of the YAML card to registered callbacks, drops the callbacks on the
-faces the layout owns, and classifies a face when an operator asks whether it is physical or a wall.
+**Purpose.** Classify and dispatch each block face.
 
-**Switch.** `boundary-condition/external/x1-inner` ... `x3-outer`; each defaults to `reflecting`.
+**Data.** Six face names map to callbacks; no physical units.
 
-**Requires / implies / turns off.** A periodic x2 or x3 face sets the layout's periodic flag; a periodic x1 face
-does so only on the `cubed` layout. A layout-owned face has no callback.
+**Placement.** Parse names, then remove layout-owned callbacks at construction.
 
-**Order.** Dispatch only; no order of accuracy.
+**Activation.** External faces default to `reflecting`.
 
-**Defining equation.** None; the two predicates are stated in the Derivation layer.
+**Guarantee / limits.** Physical-face and diffusion-wall predicates differ.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -87,6 +87,29 @@ make_fig()
 
 ### Code
 
+**How to use.** Use this fragment in a complete deck with an active x1 direction. Names omit the `_inner` and
+`_outer` suffixes; the parser adds them. A layout-owned face loses its callback after construction.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+```
+
+**Refusals and prerequisites.** An unregistered name such as `typo` is refused as "Boundary function 'typo_inner'
+is not defined." Unknown map keys are rejected by `check_keys`; a collapsed direction does not read its face names.
+
+**Read the implementation.** `MeshBlockOptionsImpl::from_yaml` ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}) contains:
+
+```cpp
+auto ix1 = external_bc["x1-inner"].as<std::string>("reflecting");
+```
+
+The default supplies the face name; the following registry lookup realizes the dispatch contract in the Derivation layer.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | registry | {{< code src/bc/bc_func.hpp BC_FUNCTION >}} | `BC_FUNCTION` | none |
@@ -118,8 +141,9 @@ make_fig()
 |---|---|---|---|
 | `test_yaml_keys.release` | An unknown key under `boundary-condition` or `boundary-condition/external` is refused with its path in the message | exact string containment | test helper `expect_refused` |
 | `test_wb_wall_corner.release` | A stock reflecting wall and a user-installed wall both keep a resting column at rest | Mach at most $10^{-12}$ | test constant |
+| `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for registry; no runtime results. {#tbl-ch11-registry-tests}
+: Source-test assertions and report-only checks for registry. {#tbl-ch11-registry-tests}
 
 The refusal helper is `expect_refused` ({{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}},
 {{< code tests/test_yaml_keys.cpp expect_refused overload=2 >}}); the boundary cases are
@@ -132,6 +156,16 @@ The rest assertions are `EXPECT_LE` on the Mach number in
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C1]` establish that copy, parity, idempotence and corner ownership hold
+exactly.[^ch11-registry-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-registry-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
 ### Limits
 

@@ -20,20 +20,17 @@ decisions and the different face predicates they use: the continuation is gated 
 mirror on a physical face that is not outflow.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** For the gravity-driven x1 reconstruction, continues the hydrostatic reference past a
-physical x1 wall from the two owned cells next to it instead of repeating the wall cell, and mirrors the
-pressure and density perturbations about that reference at every physical non-outflow x1 face.
+**Purpose.** Continue the wall reference; @eq-ch11-wb-continuation.
 
-**Switch.** `dynamics/wb-wall-clamp`, default true, for the continuation; the mirror has no switch.
+**Data.** Cell-average density/pressure ratio and reference perturbations.
 
-**Requires / implies / turns off.** Active only on the well-balanced x1 path: nonzero $g_1$, a pressure row,
-an EOS other than shallow water. `SNAP_WB_REF4` (default off; implied by `SNAP_X1_CENTROID_EXACT`) selects
-the fourth-order reference, which takes the same clamp flags.
+**Placement.** Gravity-driven well-balanced x1 reconstruction.
 
-**Order.** The continuation removes an $O(h)$ wall bias of the smoothed reference, leaving $O(h^2)$ for smooth
-data on a uniform grid; this is a truncation argument, not a fitted solver order.
+**Activation.** `dynamics/wb-wall-clamp: true` by default; mirror has no switch.
 
-**Defining equation.** @eq-ch11-wb-continuation and @eq-ch11-wb-parity.
+**Guarantee / limits.** Smooth uniform-grid truncation argument; solver order unmeasured.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -119,6 +116,34 @@ make_fig()
 
 ### Code
 
+**How to use.** Add this fragment to a complete stratified deck with nonzero x1 gravity and a pressure-bearing EOS
+other than shallow water. The flag alone does not activate well-balanced reconstruction. The perturbation mirror
+has no separate YAML key.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+dynamics:
+  wb-wall-clamp: true
+```
+
+**Refusals and prerequisites.** The continuation helper does not throw for a nonpositive candidate: it falls back
+to the nearest owned ratio. Unknown dynamics keys are refused by the options parser. The clamp uses physical-face
+flags; the perturbation mirror additionally excludes outflow.
+
+**Read the implementation.** `hydro_ref_x1_wall_rop` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}) contains:
+
+```cpp
+T e = r1 > r0 ? r0 * pow(r0 / r1, T(k)) : r0 + T(k) * (r0 - r1);
+return e > T(0) ? e : r0;
+```
+
+`r0`, `r1` and `k` denote $\chi_0$, $\chi_1$ and continuation depth in @eq-ch11-wb-continuation. The conditional selects its two branches; the return implements the positive-value fallback.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | wboption | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `wb_wall_clamp` | `dynamics/wb-wall-clamp` |
@@ -148,8 +173,9 @@ make_fig()
 |---|---|---|---|
 | `test_wb_ref_wall.release` | The reference and reconstructed densities at the faces next to the walls converge at second order between two grids | two-grid slope at least $1.7$ | test constant |
 | `test_hydro_ref_x1.release` | With the clamp, changed ghost values leave the interior reference unchanged; without it they do not | exact equality; inequality on the off arm | test assertions |
+| `boundary_check.py` (report only) | `[C7]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for wb; no runtime results. {#tbl-ch11-wb-tests}
+: Source-test assertions and report-only checks for wb. {#tbl-ch11-wb-tests}
 
 The slope assertion `EXPECT_GE` is in
 {{< code tests/test_wb_ref_wall.cpp WbRefWall.faces_next_to_the_walls_are_second_order >}}.
@@ -160,6 +186,16 @@ and {{< code tests/test_hydro_ref_x1.cpp HydroRefX1Dispatch.without_the_clamp_th
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C7]` establish that the binomial moments are (1, 0, 1), the repeated-wall linear bias is
+3/8 and the continuation residuals vanish.[^ch11-wb-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-wb-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C7]`.
 
 ### Limits
 
