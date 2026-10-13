@@ -120,12 +120,17 @@ ok("bound(a): fl-sum error = sum_k B_k delta_k to first order", sp.simplify(firs
 # (b) telescoping face terms: exact sum of per-cell terms t_i = (Q_{i+1/2}-Q_{i-1/2}) with Q_{-1/2}=Q_{n-1/2}=0 is zero
 Q=sp.symbols('Q0:5')
 ok("bound(b): sum_i (Q_{i+1/2} - Q_{i-1/2}) with zero wall values is 0", sp.simplify(sum((Q[i+1] if i+1<4 else 0)-(Q[i] if i>0 else 0) for i in range(4)))==0)
-# (c) fixer deposit: M_hat=M(1+tM), efix=-D/M_hat*(1+t1), d_i=m_i efix (1+t2_i), E_new=(E+d)(1+t3_i)
-D_,tM,t1=sp.symbols('D tM t1'); ms=sp.symbols('mv0:3',positive=True); Es=sp.symbols('E0:3'); t2=sp.symbols('t2_0:3'); t3=sp.symbols('t3_0:3')
-M_=sum(ms); efix=-D_/(M_*(1+e*tM))*(1+e*t1)
+# (c) fixer deposit: M_hat=M(1+tM), efix=-D/M_hat*(1+t1) in double, converted to the state dtype (1+tc),
+# d_i=m_i efix (1+t2_i), E_new=(E+d)(1+t3_i)  (meshblock.cpp apply_gravity_work_fixer at the pin)
+D_,tM,t1,tc=sp.symbols('D tM t1 tc'); ms=sp.symbols('mv0:3',positive=True); Es=sp.symbols('E0:3'); t2=sp.symbols('t2_0:3'); t3=sp.symbols('t3_0:3')
+M_=sum(ms); efix=-D_/(M_*(1+e*tM))*(1+e*t1)*(1+e*tc)
 dE=sum((Es[i]+ms[i]*efix*(1+e*t2[i]))*(1+e*t3[i])-Es[i] for i in range(3))
 lin=sp.expand(sp.series(dE+D_,e,0,2).removeO())
-target=e*(D_*(tM-t1)-sum(D_*ms[i]/M_*t2[i] for i in range(3))+sum((Es[i]-D_*ms[i]/M_)*t3[i] for i in range(3)))
-ok("bound(c): sum V dE + D = D(tM - t1) - sum D m_i/M t2_i + sum E_i^new t3_i to first order", sp.simplify(lin-sp.expand(target))==0)
+target=e*(D_*(tM-t1-tc)-sum(D_*ms[i]/M_*t2[i] for i in range(3))+sum((Es[i]-D_*ms[i]/M_)*t3[i] for i in range(3)))
+ok("bound(c): sum V dE + D = D(tM - t1 - tc) - sum D m_i/M t2_i + sum E_i^new t3_i to first order", sp.simplify(lin-sp.expand(target))==0)
+# (d) the |D| coefficient: |tM| <= N_f, |t1|, |tc|, |t2_i| <= 1 and sum m_i/M = 1, so N_f + 3; without tc it is N_f + 2
+Nf=sp.symbols('N_f',positive=True,integer=True)
+coef=Nf+1+1+sum(ms[i]/M_ for i in range(3))
+ok("bound(d): the |D| coefficient of the fixer deposit is N_f + 3 (the conversion of efix to the state dtype included), not N_f + 2", sp.simplify(coef-(Nf+3))==0 and sp.simplify(coef-1-(Nf+2))==0)
 
 print("%d passed, %d failed"%(sum(_res),len(_res)-sum(_res)))
