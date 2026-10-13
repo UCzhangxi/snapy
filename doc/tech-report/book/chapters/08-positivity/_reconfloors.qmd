@@ -20,11 +20,11 @@ are part of the positivity story rather than part of the interpolation.
 
 **Placement.** At the end of `ReconstructImpl::forward`, before the Riemann solver, every direction and stage.
 
-**Activation.** `limiter: true` and `shock` false; density, pressure only with `floor`. The scalar path clamps all rows always.
+**Activation.** `limiter: true` and `shock` false (a reconstruct section in the deck); density, pressure only with `floor`.
 
 **Guarantee / limits.** None: a clamp at the face invents mass, exactly as the cell floors of @sec-ch08-eoslimiter do.
 
-**Evidence.** `[C2]` of `floors_check` for the invented mass; no ctest isolates the face floors.
+**Evidence.** `[C2]`, `[C9]` of `floors_check`; no ctest isolates the face floors.
 :::
 
 ### Derivation
@@ -39,9 +39,15 @@ between the three row groups, because it is not what a reader would guess.
 Two early returns come first. A reconstruction with no hydro parent, the passive-scalar one
 (@sec-ch08-scalar), clamps every row of its face states at zero, whatever the limiter, and returns (`phydro`,
 {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}). A reconstruction with `shock` set returns before any
-floor (`shock`, {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}); `shock` is a key of the reconstruct
-block, false by default from YAML ({{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}}) and true
-by default for options built in C++ (`shock`, {{< code src/recon/reconstruct.hpp ReconstructOptionsImpl >}}).
+floor (`shock`, {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}). The options start with `shock`
+true (`shock`, {{< code src/recon/reconstruct.hpp ReconstructOptionsImpl >}}). The deck sets it false only through
+`dynamics/reconstruct/vertical` for $x_1$ and `dynamics/reconstruct/horizontal` for $x_2$ and $x_3$
+(`recon1`, {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}): `shock` is read, with false as its
+default, only when that section exists. A deck without a `dynamics` or a `reconstruct` block, or without the section
+of a direction, keeps `shock` true there (`reconstruct`,
+{{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=1 >}}; `section`,
+{{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}}), and that direction gets no face
+floors and no tracer clamps, even with the limiter on (`[C9]`).
 
 Past them, density and pressure are floored only when the caller asked for floors. Tracers are clamped at zero
 whenever the limiter is on, *regardless* of what the caller asked, at
@@ -101,14 +107,17 @@ density and pressure floors with the third argument of `forward`. The three clam
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| none | no test isolates the face floors; they fire inside every limited deck | not applicable | **missing evidence** |
+| none | no test isolates the face floors; they fire inside every limited deck with a reconstruct section | not applicable | **missing evidence** |
+| this chapter's check | `[C9]` where `shock` is false, deck by deck | exact | `floors_check.py` `check_C9` ports the two readers and compares booleans |
 
 : Tests of the reconstruction-stage floors. {#tbl-ch08-reconfloors-tests}
 
-The shared property is measured by `[C2]` of the chapter's check on the cell floors.[^ch08-reconfloors-run]
+The shared property is measured by `[C2]` of the chapter's check on the cell floors.[^ch08-reconfloors-run] `[C9]`:
+without a `dynamics` or `reconstruct` block both directions keep `shock` true; with only a `vertical` section $x_1$
+has `shock` false and $x_2$, $x_3$ keep it true; with both sections both are false.
 
 [^ch08-reconfloors-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/floors_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
-    `floors_check.out`, line `[C2]`.
+    `floors_check.out`, lines `[C2]` and `[C9]`.
 
 ### Limits
 
