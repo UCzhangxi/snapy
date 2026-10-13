@@ -26,7 +26,7 @@ def test_the_book_config_follows_style_10():
     pdf = cfg["format"]["pdf"]
     assert pdf["documentclass"] == "scrreprt"
     assert {"a4paper", "oneside", "openany", "DIV=12", "numbers=noenddot"} <= set(pdf["classoption"])
-    assert pdf["fontsize"] == "10pt" and pdf["toc-depth"] == 1 and pdf["fig-width"] == 6.2
+    assert pdf["fontsize"] == "10pt" and pdf["toc-depth"] == 2 and pdf["fig-width"] == 6.2
     assert pdf["include-in-header"] == [{"file": "_tex/inline-code-breaks.tex"}, {"file": "_tex/theme.tex"}]
     assert (BOOK / "_tex" / "theme.tex").exists() and (BOOK / "_filters" / "codemap-widths.lua").exists()
     tex = (BOOK / "_tex" / "inline-code-breaks.tex").read_text()

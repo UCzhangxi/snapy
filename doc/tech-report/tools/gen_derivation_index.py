@@ -316,8 +316,8 @@ def outputs(chapters: list[tuple[str, str, list[Row]]]) -> tuple[dict[str, str],
         "",
         f"Every derivation the written chapters carry, read from their Derivation layers: {sc('equations')} labelled "
         f"equations in {sc('with-eq')} of the {sc('schemes')} written schemes. Each row gives the equation, the "
-        "statement it derives, the code site the chapter tags it with, and the executable check that verifies it "
-        "(STYLE section 7); the code site is named as the chapter gives it, and the link to it is in the chapter. "
+        "statement it derives, the code site the chapter tags it with, and the executable check that verifies it; "
+        "the code site is named as the chapter gives it, and the link to it is in the chapter. "
         "\"exists\" means the chapter rewrites a derivation note from snapy's "
         "`docs/derivations/` or the report's `sources/`; \"re-derived\" means it was derived from the code at the "
         "pin. A scheme whose Derivation layer labels no equation has one row with that layer's first sentence.",

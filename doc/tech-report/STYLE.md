@@ -606,10 +606,43 @@ files, so every construct below must work in both. When in doubt, render both an
 - References in prose use Quarto's syntax only: `@sec-ch05-wbref`, `@eq-ch06-dwork-pe`, `@fig-...`, `@tbl-...`. Write
   "as shown in @fig-ch06-dwork-stencil", not "Figure 3" or "the figure above". A bare equation number is always
   written in parentheses, `([-@eq-ch06-dwork-pe])`; a range is `([-@eq-a])–([-@eq-b])`.
-- The table of contents lists chapters and schemes only (`toc-depth: 2`; the printed PDF lists chapters and its
-  bookmarks the rest, section 10.10). Layers and their subsections are numbered
+- The table of contents lists chapters and schemes only (`toc-depth: 2`; the printed PDF also lists sections,
+  section 10.10). Layers and their subsections are numbered
   and may be referenced (`@sec-...` on a `###` or `####` heading that the text cites). An `{.unnumbered}` heading is
   linked as `[text](#sec-id)`, never with `@sec`.
+
+### Reader standards
+
+The following reader standards govern content and navigation. They supersede any earlier chapters-only printed TOC rule.
+Implementation is staged: this lane enforces N3 and the TOC depth; the generated aids and other gates follow in their assigned lanes.
+
+- N1 Navigation: printed TOC to section depth; generated topic index from per-section index entries kept in a data
+  file (not in chapter text); plain-word titles are a review-checklist item.
+- N2 Task map: "How do I ...?" appendix generated from the question bank; every id resolves to a section or a
+  "not provided" row; status = answered / partly documented / undocumented / unsupported by the code / outside scope.
+- N3 Render hygiene: the rendered text has no editorial markers (ISSUES.md, NOTATION.md, STYLE.md, "flagged to the
+  editor"), no unresolved or raw @sec- references.
+- N4 Glossary: acronyms + YAML keys + bare symbols, defined at first use per chapter, symbols checked against
+  appendix A; one glossary file. Numerical-method terms later.
+- N5 Consistency: defaults and install lines generated from the code at the pin; the rest (equations, assumptions,
+  units, API behaviour) is a review-checklist item.
+- N6 Extension contracts: one "How to add one" block per extension point (forcing, boundary callback, species,
+  scheme, collective): signature and shapes incl. ghosts generated from source, registration, a minimal CI test,
+  dtype/device/mutation/ownership rules. Pilot on forcing (ch09) first.
+- N7 Provenance: every quoted result carries a full sha that resolves and the command; performance adds timing
+  scope and repetitions.
+- N8 Runnable cards: CPU DO cards run in tools/tests (seconds); GPU/multi-rank cards in a validation tier with the
+  evidence date. Troubleshooting only for crash / NaN / restart, as symptom -> diagnostic -> action.
+- Scope test for content: in if it states a fact about this code at the pin (convention, contract, assumption);
+  out if it is a tutorial or a science study (then a "not provided" row). In: a conventions table (coordinates,
+  units, signs, no pressure coordinate), the output contract, the H2-He assumptions snapy uses, the initial-state
+  contract. Out: bug-report procedure, cross-model benchmarks, spin-up, regridding, damping sensitivity.
+
+N3 checks run with `python3 -m pytest tools/tests/test_reader_hygiene.py` and
+`python3 tools/check_reader_hygiene.py --book book`. After rendering, run the same tool with
+`--html book/_book` and `--pdf book/_book/<book-name>.pdf`. The rendered checks reject raw section references
+including those inside displayed code; the source preflight permits references Quarto will resolve in prose.
+The existing render gate checks resolution. Editorial comments that do not render remain permitted.
 
 ### 10.2 Inline text
 - Inline code (identifiers, switches, YAML keys, file names): backticks. Math symbols: `$...$`, never backticks.
@@ -829,7 +862,7 @@ files, so every construct below must work in both. When in doubt, render both an
 ### 10.10 Page layout and theme
 - The look of the PDF is set once and chapters never set colours, fonts, page breaks or float placement:
   - `book/_quarto.yml`: KOMA `scrreprt`, A4, one-sided, chapters open on any page, `DIV=12`, 10 pt, compact
-    headings, no dot after numbers; printed TOC at depth 1; figures placed `htbp` and drawn at the text width,
+    headings, no dot after numbers; printed TOC at depth 2; figures placed `htbp` and drawn at the text width,
     6.2 in (`fig-width`), never shrunk with `out-width`.
   - `book/_tex/theme.tex`: one accent colour plus greys; title page and chapter openers; the four callout kinds
     of section 10.7; long tables in `\footnotesize` with a shaded header; light code blocks; links in the accent
