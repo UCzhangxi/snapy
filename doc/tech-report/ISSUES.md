@@ -106,6 +106,7 @@ symbol enters NOTATION.md.
 
 - ch15 notation proposal: `\zeta_{15}` is a dimensionless convergence exponent and `\psi_{15}` its positive error coefficient (density units / m^exponent) in the verification-metric derivation. Both are local pending editor registration; neither $\zeta$ nor $\psi$ appears in NOTATION. They replace the conflicting convergence symbols: $\nu$ is kinematic viscosity, $\nu_{nk}$ a stoichiometric coefficient, and $C$ the Courant number.
 - ch15 also uses `\mathbf n` for the dimensionless outward unit normal in the divergence theorem; proposed notation entry, defined locally and not used as a species index.
+
 ## Chapter 4 local symbols (draft)
 
 Owners: chapter 4 / editor. Each scheme file lists its symbols in a "Local symbols" line after its At-a-glance box;
