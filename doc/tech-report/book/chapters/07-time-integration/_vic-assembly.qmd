@@ -64,6 +64,7 @@ $$
 \end{aligned}
 $$ {#eq-ch07-vic-blocks}
 
+@eq-ch07-vic-blocks is assembled by {{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}.
 The diagonal carries $\Delta t_c$, not $\Delta t$: the kernel sets `Dt.setConstant(1. / dt)` and adds it to the diagonal,
 and the `dt` it receives is `dt_corr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Steps 1 to 3 are checked
 symbolically on generic $2\times2$ blocks; since the Euler flux is homogeneous of degree one,
@@ -81,8 +82,8 @@ work on, @sec-ch06 adds its rows to the energy row of the three blocks.
    $(\rho,\rho v_1,E)$. With transverse velocity the partial solve drops the coupling, by $3.7\times10^{-3}$ relative
    at 50 m/s in the check (`[C4]`).
 7. *Round-off.* An entry of $\mathsf A_i$ is three products summed with two additions, one subtraction of areas,
-   the factor `half_inv_vol` (itself one division), $-\Phi$ and $+1/\Delta t_c$ (one division, one addition): eight
-   roundings on the longest path. With $\mathsf A^{\pm}$ and $\mathsf J$ as computed, the entry is within $\zeta_8\approx4\epsilon_{\mathrm m}$
+   the factor `half_inv_vol` (itself one division), $-\Phi$ and $+1/\Delta t_c$ (one division, one addition): seven
+   roundings on the longest path (a conservative count including the area subtraction). The $\zeta_8$ bound below remains valid. With $\mathsf A^{\pm}$ and $\mathsf J$ as computed, the entry is within $\zeta_8\approx4\epsilon_{\mathrm m}$
    of the sum of the magnitudes of its terms; $\mathsf B_i$ and $\mathsf C_i$ take four roundings, $\zeta_4$.
 
 In the code, @eq-ch07-vic-blocks is the block set-up with `half_inv_vol` $=1/(2V_i)$, `area_i` $=A_{i-1/2}$ and
@@ -164,9 +165,9 @@ its refusals and the gravity it needs are those of @sec-ch07-vic-options. @eq-ch
 {{< code tests/test_backward_substitution.cpp vic_flux_decomposition.species_relabeling_preserves_mixture_density >}}
 as its assembly case. No ctest compares the blocks with a difference quotient; that is the check's job.
 `vic_assembly_check.py` ports the assembly kernels line for line, with zero gravity.[^ch07-vic-assembly-run]
-`[C1]` inverts the eigenvectors to $2.8\times10^{-18}$ over 200 Roe states; `[C2]` matches the Jacobian and the Roe
-property to $7.5\times10^{-16}$ and $6.6\times10^{-15}$; `[C3]` matches the difference quotient to $8.2\times10^{-9}$;
-`[C4]` gives $3.3\times10^{-16}$ at $v=0$ and $3.7\times10^{-3}$ at 50 m/s; `[C5]` keeps a solid row exact; `[C6]` derives
+`[C1]` inverts the eigenvectors within $10^{-14}$ over 200 Roe states; `[C2]` matches the Jacobian and the Roe
+property within $10^{-12}$; `[C3]` matches the difference quotient within $10^{-6}$;
+`[C4]` gives a relative difference below $10^{-12}$ at $v=0$ and above $10^{-6}$ at 50 m/s; `[C5]` keeps a solid row exact; `[C6]` derives
 the three blocks exactly. The CUDA assembly shares the same headers and is not run here.
 
 [^ch07-vic-assembly-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch07/vic_assembly_check.py`,

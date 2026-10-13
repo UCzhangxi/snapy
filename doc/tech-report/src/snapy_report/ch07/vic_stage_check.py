@@ -2,8 +2,8 @@
 
 What is checked: dt_corr = wght2 * dt for the three-stage integrator only (src/hydro/hydro_forward.cpp:1065-1080 at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5), with the stage update u = w0 u0 + w1 u + w2 du of
-pyharp src/integrator/integrator.cpp:101-122 and the VIC solve (I/dt_corr + J) delta = du/dt_corr. A scalar model: the explicit
-tendency is L(u) = -lam u and the operator Jacobian is J = lam, so z = lam dt. Claims C1-C5; C5 is exact (sympy).
+pyharp src/integrator/integrator.cpp:101-122 and the VIC solve (I/dt_corr + M) delta = du/dt_corr. A scalar model: the explicit
+tendency is L(u) = -lam u and the operator Jacobian is M = lam, so z = lam dt. Claims C1-C5; C5 is exact (sympy).
 
 Run: python3 vic_stage_check.py   (numpy and sympy; exits with the number of failed claims)
 """
@@ -38,7 +38,7 @@ def amplification(kind, z, weighted=True):
     for s, (w0, w1, w2) in enumerate(WEIGHTS[kind]):
         f = dt_factor(kind, s) if weighted else 1.
         du = -z * u                                   # dt L(u)
-        delta = du / (1. + f * z)                     # (I + f dt J)^-1 du
+        delta = du / (1. + f * z)                     # (I + f dt M)^-1 du
         u = w0 * u0 + w1 * u + w2 * delta
     return u
 
@@ -48,14 +48,14 @@ def check_C1_weight_inside_equals_weight_outside():
     worst = 0.
     for _ in range(100):
         n = 6
-        J = rng.normal(size=(n, n)) + 4 * np.eye(n)
+        M = rng.normal(size=(n, n)) + 4 * np.eye(n)
         L = rng.normal(size=n)
         dt, w = rng.uniform(.1, 10.), rng.choice([1., .25, 2. / 3.])
-        lhs = w * np.linalg.solve(np.eye(n) + w * dt * J, dt * L)
-        rhs = np.linalg.solve(np.eye(n) + w * dt * J, w * dt * L)
+        lhs = w * np.linalg.solve(np.eye(n) + w * dt * M, dt * L)
+        rhs = np.linalg.solve(np.eye(n) + w * dt * M, w * dt * L)
         worst = max(worst, np.abs(lhs - rhs).max() / np.abs(rhs).max())
     return report("C1", worst < 1e-13,
-                  "w2 (I + w2 dt J)^-1 (dt L) = (I + w2 dt J)^-1 (w2 dt L): weighting the solved du is the same "
+                  "w2 (I + w2 dt M)^-1 (dt L) = (I + w2 dt M)^-1 (w2 dt L): weighting the solved du is the same "
                   "as weighting the right-hand side, once dt_corr carries w2", "max relative difference %.1e" % worst)
 
 

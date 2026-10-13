@@ -16,7 +16,7 @@ crosses it, and the normal momentum keeps the wall pressure.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Closes each column's system at its ends and next to solids with a mirror ghost; @eq-ch07-vic-closure.
 
-**Data.** Reads $\mathsf B_0$, $\mathsf C_{n-1}$ and the solid flags; writes the first and last diagonal blocks.
+**Data.** Reads $\mathsf B_0$, $\mathsf C_{n_{\mathrm{lay}}-1}$ and the solid flags; writes the first and last diagonal blocks.
 
 **Placement.** In the assembly, on the first and last rows of the column.
 
@@ -30,22 +30,22 @@ crosses it, and the normal momentum keeps the wall pressure.
 Local symbols: $\mathsf P_{\mathrm w}=\mathrm{diag}(1,-1,1,1,1)$ (or $\mathrm{diag}(1,-1,1)$) [-] is the wall parity of the solved
 variables, `Bnd` in the code; $\mathsf J_0$ and $\mathsf J_{-1}$ are the flux Jacobians $\partial\mathbf F/\partial\mathbf U_{\mathrm{sv}}$ at
 the first cell and at its mirror ghost, and $\mathsf J^{\mathrm{Roe}}$ the one at their Roe state (@sec-ch07-vic-assembly);
-$\boldsymbol\delta_{-1}$, $\boldsymbol\delta_n$ are the ghost increments and $n$ the number of layers. The increments are in the
+$\boldsymbol\delta_{-1}$, $\boldsymbol\delta_{n_{\mathrm{lay}}}$ are the ghost increments and $n_{\mathrm{lay}}$ the number of layers. The increments are in the
 solved variables of @sec-ch07-vic-assembly, total-mass basis.
 
 ### Derivation
 
 Setting $\boldsymbol\delta_{-1} = \mathsf P_{\mathrm w}\,\boldsymbol\delta_0$ in the first row and
-$\boldsymbol\delta_n = \mathsf P_{\mathrm w}\,\boldsymbol\delta_{n-1}$ in the last gives
+$\boldsymbol\delta_{n_{\mathrm{lay}}} = \mathsf P_{\mathrm w}\,\boldsymbol\delta_{n_{\mathrm{lay}}-1}$ in the last gives
 
 $$
-\mathsf A_0 \leftarrow \mathsf A_0 + \mathsf B_0\,\mathsf P_{\mathrm w}, \quad \mathsf A_{n-1} \leftarrow \mathsf A_{n-1} + \mathsf C_{n-1}\,\mathsf P_{\mathrm w} .
+\mathsf A_0 \leftarrow \mathsf A_0 + \mathsf B_0\,\mathsf P_{\mathrm w}, \quad \mathsf A_{n_{\mathrm{lay}}-1} \leftarrow \mathsf A_{n_{\mathrm{lay}}-1} + \mathsf C_{n_{\mathrm{lay}}-1}\,\mathsf P_{\mathrm w} .
 $$ {#eq-ch07-vic-closure}
 
 Row 0 is $\mathsf B_0\boldsymbol\delta_{-1}+\mathsf A_0\boldsymbol\delta_0+\mathsf C_0\boldsymbol\delta_1=\mathbf f_0$; with
 $\boldsymbol\delta_{-1}=\mathsf P_{\mathrm w}\boldsymbol\delta_0$ it becomes
 $(\mathsf A_0+\mathsf B_0\mathsf P_{\mathrm w})\boldsymbol\delta_0+\mathsf C_0\boldsymbol\delta_1=\mathbf f_0$, and the last row likewise with
-$\mathsf C_{n-1}$. This equals solving with the ghosts kept and eliminated, to $2.1\times10^{-13}$ relative (`[C1]`).
+$\mathsf C_{n_{\mathrm{lay}}-1}$. This equals solving with the ghosts kept and eliminated, within the $10^{-12}$ relative threshold (`[C1]`).
 Without the closure the column loses mass through its ends (`[C3]`).
 
 Why the wall carries no mass, transverse momentum or energy:
@@ -62,7 +62,7 @@ Why the wall carries no mass, transverse momentum or energy:
    factor $\mathsf I-\mathsf P_{\mathrm w}$ is zero in every row with $\mathsf P_{\mathrm w}=+1$, so those rows of the wall flux
    vanish (`[C5]`, for $N=3$ and 5).
 4. On a moving, layered Cartesian column, the column sums of the mass, transverse momentum and energy rows of the
-   closed operator vanish to $1.9\times10^{-16}$. The normal momentum row keeps an order-one wall term, the wall
+   closed operator vanish within the $10^{-13}$ check threshold. The normal momentum row keeps an order-one wall term, the wall
    pressure (`[C2]`).
 5. *Round-off.* $\mathsf B_0\mathsf P_{\mathrm w}$ only flips the sign of a column, which is exact; adding it to $\mathsf A_0$
    rounds each entry once, within $\epsilon_{\mathrm m}/2$ of $|\mathsf A_0|+|\mathsf B_0|$ entrywise.
@@ -75,7 +75,7 @@ See @fig-ch07-vic-closure for the bottom end.
 
 ```{python}
 #| label: fig-ch07-vic-closure
-#| fig-cap: "The bottom of a column. The ghost increment (purple, dashed) is the mirror $\\mathsf P_{\\mathrm w}\\,\\boldsymbol\\delta_0$ of the first cell's, $\\mathsf P_{\\mathrm w}=\\mathrm{diag}(1,-1,1,1,1)$, so its coupling $\\mathsf B_0\\boldsymbol\\delta_{-1}$ folds into the diagonal block as in @eq-ch07-vic-closure. The top is the same with $\\mathsf C_{n-1}$."
+#| fig-cap: "The bottom of a column. The ghost increment (purple, dashed) is the mirror $\\mathsf P_{\\mathrm w}\\,\\boldsymbol\\delta_0$ of the first cell's, $\\mathsf P_{\\mathrm w}=\\mathrm{diag}(1,-1,1,1,1)$, so its coupling $\\mathsf B_0\\boldsymbol\\delta_{-1}$ folds into the diagonal block as in @eq-ch07-vic-closure. The top is the same with $\\mathsf C_{n_{\\mathrm{lay}}-1}$."
 #| fig-alt: "A dashed purple ghost cell left of a thick wall line and two interior cells to its right, with an arrow from the first cell to the ghost and the closure formula beside them."
 #| echo: false
 from snapy_report.ch07.fig_vic_closure import make_fig
@@ -130,8 +130,8 @@ and top halves of @eq-ch07-vic-closure, also applied next to a solid cell. Refus
 
 No ctest checks the closure on its own, so its own tolerance is missing evidence. `vic_closure_check.py` ports the
 closure with zero gravity on an 8-layer moving column with mirror ghosts.[^ch07-vic-closure-run] `[C1]` matches the
-explicit-ghost solve to $2.1\times10^{-13}$; `[C2]` gives column sums of $1.5\times10^{-16}$ to $1.9\times10^{-16}$ for mass,
-transverse momentum and energy and 0.57 for the normal momentum; `[C3]` loses $1.24\times10^{-2}$ of the mass without
+explicit-ghost solve within $10^{-12}$ relative; `[C2]` gives column sums below $10^{-13}$ for mass,
+transverse momentum and energy and above $10^{-3}$ for the normal momentum; `[C3]` loses $1.24\times10^{-2}$ of the mass without
 the closure; `[C4]` gives a Roe normal velocity of 0 at both walls; `[C5]` checks steps 1 to 3 exactly. CPU and CUDA
 share the headers; only the CPU path ran.
 

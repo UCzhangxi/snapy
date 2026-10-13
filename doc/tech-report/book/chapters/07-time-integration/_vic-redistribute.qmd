@@ -33,7 +33,7 @@ Local symbols: $\delta\rho_i$ [kg m$^{-3}$] is the total-mass component of $\bol
 $\Delta M_{\mathrm{col}}$ [kg] the part of the solved mass change with no closed-face representation; $\mathcal T_{i+1/2}$ [kg]
 the mass transfer through the $x_1$ face above cell $i$, positive upward; $\zeta_n=n(\epsilon_{\mathrm m}/2)/(1-n\epsilon_{\mathrm m}/2)$
 bounds the relative error of $n$ roundings. The dry and species densities are on the total-mass basis and the scalar
-densities $\rho_{\mathrm d}r_n$ on the dry-mass basis.
+densities $\rho_{\mathrm d}r_n$ on the dry-mass basis. Here $n_{\mathrm{lay}}$ is the number of layers in the column.
 
 ### Derivation
 
@@ -49,8 +49,8 @@ $$ {#eq-ch07-vic-faces}
 
 and the steps that make them a closed, conservative set are:
 
-1. *They telescope.* Summing @eq-ch07-vic-faces over the $n$ cells of the column,
-   $\mathcal T_{n-1/2}=-\sum_i(\delta\rho_i-\Delta^{\mathrm{stg}}\rho_i)V_i+\Delta M_{\mathrm{col}}\sum_i\rho_iV_i/\sum_{\mathrm{col}}\rho V
+1. *They telescope.* Summing @eq-ch07-vic-faces over the $n_{\mathrm{lay}}$ cells of the column,
+   $\mathcal T_{n_{\mathrm{lay}}-1/2}=-\sum_i(\delta\rho_i-\Delta^{\mathrm{stg}}\rho_i)V_i+\Delta M_{\mathrm{col}}\sum_i\rho_iV_i/\sum_{\mathrm{col}}\rho V
    =-\Delta M_{\mathrm{col}}+\Delta M_{\mathrm{col}}=0$, so $\mathcal T$ at the top face is zero (`[C6]`); in floating point,
    $10^{-15}$ of the largest transfer in the check (`[C1]`).
 2. *Each constituent rides on the transfers.* Each constituent moves $\mathcal T_{i+1/2}$ times the mass fraction of the
@@ -63,8 +63,8 @@ and the steps that make them a closed, conservative set are:
    "clamp residual". A face that asks for more than the donor holds empties the dry donor to round-off. The species
    keep a margin of 4096 ulp, the dry clamp mark is set, and the residual shows the clamp (`[C4]`, `[C5]`).
 5. *Round-off.* The top transfer is $\Delta M_{\mathrm{col}}$ minus its own redistribution. On any path there are at most
-   $2n+4$ roundings (the sums $\Delta M_{\mathrm{col}}$ and $\sum\rho V$, the share, the subtraction and the prefix sum), so
-   $|\mathcal T_{n-1/2}|\le\zeta_{2n+4}\big(\sum_i|(\delta\rho_i-\Delta^{\mathrm{stg}}\rho_i)V_i|+|\Delta M_{\mathrm{col}}|\big)$, about
+   $2n_{\mathrm{lay}}+4$ roundings (the sums $\Delta M_{\mathrm{col}}$ and $\sum\rho V$, the share, the subtraction and the prefix sum), so
+   $|\mathcal T_{n_{\mathrm{lay}}-1/2}|\le\zeta_{2n_{\mathrm{lay}}+4}\big(\sum_i|(\delta\rho_i-\Delta^{\mathrm{stg}}\rho_i)V_i|+|\Delta M_{\mathrm{col}}|\big)$, about
    $3.1\times10^{-15}$ of that sum for the 12 layers of the check.
 
 In the code, @eq-ch07-vic-faces is the prefix sum into `MASS` ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}).
@@ -130,7 +130,7 @@ outcome a user sees is the clamp cause `clamp` of @sec-ch07-redo. Passes 1 and 2
 
 `phi` is $(\delta\rho_i-\Delta^{\mathrm{stg}}\rho_i)V_i$, `R` is $\Delta M_{\mathrm{col}}$, `S` is $\sum_{\mathrm{col}}\rho V$, and the
 update of `M` is @eq-ch07-vic-faces, with `MASS(IVX + dir, i)` $=\mathcal T_{i-1/2}$; after the loop `M` is the
-$\mathcal T_{n-1/2}$ of step 1. Refused: nothing; a clamp is reported, not refused.
+$\mathcal T_{n_{\mathrm{lay}}-1/2}$ of step 1. Refused: nothing; a clamp is reported, not refused.
 
 ### Tests
 
