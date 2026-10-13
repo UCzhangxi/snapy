@@ -96,6 +96,31 @@ def test_statement_file_wins_and_pipes_are_escaped(tmp_path):
     assert "{#tbl-appb-summary}" in frag and "{#tbl-appb-ch02}" in frag
 
 
+def test_statements_are_one_file_per_chapter(tmp_path, capsys):
+    """Each chapter's given statements are in tools/derivation-statements/chNN.json, so two pull requests on
+    different chapters never edit the same statements file; a label in another chapter's file is refused."""
+    d = tmp_path / "statements"
+    d.mkdir()
+    (d / "ch02.json").write_text('{\n "eq-ch02-gas-c": "Sound speed."\n}\n')
+    (d / "ch03.json").write_text('{\n "eq-ch03-x": "Another chapter."\n}\n')
+    assert g.load_statements(d) == {"eq-ch02-gas-c": "Sound speed.", "eq-ch03-x": "Another chapter."}
+    assert g.load_statements(tmp_path / "none") == {}
+    book = make_book(tmp_path)
+    args = ["--book", str(book), "--fragment", str(tmp_path / "frag.qmd"), "--statements", str(d)]
+    assert g.main(args) == 0 and "Sound speed." in (tmp_path / "_appb-ch02.qmd").read_text()
+    for name, text, error in [
+        ("ch03.json", '{"eq-ch02-gas-c": "Wrong file."}', "belongs in its own chapter's file"),
+        ("ch02.json", '{"eq-ch02-gas-c": "One.", "eq-ch02-gas-c": "Two."}', "label given twice"),
+        ("ch02.json", '{"eq-ch02-gas-c": ["not", "a", "string"]}', "is not a string"),
+        ("all.json", "{}", "named after its chapter"),
+    ]:
+        bad = tmp_path / f"bad-{len(error)}"
+        bad.mkdir()
+        (bad / name).write_text(text)
+        assert g.main(args[:-1] + [str(bad)]) == 2
+        assert error in capsys.readouterr().err
+
+
 def test_a_missing_check_script_is_not_listed(tmp_path):
     book = make_book(tmp_path)
     (tmp_path / "src" / "snapy_report" / "ch02" / "gas_check.py").unlink()
@@ -107,7 +132,7 @@ def test_a_missing_check_script_is_not_listed(tmp_path):
 def test_check_mode_flags_a_stale_fragment(tmp_path, capsys):
     book = make_book(tmp_path)
     frag = tmp_path / "frag.qmd"
-    args = ["--book", str(book), "--fragment", str(frag), "--statements", str(tmp_path / "none.json")]
+    args = ["--book", str(book), "--fragment", str(frag), "--statements", str(tmp_path / "none")]
     assert g.main(args + ["--check"]) == 1
     assert g.main(args) == 0
     assert g.main(args + ["--check"]) == 0
