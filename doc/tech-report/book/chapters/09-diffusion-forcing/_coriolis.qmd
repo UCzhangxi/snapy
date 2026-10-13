@@ -11,16 +11,16 @@ status: draft
 The module adds the Coriolis force evaluated at the cell centre from the stage-entry density and velocity. With
 `type: 123` the three numbers are the components of $\boldsymbol\Omega$ along $x_1$, $x_2$, $x_3$ and are used as
 they are. With `type: xyz`, the default, the numbers are a rotation vector in a fixed Cartesian frame, read as
-`omega1` $=\Omega_z$, `omega2` $=\Omega_x$, `omega3` $=\Omega_y$, and projected once, when the module is built,
+`omega1`[^rg-6dbf1f481c48] $=\Omega_z$, `omega2` $=\Omega_x$, `omega3` $=\Omega_y$, and projected once, when the module is built,
 onto the local basis of every cell. On the gnomonic cubed sphere the force is formed in the local spherical basis
-and lowered to the covariant momentum the solver stores. The option `traditional` keeps only the radial component
+and lowered to the covariant momentum the solver stores. The option `traditional`[^rg-4f5ff6cc6ffa] keeps only the radial component
 of $\boldsymbol\Omega$ there, and the shallow-water equation of state turns it on.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Adds the Coriolis force $-2\boldsymbol\Omega\times\rho\mathbf v$ to the momentum;
 @eq-ch09-coriolis-force.
 
-**Data.** In: cell density $\rho$, velocity $\mathbf v$, rotation $\boldsymbol\Omega$ and $\Delta t$; out: covariant momentum increments, no energy increment.
+**Data.** In: cell density $\rho$[^rg-3787dff4f9c4], velocity $\mathbf v$[^rg-6cf888eb37d8], rotation $\boldsymbol\Omega$ and $\Delta t$; out: covariant momentum increments, no energy increment.
 
 **Placement.** Every RK stage, after `const-gravity` when it is present in the forcing loop (@sec-ch09-framework).
 
@@ -37,7 +37,7 @@ $n_3 = 1$ drops the $x_3$ row; `traditional` acts only on the cubed sphere.
 [$\mathrm{m\,s^{-1}}$] of the stage, $\Delta t$, and $\boldsymbol\Omega$ [$\mathrm{s^{-1}}$] from `omega1..3`, used in
 the cell frame (`123`) or projected once from a Cartesian vector onto Cartesian, cylindrical, spherical-polar or
 gnomonic cells (`xyz`). Out: the three momentum rows of the increment, covariant on the cubed sphere; the energy row is
-not touched. Check cases: random orthogonal frames, a $z$ rotation at colatitude 0.7, a two-dimensional `123` case.
+not touched. Check cases: random orthogonal frames, a $z$[^rg-f0b689975c0e] rotation at colatitude 0.7, a two-dimensional `123` case.
 
 **Evidence details.** Tests: on all six cubed-sphere panels the force equals the Cartesian one mapped to the panel,
 {{< code tests/test_forcing.cpp forcing.cubed_sphere_coriolis_uses_cartesian_rotation_vector >}} (rtol and atol
@@ -49,7 +49,7 @@ were not run at the pin. The Cartesian, cylindrical and spherical-polar branches
 Local symbols: $\boldsymbol\Omega=(\Omega_1,\Omega_2,\Omega_3)$ [s$^{-1}$] the rotation
 vector in the cell's frame, `omega1..3` of the module; $(\Omega_x,\Omega_y,\Omega_z)$ [s$^{-1}$] the same vector in the fixed
 Cartesian frame of `type: xyz`; $\mathbf m=\rho\mathbf v$ [kg m$^{-2}$ s$^{-1}$] the momentum density formed from the stage's
-primitives (appendix A $m_a$); $n_3$ the number of $x_3$ cells. $\theta$, $\varphi$, $\rho$, $\mathbf v$, $\Delta t$ and $\epsilon_{\mathrm m}$
+primitives (appendix A $m_a$); $n_3$ the number of $x_3$ cells. $\theta$[^rg-6c6456e6ed58], $\varphi$[^rg-1308120c4e15], $\rho$, $\mathbf v$, $\Delta t$ and $\epsilon_{\mathrm m}$[^rg-754c6ac30948]
 are defined in @sec-appa.
 
 ### Derivation
@@ -142,6 +142,7 @@ make_fig()
 
 **A minimal input.** A rotation about the polar axis on a spherical-polar or cubed-sphere grid:
 
+<!-- reader glossary keys -->Keys in this fragment: `type`[^rg-6d5e124d3526].
 ```yaml
 forcing:
   coriolis:
@@ -236,3 +237,23 @@ form through the solver; the check covers their formulas.
 
 
 [^env-coriolis]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
+
+<!-- reader glossary notes -->
+[^rg-6dbf1f481c48]: omega1 — rotation rate along the polar axis
+
+[^rg-4f5ff6cc6ffa]: traditional — whether to use the traditional Coriolis approximation
+
+[^rg-3787dff4f9c4]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-6cf888eb37d8]: $\mathbf v = (v_1,v_2,v_3)$ — velocity [m s$^{-1}$]
+
+[^rg-f0b689975c0e]: $z$ — $x_1$ on a Cartesian grid (height) [m]
+
+[^rg-6c6456e6ed58]: $\theta$ — $x_2$ on a spherical-polar grid (colatitude) [rad]
+
+[^rg-1308120c4e15]: $\varphi$ — $x_3$ on a spherical-polar grid (azimuth) [rad]; never the potential
+
+[^rg-754c6ac30948]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-6d5e124d3526]: type — implementation selector for the enclosing options block
+<!-- end reader glossary notes -->

@@ -21,7 +21,7 @@ the reference energies, so the energy row is not touched.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Advances the species by one linearised backward-Euler step of kintera's rates between steps; @eq-ch10-kinetics-step.
 
-**Data.** Reads $T$, $p$ and molar concentrations of the post-step state; writes the species rows, ghosts included.
+**Data.** Reads $T$, $p$[^rg-be92f09ac0a7] and molar concentrations of the post-step state; writes the species rows, ghosts included.
 
 **Placement.** In the example drivers, after all RK stages of a step and before `check_redo`.
 
@@ -35,7 +35,7 @@ the reference energies, so the energy row is not touched.
 Local symbols: $\dot{\boldsymbol\omega}$ is the vector of reaction rates [$\mathrm{mol\,m^{-3}\,s^{-1}}$] and
 $\mathsf J_{\dot\omega}$ its Jacobian with respect to the molar concentrations, at fixed temperature; the subscript
 keeps it apart from the $\mathsf J$ of the phase solve in @sec-ch02-saturation. For an evaporation reaction $k$,
-$c(k)$ is its condensate, $\nu^{+}_k$ its number of gaseous products (one or two), $\zeta_k$ [$\mathrm{mol\,m^{-3}}$] its
+$c(k)$ is its condensate, $\nu^{+}_k$ its number of gaseous products (one or two), $\zeta_k$[^rg-a701b5051405] [$\mathrm{mol\,m^{-3}}$] its
 extent to saturation (a reaction extent per volume, as in @sec-ch02-saturation), $K_{p,k}$ [$\mathrm{Pa}^{\nu^{+}_k}$] the equilibrium product of the gas partial pressures,
 $\Gamma_k$ [$\mathrm{m^3\,mol^{-1}\,s^{-1}}$] its rate coefficient, $D_k$ [$\mathrm{m^2\,s^{-1}}$] the diffusivity of
 its gases, $V_{\mathrm m,k}$ [$\mathrm{m^3\,mol^{-1}}$] the molar volume of the condensate (roman m, not the cell
@@ -57,7 +57,7 @@ $$ {#eq-ch10-kinetics-step}
 
 for the change $\Delta\tilde{\mathbf c}$ over the step $\Delta t$. @eq-ch10-kinetics-step is assembled in
 kintera's `evolve_implicit_cell` as the matrix `A`, with `inv_dt` on its diagonal, and the right-hand side `sr`
-([`kintera evolve_implicit_impl.h:66-71`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L66-L71)), and solved by LU with
+([`kintera evolve_implicit_impl.h:66-71`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L66-L71)), and solved by LU[^rg-a5613ad1789f] with
 partial pivoting, falling back to a minimum-norm least-squares solve for a singular cell, `dsolve_lu`
 ([`kintera evolve_implicit_impl.h:77`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L77)).
 For a linear rate law the step is exactly backward Euler (`[C2]`).[^kin-c]
@@ -74,7 +74,7 @@ For a linear rate law the step is exactly backward Euler (`[C2]`).[^kin-c]
    $2.1\times10^{-15}$ of that maximum over 100 random steps.
 
 An evaporation reaction $k$ has one reactant, its condensate $c(k)$, and one or two gaseous products, all with
-coefficient 1; kintera refuses any other form, and with products counted positive in $\mathsf N$,
+coefficient 1; kintera refuses any other form, and with products counted positive in $\mathsf N$[^rg-8d1709112bc8],
 $\nu_{c(k)k}=-1$ (the check `unit_reactant`, [`kintera evaporation.cpp:82-96`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L82-L96);
 the matrix `stoich_base`, [`kintera kinetics.cpp:105-120`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L105-L120)).
 Its equilibrium constant is the product of the saturation concentrations of its gases over the pure condensate,
@@ -93,7 +93,7 @@ for $\mathrm{NH_4SH}$ the card's `nh3_h2s_lewis` returns $\ln K_{p,k}$ in $\math
 Why the rate law has the factor 12:
 
 1. *One particle.* A sphere of diameter $d_{\mathrm p,k}$ whose surface holds a gas at $\tilde c_{n,s}$, in still gas at
-   $\tilde c_n$, loses $2\pi d_{\mathrm p,k}D_k(\tilde c_{n,s}-\tilde c_n)$ moles per second (steady diffusion).
+   $\tilde c_n$[^rg-bbb838859464], loses $2\pi d_{\mathrm p,k}D_k(\tilde c_{n,s}-\tilde c_n)$ moles per second (steady diffusion).
 2. *Number of particles.* The condensate fills the volume fraction $\tilde c_{c(k)}V_{\mathrm m,k}$, so there are
    $\tilde c_{c(k)}V_{\mathrm m,k}/(\pi d_{\mathrm p,k}^3/6)$ monodisperse particles per unit volume.
 3. *Multiply.* The rate per unit volume is the product, $2\pi d D\cdot6V_{\mathrm m}\tilde c_{c(k)}/(\pi d^3)\,\zeta_k
@@ -109,7 +109,7 @@ $$ {#eq-ch10-kinetics-rate}
 ([`kintera evaporation.cpp:142-145`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L142-L145))
 times the mass-action factor `rate_f`
 ([`kintera kinetics.cpp:420-423`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L420-L423));
-`[C5]` re-derives the factor 12 and `[C6]` the form of $K_k$.
+`[C5]` re-derives the factor 12 and `[C6]` the form of $K_k$[^rg-cd51099e912b].
 
 Here $\zeta_k=\tilde c_{n,s}-\tilde c_n$ is the excess of the gas at the surface over the air far away. With the surface
 at saturation, one gas gives $\zeta_k=K_k-\tilde c_n$. For two gases, $AB(s)\to A+B$, the solid dissolves congruently, so
@@ -131,8 +131,8 @@ $\zeta_k$ is `eta`, with the two-product root as `x` and its square root as `roo
 ([`kintera evaporation.cpp:142-194`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L142-L194));
 the factor $\tilde c_{c(k)}$ is kintera's mass-action product over the one reactant, `rate_f`
 ([`kintera kinetics.cpp:420-423`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L420-L423)).
-The card sets $D_{0,k}$, $\alpha_{T,k}$, $\alpha_{p,k}$, $V_{\mathrm m,k}$ and $d_{\mathrm p,k}$ as `diff_c`, `diff_T`,
-`diff_P`, `vm` and `diameter` (defaults $2\times10^{-5}\ \mathrm{m^2\,s^{-1}}$, 1.75, $-1$,
+The card sets $D_{0,k}$, $\alpha_{T,k}$, $\alpha_{p,k}$, $V_{\mathrm m,k}$ and $d_{\mathrm p,k}$ as `diff_c`[^rg-78e31ef7a580], `diff_T`[^rg-887c534d4646],
+`diff_P`[^rg-3ce607edb974], `vm`[^rg-153a31353848] and `diameter`[^rg-03f9c553417b] (defaults $2\times10^{-5}\ \mathrm{m^2\,s^{-1}}$, 1.75, $-1$,
 $1.8\times10^{-5}\ \mathrm{m^3\,mol^{-1}}$, $10^{-2}$ m); the reference state $T_{\mathrm{ev}}=300$ K,
 $p_{\mathrm{ev}}=10^5$ Pa is a default the card reader never sets (the card values from
 `diff_c` on, [`kintera evaporation.cpp:50-57`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L50-L57); the constants `Tref` and `Pref`,
@@ -272,3 +272,27 @@ Kinetics exists only in drivers that implement it. A user driver that calls only
 - `sources/canoe__EVAPORATION_MULTIPRODUCT_TECH_REPORT.md` describes the extent law as not yet in kintera; it is
   present at the kintera pin (@eq-ch10-kinetics-extent).
 - Not in the switch coverage matrix (@sec-ch12-matrix).
+
+<!-- reader glossary notes -->
+[^rg-be92f09ac0a7]: $p$ — pressure [Pa]
+
+[^rg-a701b5051405]: $\zeta_k$ — equilibrium concentration shift for reaction $k$, distinct from local sponge/profile coordinates [mol m$^{-3}$]
+
+[^rg-a5613ad1789f]: LU — lower–upper matrix factorisation
+
+[^rg-8d1709112bc8]: $\mathsf N$ — the stoichiometry matrix, $\mathsf N_{nk} = \nu_{nk}$, species by reaction; never $\mathsf S$, which is the centroid-slope matrix (§4)
+
+[^rg-bbb838859464]: $\tilde c_n$ — molar concentration of species $n$ [mol m$^{-3}$]; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$
+
+[^rg-cd51099e912b]: $K_k$ — equilibrium constant of reaction $k$ [units stated per reaction]; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3)
+
+[^rg-78e31ef7a580]: diff_c — reference diffusivity in the reaction-rate model
+
+[^rg-887c534d4646]: diff_T — temperature exponent of the diffusivity
+
+[^rg-3ce607edb974]: diff_P — pressure exponent of the diffusivity
+
+[^rg-153a31353848]: vm — molar volume used by the reaction-rate model
+
+[^rg-03f9c553417b]: diameter — particle diameter used by the reaction-rate model
+<!-- end reader glossary notes -->

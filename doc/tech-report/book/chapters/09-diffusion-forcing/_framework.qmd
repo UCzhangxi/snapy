@@ -19,9 +19,9 @@ switches sources on and off from the input file, and a developer adds a new sour
 ::: {.callout-note title="At a glance"}
 **Purpose.** Adds $\Delta t\,\mathbf S^{m}$ of every module $m$ to the stage increment, @eq-ch09-framework-stage.
 
-**Data.** Reads $\mathbf W$, $T$ and $\Delta t$ of the stage; writes $\Delta\mathbf U$ and `_forcing_dry`.
+**Data.** Reads $\mathbf W$[^rg-59e82c7fb0d8], $T$[^rg-b340e858383b] and $\Delta t$[^rg-a5d80d4f3656] of the stage; writes $\Delta\mathbf U$ and `_forcing_dry`.
 
-**Placement.** Every RK stage, in `HydroImpl::forward`, right after the flux divergence.
+**Placement.** Every RK[^rg-ac68953207bb] stage, in `HydroImpl::forward`, right after the flux divergence.
 
 **Activation.** One module per key under `forcing:`; no key, no module. Default: no forcing.
 
@@ -30,8 +30,8 @@ switches sources on and off from the input file, and a developer adds a new sour
 **Evidence.** The Tests layer below, @tbl-ch09-framework-tests.
 :::
 
-Local symbols: $M$ the number of installed modules; $\mathbf S^{m}$ the source of
-module $m$; $(\nabla\cdot\mathbf F)_i$ the discrete flux divergence of cell $i$; $\Delta\mathbf U^{[m]}_i$ the
+Local symbols: $M$[^rg-59e3d82c082f] the number of installed modules; $\mathbf S^{m}$ the source of
+module $m$; $(\nabla\cdot\mathbf F)_i$ the discrete flux divergence of cell $i$[^rg-08791d945d56]; $\Delta\mathbf U^{[m]}_i$ the
 increment after module $m$; $\Delta\rho_{\mathrm{d}}^{\mathrm{forc}}$ the dry-density increment of the modules;
 $b_k$, $B_k$, $\delta_k$, $\delta_{\mathrm{mach}}$ the terms, partial sums and rounding errors of a floating-point sum.
 
@@ -45,18 +45,18 @@ contains the energy it would add.
 
 snapy solves the conservation law of the conserved state vector $\mathbf U = (\rho_{\mathrm{d}}, m_1, m_2, m_3,
 E, \rho_1..\rho_{N_y})$. Here $\rho_{\mathrm{d}}$ is the dry-air density [$\mathrm{kg\,m^{-3}}$], $m_a$ the
-momentum density [$\mathrm{kg\,m^{-2}\,s^{-1}}$], $E$ the total energy density [$\mathrm{J\,m^{-3}}$] and
-$\rho_n$ the partial density of species $n$ [$\mathrm{kg\,m^{-3}}$]. The law reads
+momentum density [$\mathrm{kg\,m^{-2}\,s^{-1}}$], $E$[^rg-9da2c0961e5e] the total energy density [$\mathrm{J\,m^{-3}}$] and
+$\rho_n$[^rg-055f669ed8ed] the partial density of species $n$ [$\mathrm{kg\,m^{-3}}$]. The law reads
 
 $$
 \frac{\partial\mathbf U}{\partial t} = -\nabla\cdot\mathbf F + \mathbf S .
 $$
 
-$\mathbf F$ is the flux of $\mathbf U$ [units of $\mathbf U$ times $\mathrm{m\,s^{-1}}$], and $\mathbf S$ is the
+$\mathbf F$ is the flux of $\mathbf U$[^rg-9e4fb7fc3006] [units of $\mathbf U$ times $\mathrm{m\,s^{-1}}$], and $\mathbf S$ is the
 source [units of $\mathbf U$ per second]. A source changes $\mathbf U$ inside a cell without moving anything
 through its faces.
 
-Integrate over cell $i$, of volume $V_i$ [$\mathrm{m^3}$], and divide by $V_i$. The left side becomes the time
+Integrate over cell $i$, of volume $V_i$[^rg-fa9bde3c600c] [$\mathrm{m^3}$], and divide by $V_i$. The left side becomes the time
 derivative of the cell average $\mathbf U_i = \langle\mathbf U\rangle_{V_i}$, because the cell does not move:
 
 $$
@@ -155,7 +155,7 @@ $$
 \end{aligned}
 $$
 
-The second line uses $\lvert B_k\rvert \le \sum_{k=0}^{M}\lvert b_k\rvert$ for every $k$. Two orders differ by at
+The second line uses $\lvert B_k\rvert \le \sum_{k=0}^{M}\lvert b_k\rvert$ for every $k$[^rg-f8a67b1f6bbf]. Two orders differ by at
 most twice this bound. With all eleven installable modules on, that is
 $2 \times 11 \times \delta_{\mathrm{mach}} \approx 2.4\times10^{-15}$ of $\sum_k\lvert b_k\rvert$, in every cell and
 every row of $\mathbf U$.
@@ -163,13 +163,13 @@ every row of $\mathbf U$.
 #### The dry-air increment for passive tracers
 
 A *passive scalar* (tracer) is a quantity carried with the dry air, such as a dye. snapy stores it as the density
-$\rho_{\mathrm{d}} r_n$ [$\mathrm{kg\,m^{-3}}$], where $r_n$ is the mass mixing ratio of tracer $n$ per unit dry
+$\rho_{\mathrm{d}} r_n$ [$\mathrm{kg\,m^{-3}}$], where $r_n$[^rg-c3df5a343953] is the mass mixing ratio of tracer $n$ per unit dry
 mass [-]. The tracer equations have their own fluxes, which move tracer along with the dry air through the faces.
 They have no sources. So a module that adds or removes dry air leaves the tracer density unchanged, and that
 changes $r_n$.
 
 Take one cell and a module that changes the dry density by $\Delta\rho_{\mathrm{d}}$ in a stage. The composition
-relaxation `relax-bot-comp` is one such module. Without a tracer source the new mixing ratio is
+relaxation `relax-bot-comp`[^rg-f1b2fb1b1139] is one such module. Without a tracer source the new mixing ratio is
 
 $$
 r_n^{\mathrm{new}} = \frac{\rho_{\mathrm{d}} r_n}{\rho_{\mathrm{d}} + \Delta\rho_{\mathrm{d}}} \ne r_n .
@@ -194,7 +194,7 @@ $$
 = \sum_{m=1}^{M}\Delta t\,\mathbf S^{m}_{i,\rho_{\mathrm{d}}} .
 $$
 
-The subscript $\rho_{\mathrm{d}}$ selects the dry-density row. The first equality is what the code computes
+The subscript $\rho_{\mathrm{d}}$[^rg-f449a62578a1] selects the dry-density row. The first equality is what the code computes
 (`dry_before` is the row after the divergence, before the loop). The second follows from the recursion above. The
 array is formed only when the block carries tracers and has at least one module; otherwise it is left undefined and
 nothing is carried. `MeshBlockImpl::advance_local` adds $r_n\,\Delta\rho_{\mathrm{d}}^{\mathrm{forc}}$ to the tracer
@@ -258,6 +258,7 @@ ghost cells do not survive, because the ghosts are refilled after the stage (@se
 **A minimal input.** Two keys install two modules, constant gravity (@sec-ch06) and a body heating
 (@sec-ch09-heating):
 
+<!-- reader glossary keys -->Keys in this fragment: `forcing`[^rg-83856cb12a4a], `const-gravity`[^rg-f91ff1ef44fb], `grav1`[^rg-1cec6f60e835], `dTdt`[^rg-cd1d088fae0d], `pmin`[^rg-618017efdb2b], `pmax`[^rg-41827d30fe7f].
 ```yaml
 forcing:
   const-gravity:
@@ -277,7 +278,7 @@ order:
    work of @sec-ch06 already carries the sedimentation part of the mass flux, so the key would release the
    precipitation potential energy twice. The error message says so and asks the user to delete the key.
 2. *Refuse unknown keys.* `check_keys` accepts only `const-gravity`, `coriolis`, `diffusion`, `body-heat`,
-   `top-cool`, `bot-heat`, `relax-bot-comp`, `relax-bot-temp`, `relax-bot-velo`, `top-sponge-lyr`,
+   `top-cool`, `bot-heat`, `relax-bot-comp`, `relax-bot-temp`, `relax-bot-velo`[^rg-f52891d3ff0a], `top-sponge-lyr`,
    `bot-sponge-lyr` and `plume-forcing`. A misspelt key is an error, not a silently ignored line.
 3. *Parse each module's options* with that module's own `from_yaml`, which refuses unknown keys inside its block in
    the same way. `plume-forcing` is parsed only when the equation of state is `plume-eos`.
@@ -337,7 +338,7 @@ orders agree to $4.4\times10^{-16}$ of the largest $\lvert\Delta\mathbf U\rvert$
 `[C2]`: doubling $\Delta t$ doubles $\Delta\mathbf U$ exactly. `[C3]`: `_forcing_dry` equals the modules' dry
 increment to $2.8\times10^{-17}$, and is not formed without tracers.
 
-The four ctest cases run on CPU, one rank; there is no CUDA or multi-rank arm. They have not been run for this
+The four ctest cases run on CPU[^rg-4bb768fd053e], one rank; there is no CUDA[^rg-4b8aae7361ed] or multi-rank arm. They have not been run for this
 report at the pin: **pending a pinned ctest run**.
 
 [^fw-run]: [sha: the code pin; deck: the check itself, seed 21; run: `python3 src/snapy_report/ch09/framework_check.py`,
@@ -354,3 +355,51 @@ report at the pin: **pending a pinned ctest run**.
 3. **`plume-forcing`** is accepted by the parser and never installed (@sec-ch09-plume).
 4. **Untested combinations.** No ctest steps two boundary modules together through the solver. See the switch
    coverage matrix, @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-59e82c7fb0d8]: $\mathbf W$ — primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$
+
+[^rg-b340e858383b]: $T$ — temperature [K]
+
+[^rg-a5d80d4f3656]: $\Delta t$ — the step
+
+[^rg-ac68953207bb]: RK — Runge–Kutta
+
+[^rg-59e3d82c082f]: $M$, $M_{\mathrm{wall}}$ — total mass of the domain, and total mass of the $x_1$ wall cells
+
+[^rg-08791d945d56]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-9da2c0961e5e]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-055f669ed8ed]: $\rho_n$ — partial density of species $n$, $\rho y_n$ [kg m$^{-3}$]
+
+[^rg-9e4fb7fc3006]: $\mathbf U$ — conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$
+
+[^rg-fa9bde3c600c]: $V_i$ — cell volume
+
+[^rg-f8a67b1f6bbf]: $k = 1..N_r$ — reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so
+
+[^rg-c3df5a343953]: $r_n$ — mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1)
+
+[^rg-f1b2fb1b1139]: relax-bot-comp — bottom composition-relaxation options
+
+[^rg-f449a62578a1]: $\rho_{\mathrm{d}}$ — dry-air density [kg m$^{-3}$]
+
+[^rg-83856cb12a4a]: forcing — list of forcing components
+
+[^rg-f91ff1ef44fb]: const-gravity — constant-gravity forcing component
+
+[^rg-1cec6f60e835]: grav1 — gravity component along the first coordinate
+
+[^rg-cd1d088fae0d]: dTdt — prescribed temperature tendency
+
+[^rg-618017efdb2b]: pmin — lower pressure bound of the heating region
+
+[^rg-41827d30fe7f]: pmax — upper pressure bound of the heating region
+
+[^rg-f52891d3ff0a]: relax-bot-velo — bottom velocity-relaxation options
+
+[^rg-4bb768fd053e]: CPU — central processing unit
+
+[^rg-4b8aae7361ed]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

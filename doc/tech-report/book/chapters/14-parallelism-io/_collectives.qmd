@@ -28,8 +28,8 @@ what each one combines, and which of them give the same result on any number of 
 :::
 
 Local symbols: $n_{\mathrm{redo}}$ the redo count of the current step [count];
-$N$ the number of terms of a sum [count] and $b_k$ its terms; $C$ the Courant number, `cfl` [-], $\Theta$ the
-limiter's donor factor [-] and $\epsilon_{\mathrm m}$ the machine epsilon, all three defined in @sec-appa.
+$N$ the number of terms of a sum [count] and $b_k$ its terms; $C$[^rg-9793b59d7bc0] the Courant number, `cfl`[^rg-fe505223b66c] [-], $\Theta$[^rg-abef336e38dd] the
+limiter's donor factor [-] and $\epsilon_{\mathrm m}$[^rg-6f5d38ae36e6] the machine epsilon, all three defined in @sec-appa.
 
 | decision | reduction | tensor | where |
 |---|---|---|---|
@@ -37,7 +37,7 @@ limiter's donor factor [-] and $\epsilon_{\mathrm m}$ the machine epsilon, all t
 | redo | MAX of 6 cause flags | 6 doubles (0 or 1) | `reduce_redo_flags` |
 | stop on a signal | MAX of the caught-signal count | 1 int32 | `SignalHandler::CheckSignalFlags` |
 | gravity-work fixer | SUM of 5 sums | 5 doubles | `MeshImpl::forward`; see below |
-| cycle line: totals, energies and meters | SUM, MIN of $\Theta$, MAX of the VIC residual, to the root | small doubles | `print_cycle_diagnostics` |
+| cycle line: totals, energies and meters | SUM, MIN of $\Theta$, MAX of the VIC[^rg-0726addd7156] residual, to the root | small doubles | `print_cycle_diagnostics` |
 | cell count for the timing line | SUM to the root | 1 int64 | `MeshBlockImpl::finalize` |
 
 : The collectives of one run. {#tbl-ch14-collectives}
@@ -69,7 +69,7 @@ step 4 on 300 random summation trees.
 
 **Time step.** `MeshImpl::max_time_step` takes the minimum of `local_max_time_step` over the local blocks on the
 host, all-reduces it with MIN and returns $2^{-n_{\mathrm{redo}}}\,C\,\Delta t$, with $n_{\mathrm{redo}}$ the current redo
-count and $C$ the CFL number ({{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}}). The single-block path does the same per block
+count and $C$ the CFL[^rg-e0adecef2ed5] number ({{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}}). The single-block path does the same per block
 (`MeshBlockImpl::max_time_step`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}).
 
 **Redo.** `MeshImpl::check_redo` first checks signals. Each local block then forms its six flags as one float64
@@ -89,7 +89,7 @@ all-reduces the count with MAX, and returns it; a non-zero value makes `check_re
 With no snapy process group it falls back to a registered external group
 (`CheckSignalFlags`, {{< code src/utils/signal_handler.cpp SignalHandler::CheckSignalFlags >}}).
 
-**Cycle line.** On every cycle that prints a line (each `ncycle_out`-th), `print_cycle_diagnostics` reduces the
+**Cycle line.** On every cycle that prints a line (each `ncycle_out`[^rg-9751aed7d553]-th), `print_cycle_diagnostics` reduces the
 conserved totals, the kinetic and potential energies and the
 limiter meters with SUM, the smallest $\Theta$ with MIN and the VIC clamp residual with MAX, each a `reduce` to the
 root process, which prints them ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}, `reduce`). These sums are printed
@@ -177,3 +177,19 @@ the pin was not run for this chapter.
   process, process count) and whose order across processes is left to the backend; no test measures its effect
   (@sec-ch14-repro).
 :::
+
+<!-- reader glossary notes -->
+[^rg-9793b59d7bc0]: $C$ — Courant number (named: acoustic, advective, vertical acoustic)
+
+[^rg-fe505223b66c]: cfl — Courant-number limit for the time step
+
+[^rg-abef336e38dd]: $\Theta$ — the positivity limiter's donor factor in $[0,1]$: the fraction of a requested face flux the limiter allows. Capital, because $\theta$ is the colatitude
+
+[^rg-6f5d38ae36e6]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-0726addd7156]: VIC — vertically implicit correction
+
+[^rg-e0adecef2ed5]: CFL — Courant–Friedrichs–Lewy
+
+[^rg-9751aed7d553]: ncycle_out — number of integration cycles between outputs
+<!-- end reader glossary notes -->

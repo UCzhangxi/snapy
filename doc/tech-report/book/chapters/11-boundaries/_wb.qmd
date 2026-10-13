@@ -38,7 +38,7 @@ mirror on a physical face that is not outflow.
 All states here are cell averages; $\chi=\rho/p$ has units $\mathrm{s^2\,m^{-2}}$.
 Write the default reference smoothing with the notation-table binomial weights $B=(1,4,6,4,1)/16$.
 On a uniform grid its unit sum and zero first moment reproduce linear data. Repeating the first owned
-$\chi$ beyond a wall breaks that cancellation: a Taylor expansion has an uncancelled first-derivative term
+$\chi$[^rg-4b8844d07ce3] beyond a wall breaks that cancellation: a Taylor expansion has an uncancelled first-derivative term
 of order $h$. Continuing from two owned cells cancels it.
 
 Let owned cells start at index zero, let $l$ count continuation depth, and use positive owned values.
@@ -63,7 +63,7 @@ underlying note is `docs/derivations/wb-ref-wall.md@6fbb39750f62b83df096058a4746
 measured values from that note are reused. Check C7 checks the binomial moments, the repeated-cell linear
 bias and the first-order agreement of the two continuations symbolically.
 
-The sweep subtracts $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$, then mirrors the perturbations:
+The sweep subtracts $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$[^rg-782303cf9534], then mirrors the perturbations:
 
 $$
 \begin{aligned}
@@ -122,6 +122,7 @@ has no separate YAML key.
 
 This is a configuration fragment, not a standalone simulation deck.
 
+<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-ab31b442efcd], `wb-wall-clamp`[^rg-3049dc326e45].
 ```yaml
 boundary-condition:
   external:
@@ -164,7 +165,7 @@ return e > T(0) ? e : r0;
 2. Subtract the reference and mirror the perturbations only at physical non-outflow ends. The anchor
    `is_outflow` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 3. Apply the selected mass-covariance wall treatment, reconstruct the perturbations, and restore the
-   reference at the faces; the non-WB path revises the face pairs instead. The anchor `_revise_x1inner_lr`
+   reference at the faces; the non-WB[^rg-1f7dbd3c21f3] path revises the face pairs instead. The anchor `_revise_x1inner_lr`
    is in {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}}.
 
 ### Tests
@@ -211,3 +212,15 @@ derivation is restricted to smooth uniform-grid data.
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
 is claimed.
 :::
+
+<!-- reader glossary notes -->
+[^rg-4b8844d07ce3]: $\chi$ — the ratio $\rho/p$ used by the default reference and its wall continuation [s$^2$ m$^{-2}$]
+
+[^rg-782303cf9534]: $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ — cell reference density and pressure of the well-balanced $x_1$ reconstruction
+
+[^rg-ab31b442efcd]: dynamics — hydrodynamic options block
+
+[^rg-3049dc326e45]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
+
+[^rg-1f7dbd3c21f3]: WB — well-balanced
+<!-- end reader glossary notes -->

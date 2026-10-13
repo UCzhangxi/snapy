@@ -13,16 +13,16 @@ process seam, takes its divergence, and adds the part of the curvature that is n
 integration belongs to @sec-ch07, the well-balanced treatment of the vertical to @sec-ch05, and the positivity
 limiter that runs between the Riemann solve and the divergence to @sec-ch08.
 
-Acronyms used throughout: PLM, piecewise-linear method; PPM, piecewise-parabolic method; WENO, weighted
-essentially non-oscillatory; LMARS, low-Mach approximate Riemann solver; HLLC, Harten–Lax–van Leer with the contact
-restored; LLF, local Lax–Friedrichs; PVRS, primitive-variable Riemann solver, the linear-acoustics pressure estimate of
-@sec-ch04-hllc; TVD, total-variation diminishing; MC, the monotonised-central limiter.
+Acronyms used throughout: PLM[^rg-06abdc5ecbfb], piecewise-linear method; PPM[^rg-fee67a3928b8], piecewise-parabolic method; WENO[^rg-e22f686fce5d], weighted
+essentially non-oscillatory; LMARS[^rg-f1575f33f70a], low-Mach approximate Riemann solver; HLLC[^rg-a10d6377330b], Harten–Lax–van Leer with the contact
+restored; LLF[^rg-bf0815e12002], local Lax–Friedrichs; PVRS[^rg-9560824895ca], primitive-variable Riemann solver, the linear-acoustics pressure estimate of
+@sec-ch04-hllc; TVD[^rg-bcc444f8446c], total-variation diminishing; MC[^rg-35c3aec5d6d0], the monotonised-central limiter.
 
 Section 4A is the operator and its interchangeable parts: the divergence, the reconstruction framework with its
 interpolants, the Riemann framework with its six solvers, seam averaging and the placement of the geometric
 sources, whose derivation lives with the grids in @sec-ch03. Section 4B is one idea applied twice: a
 finite-volume flux is an average over a face, a solver computes a flux from averages over cells, and in a
-stratified column the two differ at second order in $x_1$. The algebra of every Derivation layer is checked with
+stratified column the two differ at second order in $x_1$[^rg-11adc59a54dd]. The algebra of every Derivation layer is checked with
 sympy in `src/snapy_report/ch04/derivation_check.py`, 18 of 18 claims passing.
 
 ```{python}
@@ -41,12 +41,12 @@ make_fig()
 | Donor cell (@sec-ch04-dc) | `type: dc` | the default type | 1 | `test_plm` |
 | PLM (@sec-ch04-plm) | `type: plm` | off | 2, 1 at an extremum | `test_plm` |
 | Centred cp3, cp5 (@sec-ch04-cp) | `type: cp3`, `cp5` | off | 3, 5 | `test_weno` |
-| WENO3, WENO5 (@sec-ch04-weno) | `type: weno3`, `weno5`; `scale` | off | 3, 5; weno3 is 2 at a critical point | `test_weno` |
+| WENO3[^rg-3932dce05489], WENO5[^rg-4f39d4ebe8f7] (@sec-ch04-weno) | `type: weno3`, `weno5`; `scale`[^rg-7d2149f881dd] | off | 3, 5; weno3 is 2 at a critical point | `test_weno` |
 | PPM (@sec-ch04-ppm) | `type: ppm` | off | none: the first stage throws | none |
-| Riemann framework (@sec-ch04-riemann) | `riemann-solver/{type,dir}` | no block: `hllc`; block without type: `roe` | — | `test_riemann` |
+| Riemann framework (@sec-ch04-riemann) | `riemann-solver/{type,dir}` | see @sec-ch04-riemann | — | `test_riemann` |
 | LMARS (@sec-ch04-lmars) | `type: lmars` | off | acoustic face state, upwind transport | `test_riemann` |
-| HLLC (@sec-ch04-hllc) | `type: hllc` | the solver with no block | three waves, exact contact | `test_riemann` |
-| Roe (@sec-ch04-roe) | `type: roe` | the solver of a block without type | linearised, LLF fallback, no entropy fix | `test_riemann` |
+| HLLC (@sec-ch04-hllc) | `type: hllc` | see @sec-ch04-riemann | three waves, exact contact | `test_riemann` |
+| Roe (@sec-ch04-roe) | `type: roe` | see @sec-ch04-riemann | linearised, LLF fallback, no entropy fix | `test_riemann` |
 | Shallow-water and plume Roe (@sec-ch04-shallow) | `type: shallow-roe`, `plume-roe` | off | plume-roe is Lax–Friedrichs | none in the default build |
 | Seam averaging (@sec-ch04-seam) | none; split $x_1$ axis | automatic | restores telescoping | `test_x1_seam_split_mp` |
 | Spherical-polar source placement (@sec-ch04-sphsrc) | none; coordinate type | automatic | three pressure branches | `test_coordinate` |
@@ -83,10 +83,10 @@ the Riemann solvers are characterised by their wave structure instead. {#tbl-ch0
 {#tbl-ch04-ctest-run}
 
 [^ch04-ctest]: [sha: the code pin; run: `ctest -R` on a Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5,
-    CPU only (`SNAPY_BUILD_CUDA=0`), double, Intel Xeon E-2236, 6 cores, `-j4` for the first seventeen entries;
+    CPU[^rg-22d5fbfb3b96] only (`SNAPY_BUILD_CUDA=0`), double, Intel Xeon E-2236, 6 cores, `-j4` for the first seventeen entries;
     torch 2.10.0, kintera 2.6.2.dev4+g914389b40
     (a development build four commits past v2.6.1; the kintera pin c55b13b2 is tag v2.6.2), Python 3.12.10]. The build was configured without `FULL_TESTS`, so
-    the shallow-water reference decks are not registered; no CUDA arm and no `test_straka` run was made.
+    the shallow-water reference decks are not registered; no CUDA[^rg-81c093bded00] arm and no `test_straka` run was made.
 
 ## 4A. Reconstruction, Riemann solvers, divergence and sources {.unnumbered .unlisted}
 
@@ -127,3 +127,35 @@ the Riemann solvers are characterised by their wave structure instead. {#tbl-ch0
 {{< include 04-spatial-discretization/_x1masscov.qmd >}}
 
 The limits this chapter states are collected with those of the other chapters in @sec-ch16-wrong, @sec-ch16-restricted, @sec-ch16-usability and @sec-ch16-pending.
+
+<!-- reader glossary notes -->
+[^rg-06abdc5ecbfb]: PLM — piecewise-linear method
+
+[^rg-fee67a3928b8]: PPM — piecewise-parabolic method
+
+[^rg-e22f686fce5d]: WENO — weighted essentially non-oscillatory
+
+[^rg-f1575f33f70a]: LMARS — low-Mach approximate Riemann solver
+
+[^rg-a10d6377330b]: HLLC — Harten–Lax–van Leer solver with the contact restored
+
+[^rg-bf0815e12002]: LLF — local Lax–Friedrichs
+
+[^rg-9560824895ca]: PVRS — primitive-variable Riemann solver
+
+[^rg-bcc444f8446c]: TVD — total-variation diminishing
+
+[^rg-35c3aec5d6d0]: MC — monotonised-central limiter
+
+[^rg-11adc59a54dd]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-3932dce05489]: WENO3 — third-order weighted essentially non-oscillatory reconstruction
+
+[^rg-4f39d4ebe8f7]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
+
+[^rg-7d2149f881dd]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+
+[^rg-22d5fbfb3b96]: CPU — central processing unit
+
+[^rg-81c093bded00]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

@@ -24,7 +24,7 @@ under a time-step limit, such as the nonnegativity of a species density under th
 
 **Activation.** `integration/type`: `rk1` (or `euler`), `rk2`, `rk3` (default), `rk3s4`; read by pyharp.
 
-**Guarantee / limits.** Order 1, 2, 3, 3; SSP with $c_{\mathrm{SSP}}$ = 1, 1, 1, 2; one `cfl` for every type.
+**Guarantee / limits.** Order 1, 2, 3, 3; SSP with $c_{\mathrm{SSP}}$ = 1, 1, 1, 2; one `cfl`[^rg-b85b53c55d48] for every type.
 
 **Evidence.** @tbl-ch07-rk-tests; `test_forcing.release`, `test_straka`, `rk_check.py` `[C1]`–`[C7]`.
 :::
@@ -34,10 +34,10 @@ $\mathcal G$ [s$^{-1}$] its constant rate and $\mathcal Z=\mathcal G\Delta t$ [-
 largest forward-Euler step that keeps a convex functional from growing; $c^{(s)}_{\mathrm{FE}}$ [-] is the forward-Euler fraction of
 stage $s$ and $c_{\mathrm{SSP}}=\min_s c^{(s)}_{\mathrm{FE}}$ [-] the SSP coefficient, the factor by which a scheme's step may exceed
 $\Delta t_{\mathrm{FE}}$ with the same guarantee; $\zeta_n=n(\epsilon_{\mathrm m}/2)/(1-n\epsilon_{\mathrm m}/2)$ [-] bounds
-the relative error of $n$ roundings. $C$ stays the Courant number of @sec-ch07-cfl.
+the relative error of $n$ roundings. $C$[^rg-2b93cd28ee3b] stays the Courant number of @sec-ch07-cfl.
 
-The state averaged is $\mathbf U$ with its ghosts ($\rho_{\mathrm d}$, $\rho_n$, $m_a$, $E$, total-mass basis) and the
-passive-scalar densities $\rho_{\mathrm d}r_n$ (dry-mass basis). The type is read from YAML with default `rk3`; an
+The state averaged is $\mathbf U$[^rg-15d7eb0a1f99] with its ghosts ($\rho_{\mathrm d}$[^rg-a3c1b56ee687], $\rho_n$[^rg-216a5cf9b341], $m_a$, $E$[^rg-071a0a3e4354], total-mass basis) and the
+passive-scalar densities $\rho_{\mathrm d}r_n$ (dry-mass basis). The type is read from YAML[^rg-0ebf34f7decd] with default `rk3`; an
 unknown type throws. The step-start registers and the stage index that the VIC needs are set by snapy's stage
 driver.
 
@@ -89,7 +89,7 @@ $$
 $$
 
 6. The stage is a convex combination of $\mathbf U^n$ and a forward-Euler step of size $(w_2^{(s)}/w_1^{(s)})\Delta t$ from
-   $\mathbf U^{(s)}$.
+   $\mathbf U^{(s)}$[^rg-4d1d8f105ddf].
 7. At the first stage $\mathbf U^{(0)}=\mathbf U^n$, so the whole stage is one forward-Euler step of size
    $w_2^{(0)}\Delta t/(w_0^{(0)}+w_1^{(0)})$.
 8. Each stage is therefore safe while its step is at most $\Delta t_{\mathrm{FE}}$, that is for
@@ -144,7 +144,7 @@ One stage of `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp Mes
 The scalar tendency of step 4 also carries the VIC's dry-gas face transfer and the scalars' share of any dry-mass
 source in the stage (@sec-ch07-vic-redistribute).
 
-Each stage evaluates $\mathcal L$ once, so a step costs one, two, three or four operator evaluations. The
+Each stage evaluates $\mathcal L$[^rg-323f7dcf8b09] once, so a step costs one, two, three or four operator evaluations. The
 averages are tensor arithmetic on whole arrays, ghosts included; the ghosts are rewritten by the boundary fill
 and the exchange. Nothing is fused: the dispatch path `call_average3` is commented out
 ([`pyharp integrator.cpp:109-120`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L109-L120)).
@@ -163,9 +163,10 @@ and the exchange. Nothing is fused: the dispatch path `call_average3` is comment
 
 : Code map of the explicit Runge-Kutta stages. {#tbl-ch07-rk-code}
 
-**How to use it.** The integrator is chosen in the `integration` block, which pyharp's `from_yaml` reads
+**How to use it.** The integrator is chosen in the `integration`[^rg-fe1c43f1e4de] block, which pyharp's `from_yaml` reads
 ([`pyharp integrator.cpp:20-31`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L20-L31)):
 
+<!-- reader glossary keys -->Keys in this fragment: `type`[^rg-5a0ce8082ce9].
 ```yaml
 integration:
   type: rk3s4     # rk1 (or euler), rk2, rk3 (default), rk3s4
@@ -238,3 +239,27 @@ assertion on the weights.
 
 [^ch07-rk-pyharp]: pyharp@4721715855e937c1e8b218e964c0655f46e56e29; pyharp has no `code` shortcode, so its code is
     cited with permalinks at that commit.
+
+<!-- reader glossary notes -->
+[^rg-b85b53c55d48]: cfl — Courant-number limit for the time step
+
+[^rg-2b93cd28ee3b]: $C$ — Courant number (named: acoustic, advective, vertical acoustic)
+
+[^rg-15d7eb0a1f99]: $\mathbf U$ — conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$
+
+[^rg-a3c1b56ee687]: $\rho_{\mathrm{d}}$ — dry-air density [kg m$^{-3}$]
+
+[^rg-216a5cf9b341]: $\rho_n$ — partial density of species $n$, $\rho y_n$ [kg m$^{-3}$]
+
+[^rg-071a0a3e4354]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-0ebf34f7decd]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+
+[^rg-4d1d8f105ddf]: $\mathbf U^{(s)}$ — state after RK stage $s$
+
+[^rg-323f7dcf8b09]: $\mathcal L$ — the semi-discrete right-hand side (all explicit operators)
+
+[^rg-fe1c43f1e4de]: integration — time-integration options
+
+[^rg-5a0ce8082ce9]: type — implementation selector for the enclosing options block
+<!-- end reader glossary notes -->

@@ -10,7 +10,7 @@ status: draft
 ### Summary
 
 A column in hydrostatic balance has pressure and density that fall by orders of magnitude along $x_1$. A high-order
-reconstruction of $p$ itself returns face values whose difference across a cell is not exactly $\rho g_1\Delta x_1$,
+reconstruction of $p$[^rg-35e7e5ab9d44] itself returns face values whose difference across a cell is not exactly $\rho g_1\Delta x_1$,
 so a resting column feels a spurious vertical force of the size of the reconstruction error and starts to move.
 snapy removes that force by construction: it builds, on every call, a reference $(p_{\mathrm{ref}},
 \rho_{\mathrm{ref}})$ whose face pressures satisfy the discrete hydrostatic balance exactly, reconstructs only the
@@ -20,11 +20,11 @@ which every reconstruction reproduces, so the restored faces carry exactly the b
 ::: {.callout-note title="At a glance"}
 **Purpose.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ and adds the reference back, @eq-ch05-wbx1-split.
 
-**Data.** Reads $\overline p$, $\overline\rho$ and the reference of @sec-ch05-refkernel; writes the $x_1$ face states of $p$, $\rho$.
+**Data.** Reads $\overline p$, $\overline\rho$ and the reference of @sec-ch05-refkernel; writes the $x_1$ face states of $p$, $\rho$[^rg-343aa6081c7e].
 
-**Placement.** Every RK stage, in the $x_1$ sweep of `HydroImpl::forward`, before the Riemann solve.
+**Placement.** Every RK[^rg-2f88a7e01cb1] stage, in the $x_1$ sweep of `HydroImpl::forward`, before the Riemann solve.
 
-**Activation.** No key: on when $g_1\neq0$, the state has a pressure row and the EOS is not `shallow-water`.
+**Activation.** No key: on when $g_1\neq0$, the state has a pressure row and the EOS[^rg-0e9d4523ea84] is not `shallow-water`.
 
 **Guarantee / limits.** A column at @eq-ch05-wbx1-rest stays at rest to the bound below; nothing in $x_2$, $x_3$.
 
@@ -34,7 +34,7 @@ which every reconstruction reproduces, so the restored faces carry exactly the b
 Local symbols: $p'_i$, $\rho'_i$ the perturbations about the reference (appendix A's prime, "minus the reference");
 $c$ [Pa] the constant of a resting perturbation; $\mathcal W^{L,R}$ the left and right face values of the $x_1$
 reconstruction $\mathcal W$; $p^{*}$ the face pressure of the Riemann solver; $n_w$ the number of cells in the
-reconstruction stencil. $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ and $\epsilon_{\mathrm m}$ are
+reconstruction stencil. $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$[^rg-7bfed2e4a7ce] and $\epsilon_{\mathrm m}$[^rg-7eba2e5ebc97] are
 defined in @sec-appa. $\eta_c$ [-] the relative rounding of a weighted sum in the round-off bound.
 
 The scheme has no switch and no default to change: it is the $x_1$ path whenever gravity acts in $x_1$. The
@@ -49,11 +49,11 @@ derivation note.[^ch05-wbx1-note]
 
 ### Derivation
 
-Units: $p$ [Pa], $\rho$ [$\mathrm{kg\,m^{-3}}$], $g_1$ [$\mathrm{m\,s^{-2}}$], $x_1$ and $\Delta x_1$ [m]. This layer uses cell averages
+Units: $p$ [Pa], $\rho$ [$\mathrm{kg\,m^{-3}}$], $g_1$[^rg-60342f74735c] [$\mathrm{m\,s^{-2}}$], $x_1$ and $\Delta x_1$ [m]. This layer uses cell averages
 and face point values; a cell average carries an overbar only where a point value of the same quantity appears.
 
 The $x_1$ momentum equation with constant gravity is $\partial_t(\rho v_1)+\partial_1(\rho v_1^2+p)=\rho g_1$.
-Integrated over cell $i$ of a Cartesian column, with $p^{*}_{i\pm1/2}$ the face pressures of the Riemann solver,
+Integrated over cell $i$[^rg-c9df73a27c40] of a Cartesian column, with $p^{*}_{i\pm1/2}$ the face pressures of the Riemann solver,
 
 $$
 \frac{\mathrm{d}}{\mathrm{d}t}(\overline{\rho v_1})_i = -\frac{\Delta_i[\rho v_1^2+p^{*}]}{\Delta x_1} + \overline{\rho}_i g_1 .
@@ -83,12 +83,12 @@ and the restore by `psf_lo` added back to both states
 Why a resting column stays at rest takes six steps, each a fact of the code.
 
 1. *The reconstruction sees the perturbation.* `wx1[IPR] -= pref` and `wx1[IDN] -= dref` replace the pressure and
-   density rows by $p'$ and $\rho'$ before `precon1` runs.
+   density rows by $p'$ and $\rho'$[^rg-c69c1e876cbc] before `precon1` runs.
 2. *At rest the perturbation is one constant, ghosts included.* Take $p'_i=c$ in every interior cell and $v_1=0$.
    The even-parity ghosts at a wall copy interior cells, and at a seam the ghosts are the neighbour's cells of the
    same continuous reference (@sec-ch05-seam), so every stencil cell holds $c$.
 3. *Every reconstruction returns a constant.* Each $x_1$ reconstruction of snapy is a weighted sum whose weights add
-   up to 1, and WENO's smoothness indicators are differences of equal numbers, hence exactly 0, so it uses its
+   up to 1, and WENO[^rg-7b95d3cca137]'s smoothness indicators are differences of equal numbers, hence exactly 0, so it uses its
    linear weights. So $\mathcal W^{L}[p']=\mathcal W^{R}[p']=c$.
 4. *The restore puts the reference back.* `pl = wtmp[ILT][IPR] + psf_lo` and the same for `pr` give
    $p^{L}=p^{R}=p_{\mathrm{sf}}+c$ at every face; the positivity fallback does not fire because both are positive.
@@ -121,7 +121,7 @@ addition. The left and right sums use different weights, so the two states diffe
 $4n_w\epsilon_{\mathrm m}\lvert c\rvert$. The restore adds one more rounding of $\lvert p_{\mathrm{sf}}+c\rvert$ to each, and the
 scan of @sec-ch05-refkernel rounds once per face. With $p^{*}$ between the two states, each face pressure is off by
 at most $(4n_w\lvert c\rvert+2\lvert p_{\mathrm{sf}}+c\rvert)\,\epsilon_{\mathrm m}$, and the spurious momentum tendency of a
-resting cell is at most twice that over $\Delta x_1$. For WENO5 ($n_w=5$) in double precision
+resting cell is at most twice that over $\Delta x_1$. For WENO5[^rg-6c6c147876c5] ($n_w=5$) in double precision
 ($\epsilon_{\mathrm m}=2^{-52}$) and a constant $\lvert c\rvert\ll\lvert p_{\mathrm{sf}}\rvert$ (`balance_column` takes its gauge at the
 top cell, where the pressure is lowest), the bound is
 $4\epsilon_{\mathrm m}\max_f\lvert p_{\mathrm{sf},f}\rvert/\Delta x_1\approx8.9\times10^{-16}\max_f\lvert p_{\mathrm{sf},f}\rvert/\Delta x_1$ [Pa m$^{-1}$].
@@ -132,7 +132,7 @@ Where things live: $\overline p$, $\overline\rho$ and the perturbations are cell
 $\rho_{\mathrm{sf}}$ are face point values at the lower face of each cell; the reconstructed states are face
 values. The scheme runs in every RK stage, in the $x_1$ block of `HydroImpl::forward`, explicitly.
 
-**Ghosts.** At a physical $x_1$ wall whose boundary function is not an outflow, the $n_g$ ghost cells of $p'$ and
+**Ghosts.** At a physical $x_1$ wall whose boundary function is not an outflow, the $n_g$[^rg-289832fdb03b] ghost cells of $p'$ and
 $\rho'$ are overwritten with the mirror image of the first $n_g$ interior cells, even parity, while the velocity keeps
 the odd ghosts of the reflecting boundary (@fig-ch05-wbx1-ghosts). A resting perturbation ($p'=c$) is then constant
 across the wall too. At an $x_1$ seam the ghosts are the neighbour's cells and the reference is made continuous
@@ -163,6 +163,7 @@ $p'_i-c$, which is what `balance_column` removes.
 **A minimal input.** Gravity along $x_1$ and an EOS with a pressure row are all it takes; the scheme then runs
 with whatever $x_1$ reconstruction the deck names:
 
+<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-c8b99858ba8a], `equation-of-state`[^rg-c3e7bc0a93d2], `type`[^rg-9292dca86f77], `reconstruct`[^rg-57cee58ae46b], `vertical`[^rg-b6c15fffb906], `forcing`[^rg-544aa1359702], `const-gravity`[^rg-8a982c247ba2], `grav1`[^rg-add1eacbaab4].
 ```yaml
 dynamics:
   equation-of-state:
@@ -178,7 +179,7 @@ forcing:
 refuse; it is off only with $g_1=0$ or `shallow-water`. The keys around it are checked:
 `HydroOptionsImpl::from_yaml` refuses an unknown key under `dynamics:`
 ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}), and the reconstruction parser refuses an
-unknown key under `reconstruct:` or inside `vertical:` (only `shock`, `type`, `scale`)
+unknown key under `reconstruct:` or inside `vertical:` (only `shock`[^rg-1b5f3f436359], `type`, `scale`[^rg-8c182da413f8])
 ({{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}}). A misspelt key is therefore an
 error, not a silently different scheme.
 
@@ -253,17 +254,17 @@ and @sec-ch05-wbref4.
 : Tests of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-tests}
 
 The chapter's check ports the formulas to numpy and sympy.[^ch05-wbx1-check] `[C14]`: the default reference's face-density
-offset divided by @eq-ch05-refkernel-offset is 1.0022, 1.0005, 1.0001 and 1.0000 at $n_1$ = 32 to 256, order 2.00.
+offset divided by @eq-ch05-refkernel-offset is 1.0022, 1.0005, 1.0001 and 1.0000 at $n_1$[^rg-a9ea8411f862] = 32 to 256, order 2.00.
 `[C19]`: at rest the hydrostatic-mode correction cancels the pressure force to $0.0$, the identity step 6 uses.
 
-[^ch05-wbx1-check]: [sha: the formulas the check ports, as its header records them; deck: the check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU,
+[^ch05-wbx1-check]: [sha: the formulas the check ports, as its header records them; deck: the check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU[^rg-c5a8fbbcb378],
     double, 1 process; Python 3.11.13, numpy 2.4.6, sympy 1.14.0]. Output `wbref_check.out`, lines `[C14]` and `[C19]`.
 
 ::: {.callout-important title="Test"}
 **Evidence.** All entries above pass at the pin.[^ch05-wbx1-run] Printed values: `test_hydrostatic` maximum spurious
 vertical velocity after 100 steps $6.82\times10^{-15}$; `test_face_floor` unresolved-column dipped-face mass flux
 $2.8319\times10^{-8}$ in the default, `_wb_ref4` and `_x1_centroid` arms; `test_wb_wall_corner` CPU corner errors 0.
-**Coverage.** CPU only in that run (the build had CUDA off, so every `_cuda` case was skipped); the CUDA arms
+**Coverage.** CPU only in that run (the build had CUDA[^rg-d70d4c39cd29] off, so every `_cuda` case was skipped); the CUDA arms
 `face_floor_*_cuda` and `*_cuda` of `test_wb_wall_corner` exist and compare CUDA with CPU to $10^{-5}$ relative
 and exactly: **pending: a CUDA run at the pin**. Multi-rank: through the seam tests of @sec-ch05-seam only.
 :::
@@ -284,7 +285,61 @@ but not at the discrete fixed point @eq-ch05-wbx1-rest is not at rest.
 2. **Floors off for the perturbation, but not for species.** The species clamp at zero still applies under the EOS
    limiter (table above). Not measured as a source of imbalance.
 3. **Moist columns.** No reference meets the floor of a moist column in every case; the choice of reference is an
-   open study and there is no YAML key to choose it.[^ch05-wbx1-moist]
+   open study and there is no YAML[^rg-8ae21ea7079b] key to choose it.[^ch05-wbx1-moist]
 4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
 
 [^ch05-wbx1-moist]: The study is chengcli/snapy#275; the missing key is chengcli/snapy#281.
+
+<!-- reader glossary notes -->
+[^rg-35e7e5ab9d44]: $p$ — pressure [Pa]
+
+[^rg-343aa6081c7e]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-2f88a7e01cb1]: RK — Runge–Kutta
+
+[^rg-0e9d4523ea84]: EOS — equation of state
+
+[^rg-7bfed2e4a7ce]: $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ — cell reference density and pressure of the well-balanced $x_1$ reconstruction
+
+[^rg-7eba2e5ebc97]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-60342f74735c]: $g_1, g_2, g_3$ — constant gravity components [m s$^{-2}$]; $g_1<0$ points to decreasing $x_1$
+
+[^rg-c9df73a27c40]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-c69c1e876cbc]: $\rho' = \rho - \rho_{\mathrm{ref}}$ — the perturbation the reconstruction acts on; the prime means "minus the reference", never a derivative
+
+[^rg-7b95d3cca137]: WENO — weighted essentially non-oscillatory
+
+[^rg-6c6c147876c5]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
+
+[^rg-289832fdb03b]: $n_g$ — ghost cells on each side
+
+[^rg-c8b99858ba8a]: dynamics — hydrodynamic options block
+
+[^rg-c3e7bc0a93d2]: equation-of-state — equation-of-state options
+
+[^rg-9292dca86f77]: type — implementation selector for the enclosing options block
+
+[^rg-57cee58ae46b]: reconstruct — reconstruction options
+
+[^rg-b6c15fffb906]: vertical — options for the vertical reconstruction
+
+[^rg-544aa1359702]: forcing — list of forcing components
+
+[^rg-8a982c247ba2]: const-gravity — constant-gravity forcing component
+
+[^rg-add1eacbaab4]: grav1 — gravity component along the first coordinate
+
+[^rg-1b5f3f436359]: shock — whether reconstruction uses its shock handling
+
+[^rg-8c182da413f8]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+
+[^rg-a9ea8411f862]: $n_1, n_2, n_3$ — interior cells per block in each direction
+
+[^rg-c5a8fbbcb378]: CPU — central processing unit
+
+[^rg-d70d4c39cd29]: CUDA — NVIDIA's parallel computing platform
+
+[^rg-8ae21ea7079b]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+<!-- end reader glossary notes -->

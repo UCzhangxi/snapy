@@ -11,14 +11,14 @@ status: draft
 ### Summary
 
 The VIC replaces the explicit $x_1$ flux divergence by an implicit one. It does not re-solve the Riemann
-problem. It linearises a Roe flux about the current state, holding the dissipation matrices $\mathsf A^{\pm}$ fixed, so the
-correction is one linear block-tridiagonal solve per column. The gravity rows of the operator ($\Phi$ and the
+problem. It linearises a Roe flux about the current state, holding the dissipation matrices $\mathsf A^{\pm}$[^rg-01671098d49b] fixed, so the
+correction is one linear block-tridiagonal solve per column. The gravity rows of the operator ($\Phi$[^rg-45cfed262bb0] and the
 face work) are part of @sec-ch06 and are not described here.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Builds the blocks $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$ of each column's implicit system; @eq-ch07-vic-blocks.
+**Purpose.** Builds the blocks $\mathsf A_i$[^rg-7cbe60c8e9d5], $\mathsf B_i$, $\mathsf C_i$ of each column's implicit system; @eq-ch07-vic-blocks.
 
-**Data.** Reads the stage primitives, face areas, volumes, $\Delta t_c$ and the solid mask; writes $N\times N$ blocks per cell.
+**Data.** Reads the stage primitives, face areas, volumes, $\Delta t_c$[^rg-563491e91074] and the solid mask; writes $N\times N$ blocks per cell.
 
 **Placement.** Every stage with a VIC, after the explicit increment and before the sweep.
 
@@ -29,10 +29,10 @@ face work) are part of @sec-ch06 and are not described here.
 **Evidence.** @tbl-ch07-vic-assembly-tests; `test_backward_substitution.release`, `vic_assembly_check.py` `[C1]`–`[C6]`.
 :::
 
-Local symbols: $\mathbf U_{\mathrm{sv},i}$ is the solved state of cell $i$; $\mathbf F(\mathbf U_{\mathrm{sv}})$ the Euler $x_1$
+Local symbols: $\mathbf U_{\mathrm{sv},i}$ is the solved state of cell $i$[^rg-7f2b700e0b40]; $\mathbf F(\mathbf U_{\mathrm{sv}})$ the Euler $x_1$
 flux function of the solved variables and $\hat{\mathbf F}_{i\pm1/2}$ its linearised Roe form at a face (not the
 numerical flux $\mathbf F_1$ of @sec-ch04); $\mathsf J_i=\partial\mathbf F/\partial\mathbf U_{\mathrm{sv}}$ at cell $i$;
-$A_{i\pm1/2}$ [m$^2$] the $x_1$ face areas and $V_i$ [m$^3$] the cell volume; $\Delta t_c$ [s] the step handed to the solve
+$A_{i\pm1/2}$[^rg-a84b95ff1250] [m$^2$] the $x_1$ face areas and $V_i$[^rg-eeb1953951ea] [m$^3$] the cell volume; $\Delta t_c$ [s] the step handed to the solve
 (@sec-ch07-vic-stage); $\zeta_n=n(\epsilon_{\mathrm m}/2)/(1-n\epsilon_{\mathrm m}/2)$ bounds the relative error of $n$
 roundings. The solved variables are $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$),
 in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$], total-mass basis; an entry of a block is in [unit of its
@@ -66,7 +66,7 @@ $$ {#eq-ch07-vic-blocks}
 
 @eq-ch07-vic-blocks is assembled by {{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}.
 The diagonal carries $\Delta t_c$, not $\Delta t$: the kernel sets `Dt.setConstant(1. / dt)` and adds it to the diagonal,
-and the `dt` it receives is `dt_corr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Steps 1 to 3 are checked
+and the `dt`[^rg-9ef503f0dc9c] it receives is `dt_corr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Steps 1 to 3 are checked
 symbolically on generic $2\times2$ blocks; since the Euler flux is homogeneous of degree one,
 $\mathbf F(\mathbf U)=\mathsf J(\mathbf U)\,\mathbf U$, the check writes the flux of each cell that way (`[C6]`). With face
 work on, @sec-ch06 adds its rows to the energy row of the three blocks.
@@ -77,7 +77,7 @@ work on, @sec-ch06 adds its rows to the energy row of the three blocks.
 5. *Why the frozen matrices are the right ones.* The coded left eigenvectors invert the right ones (`[C1]`), and
    $\mathsf R\Lambda\mathsf R^{-1}$ with signed eigenvalues is the flux Jacobian at the Roe state, with the Roe property
    $\mathsf R\Lambda\mathsf R^{-1}(\mathbf U_{\mathrm{sv}}^{\mathrm R}-\mathbf U_{\mathrm{sv}}^{\mathrm L}) = \mathbf F^{\mathrm R} - \mathbf F^{\mathrm L}$ for
-   one $\gamma$ (`[C2]`).
+   one $\gamma$[^rg-d3686c3b0d32] (`[C2]`).
 6. *The partial system.* With no transverse velocity the $3\times3$ partial system is the full one restricted to
    $(\rho,\rho v_1,E)$. With transverse velocity the partial solve drops the coupling, by $3.7\times10^{-3}$ relative
    at 50 m/s in the check (`[C4]`).
@@ -115,7 +115,7 @@ the $(\rho, \rho v_1, E)$ rows and columns out of the same $5\times5$ matrices i
 On the CPU the assembly runs the columns in parallel and fills each cell independently. A solid cell gets
 $\mathsf A_i=\mathsf I/\Delta t_c$, $\mathsf B_i=\mathsf C_i=0$, and its fluid neighbour sees a mirror of itself instead of the solid's state; both are
 in `vic_assemble_full_cpu` ({{< code src/implicit/implicit_dispatch.cpp vic_assemble_full_cpu >}}), as the check confirms (`[C5]`). Before the assembly, the host
-removes the EOS reference energy from the energy tendency and takes $\gamma$ from the EOS, through
+removes the EOS[^rg-466966ad271b] reference energy from the energy tendency and takes $\gamma$ from the EOS, through
 `internal_energy_offset` ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}). It also rotates the velocity into the local orthonormal frame, through
 `prim2local1_` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
 
@@ -187,3 +187,25 @@ the stage used, so the implicit and explicit fluxes are not the same function.
    (`[C4]`).
 3. **No direct test of the blocks.** No ctest compares $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$ with a difference quotient.
    The column tests check rest states only.
+
+<!-- reader glossary notes -->
+[^rg-01671098d49b]: $\mathsf A^{\pm}$ — the Roe dissipation matrices $\mathsf R\lvert\Lambda\rvert\mathsf R^{-1}$ at faces $i\pm\tfrac12$
+
+[^rg-45cfed262bb0]: $\Phi$ — the gravity source Jacobian; upright, not sans-serif like the other matrices, because the math font has no sans-serif Greek and `\mathsf` drops the glyph in the PDF
+
+[^rg-7cbe60c8e9d5]: $\mathsf A_i, \mathsf B_i, \mathsf C_i$ — the diagonal, lower and upper blocks of row $i$ of the block-tridiagonal system
+
+[^rg-563491e91074]: $\Delta t_c$ — the time step handed to the implicit solve: $w_{2,s}\Delta t$ under rk3, $\Delta t$ otherwise
+
+[^rg-7f2b700e0b40]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-a84b95ff1250]: $A_{i\pm1/2}$ — $x_1$ face area
+
+[^rg-eeb1953951ea]: $V_i$ — cell volume
+
+[^rg-9ef503f0dc9c]: dt — time-step duration
+
+[^rg-d3686c3b0d32]: $\gamma$ — mixture ratio of specific heats $c_p/c_v$, local, varies with composition, dimensionless [-]; $\gamma_{\mathrm{d}}$ is the dry value
+
+[^rg-466966ad271b]: EOS — equation of state
+<!-- end reader glossary notes -->

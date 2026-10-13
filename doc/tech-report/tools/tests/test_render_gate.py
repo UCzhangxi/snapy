@@ -149,7 +149,20 @@ def test_references_into_unwritten_chapters_are_listed_apart():
     assert render_gate.gate_dangling_refs(UNWRITTEN) == 1
 
 
-def test_unwritten_chapter_refs_fail_and_are_labelled_expected(capsys):
+@pytest.fixture
+def reader_standards_pass(monkeypatch):
+    # These fixtures isolate the unwritten-reference verdict. Reader-standard
+    # input validation is exercised separately on complete report fixtures.
+    import gen_topic_index
+    import check_reader_hygiene
+    import gen_reader_reference
+    monkeypatch.setattr(gen_topic_index, "main", lambda argv: 0)
+    monkeypatch.setattr(check_reader_hygiene, "main", lambda argv: 0)
+    monkeypatch.setattr(gen_reader_reference, "check_glossary", lambda report: 0)
+    monkeypatch.setattr(gen_reader_reference, "check_defaults", lambda report: 0)
+
+
+def test_unwritten_chapter_refs_fail_and_are_labelled_expected(capsys, reader_standards_pass):
     assert render_gate.main([str(UNWRITTEN), "--labels-only"]) == 1
     out = capsys.readouterr().out
     assert "✗ @sec-ch99: referenced in chapters/06-demo/_one.qmd but defined nowhere" in out
@@ -161,7 +174,7 @@ def test_unwritten_chapter_refs_fail_and_are_labelled_expected(capsys):
     assert out.rstrip().endswith("GATE FAILED")
 
 
-def test_only_expected_failures_are_said_so(tmp_path, capsys):
+def test_only_expected_failures_are_said_so(tmp_path, capsys, reader_standards_pass):
     import shutil
     book = tmp_path / "book"
     shutil.copytree(UNWRITTEN, book)

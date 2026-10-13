@@ -18,7 +18,7 @@ chooses which other parts of the model can run with it.
 ::: {.callout-note title="At a glance"}
 **Purpose.** N/A (a factory): `type` builds one of five EOS classes, each answering a fixed set of conversion keys.
 
-**Data.** Reads the YAML map `dynamics/equation-of-state`; writes the EOS module the step calls on cell tensors.
+**Data.** Reads the YAML[^rg-bfc59acc94e7] map `dynamics/equation-of-state`; writes the EOS module the step calls on cell tensors.
 
 **Placement.** Built once with the hydro options; called at every conversion of every stage.
 
@@ -29,9 +29,9 @@ chooses which other parts of the model can run with it.
 **Evidence.** @tbl-ch02-interface-tests: three parser ctests by source reading; no report check (no derivation).
 :::
 
-Local symbols: none. The conversion keys are API labels, not mathematical symbols: `W` the primitive state
-$\mathbf W$, `U` the conserved state $\mathbf U$, `I` the internal energy density $\rho e$, `T` the temperature,
-`A` the adiabatic index $\gamma$, `L` the sound speed $c_s$, `K` the specific kinetic energy and `E` the species
+Local symbols: none. The conversion keys are API[^rg-1c8abe3405fb] labels, not mathematical symbols: `W` the primitive state
+$\mathbf W$[^rg-f3dd2ef14420], `U` the conserved state $\mathbf U$, `I` the internal energy density $\rho e$, `T` the temperature,
+`A` the adiabatic index $\gamma$[^rg-b007763f49e5], `L` the sound speed $c_s$[^rg-ee4f949231f5], `K` the specific kinetic energy and `E` the species
 energy densities.
 
 ### Derivation
@@ -68,9 +68,9 @@ Thus `DY->V` takes density and mass fractions to partial densities; `VU->T` take
 Here kintera's `U` is a thermodynamic scalar field, not snapy's whole conserved state;
 @sec-ch02-moist-mixture shows the calls.
 
-A present EOS map supplies these defaults in `from_yaml`: `gammad` 1.4, `weight` 0.029 kg mol$^{-1}$, density
-floor $10^{-6}$ kg m$^{-3}$, pressure floor $10^{-3}$ Pa, temperature floor 20 K, `limiter` false and an empty
-`eos-file`. When the map is absent, the struct defaults stay: density and pressure floors of $10^{-10}$ in their
+A present EOS map supplies these defaults in `from_yaml`: `gammad`[^rg-b7ffd4b95bd2] 1.4, `weight`[^rg-d9d44df55887] 0.029 kg mol$^{-1}$, density
+floor $10^{-6}$ kg m$^{-3}$, pressure floor $10^{-3}$ Pa, temperature floor 20 K, `limiter`[^rg-309fcf86ab26] false and an empty
+`eos-file`[^rg-27b3fa8c4007]. When the map is absent, the struct defaults stay: density and pressure floors of $10^{-10}$ in their
 units. The two moist classes overwrite `gammad` and `weight` from the dry species of their thermo in `reset`.
 
 ```{python}
@@ -86,6 +86,7 @@ make_fig()
 
 **A minimal input.** One key selects the class; the floors are optional:
 
+<!-- reader glossary keys -->Keys in this fragment: `density-floor`[^rg-240c1a06e2a9], `pressure-floor`[^rg-1b01182530e7].
 ```yaml
 dynamics:
   equation-of-state:
@@ -109,7 +110,7 @@ dynamics:
    (`uv_solver` in [`kintera thermo_options.cpp:105-111`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_options.cpp#L105-L111)).
 4. *An unknown `type`*, at construction, with "EquationOfState: Unknown type: " and the value.
 5. *A moist class without thermo options*, in `reset`, with "[IdealMoist] thermo pointer is null" or
-   "[MoistMixture] thermo pointer is null" (a species card is read only when `reference-state` is present).
+   "[MoistMixture] thermo pointer is null" (a species card is read only when `reference-state`[^rg-35ab985da77b] is present).
 6. *A conversion key the class lacks*, at the call, with "Unknown abbreviation: " and the key.
 
 | what | code link | symbol | switch |
@@ -163,3 +164,29 @@ been run for this report at the pin: **pending a pinned ctest run**. No ctest as
 3. **Partial APIs.** ANEOS and shallow water do not answer the full moist API; a forcing or diagnostic that asks
    them for `W->E` or `U->K` throws at the call.
 4. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-bfc59acc94e7]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+
+[^rg-1c8abe3405fb]: API — application programming interface
+
+[^rg-f3dd2ef14420]: $\mathbf W$ — primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$
+
+[^rg-b007763f49e5]: $\gamma$ — mixture ratio of specific heats $c_p/c_v$, local, varies with composition, dimensionless [-]; $\gamma_{\mathrm{d}}$ is the dry value
+
+[^rg-ee4f949231f5]: $c_s$ — sound speed [m s$^{-1}$]
+
+[^rg-b7ffd4b95bd2]: gammad — dry-gas ratio of specific heats
+
+[^rg-d9d44df55887]: weight — molar mass of the gas
+
+[^rg-309fcf86ab26]: limiter — whether the enclosing component enables its limiter
+
+[^rg-27b3fa8c4007]: eos-file — equation-of-state table file read by the linked provider
+
+[^rg-240c1a06e2a9]: density-floor — minimum admissible density
+
+[^rg-1b01182530e7]: pressure-floor — minimum admissible pressure
+
+[^rg-35ab985da77b]: reference-state — thermodynamic reference-state options
+<!-- end reader glossary notes -->

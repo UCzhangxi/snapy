@@ -10,7 +10,7 @@ status: draft
 
 ### Summary
 
-The redo machinery itself (how $\Delta t$ is halved, what the driver does with the return value) belongs to
+The redo machinery itself (how $\Delta t$[^rg-e08a4caa8890] is halved, what the driver does with the return value) belongs to
 @sec-ch07-redo and is outlined in @sec-ch01-driver. This section covers the two causes moist physics raises and the
 parts of the rule that matter to them. A species repair by the conserved limiter that is larger than round-off
 (@sec-ch10-borrow, @sec-ch10-fixvapor) sets the limiter mark, cause 4. A cell that the saturation adjustment
@@ -32,7 +32,7 @@ cause 16. Either one, on any rank, rejects the step everywhere.
 :::
 
 Local symbols: $f_\iota$, $\iota=0..5$, the six redo flags of a rank, each 0 or 1, and
-$c_{\mathrm{redo}}=\sum_\iota2^\iota f_\iota$ the cause word ($\iota$ is the bit index: $r$, $i$, $j$, $k$ are reserved).
+$c_{\mathrm{redo}}=\sum_\iota2^\iota f_\iota$ the cause word ($\iota$ is the bit index: $r$[^rg-0cf14ab9beae], $i$[^rg-9ac74714d98c], $j$, $k$[^rg-362f2334766b] are reserved).
 
 The saturation cause is always on when the thermo has a ThermoY; the limiter cause is on with `limiter: true`.
 What a redo restores, and how the step is retried, is @sec-ch07-redo.
@@ -48,7 +48,7 @@ The scheme is a decision rule, not a discretization. Its why-steps are:
    (`[C2]`, all 4096 two-rank combinations).
 3. *A redo restores and retries with a smaller step* (@sec-ch07-redo). `apply_redo` restores the saved state unless the attempt count exceeds
    `max_redo`; past it, a step with a moist cause terminates with the rejected state in memory, and only the
-   VIC cause 32 restores first (`[C3]`).
+   VIC[^rg-132a64cd545b] cause 32 restores first (`[C3]`).
 4. *No round-off enters the decision.* The flags are integers compared and OR-ed exactly; the only rounded quantity
    is the limiter's repair size, which is compared with a round-off threshold of `kPositivityRoundoffUlp` ulp of the
    gas density before it can set bit 4 ($\iota=2$) (@sec-ch10-fixvapor).
@@ -110,8 +110,8 @@ redo attempts exceeded. Terminating.", both in `apply_redo`.
 
 **How to use it.** The two causes need no key of their own: cause 4 comes with `limiter: true`, cause 16 with
 a reactions list in the card. The retry limit is the integrator's `max_redo`, default 5, which the YAML card cannot
-set: `integration` accepts only `implicit-scheme`, `implicit-advection-cfl`, `shear-cfl` and pyharp's `type`, `cfl`,
-`tlim`, `nlim`, `ncycle_out`, `verbose`, so a `max_redo` key is refused with "unknown key 'integration/max_redo'"
+set: `integration`[^rg-0be2640247d0] accepts only `implicit-scheme`[^rg-2e5bfa0a6fb1], `implicit-advection-cfl`[^rg-8921bb46e24b], `shear-cfl`[^rg-a8ca523c043d] and pyharp's `type`, `cfl`[^rg-aface2df2155],
+`tlim`[^rg-63bbb573ebd8], `nlim`[^rg-329666f99cd7], `ncycle_out`[^rg-c969ece96591], `verbose`, so a `max_redo` key is refused with "unknown key 'integration/max_redo'"
 ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). A Python driver sets it on the
 options before building the block:
 
@@ -165,3 +165,31 @@ round-off redoes the step even when it would be harmless.
 - Past `max_redo` a moist failure terminates with the rejected state in memory; only the VIC cause restores first
   (`redo_check.py` `[C3]`).
 - Moist redo combinations are absent from the switch coverage matrix (@sec-ch12-matrix).
+
+<!-- reader glossary notes -->
+[^rg-e08a4caa8890]: $\Delta t$ — the step
+
+[^rg-0cf14ab9beae]: $r$ — $x_1$ on a spherical-polar grid (radius) [m]
+
+[^rg-9ac74714d98c]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-362f2334766b]: $k = 1..N_r$ — reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so
+
+[^rg-132a64cd545b]: VIC — vertically implicit correction
+
+[^rg-0be2640247d0]: integration — time-integration options
+
+[^rg-2e5bfa0a6fb1]: implicit-scheme — implicit time-integration scheme selector
+
+[^rg-8921bb46e24b]: implicit-advection-cfl — Courant limit for the implicitly treated advection
+
+[^rg-a8ca523c043d]: shear-cfl — Courant limit associated with shear
+
+[^rg-aface2df2155]: cfl — Courant-number limit for the time step
+
+[^rg-63bbb573ebd8]: tlim — simulation end time
+
+[^rg-329666f99cd7]: nlim — maximum number of integration cycles
+
+[^rg-c969ece96591]: ncycle_out — number of integration cycles between outputs
+<!-- end reader glossary notes -->

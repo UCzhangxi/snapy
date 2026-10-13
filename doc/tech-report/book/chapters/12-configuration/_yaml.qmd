@@ -27,7 +27,7 @@ they would silently change what it computes or conserves.
 
 **Activation.** Defaults include face work, Cartesian geometry and one ghost cell.
 
-**Guarantee / limits.** Refuses non-cell work with a nonzero-gravity fixer, a fixer with lateral gravity, a fixer with periodic $x_1$, and implicit CFL keys without an implicit scheme; recognized keys alone do not guarantee compatibility.
+**Guarantee / limits.** Refuses non-cell work with a nonzero-gravity fixer, a fixer with lateral gravity, a fixer with periodic $x_1$, and implicit CFL[^rg-a6d2f00b5dc7] keys without an implicit scheme; recognized keys alone do not guarantee compatibility.
 
 **Evidence.** Tests below, @tbl-ch12-yaml-tests; solver ctests were not run.
 :::
@@ -37,20 +37,20 @@ they would silently change what it computes or conserves.
 | `forcing/const-gravity/gravity-work` | `face` | `cell`, `face-wallc` or `face`; selects the budget the solver conserves |
 | `gravity-work-fixer` in that block | true for `cell`, false otherwise | with nonzero `grav1` it needs `cell`; the reset clears it for non-cell work and needs `grav2` = `grav3` = 0 and non-periodic $x_1$ |
 | `grav1`, `grav2`, `grav3` | 0 | the gravity components |
-| `non-hydrostatic` | 1 | must lie in $[0,1]$ |
+| `non-hydrostatic`[^rg-5e19433b0f93] | 1 | must lie in $[0,1]$ |
 | `dynamics/wb-wall-clamp` | true | required by `balance_column` |
 | `dynamics/disable-flux-x1`, `-x2`, `-x3`, `verbose` | false | flux and source direction gates |
 | `dynamics/equation-of-state/type` | `moist-mixture` | `shallow-water` bypasses the radial well-balanced path |
-| EOS `limiter` | false | positivity correction |
+| EOS `limiter`[^rg-98ec00569918] | false | positivity correction |
 | EOS density, pressure and temperature floors | $10^{-6}\ \mathrm{kg\,m^{-3}}$, $10^{-3}\ \mathrm{Pa}$, $20\ \mathrm{K}$ | state floors |
-| reconstruction `vertical`/`horizontal` `type`, `scale`, `shock` | `dc`, false, false | spatial reconstruction |
-| `dynamics/riemann-solver/type`, `dir` | `roe`, `omni` | interface flux solver |
+| reconstruction `vertical`[^rg-5b49f4848d58]/`horizontal`[^rg-2f1899b4de4d] `type`, `scale`[^rg-d97ad30fbd10], `shock`[^rg-ff2904b92111] | `dc`, false, false | spatial reconstruction |
+| `dynamics/riemann-solver/type`, `dir`[^rg-c2a5d0bf48c0] | `roe`, `omni` | interface flux solver |
 | `integration/implicit-scheme` | absent, no implicit module | 0 (none), 1 (`vic-partial`) or 9 (`vic-full`); anything else is refused |
-| `implicit-advection-cfl`, `shear-cfl` | 1, 0 | refused without an implicit scheme; must be finite, positive and nonnegative |
+| `implicit-advection-cfl`[^rg-b91f3c2b82ba], `shear-cfl`[^rg-1d58aa505896] | 1, 0 | refused without an implicit scheme; must be finite, positive and nonnegative |
 | `geometry/cells/nghost` | 1 | WB or XC with gravity need at least 3 |
 | `geometry/type` | `cartesian` | gates XC and the corrected-work measure |
 | `distribute/layout`, `nb1`, `nb2`, `nb3` | `slab`, 1, 1, 1 | block decomposition; `backend` is accepted and ignored |
-| external boundaries `x1-inner` ... `x3-outer` | `reflecting` | a periodic $x_1$ is refused with an active fixer |
+| external boundaries `x1-inner`[^rg-6190053d30cd] ... `x3-outer`[^rg-4a2bbc8a9e41] | `reflecting` | a periodic $x_1$ is refused with an active fixer |
 | `forcing/fric-heat` | removed | an explicit parse error |
 
 : YAML keys and defaults at the pin. {#tbl-ch12-yaml-keys}
@@ -72,7 +72,7 @@ The parsers read their blocks with a key check: `HydroOptionsImpl::from_yaml`
 ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}) for `dynamics` and `forcing`, refusing
 `fric-heat`; `ConstGravityOptionsImpl::from_yaml` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}})
 for the gravity block, with the `face` default and the fixer check; `ImplicitOptionsImpl::from_yaml`
-({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}) for `integration`, which
+({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}) for `integration`[^rg-1f42b5e0e193], which
 returns no implicit module when the scheme key is absent or 0, refuses the CFL keys without a scheme, and names
 the scheme through its second overload ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}});
 `EquationOfStateOptionsImpl::from_yaml` ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}});
@@ -132,7 +132,7 @@ accept/reject distinction and the symbolic budget difference; actual parser erro
 |---|---|---|---|
 | dynamics, forcing | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `check_keys` | YAML keys |
 | gravity | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `gravity_work` | `gravity-work` |
-| implicit | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}} | `implicit-scheme` | `integration/*` |
+| implicit | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}} | `implicit-scheme`[^rg-56fbcf9e291a] | `integration/*` |
 | scheme names | {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=2 >}} | `vic-partial` | `implicit-scheme` |
 | eos | {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}} | `density_floor` | `equation-of-state/*` |
 | reconstruction | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}} | `shock` | `reconstruct/*` |
@@ -157,7 +157,7 @@ accept/reject distinction and the symbolic budget difference; actual parser erro
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_hydro_options.<b>` | `wb-wall-clamp` ships enabled and can be turned off; unsupported implicit schemes, removed and unknown forcing keys and unknown dynamics keys are refused | exact booleans; expected exceptions | the test |
+| `test_hydro_options.<b>` | `wb-wall-clamp`[^rg-ec37780980f1] ships enabled and can be turned off; unsupported implicit schemes, removed and unknown forcing keys and unknown dynamics keys are refused | exact booleans; expected exceptions | the test |
 | `test_yaml_keys.<b>` | the test card loads, and every recognized block refuses an unknown key with the key's path in the message | exact string containment | the test |
 | `test_implicit_options_type_python` | schemes 0, 1 and 9 name `none`, `vic-partial` and `vic-full`; scheme 5 is refused | exact strings; expected error | the script |
 | `configuration_check.py` `[C10]` (report check) | the option-pair validator and budget distinction | exact symbolic or Boolean equality | the independent check |
@@ -192,3 +192,35 @@ Individual keys have tests, but the Cartesian product of every YAML value and st
 
 The complete switch inventory is @sec-ch12-matrix.
 :::
+
+<!-- reader glossary notes -->
+[^rg-a6d2f00b5dc7]: CFL — Courant–Friedrichs–Lewy
+
+[^rg-5e19433b0f93]: non-hydrostatic — fraction of the vertical body force retained by the non-hydrostatic treatment
+
+[^rg-98ec00569918]: limiter — whether the enclosing component enables its limiter
+
+[^rg-5b49f4848d58]: vertical — options for the vertical reconstruction
+
+[^rg-2f1899b4de4d]: horizontal — options for the horizontal reconstruction
+
+[^rg-d97ad30fbd10]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+
+[^rg-ff2904b92111]: shock — whether reconstruction uses its shock handling
+
+[^rg-c2a5d0bf48c0]: dir — direction selector for solvers that use it
+
+[^rg-b91f3c2b82ba]: implicit-advection-cfl — Courant limit for the implicitly treated advection
+
+[^rg-1d58aa505896]: shear-cfl — Courant limit associated with shear
+
+[^rg-6190053d30cd]: x1-inner — boundary name on the inner first-coordinate face
+
+[^rg-4a2bbc8a9e41]: x3-outer — boundary name on the outer third-coordinate face
+
+[^rg-1f42b5e0e193]: integration — time-integration options
+
+[^rg-56fbcf9e291a]: implicit-scheme — implicit time-integration scheme selector
+
+[^rg-ec37780980f1]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
+<!-- end reader glossary notes -->

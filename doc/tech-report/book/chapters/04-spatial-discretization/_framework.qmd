@@ -14,12 +14,12 @@ cell. The reconstruction makes the two face states from the cell averages around
 reconstruction for the vertical direction and one shared by the two horizontal directions, because the vertical
 carries the background stratification and usually wants a different scheme. Inside each, density and tracers
 take the interpolant the deck names, while velocity and pressure take a linear partner when that name is a
-WENO type. The framework is always on; with no `reconstruct` block a deck gets donor cell with `shock` on.
+WENO type. The framework is always on; with no `reconstruct` block a deck gets donor cell with `shock`[^rg-d442901d55b4] on.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Builds $q^{\mathrm L}_f$ and $q^{\mathrm R}_f$ on every face of one direction from cell values, @eq-ch04-framework-map.
+**Purpose.** Builds $q^{\mathrm L}_f$[^rg-2671c43c7524] and $q^{\mathrm R}_f$ on every face of one direction from cell values, @eq-ch04-framework-map.
 
-**Data.** Reads $\mathbf W$ with ghosts; writes a $[2, N_{\mathrm{var}}, \ldots]$ array of left and right face states.
+**Data.** Reads $\mathbf W$[^rg-99fd7d49b37f] with ghosts; writes a $[2, N_{\mathrm{var}}, \ldots]$ array of left and right face states.
 
 **Placement.** Every RK stage, in `HydroImpl::forward`, before the Riemann solver of each direction.
 
@@ -91,7 +91,7 @@ make_fig()
 ```
 
 **Floors.** They come from the equation of state, not from the reconstruct options (@sec-ch08-reconfloors).
-With the equation of state's `limiter` on and the caller's `floor` argument true, the density row is clamped to
+With the equation of state's `limiter`[^rg-e5bc5308fcd8] on and the caller's `floor` argument true, the density row is clamped to
 `density_floor` and the pressure row to `pressure_floor`; the species rows are clamped at zero whenever the
 limiter is on, whatever `floor` says. The well-balanced $x_1$ path calls `forward` with `floor = false`, because
 it reconstructs perturbations that may be negative (@sec-ch05-wbx1). The `shock: true` branch returns before
@@ -106,6 +106,7 @@ are applied, and the design order is not reached.
 
 **A minimal input.** The shipped decks name both blocks in full:
 
+<!-- reader glossary keys -->Keys in this fragment: `vertical`[^rg-c00856b883f2], `type`[^rg-e7755bb7941e], `horizontal`[^rg-ae7031b3a70c].
 ```yaml
 dynamics:
   reconstruct:
@@ -163,7 +164,7 @@ The `shock` branch is step 4 of the row split; the three calls below it are step
 | keys and defaults, block present | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | `dc`, false, false |
 | no block: the constructed options | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=1 >}} | `from_yaml` | `shock` true |
 | face index map | {{< code src/recon/reconstruct.cpp _apply_inplace >}} | `_apply_inplace` | |
-| ghost width from the stencil | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `nghost` | |
+| ghost width from the stencil | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `nghost`[^rg-0d1aafefcc3b] | |
 | shock branch | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `shock` | `shock: true` |
 | density, velocity and pressure, tracers | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `pinterp2` | |
 | which interpolant is `interp2` | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `Center5Interp` | `weno3`, `weno5` |
@@ -204,3 +205,21 @@ caught only by an accuracy test.
    boundary before reconstructing velocity and pressure. It is not compiled.
 5. **`scale`.** What the key does is derived in @sec-ch04-weno; for `dc`, `plm`, `cp3` and `cp5` it is read and
    has no effect.
+
+<!-- reader glossary notes -->
+[^rg-d442901d55b4]: shock — whether reconstruction uses its shock handling
+
+[^rg-2671c43c7524]: $q^{\mathrm{L}}_f, q^{\mathrm{R}}_f$ — reconstructed left and right states of a quantity $q$ at face $f$
+
+[^rg-99fd7d49b37f]: $\mathbf W$ — primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$
+
+[^rg-e5bc5308fcd8]: limiter — whether the enclosing component enables its limiter
+
+[^rg-c00856b883f2]: vertical — options for the vertical reconstruction
+
+[^rg-e7755bb7941e]: type — implementation selector for the enclosing options block
+
+[^rg-ae7031b3a70c]: horizontal — options for the horizontal reconstruction
+
+[^rg-0d1aafefcc3b]: nghost — number of ghost cells at each boundary
+<!-- end reader glossary notes -->

@@ -12,17 +12,17 @@ status: draft
 HLLC keeps three waves: the fastest left-going and right-going signals and the contact between them. It
 estimates the two outer speeds from a pressure guess, gets the contact speed and pressure from the jump
 conditions across the outer waves, and takes the flux of whichever region the face sits in. Because the contact
-is represented, a density jump moving with the flow is not smeared by the solver. Six shipped decks select it,
-and it is what a deck gets when it has no `riemann-solver` block at all.
+is represented, a density jump moving with the flow is not smeared by the solver. Six shipped decks select it;
+the parser defaults are stated in @sec-ch04-riemann.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** The star-region flux of @eq-ch04-hllc-flux, with contact speed and pressure from @eq-ch04-hllc-contact.
 
-**Data.** Reads $\mathbf W^{\mathrm L}_f, \mathbf W^{\mathrm R}_f$, $\rho e$, $\gamma$ and $c_s$ of each side; writes $\mathbf F_a$ and $p_f$.
+**Data.** Reads $\mathbf W^{\mathrm L}_f, \mathbf W^{\mathrm R}_f$, $\rho e$, $\gamma$ and $c_s$[^rg-96c1ea134783] of each side; writes $\mathbf F_a$ and $p_f$.
 
 **Placement.** The Riemann step of each direction (@sec-ch04-riemann), every stage.
 
-**Activation.** `riemann-solver: {type: hllc}`; also the solver of a deck with no `riemann-solver` block.
+**Activation.** `riemann-solver: {type: hllc}`; parser defaults in @sec-ch04-riemann.
 
 **Guarantee / limits.** Consistent; exact for an isolated contact; outer speeds from a PVRS estimate.
 
@@ -119,7 +119,7 @@ make_wavefan("hllc")
 **Frame and the equation of state.** `HLLCSolverImpl::forward` fills `elr` with $\rho e$ (`W->I`), `glr` with
 $\gamma$ and `clr` with $c_s$ for both sides, projects both states with `prim2local{1,2,3}_`, calls the kernel and
 turns the flux back with `flux2global{1,2,3}_`. The kernel adds $\tfrac12\rho\lvert\mathbf v\rvert^2$ to $\rho e$ to get
-$E$. The face pressure is $p_{\mathrm c}$.
+$E$[^rg-0c5aa43793e0]. The face pressure is $p_{\mathrm c}$.
 
 ### Code
 
@@ -170,7 +170,7 @@ used.
 | contact speed and pressure | {{< code src/riemann/hllc_impl.h hllc_impl >}} | `am` | |
 | face pressure written out | {{< code src/riemann/hllc_impl.h hllc_impl >}} | `face_pressure` | caller asked |
 | $\rho e$, $\gamma$, $c_s$ and the frame | {{< code src/riemann/hllc.cpp HLLCSolverImpl::forward >}} | `prim2local3_` | |
-| the default with no block | {{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}} | `type` | `hllc` |
+| options construction (defaults in @sec-ch04-riemann) | {{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}} | `type` | `riemann-solver` |
 
 : Code map of HLLC. {#tbl-ch04-hllc-code}
 
@@ -202,3 +202,9 @@ no ctest asserts the contact property.
    bounds the error against the mixture's true Hugoniot.
 3. **The clip** perturbs a supersonic flux by a relative $10^{-10}/\lambda_{\mathrm c}$ (the clip bound above).
 4. **Contact exactness is measured on a port**, for a dry gas; no ctest asserts it.
+
+<!-- reader glossary notes -->
+[^rg-96c1ea134783]: $c_s$ — sound speed [m s$^{-1}$]
+
+[^rg-0c5aa43793e0]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+<!-- end reader glossary notes -->

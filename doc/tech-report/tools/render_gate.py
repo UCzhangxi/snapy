@@ -1361,6 +1361,25 @@ def main(argv):
                     ("hand-typed chapter", gate_hand_typed_chapters))
     for name, gate in source_gates:
         record(name, gate(book))
+    # Reader standards share the normal entry point, including --labels-only.
+    import gen_topic_index
+    import check_reader_hygiene
+    import gen_reader_reference
+    report = book.resolve().parent
+    for name, check in (
+        ("N1 navigation", lambda: gen_topic_index.main([
+            "--book", str(book), "--data", str(report / "tools/topic-index.yaml"),
+            "--fragment", str(book / "chapters/17-appendices/_appf-topic-index.qmd"), "--check"])),
+        ("N3 reader hygiene", lambda: check_reader_hygiene.main(["--book", str(book)])),
+        ("N4 glossary", lambda: gen_reader_reference.check_glossary(report)),
+        ("N5 pinned defaults", lambda: gen_reader_reference.check_defaults(report)),
+    ):
+        try:
+            record(name, check())
+        except (OSError, ValueError, SystemExit) as exc:
+            print(f"[{name}] cannot validate inputs: {exc}")
+            record(name, 1)
+
     expected = {"unwritten-chapter refs": sorted(unwritten_chapter_refs(book)),
                 "unwritten-scheme refs": sorted(unwritten_scheme_refs(book))}
     record("unwritten-chapter refs", gate_unwritten_chapter_refs(book))

@@ -19,7 +19,7 @@ restart file replaces all of that with saved tensors.
 ::: {.callout-note title="At a glance"}
 **Purpose.** N/A, a code map: check shapes, fill and exchange primitive ghosts, convert to conserved rows.
 
-**Data.** In: interior `hydro_w` ($\rho$, $\mathbf v$, $p$, $y_n$) or a restart file. Out: `hydro_u`, `scalar_s`, with ghosts.
+**Data.** In: interior `hydro_w` ($\rho$[^rg-adc30ad62345], $\mathbf v$[^rg-f0f419996146], $p$[^rg-edee3b83dd1a], $y_n$[^rg-d6e8655ff198]) or a restart file. Out: `hydro_u`, `scalar_s`, with ghosts.
 
 **Placement.** Once, after construction and before the first step.
 
@@ -30,7 +30,7 @@ restart file replaces all of that with saved tensors.
 **Evidence.** `test_scalar.<b>` and `test_mesh_multi_block.<b>` (`allclose`, exact shapes); see the Tests layer.
 :::
 
-Local symbols: $r_n$ is the mixing ratio of passive scalar $n$ per unit dry mass (`scalar_r`). $r_n^{\mathrm{back}}$
+Local symbols: $r_n$[^rg-d926607a7bda] is the mixing ratio of passive scalar $n$ per unit dry mass (`scalar_r`). $r_n^{\mathrm{back}}$
 is the ratio recovered by dividing the seeded scalar density by the conserved dry density.
 
 ### Derivation
@@ -46,7 +46,7 @@ loader when a file is given and otherwise runs three steps. `initialize_local`
 scalars exist) has the block's full shape, ghosts included. It saves the outflow background when a radiating face
 exists (@sec-ch11-outflow), and fills the physical ghosts of the primitives. The block then exchanges the primitives
 and the scalar ratios with its neighbours with interpolation on. `finalize_initialization`
-({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}}) converts to `hydro_u` with the EOS, seeds
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize_initialization >}}) converts to `hydro_u` with the EOS[^rg-3c222a9e6ef8], seeds
 `scalar_s` as the ratio times the conserved dry density. It records the solid fill states with the velocity rows
 zeroed when a mask is present (@sec-ch11-solids), and fills the conserved ghosts. Because the exchange precedes the
 conversion, the conserved ghosts reflect exchanged primitives. `MeshImpl::initialize`
@@ -144,3 +144,17 @@ at the pin: **pending a pinned ctest run**. No report check exists for this sect
 The restart branch returns before the primitive exchange and relies on the saved tensors' ghosts. No
 fresh-versus-restart ghost equivalence is measured here.
 :::
+
+<!-- reader glossary notes -->
+[^rg-adc30ad62345]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-f0f419996146]: $\mathbf v = (v_1,v_2,v_3)$ — velocity [m s$^{-1}$]
+
+[^rg-edee3b83dd1a]: $p$ — pressure [Pa]
+
+[^rg-d6e8655ff198]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
+
+[^rg-d926607a7bda]: $r_n$ — mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1)
+
+[^rg-3c222a9e6ef8]: EOS — equation of state
+<!-- end reader glossary notes -->

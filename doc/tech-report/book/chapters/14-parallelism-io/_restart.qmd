@@ -158,7 +158,7 @@ next_time = dt > 0.0 ? current_time - std::fmod(current_time, dt) : current_time
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_restart_cycle_limit` | two ranks, straka, restart every 30 s, `nlim: 120`: the run resumed from the first restart file starts at the same cycle as the uninterrupted run at that time, with the same time, $\Delta t$, mass and energy; both end at cycle 120 and at the same time | $10^{-12}$ abs. (first cycle line); $10^{-9}$ abs. (end time) | printed cycle lines |
+| `test_restart_cycle_limit` | two ranks, straka, restart every 30 s, `nlim: 120`: the run resumed from the first restart file starts at the same cycle as the uninterrupted run at that time, with the same time, $\Delta t$[^rg-007123c4e2b1], mass and energy; both end at cycle 120 and at the same time | $10^{-12}$ abs. (first cycle line); $10^{-9}$ abs. (end time) | printed cycle lines |
 | `test_restart_multiblock` | straka with 2, shallow-xy with 4 and shallow-splash with 6 blocks in one process: reloading the restart file gives the same NetCDF frame | exact (`max_abs == 0`) | float NetCDF output |
 | this chapter's check, `restart_check.py` | `[C1]`-`[C3]` the resumed next time | exact; grid to round-off | float compare |
 | `test_restart_dt_change` | an output whose interval shrank fires on the new grid after a resume | frame-time window | `run_restart_dt_change.py` |
@@ -190,7 +190,7 @@ The cycle-limit comparison is `assert_close` with `atol` $10^{-12}$
 for this chapter.
 
 ::: {.callout-important title="Check: what the multiblock test covers"}
-`test_restart_multiblock` sets `nlim: 0`, and the integrator stops when the step count reaches `nlim`. So neither leg
+`test_restart_multiblock` sets `nlim: 0`, and the integrator stops when the step count reaches `nlim`[^rg-01407341acf5]. So neither leg
 takes a step: the test checks that the state at $t = 0$ survives a write, a bundle of 2, 4 or 6 parts and a read, in one
 process. It does not compare a resumed run with an uninterrupted one after steps. That comparison is
 `test_restart_cycle_limit`, at two ranks with one block each, to $10^{-12}$ on the printed first resumed cycle.
@@ -215,3 +215,9 @@ reaches a non-negative `nlim` ([`pyharp integrator.cpp:89-99`](https://github.co
 [^ch14-restart-decomp]: Requested in chengcli/snapy#138, which is closed.
 
 [^ch14-restart-rewrite]: chengcli/snapy#277, open.
+
+<!-- reader glossary notes -->
+[^rg-007123c4e2b1]: $\Delta t$ — the step
+
+[^rg-01407341acf5]: nlim — maximum number of integration cycles
+<!-- end reader glossary notes -->

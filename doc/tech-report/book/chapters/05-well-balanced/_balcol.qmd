@@ -14,7 +14,7 @@ not to the scheme's own discrete balance. The well-balanced reconstruction then 
 constant and turns its variation into a standing force on an atmosphere that should be at rest. `balance_column`
 removes that force before the run starts: it iterates the column onto the discrete rest state, holding the
 temperature of each cell fixed for ideal mixtures, and returns the balanced column, the residual and the number of
-updates. The fixed point is defined only up to a free constant $C$, so the column moves; any pinned quantity (surface
+updates. The fixed point is defined only up to a free constant $C$[^rg-bae070d3b4ce], so the column moves; any pinned quantity (surface
 pressure, column mass) has to be re-pinned by the caller.
 
 ::: {.callout-note title="At a glance"}
@@ -32,14 +32,14 @@ pressure, column mass) has to be re-pinned by the caller.
 :::
 
 Local symbols: $C$ [Pa] the gauge, the perturbation of the top cell; $\varepsilon_{\mathrm{bal}}$ [-] the stop residual
-(appendix A keeps bare $\varepsilon$ for the onset error); $\mathrm{rtol}$ [-] its threshold; $a_f$ [m s$^{-2}$] the
+(appendix A keeps bare $\varepsilon$[^rg-9ac820b26953] for the onset error); $\mathrm{rtol}$ [-] its threshold; $a_f$ [m s$^{-2}$] the
 acceleration a leftover face imbalance gives; $g=-g_1>0$ as in @sec-ch05-refkernel. $\chi$, $p'$, $p_{\mathrm{ref}}$ and
 $\epsilon_{\mathrm m}$ are defined in @sec-appa.
 
 Under `SNAP_WB_REF4` on a non-uniform grid it iterates against the switched cell pressure, which is the fixed point
 the solver then enforces. Under `SNAP_X1_CENTROID_EXACT` it balances only a column declared Cartesian.
 
-*Aliases.* "the balance-ic projection" (the bryan example's `balance-ic`).[^ch05-bal-src]
+*Aliases.* "the balance-ic projection" (the bryan example's `balance-ic`[^rg-204491bad492]).[^ch05-bal-src]
 
 [^ch05-bal-src]: Source and credit: item D1 of chengcli/snapy#250.
 
@@ -124,7 +124,7 @@ make_fig()
 A moist initial condition needs one more loop. The projection holds the mass fractions fixed, and the run's first
 saturation adjustment moves the column off the balance again. The bryan example's `balance-ic` therefore alternates
 saturation and projection until saturation no longer moves the projected column (relative density change at most
-$4\epsilon_{\mathrm{m}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `balance-ic-passes`.
+$4\epsilon_{\mathrm{m}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `balance-ic-passes`[^rg-5bca7677f2e6].
 @fig-ch05-balcol-passes shows the passes at the pin.[^ch05-bal-fig]
 
 [^ch05-bal-fig]: Data `src/snapy_report/ch05/data/bryan_balance_ic.json`, from `ctest -V -R 'test_bryan_balance_ic'` in the build directory
@@ -144,6 +144,7 @@ make_fig()
 **A minimal input.** The function has no YAML key; an initial-condition builder calls it. The bryan example exposes it
 as a problem key, and from Python it is one call:
 
+<!-- reader glossary keys -->Keys in this fragment: `problem`[^rg-9506fb10c3da].
 ```yaml
 problem:
   balance-ic: true           # bryan: project the initial column before the run
@@ -268,3 +269,15 @@ balanced under `SNAP_X1_CENTROID_EXACT`.
 3. **Moist columns.** The caller must iterate with saturation adjustment, as the bryan example does.
 4. **No convergence proof.** Convergence is observed (`[C15]`, the tests), not proven.
 5. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-bae070d3b4ce]: $C$ — Courant number (named: acoustic, advective, vertical acoustic)
+
+[^rg-9ac820b26953]: $\varepsilon$ — relative error of the linear convective onset growth rate against its oracle; $\varepsilon_{\mathrm{eff}}$ the one-step effective value
+
+[^rg-204491bad492]: balance-ic — whether the driver projects its initial column into balance
+
+[^rg-5bca7677f2e6]: balance-ic-passes — maximum number of saturation/projection passes for the initial column
+
+[^rg-9506fb10c3da]: problem — problem-specific driver options
+<!-- end reader glossary notes -->

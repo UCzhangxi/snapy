@@ -35,9 +35,9 @@ the face mirror and the masked rows provide.
 
 Local symbols: $D_i(b,\ell)$ is the minimum flip count after processing $i$ mask entries, ending with bit $b$ and capped
 run length $\ell$; $\ell^{\min}_b$ is the required run length of bit $b$ (counts): $\ell^{\min}_0=3$ for fluid, $\ell^{\min}_1=2$
-for solid. ($l$ is appendix A’s stencil offset and $m_1$ its momentum component, so neither is used here.)
+for solid. ($l$[^rg-60eca0916b8b] is appendix A’s stencil offset and $m_1$[^rg-7793eb0d9526] its momentum component, so neither is used here.)
 Bits and $\mathrm{cost}_i(b)$, the candidate flip cost at position $i$, are dimensionless.
-$\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$.
+$\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$[^rg-64869d64225f].
 These symbols are local to this section.
 
 ### Derivation
@@ -76,7 +76,7 @@ for every binary line of lengths two through eight.
 
 For the partial implicit system, $\mathsf H=\operatorname{diag}(1,-1,1)$ on the density, normal momentum and
 energy rows. Row $i$ of the column system reads $\mathsf B_i\boldsymbol\delta_{i-1}+\mathsf A_i\boldsymbol\delta_i+\mathsf C_i\boldsymbol\delta_{i+1}$,
-with $\boldsymbol\delta_i$ the implicit solve's unknown (appendix A, notation group 7). Next to a solid below, the ghost increment is
+with $\boldsymbol\delta_i$[^rg-b2213240fb46] the implicit solve's unknown (appendix A, notation group 7). Next to a solid below, the ghost increment is
 the reflection $\boldsymbol\delta_{i-1}=\mathsf H\boldsymbol\delta_i$, so the lower term becomes $\mathsf B_i\mathsf H\boldsymbol\delta_i$ and
 joins the diagonal; next to a solid above, $\boldsymbol\delta_{i+1}=\mathsf H\boldsymbol\delta_i$ and $\mathsf C_i\mathsf H\boldsymbol\delta_i$ joins it.
 This is the closure of @sec-ch07-vic-closure, where $\mathsf H$ is written `Bnd`. Thus
@@ -93,7 +93,7 @@ Apply each row only at its relevant fluid boundary. The vector `Bnd` of `vic_ass
 @eq-ch11-solids-closure: the lower row is added when the cell is the first of the column or `solid_lower`
 is set, the upper row when it is the last or `solid_upper` is set. With `solid_lower` the same function also
 mirrors the base state used in the lower face Jacobian, copying the cell's primitives to the solid side
-with the normal velocity negated. A solid row has the identity divided by $\Delta t$ on the diagonal and
+with the normal velocity negated. A solid row has the identity divided by $\Delta t$[^rg-d34c0e1bcdff] on the diagonal and
 zero neighbour blocks (`setIdentity`, {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}}),
 and its right-hand side is zeroed before the solve (`forward_masked`,
 {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}), so that row has a zero solved
@@ -150,6 +150,7 @@ stepping and retain the driver solid refill.
 
 This is a configuration fragment, not a standalone simulation deck.
 
+<!-- reader glossary keys -->Keys in this fragment: `internal`[^rg-f5d7cf40e168], `solid-density`[^rg-ed6646560858], `solid-pressure`[^rg-4a6fe14f4824].
 ```yaml
 boundary-condition:
   internal:
@@ -258,3 +259,21 @@ rejected ({{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
 is claimed.
 :::
+
+<!-- reader glossary notes -->
+[^rg-60eca0916b8b]: $l$ — stencil offset index ($\bar\rho_{i+l}$); never $k$, which is the $x_3$ index
+
+[^rg-7793eb0d9526]: $m_1, m_2, m_3$ — momentum density $\rho v_a$
+
+[^rg-64869d64225f]: $\mathsf R, \mathsf R^{-1}$ — right eigenvectors and their inverse
+
+[^rg-b2213240fb46]: $\boldsymbol\delta_i$ — the implicit solve's unknown in cell $i$ (total mass, normal momentum, [tangential momenta], energy)
+
+[^rg-d34c0e1bcdff]: $\Delta t$ — the step
+
+[^rg-f5d7cf40e168]: internal — internal-boundary options
+
+[^rg-ed6646560858]: solid-density — density assigned to internal solid cells
+
+[^rg-4a6fe14f4824]: solid-pressure — pressure assigned to internal solid cells
+<!-- end reader glossary notes -->

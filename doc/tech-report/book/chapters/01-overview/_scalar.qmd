@@ -21,14 +21,14 @@ just computed. This section follows that call, which runs after the hydro call i
 
 **Placement.** After the hydro call in every stage; the parent block combines the result.
 
-**Activation.** `scalar/names` or `scalar/nvar` (default 0); `upper-bound` default $-1$ (off).
+**Activation.** `scalar/names` or `scalar/nvar` (default 0); `upper-bound`[^rg-0ed3cc23ed9a] default $-1$ (off).
 
 **Guarantee / limits.** A map; the ratio divides by the conserved dry density, so that density must be positive.
 
 **Evidence.** `test_scalar.<b>`: shape, finiteness and the bound ($10^{-5}$ float32, $10^{-12}$ float64); see Tests.
 :::
 
-Local symbols: $\rho_n$ is the density of passive scalar $n$ (`scalar_s`) and $r_n = \rho_n/\rho_{\mathrm{d}}$ its
+Local symbols: $\rho_n$[^rg-0d8fe044c8ef] is the density of passive scalar $n$ (`scalar_s`) and $r_n = \rho_n/\rho_{\mathrm{d}}$ its
 mixing ratio per unit dry mass (`scalar_r`).
 
 ### Derivation
@@ -46,7 +46,7 @@ scalar's own covariance row when the face-flux covariance is on (@sec-ch12-flux-
 positivity limiter is exchanged raw and passed through the physical boundary functions in the `sync_theta` closure
 before the fluxes are scaled (@sec-ch08). The parent block combines the stage and carries the implicit dry transfer
 and the dry sources (@sec-ch01-stage). `ScalarOptionsImpl::from_yaml`
-({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}) reads `nvar` (default 0), lets a `names`
+({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}) reads `nvar` (default 0), lets a `names`[^rg-5f6c85feb7ba]
 list set the count, reads `upper-bound` (default $-1$), and reads an optional `reconstruct` block. When that block is
 absent the block options take the horizontal hydro reconstruction (`MeshBlockOptionsImpl::from_yaml`,
 {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}). Reconstruction, boundary and limiter
@@ -97,6 +97,7 @@ make_fig()
 **How to use it.** Name the scalars, or give their count; the bound is off unless set
 ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}):
 
+<!-- reader glossary keys -->Keys in this fragment: `limiter`[^rg-ee49227d4789], `scalar`[^rg-79187c4eedd7].
 ```yaml
 dynamics:
   equation-of-state: {type: ideal-gas, limiter: true}  # a positive upper-bound needs the limiter
@@ -107,7 +108,7 @@ scalar:
 ```
 
 Refused: a key other than `verbose`, `nvar`, `upper-bound`, `names`, `reconstruct` and `riemann-solver`; inside
-`reconstruct` anything but `shock`, `type` and `scale`. Also refused: a Riemann solver other than `upwind`, and
+`reconstruct` anything but `shock`[^rg-e1a0b3afb85c], `type` and `scale`[^rg-21be26a14922]. Also refused: a Riemann solver other than `upwind`, and
 `upper-bound: 0` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}). The ratio and the $x_1$ flux are these lines
 of `ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
 
@@ -145,3 +146,19 @@ The forward routine divides by the conserved dry density; its behaviour for a ze
 established by the cited tests. The upper-bound and positivity mechanisms are documented by @sec-ch10 and
 @sec-ch08; combinations remain in @sec-ch12-matrix.
 :::
+
+<!-- reader glossary notes -->
+[^rg-0ed3cc23ed9a]: upper-bound — upper bound for the scalar ratio; a negative value disables the bound
+
+[^rg-0d8fe044c8ef]: $\rho_n$ — partial density of species $n$, $\rho y_n$ [kg m$^{-3}$]
+
+[^rg-5f6c85feb7ba]: names — list of species names
+
+[^rg-ee49227d4789]: limiter — whether the enclosing component enables its limiter
+
+[^rg-79187c4eedd7]: scalar — passive-scalar options
+
+[^rg-e1a0b3afb85c]: shock — whether reconstruction uses its shock handling
+
+[^rg-21be26a14922]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+<!-- end reader glossary notes -->

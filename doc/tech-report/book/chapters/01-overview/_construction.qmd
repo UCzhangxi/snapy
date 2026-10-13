@@ -11,7 +11,7 @@ reviewer:
 ### Summary
 
 A `MeshBlock` is the unit that owns a grid patch and every module that acts on it. Constructing one takes an options
-tree, from a YAML card or from Python. The constructor resolves the global grid, checks that a boundary function
+tree, from a YAML[^rg-f2bec48375b7] card or from Python. The constructor resolves the global grid, checks that a boundary function
 exists for every resolved direction, and then builds the modules in a fixed order. Nothing is filled with data yet:
 that is initialization (@sec-ch01-initialization).
 
@@ -48,7 +48,7 @@ Then come the integrator and the coordinates. Then the hydro module, which must 
 scalar module, whose reconstruction inherits the horizontal hydro one when the card omits it
 (`MeshBlockOptionsImpl::from_yaml`, {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}). Last
 come the internal (solid) boundary and the two step-start buffers `u0` and `s0`, float64 tensors of shape (variables,
-$x_3$, $x_2$, $x_1$). Construction approximates no operator and has no convergence order.
+$x_3$, $x_2$, $x_1$[^rg-e646ebd1a056]). Construction approximates no operator and has no convergence order.
 
 @fig-ch01-construction-flow shows the call sequence.
 
@@ -90,6 +90,7 @@ make_fig()
 
 **How to use it.** A minimal card names the grid and leaves every boundary at its default, `reflecting`:
 
+<!-- reader glossary keys -->Keys in this fragment: `geometry`[^rg-309d46a42a40], `type`[^rg-aa05c4fa92f5], `cells`[^rg-87eb36db6ba0], `nx1`[^rg-205782379230], `nx2`[^rg-bc5bbd81137a], `nx3`[^rg-ba7bec301dc2], `nghost`[^rg-61a40b696c3f], `boundary-condition`[^rg-b8d05d2e0b8b], `external`[^rg-3c596d26d7e7], `x1-inner`[^rg-a3aacff1589c], `x1-outer`[^rg-cb63f03cceb3], `dynamics`[^rg-bfe1dcdd7a8f], `equation-of-state`[^rg-d7418324442e].
 ```yaml
 geometry:
   type: cartesian
@@ -129,3 +130,35 @@ The layout's world size must match its partitioning, with the panel factor on th
 output types, parallel NetCDF without `PNETCDF=ON`, and a hydro model with no variable are rejected in `reset`;
 no setup execution is claimed here.
 :::
+
+<!-- reader glossary notes -->
+[^rg-f2bec48375b7]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+
+[^rg-e646ebd1a056]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-309d46a42a40]: geometry — coordinate-system and grid options
+
+[^rg-aa05c4fa92f5]: type — implementation selector for the enclosing options block
+
+[^rg-87eb36db6ba0]: cells — cell counts and ghost-width options
+
+[^rg-205782379230]: nx1 — number of cells in the first coordinate direction
+
+[^rg-bc5bbd81137a]: nx2 — number of cells in the second coordinate direction
+
+[^rg-ba7bec301dc2]: nx3 — number of cells in the third coordinate direction
+
+[^rg-61a40b696c3f]: nghost — number of ghost cells at each boundary
+
+[^rg-b8d05d2e0b8b]: boundary-condition — boundary-function names for the domain faces
+
+[^rg-3c596d26d7e7]: external — boundary-function names for external domain faces
+
+[^rg-a3aacff1589c]: x1-inner — boundary name on the inner first-coordinate face
+
+[^rg-cb63f03cceb3]: x1-outer — boundary name on the outer first-coordinate face
+
+[^rg-bfe1dcdd7a8f]: dynamics — hydrodynamic options block
+
+[^rg-d7418324442e]: equation-of-state — equation-of-state options
+<!-- end reader glossary notes -->

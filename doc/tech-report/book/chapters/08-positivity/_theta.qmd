@@ -17,7 +17,7 @@ divergence.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Scale each face's tracer flux by the factor of the cell it drains, @eq-ch08-theta-def, so no cell is emptied past zero.
 
-**Data.** In: the tracer rows of `hydro_u`, the three face fluxes, $\Delta t$. Out: the fluxes scaled in place, and a census.
+**Data.** In: the tracer rows of `hydro_u`, the three face fluxes, $\Delta t$[^rg-b0ecd497e453]. Out: the fluxes scaled in place, and a census.
 
 **Placement.** In `HydroImpl::forward`, after the seam averaging and before the flux divergence, every stage.
 
@@ -28,9 +28,9 @@ divergence.
 **Evidence.** `[C1]`–`[C3]`, `[C5]`, `[C7]`, `[C10]`, `[C11]` of this chapter's check; the ctests of @tbl-ch08-theta-tests.
 :::
 
-Local symbols: $\mathrm{out}_i$ is what leaves cell $i$ per unit time [units of $u$ times volume per time], and
+Local symbols: $\mathrm{out}_i$ is what leaves cell $i$[^rg-97ce421b93d9] per unit time [units of $u$ times volume per time], and
 $\mathrm{in}_i$ what enters it after limiting; $\eta$ is the donor margin of @sec-ch08-roundoff. $\Theta_i$
-is the dimensionless factor of cell $i$, never above 1. $u_i$, $V_i$, $A_f F_f$ and $\Delta t$ are the tracer density,
+is the dimensionless factor of cell $i$, never above 1. $u_i$, $V_i$[^rg-48d37316b6c2], $A_f F_f$ and $\Delta t$ are the tracer density,
 the cell volume, a face area times its normal flux, and the stage step of @sec-ch04-divergence.
 
 ### Derivation
@@ -49,7 +49,7 @@ cell per unit time, in units of $u$ times volume per time, and $\Theta_i$, a dim
 1. @eq-ch08-theta-def is `flux_positivity_theta` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}),
 with the outgoing sum built from `relu` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}).
 
-Applying $\Theta$ of the donor cell to every face bounds the update in two lines. Every face that drains cell $i$ takes
+Applying $\Theta$[^rg-1bf2a8a22e0c] of the donor cell to every face bounds the update in two lines. Every face that drains cell $i$ takes
 $\Theta_i$, so the limited outflow is $\Theta_i\,\mathrm{out}_i$; the code's available mass is
 $(1-\eta)\max(u_i,0)V_i$ with the margin $\eta = 4096\,\epsilon_{\mathrm m}$ of @sec-ch08-roundoff (`avail`,
 {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), so $\Delta t\,\Theta_i\,\mathrm{out}_i \le
@@ -174,6 +174,7 @@ The symbol column is the citation's anchor.
 **How to use it.** Turn the limiter on in the card; it also turns on the floors of @sec-ch08-eoslimiter and
 @sec-ch08-reconfloors ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}):
 
+<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-6879e5c9f18a], `equation-of-state`[^rg-5c31940d8939].
 ```yaml
 dynamics:
   equation-of-state:
@@ -232,7 +233,7 @@ cells non-negative at stage entry end at worst exactly $0$, while $4150$ of $783
 negative after the limited step. `[C11]`: the convex split holds exactly in rational arithmetic. The ctests named
 above have not been run for this report at the pin: **pending a pinned ctest run**.
 
-[^ch08-theta-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+[^ch08-theta-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU[^rg-2951cd52e369], double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
     `positivity_check.out`, lines `[C1]`, `[C2]`, `[C3]`, `[C5]`, `[C7]`, `[C10]` and `[C11]`.
 
 ### Limits
@@ -258,3 +259,19 @@ above have not been run for this report at the pin: **pending a pinned ctest run
     recorded.
 [^ch08-gate-arms]: Source: the chengcli/snapy#307 body, section "Test dispositions", and the commit message of
     that round's squash-merge.
+
+<!-- reader glossary notes -->
+[^rg-b0ecd497e453]: $\Delta t$ — the step
+
+[^rg-97ce421b93d9]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-48d37316b6c2]: $V_i$ — cell volume
+
+[^rg-1bf2a8a22e0c]: $\Theta$ — the positivity limiter's donor factor in $[0,1]$: the fraction of a requested face flux the limiter allows. Capital, because $\theta$ is the colatitude
+
+[^rg-6879e5c9f18a]: dynamics — hydrodynamic options block
+
+[^rg-5c31940d8939]: equation-of-state — equation-of-state options
+
+[^rg-2951cd52e369]: CPU — central processing unit
+<!-- end reader glossary notes -->

@@ -23,7 +23,7 @@ before the saturation adjustment (@sec-ch10-satadj).
 
 **Placement.** Inside every conserved-limiter call, before the column repair: each stage and before the adjustment.
 
-**Activation.** EOS `limiter: true` (default false); only condensates that a nucleation reaction produces.
+**Activation.** EOS[^rg-9e3adb4b852c] `limiter: true` (default false); only condensates that a nucleation reaction produces.
 
 **Guarantee / limits.** Mass and every element kept per cell; $E$ not corrected; an excess deficit goes to the column repair.
 
@@ -60,14 +60,14 @@ Why the borrow conserves mass and elements, and what it does not keep:
    (`[C1]`, `[C5]`).[^bor-c]
 2. *Elements are conserved.* For $A+B\to AB$ the condensate's molar mass is $\mu_A+\mu_B$; filling a deficit $d$
    fills $d/(\mu_A+\mu_B)$ moles of condensate and debits $d\,\mu_A/(\mu_A+\mu_B)/\mu_A$ moles of $A$, the same number,
-   and likewise for $B$ (`[C2]`, symbolic).
+   and likewise for $B$[^rg-ebaaad5c5b2c] (`[C2]`, symbolic).
 3. *Energy is not corrected.* $E$ is untouched, so the shift between phases moves the temperature through the
    reference energies by the latent heat of the borrowed mass. The comment at the call site estimates the shift at
    about one per cent of the local value and notes that the saturation adjustment re-equilibrates it within the same
    step; that estimate has no measurement behind it here.
 4. *Round-off.* Each parent update is one product and one sum, so a parent density is off by at most
    $2\epsilon_{\mathrm m}$ times the larger of $\lvert\rho_m\rvert$ and its debit; the condensate is set to exactly zero by
-   `clamp_min_`. The cached shares are each rounded once, so they sum to one within $\epsilon_{\mathrm m}$ per parent, and
+   `clamp_min_`. The cached shares are each rounded once, so they sum to one within $\epsilon_{\mathrm m}$[^rg-174847516220] per parent, and
    the cell mass changes by at most that times the deficit.
 
 [^bor-c]: `python3 src/snapy_report/ch10/borrow_check.py`, output `borrow_check.out`, lines `[C1]`–`[C5]`; a
@@ -176,8 +176,18 @@ registered in that build and were not run.
 
 - Only the first nucleation reaction that produces a condensate sets its parents; a second producing reaction is
   ignored (`borrow_check.py` `[C3]`).
-- No energy correction: the borrowed mass changes phase at fixed $E$, so $T$ moves by the latent heat; the size of
+- No energy correction: the borrowed mass changes phase at fixed $E$, so $T$[^rg-2f2c2c76b677] moves by the latent heat; the size of
   the move is not measured.
 - A deficit larger than the parents' vapour leaves the vapour negative for the column repair; if the column cannot
   cover it, the vapour repair throws (@sec-ch10-fixvapor).
 - Not in the switch coverage matrix (@sec-ch12-matrix).
+
+<!-- reader glossary notes -->
+[^rg-9e3adb4b852c]: EOS — equation of state
+
+[^rg-ebaaad5c5b2c]: $B$ — the binomial weights $(1,4,6,4,1)/16$
+
+[^rg-174847516220]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-2f2c2c76b677]: $T$ — temperature [K]
+<!-- end reader glossary notes -->

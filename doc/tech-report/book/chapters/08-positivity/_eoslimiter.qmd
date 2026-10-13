@@ -30,7 +30,7 @@ species fraction, and leaves its density and pressure floors to the detector's o
 
 Local symbols: $\rho_{\mathrm{fl}}$ [kg m$^{-3}$], $p_{\mathrm{fl}}$ [Pa] and $T_{\mathrm{fl}}$ [K] are the density, pressure and
 temperature floors; $\rho e(T_{\mathrm{fl}})$ [J m$^{-3}$] is the internal energy density of a cell at the temperature
-floor. $E$, $\rho_i$, $\mathbf v$ and $V_i$ are defined in @sec-appa.
+floor. $E$[^rg-a52517094335], $\rho_i$, $\mathbf v$[^rg-3b3eac691a89] and $V_i$ are defined in @sec-appa.
 
 ### Derivation
 
@@ -75,7 +75,7 @@ The primitive pass is `prim` ({{< code src/eos/equation_of_state.cpp EquationOfS
 {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}, the species clamp at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} and
 the pressure floor at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}.
 
-The floor values are YAML keys with defaults at `density_floor` ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}): a density
+The floor values are YAML[^rg-34f4f1938638] keys with defaults at `density_floor` ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}): a density
 floor of $10^{-6}$, a pressure floor of $10^{-3}$ and a temperature floor of $20$ K. They are absolute
 numbers in the deck's own units, not fractions of anything, so whether they are conservative or
 catastrophic depends on the scaling of the problem.
@@ -121,6 +121,7 @@ one for a NaN and entry zero for a species fraction below minus that threshold; 
 **How to use it.** All four keys live in the equation-of-state block
 ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}):
 
+<!-- reader glossary keys -->Keys in this fragment: `density-floor`[^rg-af8da286f913], `pressure-floor`[^rg-2e610d6bcb71], `temperature-floor`[^rg-1d22b0ac8f7b].
 ```yaml
 dynamics:
   equation-of-state:
@@ -131,9 +132,9 @@ dynamics:
 ```
 
 An options struct built in C++ without the reader starts at $10^{-10}$ for the density and pressure floors
-({{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}}). Refused: any key other than `type`,
-`gammad`, `weight`, `density-floor`, `pressure-floor`, `temperature-floor`, `limiter`, `eos-file` and `verbose`, and
-kintera's `max-iter`, `ftol` and `uv-solver`, which the block shares with kintera and accepts (`check_keys`,
+({{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}}). Refused: any key other than `type`[^rg-b0804c95efd0],
+`gammad`[^rg-e6077fa0f7e4], `weight`[^rg-597de5ab90ef], `density-floor`, `pressure-floor`, `temperature-floor`, `limiter`, `eos-file`[^rg-5e65fb87145d] and `verbose`, and
+kintera's `max-iter`[^rg-7f3a2b879884], `ftol`[^rg-4f0be3cb18dc] and `uv-solver`[^rg-fc2e65d5d1f2], which the block shares with kintera and accepts (`check_keys`,
 {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}).
 The conserved floors are these lines
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}):
@@ -188,3 +189,31 @@ The repair cases of `test_forcing.<b>` exercise the real passes and their marks 
 2. **Open question.** Whether the energy floor should use the floored or the unfloored density is not
    discussed in any source. `[C1]` shows the choice is observable; the code makes it one way, and this
    chapter records which, not which is right.
+
+<!-- reader glossary notes -->
+[^rg-a52517094335]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-3b3eac691a89]: $\mathbf v = (v_1,v_2,v_3)$ — velocity [m s$^{-1}$]
+
+[^rg-34f4f1938638]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+
+[^rg-af8da286f913]: density-floor — minimum admissible density
+
+[^rg-2e610d6bcb71]: pressure-floor — minimum admissible pressure
+
+[^rg-1d22b0ac8f7b]: temperature-floor — minimum admissible temperature
+
+[^rg-b0804c95efd0]: type — implementation selector for the enclosing options block
+
+[^rg-e6077fa0f7e4]: gammad — dry-gas ratio of specific heats
+
+[^rg-597de5ab90ef]: weight — molar mass of the gas
+
+[^rg-5e65fb87145d]: eos-file — equation-of-state table file read by the linked provider
+
+[^rg-7f3a2b879884]: max-iter — maximum number of iterations
+
+[^rg-4f0be3cb18dc]: ftol — relative convergence tolerance
+
+[^rg-fc2e65d5d1f2]: uv-solver — solver used for fixed-energy saturation adjustment
+<!-- end reader glossary notes -->

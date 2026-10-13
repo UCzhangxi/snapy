@@ -19,9 +19,9 @@ from the write only after the combined file exists.
 
 **Placement.** `make_outputs` after an accepted step; the root joins the parts with the in-tree `mppnccombine`.
 
-**Activation.** `outputs: - type: netcdf` with `dt`, `variables` and options; CMake `NETCDF` (default ON).
+**Activation.** `outputs: - type: netcdf` with `dt`, `variables`[^rg-9edf1a86e51f] and options; CMake `NETCDF` (default ON).
 
-**Guarantee / limits.** Exact copy, then float32 unless `double_precision`: at most $2^{-24}$ relative.
+**Guarantee / limits.** Exact copy, then float32 unless `double_precision`[^rg-60f001cddf89]: at most $2^{-24}$ relative.
 
 **Evidence.** The Tests layer below, @tbl-ch14-netcdf-tests.
 :::
@@ -51,13 +51,13 @@ steps 2 to 4.
 ### Numerical method
 
 **Options.** `OutputOptionsImpl::from_yaml` accepts only the keys listed above plus `data_format` and `verbose`; it
-rejects a slice and a sum along the same axis and requires `type`
+rejects a slice and a sum along the same axis and requires `type`[^rg-ddd3dfc3359d]
 ({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}). The defaults are where `OutputOptionsImpl` declares each option with `ADD_ARG`
 ({{< code src/output/output_type.hpp OutputOptionsImpl >}}).
 
 **One block's file.** `NetcdfOutput::write_output_file` does nothing on the final write, so the last frame of a run is
 the last scheduled one (@sec-ch14-schedule). It writes the interior, or with `include_ghost_zones` the interior plus
-$n_g$ ghosts on every axis with more than one cell. It applies slices and sums, then creates the file with
+$n_g$[^rg-88a9e0a977ff] ghosts on every axis with more than one cell. It applies slices and sums, then creates the file with
 `nc_create(..., NC_NETCDF4, ...)` ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}). Each block records its
 position in the global block grid. For the cubed sphere the six panels are laid out as a $3 \times 2$ tile: panel $f$
 is shifted by $(f \bmod 3)\,n_{b2}$ in $x_2$ and $\lfloor f/3 \rfloor\,n_{b3}$ in $x_3$, and the global counts become
@@ -81,6 +81,7 @@ With `combine: false` the per-block files stay. Joining them later needs an exte
 
 **A minimal input.** One NetCDF stream of the primitives and two diagnostics every 100 s, in double precision:
 
+<!-- reader glossary keys -->Keys in this fragment: `outputs`[^rg-b5340f5bdc7f].
 ```yaml
 outputs:
   - type: netcdf
@@ -163,3 +164,15 @@ this chapter.
   with more blocks would be joined in. This is read from the code and has not been run.
 - The error path of the scope guard (a throw on the root) is not covered by a test.
 :::
+
+<!-- reader glossary notes -->
+[^rg-9edf1a86e51f]: variables — variables requested by an output stream
+
+[^rg-60f001cddf89]: double_precision — whether tensors use double precision
+
+[^rg-ddd3dfc3359d]: type — implementation selector for the enclosing options block
+
+[^rg-88a9e0a977ff]: $n_g$ — ghost cells on each side
+
+[^rg-b5340f5bdc7f]: outputs — output-stream configuration
+<!-- end reader glossary notes -->

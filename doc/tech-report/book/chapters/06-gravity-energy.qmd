@@ -12,8 +12,8 @@ reviewer:
 Gravity does work on the flow, and a finite-volume code has to decide where to book it. This chapter is about
 that decision and what each answer costs. It covers the cell form, which applies the body force and the work
 $\rho v_1g_1$ in the same cell; the face form, which books the work as a flux difference of potential energy
-across the cell's $x_1$ faces; the global fixer that repairs the cell form's budget once per step; the
-corrected-PE face work, which makes the booked work fourth-order consistent with the scheme's own mass fluxes;
+across the cell's $x_1$[^rg-2dff075d305e] faces; the global fixer that repairs the cell form's budget once per step; the
+corrected-PE[^rg-8013ae26823c] face work, which makes the booked work fourth-order consistent with the scheme's own mass fluxes;
 the gravity work inside the vertical implicit operator; and a closing comparison of what each form conserves and
 which diagnostic measures it. The momentum equation is the same in every form; only the energy row changes. The
 hydrostatic reference state these forms are often used with is @sec-ch05, and the implicit solver they couple into
@@ -22,7 +22,7 @@ is the vertical implicit solve of the time-integration chapter.
 **One identity behind every form.** Every form in this chapter is one identity with a different choice of
 discrete potential energy, so it is derived once, here, before the forms that use it.
 
-**The continuous budget.** With constant gravity $g_1$ along $x_1$, mass and total energy obey the continuity
+**The continuous budget.** With constant gravity $g_1$[^rg-4c6f002e02f8] along $x_1$, mass and total energy obey the continuity
 equation and the total-energy equation in their usual form,
 
 $$
@@ -32,7 +32,7 @@ $$
 \end{aligned}
 $$
 
-with $E$ the total energy density [J m$^{-3}$]. The $x_2$, $x_3$ components of gravity book cell work only and play
+with $E$[^rg-da7a263902cd] the total energy density [J m$^{-3}$]. The $x_2$, $x_3$ components of gravity book cell work only and play
 no part here. The potential $\phi(x_1) = -g_1x_1$ [m$^2$ s$^{-2}$] does not depend on time, and
 $\rho v_1g_1 = -\rho\mathbf v\cdot\nabla\phi$, so $E+\rho\phi$ is conserved:
 
@@ -44,11 +44,11 @@ In a closed domain $\int(E+\rho\phi)\,\mathrm{d}V$ is constant. In this chapter 
 energy density $E$ of a cell. The conservation diagnostics use the integrated total energy
 $E_{\mathrm{tot}} = \sum_iV_iE_i$ [J, per unit horizontal area on Cartesian grids and per steradian on
 spherical-polar and cubed-sphere grids], and an invariant written $E_{\mathrm{tot}}+P$ or
-$E_{\mathrm{tot}}+\mathrm{PE}_d$ is that sum plus a discrete potential energy $P$ of the same units.
+$E_{\mathrm{tot}}+\mathrm{PE}_d$ is that sum plus a discrete potential energy $P$[^rg-cc5c068f7301] of the same units.
 
-**The exact work in one cell.** Integrate the gravity source over cell $i$ and write the $x_1$ mass flux density as
+**The exact work in one cell.** Integrate the gravity source over cell $i$[^rg-261e505c3fe9] and write the $x_1$ mass flux density as
 $F=\rho v_1$ [kg m$^{-2}$ s$^{-1}$]: $\int_{V_i}\rho v_1g_1\,\mathrm{d}V = g_1V_i\langle F\rangle_{V_i}$. Multiply the
-continuity equation by $\phi$ and integrate over the cell, using
+continuity equation by $\phi$[^rg-e45e827c3f36] and integrate over the cell, using
 $\phi\,\nabla\cdot(\rho\mathbf v) = \nabla\cdot(\phi\rho\mathbf v) - \rho\mathbf v\cdot\nabla\phi$ and the divergence
 theorem. Only the $x_1$ faces matter: on Cartesian, spherical-polar and gnomonic-equiangle grids the $x_2$, $x_3$
 faces join cells of the same $x_1$ level (on the cubed sphere, the same radius:
@@ -97,9 +97,9 @@ make_fig()
 | Cell form (@sec-ch06-cell) | `gravity-work: cell` | off; set explicitly | exact locally; global defect | `test_forcing` |
 | Face form (@sec-ch06-face) | `gravity-work: face` | on, `gravity_work` {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | 2 | `test_horizontal_flux_covariance` |
 | Wall-cell face form (@sec-ch06-face) | `gravity-work: face-wallc` | off | 1 at walls | `test_gravity_work_fixer` |
-| Gravity-work fixer (@sec-ch06-fixer) | `gravity-work-fixer` | on with `cell` | global | `test_gravity_work_fixer` |
+| Gravity-work fixer (@sec-ch06-fixer) | `gravity-work-fixer`[^rg-7133da810a58] | on with `cell` | global | `test_gravity_work_fixer` |
 | Corrected-PE face work (@sec-ch06-dwork) | `SNAP_GRAVITY_WORK_RADIAL_EXACT` | on with `face` | 4 | `test_gravity_work_radial_exact` |
-| VIC gravity work (@sec-ch06-vic) | `implicit-scheme` $\neq0$ | off | linearised | `test_implicit_face_work_operator` |
+| VIC[^rg-0a78bcb32f8c] gravity work (@sec-ch06-vic) | `implicit-scheme`[^rg-5f155960c1f4] $\neq0$ | off | linearised | `test_implicit_face_work_operator` |
 
 : The schemes of this chapter, their switches and defaults, the order of the booked gravity work, and the test
 that carries each one. Orders are of the booked work against the exact work of the scheme's own $x_1$ mass
@@ -119,3 +119,25 @@ tolerances are in each scheme's Tests layer. {#tbl-ch06-schemes}
 {{< include 06-gravity-energy/_conserves.qmd >}}
 
 The limits this chapter states are collected with those of the other chapters in @sec-ch16-wrong, @sec-ch16-restricted, @sec-ch16-usability and @sec-ch16-pending.
+
+<!-- reader glossary notes -->
+[^rg-2dff075d305e]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-8013ae26823c]: PE — potential energy
+
+[^rg-4c6f002e02f8]: $g_1, g_2, g_3$ — constant gravity components [m s$^{-2}$]; $g_1<0$ points to decreasing $x_1$
+
+[^rg-da7a263902cd]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-cc5c068f7301]: $P$ — corrected discrete potential energy $\sum_iV_i[\rho_i\phi_i - g_1\sigma_i^2s_i[\rho]]$, exact to $O(h^4)$
+
+[^rg-261e505c3fe9]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-e45e827c3f36]: $\phi$ — gravitational potential, $\phi(x_1) = -g_1x_1$ (increases upward); never an angle
+
+[^rg-7133da810a58]: gravity-work-fixer — gravity-work correction options
+
+[^rg-0a78bcb32f8c]: VIC — vertically implicit correction
+
+[^rg-5f155960c1f4]: implicit-scheme — implicit time-integration scheme selector
+<!-- end reader glossary notes -->

@@ -17,7 +17,7 @@ $n^{\mathrm{glob}}_a$ the declared global cell count of axis $a$ (count); $\Delt
 $a$ [m or rad]; $o_a$ the global index of a block's first interior cell on axis $a$ (count); $X_{a,m}$ entry $m$ of
 the global face array of axis $a$; $n_a$ the block's interior cell count on axis $a$ (count);
 $x^{\mathrm{blk}}_{a,\min}$ the block's lower bound on axis $a$ [m or rad]; $n_b$ the number of blocks on axis $a$
-(count); $b_a$ the block's index along axis $a$, from 0 (count); $n_g$ the ghost cells per side (`nghost`, count).
+(count); $b_a$ the block's index along axis $a$, from 0 (count); $n_g$[^rg-e176f04ce147] the ghost cells per side (`nghost`[^rg-6f20f9603219], count).
 
 ### Summary
 
@@ -85,7 +85,7 @@ of 8 (`[C16]`).[^gg-c16]
 
 [^gg-c16]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,
     line `[C16]`; a numpy port of `CoordinateImpl::block_faces_` and `CoordinateOptionsImpl::_offset` at the pin,
-    CPU, double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
+    CPU[^rg-254534abaa24], double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
 ### Numerical method
 
@@ -110,7 +110,7 @@ make_fig()
 Setup validates the declared grid. When no global grid is declared on an axis (global count 0), the block adopts
 itself; otherwise the block must lie inside the global interval within a tolerance of
 $16\,\epsilon_{\mathrm{m}}\max(\lvert x^{\min}_a\rvert, \lvert x^{\max}_a\rvert, \lvert x^{\max}_a - x^{\min}_a\rvert)$, with
-$\epsilon_{\mathrm{m}}$ the double-precision machine epsilon, and must be exactly $n_a$ global cells: both its ends must sit on
+$\epsilon_{\mathrm{m}}$[^rg-fbe9686e1f06] the double-precision machine epsilon, and must be exactly $n_a$ global cells: both its ends must sit on
 global faces within that tolerance. The tolerance covers the accumulation in `repartition`, which reaches the last
 upper bound by adding block widths.
 
@@ -133,15 +133,15 @@ upper bound by adding block widths.
 
 In step order (@tbl-ch03-globalgrid-code):
 
-1. `from_yaml` reads `geometry.type` (default `cartesian`), the bounds (default $[0,1]$ on each axis, with `x2min_pi`
+1. `from_yaml` reads `geometry.type` (default `cartesian`), the bounds (default $[0,1]$ on each axis, with `x2min_pi`[^rg-e074f181bf79]
    style keys multiplied by $\pi$) and the cell counts into the global fields
    ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}). Unknown keys are refused by `check_keys`.
-2. A card with `bounds` and no `cells` declares one cell per axis spanning the bounds, and sets the block bounds to
+2. A card with `bounds`[^rg-7888cc7a7f34] and no `cells`[^rg-7e4292ba0a15] declares one cell per axis spanning the bounds, and sets the block bounds to
    the same interval: `global_nx1` is set to 1 ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
 3. Each global count must be divisible by the blocks on its axis; otherwise setup stops with "Number of total x1
    grids must be divisible by the number of mesh blocks in x1 direction" (and the same for x2, x3), checked with
    `nb1` and its siblings ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
-4. `nghost` is read (default 1) and `interp_order` (default 2); then `repartition` sets the block's bounds from its
+4. `nghost` is read (default 1) and `interp_order`[^rg-5ae45a042270] (default 2); then `repartition` sets the block's bounds from its
    layout location, with $x_1$ forced to the first block on the cubed sphere, and its counts to
    $n^{\mathrm{glob}}_a/n_b$ ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}}).
 5. `resolve_global_grid` runs `_resolve_axis` on each axis: adopt the block when the global count is 0, else
@@ -157,6 +157,7 @@ In step order (@tbl-ch03-globalgrid-code):
 **How to use it.** The global grid is the `geometry` block; the block grid that cuts it is `distribute`
 (@sec-ch03-layouts). A two-block slab of 8 by 8 cells:
 
+<!-- reader glossary keys -->Keys in this fragment: `x1min`[^rg-651c23886373], `x1max`[^rg-358e9c8d45a7], `x2min`[^rg-f9fe7a2e3627], `x2max`[^rg-6570d7198b2a], `x3min`[^rg-9a187463aabb], `x3max`[^rg-8e0e11089428], `nx1`[^rg-f79ca7158cdc], `nx2`[^rg-34ff2cf5dd50], `nx3`[^rg-c59f0fe092ef], `layout`[^rg-a0f004620ba8], `nb2`[^rg-5502021766c8], `blocks_per_process`[^rg-78b664d1ce43].
 ```yaml
 geometry:
   type: cartesian                      # the default; spherical-polar, gnomonic-equiangle; cylindrical is a stub
@@ -234,8 +235,8 @@ Python setter test checks the resolved counts and the faces of each axis in `AXE
 ({{< code tests/test_local_horizontal_cells.py AXES >}}, {{< code tests/test_local_horizontal_cells.py NG >}}). The gnomonic case is `subdivided_panel_exchange_matches_one_block`
 ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}).
 
-All four entries run on CPU; the gnomonic comparison also has a CUDA case in the same binary, which skips without a
-GPU. None runs on more than one rank. No number is quoted from them here: they were not run for this chapter at
+All four entries run on CPU; the gnomonic comparison also has a CUDA[^rg-7dab1148c3f0] case in the same binary, which skips without a
+GPU[^rg-326ea2f442e6]. None runs on more than one rank. No number is quoted from them here: they were not run for this chapter at
 the pin (missing evidence). How far per-block spacing would move the faces is not measured at the pin.
 
 ### Limits
@@ -253,3 +254,49 @@ zone is therefore not refused here, and what happens instead was not measured. B
 the faces is tested for $x_2$ splits of 2 and 3 blocks on Cartesian and of 2 and 4 blocks per panel on the cubed
 sphere; $x_1$ and $x_3$ splits of the faces are not tested on their own. The switch combinations that are tested are
 listed in the switch coverage matrix, @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-e176f04ce147]: $n_g$ — ghost cells on each side
+
+[^rg-6f20f9603219]: nghost — number of ghost cells at each boundary
+
+[^rg-254534abaa24]: CPU — central processing unit
+
+[^rg-fbe9686e1f06]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-e074f181bf79]: x2min_pi — lower bound of the second coordinate in multiples of pi
+
+[^rg-7888cc7a7f34]: bounds — coordinate bounds
+
+[^rg-7e4292ba0a15]: cells — cell counts and ghost-width options
+
+[^rg-5ae45a042270]: interp_order — order used for grid interpolation
+
+[^rg-651c23886373]: x1min — lower bound of the first coordinate
+
+[^rg-358e9c8d45a7]: x1max — upper bound of the first coordinate
+
+[^rg-f9fe7a2e3627]: x2min — lower bound of the second coordinate
+
+[^rg-6570d7198b2a]: x2max — upper bound of the second coordinate
+
+[^rg-9a187463aabb]: x3min — lower bound of the third coordinate
+
+[^rg-8e0e11089428]: x3max — upper bound of the third coordinate
+
+[^rg-f79ca7158cdc]: nx1 — number of cells in the first coordinate direction
+
+[^rg-34ff2cf5dd50]: nx2 — number of cells in the second coordinate direction
+
+[^rg-c59f0fe092ef]: nx3 — number of cells in the third coordinate direction
+
+[^rg-a0f004620ba8]: layout — block-layout selector
+
+[^rg-5502021766c8]: nb2 — number of blocks along the second coordinate direction
+
+[^rg-78b664d1ce43]: blocks_per_process — number of blocks assigned to each process
+
+[^rg-7dab1148c3f0]: CUDA — NVIDIA's parallel computing platform
+
+[^rg-326ea2f442e6]: GPU — graphics processing unit
+<!-- end reader glossary notes -->

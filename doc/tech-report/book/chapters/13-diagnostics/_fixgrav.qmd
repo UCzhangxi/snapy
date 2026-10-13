@@ -31,7 +31,7 @@ spread over the cells are all in @sec-ch06-fixer.
 
 Local symbols: $b$ a block of any rank; $M_\partial$ [kg] the mass that crossed the
 boundary faces in a step; $\mathrm{wall}(b)$ the interior cells of block $b$ next to such a face; $n$ the accepted
-step, as in $\mathbf U^n$. $\mathcal D$, $M$, $M_{\mathrm{wall}}$, $\rho_i$, $V_i$, $A_f$, $F_f$, the stage index $s$ and
+step, as in $\mathbf U^n$. $\mathcal D$[^rg-9d26fcce8e18], $M$[^rg-7dbcd3c60e1a], $M_{\mathrm{wall}}$, $\rho_i$, $V_i$, $A_f$, $F_f$, the stage index $s$ and
 $\epsilon_{\mathrm m}$ are defined in @sec-appa; the full list is under Derivation.
 
 This section is the fixer's bookkeeping, seen from the log. It says what the fixer measures, how the numbers of
@@ -130,7 +130,7 @@ the bound is checked in @sec-ch06-fixer by `src/snapy_report/ch06/fixer_check.py
 
 The fixer is on, in this sense, when `HydroImpl::gravity_work_fixer` holds: $g_1\neq0$, `gravity-work: cell` and
 the key true ({{< code src/hydro/hydro.cpp HydroImpl::gravity_work_fixer >}}). With the default `face` form the
-YAML default of the key is false
+YAML[^rg-10625bb49d0b] default of the key is false
 (`gravity_work_fixer`, {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}). A value set
 from Python is overwritten to false at setup
 (`gravity_work_fixer`, {{< code src/hydro/hydro.cpp HydroImpl::reset >}}). Then no buffer is filled, no reduction
@@ -140,6 +140,7 @@ is made, and the cycle line carries no `fixgrav=` token.
 
 **A minimal input.** The fixer, and with it `fixgrav=`, needs the cell form:
 
+<!-- reader glossary keys -->Keys in this fragment: `forcing`[^rg-28620e69bc44], `const-gravity`[^rg-edc55a26f5ad], `gravity-work`[^rg-59f1e52c5e88].
 ```yaml
 forcing:
   const-gravity:
@@ -241,6 +242,22 @@ invariant is $E_{\mathrm{tot}}+P$ with the corrected potential energy, not $E_{\
    step's boundary mass. The bound it is compared with is a round-off allowance, not derived (@sec-ch06-fixer).
 3. **Value not asserted.** No test asserts the value of `fixgrav=` or of $\mathcal D$. The tests assert the
    conserved $E_{\mathrm{tot}}+\mathrm{PE}_d$ that the deposit produces.
-4. **More than one rank, other devices.** No test runs the fixer on more than one rank or on CUDA, and none compares
+4. **More than one rank, other devices.** No test runs the fixer on more than one rank or on CUDA[^rg-804f92139063], and none compares
    its sums between decompositions (@sec-ch14-repro).
 5. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-9d26fcce8e18]: $\mathcal D$ — the $E+\mathrm{PE}_d$ defect of a step, the quantity the gravity-work fixer removes [J]
+
+[^rg-7dbcd3c60e1a]: $M$, $M_{\mathrm{wall}}$ — total mass of the domain, and total mass of the $x_1$ wall cells
+
+[^rg-10625bb49d0b]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+
+[^rg-28620e69bc44]: forcing — list of forcing components
+
+[^rg-edc55a26f5ad]: const-gravity — constant-gravity forcing component
+
+[^rg-59f1e52c5e88]: gravity-work — gravity-work options
+
+[^rg-804f92139063]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

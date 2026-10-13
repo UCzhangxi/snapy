@@ -8,8 +8,8 @@ status: draft
 
 ### Summary
 
-The launch settings are not read from the YAML card. `LayoutOptionsImpl`'s constructor reads them from the
-environment that `torchrun` (or `pd-run`) sets for each process. The `distribute` block of the card supplies the layout
+The launch settings are not read from the YAML[^rg-aa1d9fab98ea] card. `LayoutOptionsImpl`'s constructor reads them from the
+environment that `torchrun` (or `pd-run`) sets for each process. The `distribute`[^rg-ade39cdefbfb] block of the card supplies the layout
 and the block counts (@sec-ch03-layouts). A single process with no `MASTER_PORT` picks a random port and never
 opens a store. A run that implies more than one process and has no `MASTER_PORT` stops in the constructor, because
 the ranks could not find one another.
@@ -28,7 +28,7 @@ the ranks could not find one another.
 **Evidence.** The Tests layer below, @tbl-ch14-launch-tests.
 :::
 
-Local symbols: $b$ the blocks per process, `blocks_per_process` [count];
+Local symbols: $b$ the blocks per process, `blocks_per_process`[^rg-485661633e35] [count];
 $n_{\mathrm{proc}}$ the process count [count]; and, written upright as in @sec-ch03-layouts, $\mathrm{proc}$ a
 process rank, $\mathrm{loc}\in[0,b)$ a local block index and $\mathrm{rank}$ a global block rank [count].
 
@@ -100,6 +100,7 @@ tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` do
 
 **A minimal input.** Two processes with two blocks each, on one node. The card sets the block count:
 
+<!-- reader glossary keys -->Keys in this fragment: `layout`[^rg-beff01f6a5bf], `nb2`[^rg-338f46d8d633].
 ```yaml
 distribute:
   layout: slab
@@ -115,7 +116,7 @@ torchrun --no-python --nproc-per-node=2 --master-port=29573 ./straka.release car
 BACKEND=gloo pd-run 2 ./straka.release card.yaml
 ```
 
-runs it; any free port will do for `--master-port`. `pd-run` is on the path after `pip install .` in the source checkout. `pd-run` asks for UCX unless
+runs it; any free port will do for `--master-port`. `pd-run` is on the path after `pip install .` in the source checkout. `pd-run` asks for UCX[^rg-31516cccc593] unless
 `BACKEND` is set, and a build without UCX stops with "backend=ucx requested, but snapy was built without UCX
 support".
 
@@ -201,3 +202,17 @@ status at the pin was not run for this chapter.
 
 The `BLOCKS_PER_PROCESS` readers are `test_exchange.cpp`, `run_exchange_decomp.py` and `run_exchange_backend.py`
 (`BLOCKS_PER_PROCESS`, {{< code tests/test_exchange.cpp main >}}).
+
+<!-- reader glossary notes -->
+[^rg-aa1d9fab98ea]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+
+[^rg-ade39cdefbfb]: distribute — domain-distribution options
+
+[^rg-485661633e35]: blocks_per_process — number of blocks assigned to each process
+
+[^rg-beff01f6a5bf]: layout — block-layout selector
+
+[^rg-338f46d8d633]: nb2 — number of blocks along the second coordinate direction
+
+[^rg-31516cccc593]: UCX — Unified Communication X
+<!-- end reader glossary notes -->
