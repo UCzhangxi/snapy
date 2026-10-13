@@ -79,3 +79,20 @@ def test_an_unlisted_chapter_and_a_bad_id_fail_the_gate(layout, capsys):
     assert "chapters/07-seven.qmd: exists but is not in _quarto.yml" in msgs
     assert any(m.startswith("chapters/99-nine.qmd: not an OUTLINE chapter id") for m in msgs)
     assert render_gate.gate_chapter_list(layout) == 2
+
+
+def test_callout_fields_get_the_body_paragraph_gap_and_nothing_else_does():
+    # The PDF body has a half-line paragraph skip (classoption parskip=half-), but tcolorbox resets \parskip to 0
+    # inside a box, so the fields of a callout ran together. One setting in the callout style restores the gap;
+    # it lives only in Quarto's callout style ("enhanced jigsaw"; code blocks do not use it), and theme.tex sets
+    # \parskip nowhere else, so body text keeps its spacing.
+    import re
+    import yaml
+    cfg = yaml.safe_load((BOOK / "_quarto.yml").read_text())
+    assert "parskip=half-" in cfg["format"]["pdf"]["classoption"]
+    theme = (BOOK / "_tex" / "theme.tex").read_text()
+    style = re.search(r"\\tcbset\{enhanced jigsaw/\.style=\{(.*?)\}\}\n", theme, re.S)
+    assert style, "the callout style is defined in theme.tex"
+    assert "before upper={\\setlength{\\parskip}{0.5\\baselineskip}}" in style.group(1)
+    outside = re.sub(r"(?<!\\)%.*", "", theme[:style.start()] + theme[style.end():])  # TeX comments set nothing
+    assert "parskip" not in outside
