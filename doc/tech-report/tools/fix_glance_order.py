@@ -6,8 +6,12 @@ Sections end at the next non-template heading. The report's Summary, Derivation,
 Numerical method, Code, Tests and Limits subheadings belong to their section.
 Only ordinary, top-level Markdown paragraphs count as prose. Code, math,
 comments, YAML, divs, tables, lists, images and Quarto shortcodes do not.
-Over-length reports count physical content lines, including blanks, excluding
-opening/closing fences. Missing prose and length are advisory, not failures.
+A paragraph is moved only when nothing but blank lines separates it from the
+closing fence of a box/note; if a table, heading or other block sits between,
+the file is left alone and the section is reported as needing a hand-written
+opening (a gate failure). Over-length reports count physical content lines,
+including blanks, excluding opening/closing fences. Missing prose and length are
+advisory, not failures.
 """
 from __future__ import annotations
 
@@ -100,16 +104,23 @@ def blocks(lines: list[str]) -> list[Block]:
     return result
 
 
-def analyze(text: str):
-    """Return (moves, no-prose notes/boxes, over-length boxes).
+def adjacent(lines: list[str], box: Block, prose: Block) -> bool:
+    """True when only blank lines separate the box/note's last line from the prose."""
+    return all(not line.strip() for line in lines[box.end:prose.start])
 
-    A move is (first box/note, first prose). All offsets address original lines.
+
+def analyze(text: str):
+    """Return (moves, no-prose notes/boxes, over-length boxes, needs-hand-written-opening boxes).
+
+    A move is (first box/note, first prose), made only when the prose directly follows a box/note.
+    All offsets address original lines.
     """
-    parsed = blocks(text.splitlines(keepends=True))
+    lines = text.splitlines(keepends=True)
+    parsed = blocks(lines)
     sections = {}
     for block in parsed:
         sections.setdefault(block.section, []).append(block)
-    moves, missing, long = [], [], []
+    moves, missing, long, blocked = [], [], [], []
     for group in sections.values():
         boxes = [b for b in group if b.kind in ('box', 'note')]
         prose = next((b for b in group if b.kind == 'prose'), None)
@@ -117,13 +128,17 @@ def analyze(text: str):
         if boxes and prose is None:
             missing.append(boxes[0])
         elif boxes and boxes[0].start < prose.start:
-            moves.append((boxes[0], prose))
-    return moves, missing, long
+            before = group[group.index(prose) - 1]
+            if before.kind in ('box', 'note') and adjacent(lines, before, prose):
+                moves.append((boxes[0], prose))
+            else:
+                blocked.append(boxes[0])
+    return moves, missing, long, blocked
 
 
 def fix_text(text: str) -> str:
     lines = text.splitlines(keepends=True)
-    moves, _, _ = analyze(text)
+    moves = analyze(text)[0]
     for box, prose in reversed(moves):
         end = prose.end
         while end < len(lines) and not lines[end].strip():
@@ -141,14 +156,16 @@ def fix_text(text: str) -> str:
 
 
 def check_text(text: str, label: str) -> int:
-    moves, missing, long = analyze(text)
+    moves, missing, long, blocked = analyze(text)
     for box, _ in moves:
         print(f'{label}:{box.start + 1}: prose required before box/note: {box.section}')
+    for box in blocked:
+        print(f'{label}:{box.start + 1}: needs a hand-written opening (first prose is not directly after the box): {box.section}')
     for box in missing:
         print(f'{label}:{box.start + 1}: report-only no prose: {box.section}')
     for box in long:
         print(f'{label}:{box.start + 1}: report-only over 6 lines ({box.end - box.start - 2}): {box.section}')
-    return len(moves)
+    return len(moves) + len(blocked)
 
 
 def main(argv=None) -> int:
@@ -162,11 +179,13 @@ def main(argv=None) -> int:
         if args.check:
             count += check_text(text, str(path))
         else:
-            moves, _, _ = analyze(text)
+            moves, _, _, blocked = analyze(text)
             new = fix_text(text)
             if new != text:
                 path.write_bytes(new.encode('utf-8'))
             count += len(moves)
+            for box in blocked:
+                print(f'{path}:{box.start + 1}: needs a hand-written opening, left alone: {box.section}')
     print(f'fix_glance_order: {count} sections ' + ('out of order' if args.check else 'moved'))
     return int(args.check and count > 0)
 

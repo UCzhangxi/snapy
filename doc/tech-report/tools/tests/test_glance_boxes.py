@@ -194,12 +194,35 @@ def test_order_table_caption_is_not_prose():
     assert len(order.analyze(text)[1]) == 1
 
 
-def test_order_finds_first_prose_beyond_template_subheading():
+# Regression (1e702ad): the order tool took a paragraph from beyond a table or a "### Derivation" heading and left
+# that block opening the section. It may move a paragraph only when nothing but blank lines separates it from the
+# box's closing fence; otherwise it leaves the file alone and reports "needs a hand-written opening".
+TABLE = '| A | B |\n|---|---|\n| 1 | 2 |\n\n: A table caption. {#tbl-test}\n\n'
+ADJACENT_FIXTURES = [
+    ('box->paragraph', '## A\n\n### Summary\n\n' + BOX + 'First prose.\n\nLater prose.\n',
+     '## A\n\n### Summary\n\nFirst prose.\n\n' + BOX + 'Later prose.\n'),
+    ('box->table->paragraph', '## A\n\n### Summary\n\n' + BOX + TABLE + 'Prose after the table.\n', None),
+    ('box->### Derivation->paragraph',
+     '## A\n\n### Summary\n\n' + BOX + '### Derivation\n\nFirst prose.\n\n### Numerical method\n\nSecond prose.\n', None),
+]
+
+
+@pytest.mark.parametrize('name,text,want', ADJACENT_FIXTURES, ids=[f[0] for f in ADJACENT_FIXTURES])
+def test_order_moves_only_a_paragraph_directly_after_the_box(name, text, want, tmp_path, capsys):
     order = importlib.import_module('fix_glance_order')
-    text = '## A\n\n### Summary\n\n' + BOX + '### Derivation\n\nFirst prose.\n\n### Numerical method\n\nSecond prose.\n'
-    want = '## A\n\n### Summary\n\nFirst prose.\n\n' + BOX + '### Derivation\n\n### Numerical method\n\nSecond prose.\n'
-    assert order.fix_text(text) == want
-    assert order.analyze(text)[1] == []
+    p = tmp_path / 'order.qmd'
+    p.write_text(text)
+    order.main([str(p)])
+    out = capsys.readouterr().out
+    if want is None:
+        assert p.read_text() == text, f'{name}: a paragraph beyond the next block was moved'
+        assert 'needs a hand-written opening' in out
+        assert order.main(['--check', str(p)]) == 1
+        assert 'needs a hand-written opening' in capsys.readouterr().out
+    else:
+        assert p.read_text() == want
+        assert 'needs a hand-written opening' not in out
+        assert order.main(['--check', str(p)]) == 0
 
 
 @pytest.mark.parametrize('prefix', ['```markdown\n', '~~~markdown\n'])
