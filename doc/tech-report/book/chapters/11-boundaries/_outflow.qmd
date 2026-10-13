@@ -167,15 +167,16 @@ boundary-condition:
   external:
     x1-inner: outflow
     x1-outer: outflow
-dynamics:
-  gravity-work-fixer: false
+forcing:
+  const-gravity:
+    gravity-work-fixer: false
 ```
 
 **Refusals and prerequisites.** `radiating` refuses missing context with "outflow requires EOS, coordinate and
 saved initial background" and unsupported EOS types with "Unsupported outflow EOS: ". It refuses a direct
 non-primitive call with "outflow: prepare primitive context with apply_boundaries". Shape mismatch, nonfinite
-inputs and invalid background density, pressure or composition are also checked there. Disabling the gravity-work
-fixer avoids using a closed-column energy correction on open x1 faces.
+inputs and invalid background density, pressure or composition are also checked there. Set
+`forcing/const-gravity/gravity-work-fixer` to `false` to avoid using a closed-column energy correction on open x1 faces.
 
 **Read the implementation.** `radiating` ({{< code src/bc/bc_func.cpp radiating >}}) contains:
 
@@ -197,7 +198,7 @@ auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 | alpha | {{< code src/bc/bc_func.cpp radiating >}} | `alpha` | `outflow` |
 | outflow | {{< code src/bc/bc_func.cpp is_outflow >}} | `is_outflow` | `outflow` |
 | apply | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_boundaries >}} | `apply_boundaries` | none |
-| fixer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `wall` | `gravity-work-fixer` |
+| fixer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `wall` | `forcing/const-gravity/gravity-work-fixer` |
 
 : Implementation sites for outflow. {#tbl-ch11-outflow-code}
 
