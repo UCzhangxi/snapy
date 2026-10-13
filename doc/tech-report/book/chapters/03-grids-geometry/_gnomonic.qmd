@@ -68,7 +68,7 @@ $$ {#eq-ch03-gnomonic-angle}
 
 @eq-ch03-gnomonic-angle is evaluated at cell centres as `cosine_cell_kj` and `sine_cell_kj`, and at $x_2$ and $x_3$ faces
 as `cosine_face2_kj`, `sine_face2_kj`, `cosine_face3_kj` and `sine_face3_kj` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}). $\cos\psi$ vanishes on the centre lines $X = 0$ or
-$Y = 0$ and is $-\tfrac12$ at the panel corners, where $X^2 = Y^2 = 1$.
+$Y = 0$ and is $-\tfrac12$ at the panel corners where $XY = 1$ and $+\tfrac12$ where $XY = -1$.
 
 **Solid angle.** With $\partial_\xi = C^2\partial_X$, $\partial_\eta = D^2\partial_Y$ and the lengths and angle above,
 the area element of the unit sphere is
@@ -130,7 +130,7 @@ v_3 = \frac{v_{\underline 3} - v_{\underline 2}\cos\psi}{\sin^2\psi},
 \end{aligned}
 $$ {#eq-ch03-gnomonic-lower}
 
-with the underline marking a covariant component (local notation). @eq-ch03-gnomonic-lower is `coord_vec_lower_impl`
+with the underline marking a covariant component (local notation); `[C8]` checks that raising after lowering returns the original velocity.[^gno-c] @eq-ch03-gnomonic-lower is `coord_vec_lower_impl`
 and `coord_vec_raise_impl` ({{< code src/coord/coord_utils_impl.h coord_vec_raise_impl >}}, {{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The conserved momenta are covariant; the primitive
 velocities are contravariant. For an $x_1$ face the local orthonormal frame is $(v_1,\ v_2 + v_3\cos\psi,\
 v_3\sin\psi)$, which keeps $\lvert\mathbf v\rvert^2$; the $x_2$ and $x_3$ faces use the same idea with the face values
@@ -237,7 +237,7 @@ $\Delta_j[A\sin\psi]/V_i$ of $\hat{\mathbf t}_\xi$, `x_ov_rD_kji`, so the pressu
 part is `x_ov_rD_kji * rho * v3 * v3 * sine2` and `- rho * v1 * v_2 / radius`, with `radius` the midpoint `x1v`.
 The radial source is `rho * (v2 * v_2 + v3 * v_3) / radius` plus the pressure term. In the $m_1$ equation the
 face-pressure form of @sec-ch03-sphpolar replaces $2p/r$ whenever face pressures exist. The two velocity identities
-were checked numerically at three panel points to twelve digits (`-(X/D) v3^2 sin^2 psi` for the tangential part,
+were checked by hand at three panel points (`-(X/D) v3^2 sin^2 psi` for the tangential part,
 `-v_2` for the radial part).
 
 What is exact: @eq-ch03-gnomonic-angle to @eq-ch03-gnomonic-lower and the uniform-pressure balance. What is
@@ -295,7 +295,8 @@ make_fig()
 In step order (@tbl-ch03-gnomonic-code):
 
 1. `reset` requires `nx2 == nx3` ("nx2 must equal nx3") and `interp_order` to be 2 ("Only 2nd order ghost
-   interpolation is supported") ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}).
+   interpolation is supported"); it also checks "Ghost zone size must be at least half of the interpolation order"
+   (unreachable with the required order 2 and at least one ghost cell) ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}).
 2. It builds uniform widths and midpoints, the longitude and latitude of the cell centres for output with
    `cs_ab_to_lonlat` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}), then the angle, the great-circle widths, the solid
    angle and `x_ov_rD_kji`, `y_ov_rC_kji` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}).
@@ -408,5 +409,5 @@ the
 curved-face corrections of @sec-ch04 rely on `x1v` times `dx1f` being $\tfrac12(r_+^2 - r_-^2)$. On a block with a
 single $x_1$ cell there are no face pressures and the radial pressure source is $2p/r$ at the midpoint, which differs
 from $\Delta_i[A]p/V_i = 2p\langle r^{-1}\rangle_{V_i}$ by the relative factor $1/(1 + \Delta x_{1,i}^2/(12(x^{\mathrm{m}}_{1,i})^2))$
-(algebra from @eq-ch03-gnomonic-volume; not measured). The velocity source terms are not re-derived here. The switch
+(algebra from @eq-ch03-gnomonic-volume; not measured). The switch
 combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
