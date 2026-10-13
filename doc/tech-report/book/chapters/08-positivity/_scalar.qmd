@@ -8,17 +8,26 @@ status: draft
 
 ### Summary
 
-Passive scalars are transported by the same divergence as the hydro species and are limited by the same
-scheme. This section exists because the call is a separate one, in a separate module, with its own
-counters, and a reader looking for it in the hydro path will not find it.
+Passive scalars are transported by the same divergence as the hydro species and are limited by the same scheme. This
+section exists because the call is a separate one, in a separate module, with its own counters. A reader looking for
+it in the hydro path will not find it.
 
 ::: {.callout-note title="At a glance"}
-- Passive scalars get the same limiter as the hydro species, from the same function.
-- Switch: the same limiter switch; the scalar module runs its own call, which also runs whenever the scalar
-  added its own covariance row (@sec-ch04-fluxcov).
-- The factors are exchanged as a raw copy, never interpolated, for the same reason as the hydro ones.
-- A positive `upper-bound` enables a second limiter on the complement; it requires the EOS limiter.
+**Purpose.** Apply the limiter of @sec-ch08-theta to the passive scalars, and optionally to the complement $b\rho_d - s$.
+
+**Data.** In: `scalar_s`, its three fluxes, the hydro dry-mass flux, $\Delta t$. Out: the scalar fluxes scaled in place, a hit count.
+
+**Placement.** In `ScalarImpl::forward`, after the scalar fluxes are formed and before their divergence.
+
+**Activation.** `equation-of-state/limiter: true` or the scalar's own covariance row; `scalar/upper-bound` $> 0$ adds the second pass.
+
+**Guarantee / limits.** Non-negative scalars per stage; the upper bound only under a mass Courant number below one and explicit dry transport.
+
+**Evidence.** `test_scalar.<b>` (`scalar_upper_bound_holds_both_sides`, $10^{-12}$ in float64); no report check.
 :::
+
+Local symbols: $s$ is a scalar density; $\rho_d$ the dry density; $b$ the configured bound; $r = s/\rho_d$ the
+ratio; $F_s$ and $F_{\mathrm{dry}}$ the scalar and dry-mass face fluxes.
 
 ### Derivation
 
@@ -40,15 +49,24 @@ cover the shared first pass, not this two-pass guarantee.
 ### Numerical method
 
 The call is `_flux1` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), which builds the factors with the same
-`flux_positivity_theta`, counts the cells it limited, and scales through the synchronised factors. The
-synchronisation is the lambda at `theta_opts` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}): it puts the factors into a variable
-map, exchanges them with interpolation switched off, and applies the physical boundary functions, which
-is exactly the fill the limiter's contract requires.
+`flux_positivity_theta`, counts the cells it limited, and scales through the synchronised factors. The synchronisation
+is the lambda at `theta_opts` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}): it puts the factors into a
+variable map, exchanges them with interpolation switched off, and applies the physical boundary functions. That is
+exactly the fill the limiter's contract requires.
 
-The call runs when `limiter` is set or `cov` is
-({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}); the scalar sets `cov` when it added its own covariance row
-({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}), because that row can export tracer a cell does not hold, as for the hydro species
-(@sec-ch08-theta).
+The call runs when `limiter` is set or `cov` is ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}); the scalar
+sets `cov` when it added its own covariance row ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). That is
+because that row can export tracer a cell does not hold, as for the hydro species (@sec-ch08-theta).
+
+**Why the same function, and why the second pass is conditional.** Three facts of the code.
+
+1. The scalar call uses `flux_positivity_theta` unchanged, so the per-stage guarantee of @sec-ch08-theta carries over
+   with its bound ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+2. The factors are exchanged with interpolation off and then passed through the boundary functions, which is the ghost
+   fill the limiter's contract requires. An interpolated ghost is not the neighbour's factor.
+3. The complement $b\rho_d - s$ has the flux $bF_{\mathrm{dry}} - F_s$. Limiting it keeps $r \le b$ only when the dry
+   density is updated by the same explicit mass-flux divergence; the code excludes implicit corrections and dry-mass
+   forcing from that premise.
 
 ### Code
 
@@ -61,17 +79,42 @@ The call runs when `limiter` is set or `cov` is
 
 : Code map of the passive-scalar limiter. {#tbl-ch08-scalar-code}
 
+**How to use it.** The first pass follows the limiter switch; the second pass is set per scalar
+({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}):
+
+```yaml
+scalar:
+  names: [dye]
+  upper-bound: 1.0   # default -1: no second pass
+```
+
+Refused: `upper-bound: 0`, and a positive `upper-bound` without `equation-of-state/limiter: true`
+({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}). The first pass is these lines of `ScalarImpl::forward`
+({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
+
+```cpp
+  if (pmb->phydro->options->eos()->limiter() || cov) {
+    auto theta = flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt);
+    _positivity_hits += (theta.index(cells) < 1.).sum();
+    flux_positivity_scale_(sync_theta(theta), _flux1, _flux2, _flux3, pcoord);
+  }
+```
+
+`cov` records that the scalar added its own covariance row, `cells` is the interior, and `sync_theta` is the
+exchange-and-fill of the factors.
+
 ### Tests
 
-`tests/test_scalar.cpp`, registered as `test_scalar.<b>` in {{< code tests/CMakeLists.txt >}},
-contains `scalar_upper_bound_holds_both_sides` ({{< code tests/test_scalar.cpp >}}).
-It checks both bounds, downstream motion of a top-hat, and preservation of a uniform channel
-with tolerances $10^{-5}$ in float32 and $10^{-12}$ in float64. `test_scalar_flux_covariance` and
-`test_scalar_cov_x1_split`
-({{< code tests/CMakeLists.txt >}}) run passive scalars with `limiter: false` and the covariance on
-(`limiter` in {{< code tests/test_scalar_flux_covariance.py config >}}), so their
-covariance-on arms go through this call; they assert the scalar against the species and the split, not the
-limiter's counters (@sec-ch04-fluxcov).
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_scalar.cpp` (`test_scalar.<b>`) | `scalar_upper_bound_holds_both_sides`: both bounds hold, a top-hat moves downstream, a uniform channel is preserved | $10^{-5}$ in float32, $10^{-12}$ in float64 | set inline in the test ({{< code tests/test_scalar.cpp >}}); the file gives no reason |
+| `test_scalar_flux_covariance_python`, `test_scalar_cov_x1_split_python` | passive scalars with `limiter: false` and the covariance on, so the call runs; they assert the scalar against the species and the split | their own | @sec-ch04-fluxcov; they do not assert the limiter's counters |
+
+: Tests of the passive-scalar limiter. {#tbl-ch08-scalar-tests}
+
+The registrations are in {{< code tests/CMakeLists.txt >}}. No report check covers the scalar call: the shared
+first pass is covered by the checks of @sec-ch08-theta, and the two-pass bound is **missing evidence**. The
+ctests have not been run for this report at the pin: **pending a pinned ctest run**.
 
 ### Limits
 

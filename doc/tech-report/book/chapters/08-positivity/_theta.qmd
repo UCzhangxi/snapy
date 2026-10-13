@@ -8,22 +8,29 @@ status: draft
 
 ### Summary
 
-This is the only mechanism in snapy that *guarantees* anything about positivity, and it guarantees it
-for tracers alone. For each cell and species it computes the largest uniform scaling of that cell's
-outgoing fluxes that cannot drain it below zero in one forward-Euler step, then applies the factor of
-the donor cell to every face. It runs inside the stage operator of @sec-ch04-divergence, after the
-seam averaging of @sec-ch04-seam and before the flux divergence.
+This is the only mechanism in snapy that *guarantees* anything about positivity, and it guarantees it for tracers
+alone. For each cell and species it computes the largest uniform scaling of that cell's outgoing fluxes that cannot
+drain it below zero in one forward-Euler step. It then applies the factor of the donor cell to every face. It runs
+inside the stage operator of @sec-ch04-divergence, after the seam averaging of @sec-ch04-seam and before the flux
+divergence.
 
 ::: {.callout-note title="At a glance"}
-- Scales each face's tracer flux by a factor of the cell it drains, so no cell is emptied past zero.
-- Switch: `equation-of-state/limiter`, default false, and only where there are tracer rows. It also runs
-  whenever the $x_2$ or $x_3$ face-flux covariance rows were added, which is the default (@sec-ch04-fluxcov).
-- Acts on tracer channels only. Density and pressure get floors, not a limiter.
-- Exactly conservative, because both cells of a face use the same factor.
-- Inactive where a cell can afford its outflow, so the high-order flux is untouched almost everywhere.
+**Purpose.** Scale each face's tracer flux by the factor of the cell it drains, @eq-ch08-theta-def, so no cell is emptied past zero.
+
+**Data.** In: the tracer rows of `hydro_u`, the three face fluxes, $\Delta t$. Out: the fluxes scaled in place, and a census.
+
+**Placement.** In `HydroImpl::forward`, after the seam averaging and before the flux divergence, every stage.
+
+**Activation.** `equation-of-state/limiter: true`, or any face-flux covariance row on (the default); tracer rows present.
+
+**Guarantee / limits.** $u_i + \Delta t\,\Delta u_i \ge 0$ per stage, explicit transport only; exactly conservative; nothing for density or pressure.
+
+**Evidence.** `[C1]`, `[C2]`, `[C3]`, `[C5]`, `[C7]` of this chapter's check; the ctests of @tbl-ch08-theta-tests.
 :::
 
-Code citations resolve at the pin of `code_pin.yml`.
+Local symbols: $\mathrm{out}_i$ is what leaves cell $i$ per unit time [units of $u$ times volume per time]. $\theta_i$
+is the dimensionless factor of cell $i$, never above 1. $u_i$, $V_i$, $A_f F_f$ and $\Delta t$ are the tracer density,
+the cell volume, a face area times its normal flux, and the stage step of @sec-ch04-divergence.
 
 ### Derivation
 
@@ -34,16 +41,13 @@ $$
 \theta_i = \min\!\left(1,\ \frac{u_i V_i}{\Delta t\,\mathrm{out}_i}\right),
 $$ {#eq-ch08-theta-def}
 
-with the sign chosen so that only genuinely outgoing contributions count: inflow is not charged.
-Here $u_i$ is the cell's tracer density, $V_i$ its volume, $A_f F_f$ a face area times its normal flux,
-and $\Delta t$ the stage time step, all as defined in @sec-ch04-divergence. This section defines the
-other two: $\mathrm{out}_i$, what leaves the cell per unit time, in units of $u$ times volume per time;
-and $\theta_i$, a dimensionless factor never greater than 1.
-@eq-ch08-theta-def is `flux_positivity_theta`
-({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), with the outgoing sum built from `relu`
-({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}).
-Applying $\theta$ of the donor cell to every face then gives $u_i + \Delta t\,\Delta u_i \ge 0$ cell by
-cell.
+with the sign chosen so that only genuinely outgoing contributions count: inflow is not charged. Here $u_i$ is the
+cell's tracer density, $V_i$ its volume, $A_f F_f$ a face area times its normal flux, and $\Delta t$ the stage time
+step, all as defined in @sec-ch04-divergence. This section defines the other two. $\mathrm{out}_i$ is what leaves the
+cell per unit time, in units of $u$ times volume per time, and $\theta_i$, a dimensionless factor never greater than
+1. @eq-ch08-theta-def is `flux_positivity_theta` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}),
+with the outgoing sum built from `relu` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}). Applying
+$\theta$ of the donor cell to every face then gives $u_i + \Delta t\,\Delta u_i \ge 0$ cell by cell.
 
 `[C1]` checks the guarantee on the state rather than on the formula. Over four thousand random flux
 fields the unlimited update drives some cell negative in every one, worst $-5.879$; the limited update
@@ -53,21 +57,20 @@ measures the result and not the construction.
 Two properties are worth separating, because they are easy to conflate and the chapter is more useful
 if they are kept apart.
 
-*Where the limiter acts.* `[C2]` finds that every one of the $25\,974$ cells that can afford their
-outflow keeps $\theta = 1$ bitwise, and that no cell which cannot afford it was left unlimited. The
-scheme is therefore not a smoothing: away from depletion the high-order flux passes through untouched.
+*Where the limiter acts.* `[C2]` finds that every one of the $25\,974$ cells that can afford their outflow keeps
+$\theta = 1$ bitwise. No cell which cannot afford it was left unlimited. The scheme is therefore not a smoothing: away
+from depletion the high-order flux passes through untouched.
 
-*Why it conserves.* The conservation does **not** come from the donor rule. It comes from both cells of
-a face seeing one number, so that the face cancels when the divergence is summed. `[C3]` separates
-these: on a closed block the limited tendency sums to $1.7\times10^{-16}$ of the flux scale, while a
-per-cell limiter, in which each cell scales only its own outflow and its neighbour does not agree,
-leaks $8.5\times10^{-1}$. Any single factor per face telescopes; the donor rule is what buys positivity,
-and `[C7]` checks that rule separately on forty-six thousand faces.
+*Why it conserves.* The conservation does **not** come from the donor rule. It comes from both cells of a face seeing
+one number, so that the face cancels when the divergence is summed. `[C3]` separates these: on a closed block the
+limited tendency sums to $1.7\times10^{-16}$ of the flux scale. A per-cell limiter, in which each cell scales only its
+own outflow and its neighbour does not agree, leaks $8.5\times10^{-1}$. Any single factor per face telescopes; the
+donor rule is what buys positivity, and `[C7]` checks that rule separately on forty-six thousand faces.
 
-The step is limited at the full $\Delta t$ even inside a multi-stage integrator, and that is sound
-because of how the shipped integrators are built. `[C5]` reads their weights rather than assuming
-them: each stage is $w_0 U^n + w_1(U + \alpha\,\Delta U)$ with $w_0 + w_1 = 1$ and $\alpha = w_2/w_1
-\le 1$, a convex combination of a state already known non-negative and a damped full-step Euler update.
+The step is limited at the full $\Delta t$ even inside a multi-stage integrator, and that is sound because of how the
+shipped integrators are built. `[C5]` reads their weights rather than assuming them. Each stage is
+$w_0 U^n + w_1(U + \alpha\,\Delta U)$ with $w_0 + w_1 = 1$ and $\alpha = w_2/w_1 \le 1$, a convex combination of a
+state already known non-negative and a damped full-step Euler update.
 
 ### Numerical method
 
@@ -89,35 +92,50 @@ from snapy_report.ch08.fig_theta_action import make_fig
 make_fig()
 ```
 
-The factors are built by `flux_positivity_theta` at {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}. The
-outgoing sum is accumulated over exactly the faces the divergence will consume, with a pair of
-rectified terms per direction at `slice` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), so the limiter and the
+The factors are built by `flux_positivity_theta` at {{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}.
+The outgoing sum is accumulated over exactly the faces the divergence will consume, with a pair of rectified terms per
+direction at `slice` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}). So the limiter and the
 divergence cannot disagree about which face drains which cell.
 
-Two details of that function matter to a reader. The available mass stops a little short of zero, at
-`margin` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), because an exact-zero target rounds negative; that margin is
-@sec-ch08-roundoff. And ghost cells are given $\theta = 1$ here, because their outflow is never
-accumulated: the caller must fill the ghost layer the way conserved variables are filled before
-scaling, or the two ranks sharing a face would apply different factors and conservation would fail.
+Two details of that function matter to a reader. The available mass stops a little short of zero, at `margin`
+({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}), because an exact-zero target rounds negative; that
+margin is @sec-ch08-roundoff. And ghost cells are given $\theta = 1$ here, because their outflow is never accumulated.
+The caller must fill the ghost layer the way conserved variables are filled before scaling. Otherwise the two ranks
+sharing a face would apply different factors and conservation would fail.
 
-The scaling is `flux_positivity_scale_` at {{< code src/hydro/flux_positivity.cpp flux_positivity_scale_ >}}, which selects the
-donor per face with a `where` on the sign of the flux. The call site is
-`narrow` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), which also keeps the census that
-@sec-ch08-roundoff describes, and the ghost fill it depends on follows at
-`pmb` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), a raw copy that is never interpolated because an interpolated
-ghost is not the neighbour's factor.
+The scaling is `flux_positivity_scale_` at {{< code src/hydro/flux_positivity.cpp flux_positivity_scale_ >}}, which
+selects the donor per face with a `where` on the sign of the flux. The call site is `narrow`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), which also keeps the census that @sec-ch08-roundoff
+describes. The ghost fill it depends on follows at `pmb`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), a raw copy that is never interpolated because an
+interpolated ghost is not the neighbour's factor.
 
-**The covariance gate.** The face-flux covariance rows of @sec-ch04-fluxcov can
-export tracer that a cell does not hold, so the stage runs this limiter whenever they are on, not only when
-`limiter` is set. The condition is `cov2 || cov3` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), where `cov2` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) and `cov3` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) record that a covariance row was added on the $x_2$ or
-$x_3$ faces. The
-passive scalars have the same gate (@sec-ch08-scalar). The gate binds only where the covariance is on and the
-limiter is off: with either the limiter on or the covariance off the stage limits exactly as it would without it.
-What the gate is worth is measured on the six-panel moist deck of
-`test_flux_positivity_cubedsphere_moist.py`, covariance on, limiter off, 40 cycles: minimum vapour
-$-2.2\times10^{-10}$ with the gate suppressed against 0 with it, and kintera's negative-concentration warnings
-1474 against 0. The species drift that remains in that arm, $2.4\times10^{-10}$ and the same as in the limited
-arm, is the panel-seam leak of @sec-ch04-fluxcov, not a failure of the gate.[^ch08-gate-numbers]
+**The covariance gate.** The face-flux covariance rows of @sec-ch04-fluxcov can export tracer that a cell does not
+hold. So the stage runs this limiter whenever they are on, not only when `limiter` is set. The condition is
+`cov2 || cov3` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), where `cov2`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) and `cov3`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) record that a covariance row was added on the $x_2$ or
+$x_3$ faces. The passive scalars have the same gate (@sec-ch08-scalar). The gate binds only where the covariance is on
+and the limiter is off. With either the limiter on or the covariance off the stage limits exactly as it would without
+it. What the gate is worth is measured on the six-panel moist deck of `test_flux_positivity_cubedsphere_moist.py`,
+covariance on, limiter off, 40 cycles. The minimum vapour is $-2.2\times10^{-10}$ with the gate suppressed against 0
+with it. Kintera's negative-concentration warnings 1474 against 0. The species drift that remains in that arm,
+$2.4\times10^{-10}$ and the same as in the limited arm, is the panel-seam leak of @sec-ch04-fluxcov, not a failure of
+the gate.[^ch08-gate-numbers]
+
+**Why the donor factor, and what it costs.** Four facts of the code and two bounds.
+
+1. The outgoing sum is accumulated over exactly the faces the divergence consumes, as a rectified pair per direction
+   ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}). So the limiter and the divergence agree about
+   which face drains which cell.
+2. The available mass is $(1 - 4096\,\epsilon)\,\max(u_i, 0)\,V_i$, not $u_i V_i$: an exact-zero target rounds
+   negative, so a margin of 4096 ulp is kept (@sec-ch08-roundoff). The fraction left behind is $9.1\times10^{-13}$ in
+   double precision and $4.9\times10^{-4}$ in single.
+3. Both cells of a face use one factor, so the scaled flux telescopes when the divergence is summed. The only error is
+   the rounding of that sum, at most $(n_f - 1)\,\delta_{\mathrm{mach}}$ times the sum of the face magnitudes over
+   $n_f$ faces; `[C3]` measures $1.7\times10^{-16}$ of the flux scale.
+4. The ghost factors are a raw copy, never interpolated ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+   the donor of a seam face is the neighbour's edge cell, and an interpolated ghost is not its factor.
 
 ### Code
 
@@ -136,6 +154,35 @@ The symbol column is the citation's anchor.
 
 : Code map of the tracer flux positivity limiter. {#tbl-ch08-theta-code}
 
+**How to use it.** Turn the limiter on in the card; it also turns on the floors of @sec-ch08-eoslimiter and
+@sec-ch08-reconfloors ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}):
+
+```yaml
+dynamics:
+  equation-of-state:
+    limiter: true   # default false
+```
+
+With the face-flux covariance on, which is the default, the limiter runs even with `limiter: false`; the
+unlimited scheme needs `SNAP_FLUX_COVARIANCE=0` in the environment as well. Refused: nothing of its own; the
+limiter is skipped when there are no tracer rows. The factor is these lines of `flux_positivity_theta`
+({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}):
+
+```cpp
+  double margin = kPositivityRoundoffUlp * machine_epsilon(u.scalar_type());
+  auto avail = u.relu() * pcoord->cell_volume() * (1. - margin);
+  auto drain = out.mul_(dt);
+  if (drain_out) *drain_out = drain;
+  return torch::where(drain > 0.,
+                      (avail / drain.clamp_min(1e-300)).clamp_max(1.0),
+                      torch::ones_like(u));
+```
+
+`avail` is the mass the cell can afford, `drain` the mass it would lose unlimited, and the ratio is clamped at one. A
+cell that drains nothing keeps the factor one. The gate in the stage is
+`if ((options->eos()->limiter() || cov2 || cov3) && ny > 0)`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -150,17 +197,24 @@ The symbol column is the citation's anchor.
 : Tests of the tracer flux positivity limiter. {#tbl-ch08-theta-tests}
 
 Because the covariance defaults on and turns this limiter on with it, the arms that mean to run unlimited set
-`SNAP_FLUX_COVARIANCE=0`: the limiter-off arms of `test_flux_positivity_carry`
-({{< code tests/CMakeLists.txt >}}) and `test_flux_positivity_python` ({{< code tests/CMakeLists.txt >}}) do so, the
-first withholding no flux (`limited` = 0) and the second's unlimited base arm staying positive with drifts at
-$4\times10^{-16}$. A second arm of the six-panel test, `test_flux_positivity_cubedsphere_cov_off`
-({{< code tests/CMakeLists.txt >}}), keeps the unlimited base arm covered with the covariance off.[^ch08-gate-arms] No test asserts the
-minimum-vapour and warning counts quoted above; they are **missing evidence** at a pinned sha.
+`SNAP_FLUX_COVARIANCE=0`. The limiter-off arms of `test_flux_positivity_carry` ({{< code tests/CMakeLists.txt >}}) and
+`test_flux_positivity_python` ({{< code tests/CMakeLists.txt >}}) do so. The first withholds no flux (`limited` = 0)
+and the second's unlimited base arm stays positive with drifts at $4\times10^{-16}$. A second arm of the six-panel
+test, `test_flux_positivity_cubedsphere_cov_off` ({{< code tests/CMakeLists.txt >}}), keeps the unlimited base arm
+covered with the covariance off.[^ch08-gate-arms] No test asserts the minimum-vapour and warning counts quoted above;
+they are **missing evidence** at a pinned sha.
 
-::: {.callout-important title="Check"}
-The check is `src/snapy_report/ch08/positivity_check.py`, output
-`src/snapy_report/ch08/positivity_check.out`, 7 of 7 claims passing.
-:::
+The chapter's check is a numpy port of the factor and the donor rule on random flux fields; it imports no
+snapy.[^ch08-theta-run] `[C1]`: over 4000 random fields the unlimited update goes negative in every one, worst
+$-5.879$, and the limited update never does, worst exactly $0$. `[C2]`: all $25\,974$ cells that can afford
+their outflow keep $\theta = 1$ bitwise, and no cell that cannot was left unlimited. `[C3]`: on a closed block
+the limited tendency sums to $1.7\times10^{-16}$ of the flux scale, while a per-cell limiter leaks
+$8.5\times10^{-1}$. `[C5]`: every shipped integrator forms a stage as $w_0 U^n + w_1(U + \alpha\,\Delta U)$
+with $\alpha \le 1$. `[C7]`: $46\,000$ interior faces follow the donor rule with no mismatch. The ctests named
+above have not been run for this report at the pin: **pending a pinned ctest run**.
+
+[^ch08-theta-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `positivity_check.out`, lines `[C1]`, `[C2]`, `[C3]`, `[C5]` and `[C7]`.
 
 ### Limits
 
@@ -173,13 +227,12 @@ The check is `src/snapy_report/ch08/positivity_check.py`, output
   limiter, or the implicit solve can still drive a tracer negative.
 :::
 
-1. **The ghost fill is a precondition, not a check.** If a caller scales before filling $\theta$'s ghost
-   layer, the two ranks of a seam face apply different factors and conservation breaks silently. The
-   code says so in its header; nothing asserts it at runtime.
-2. **Hypothesis, not measured here.** That limiting at the full $\Delta t$ is enough for the multi-stage
-   update rests on the convex-combination argument `[C5]` verifies for the shipped weights. It is an
-   argument about the weights, not a measurement of a multi-stage run; no check in this chapter
-   integrates a full Runge-Kutta step.
+1. **The ghost fill is a precondition, not a check.** If a caller scales before filling $\theta$'s ghost layer, the
+   two ranks of a seam face apply different factors. Conservation then breaks silently. The code says so in its
+   header; nothing asserts it at runtime.
+2. **Hypothesis, not measured here.** That limiting at the full $\Delta t$ is enough for the multi-stage update rests
+   on the convex-combination argument `[C5]` verifies for the shipped weights. It is an argument about the weights,
+   not a measurement of a multi-stage run; no check in this chapter integrates a full Runge-Kutta step.
 
 [^ch08-gate-numbers]: Source: the chengcli/snapy#307 body, section "Positivity gate", and the commit message
     of that round's squash-merge, which is an ancestor of this book's pin. Deck: the test named above. Run: not
