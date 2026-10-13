@@ -15,10 +15,11 @@ move, so the dry-air tracers of @sec-ch10-tracer are unaffected.
 
 Local symbols: $a_n$ is the particle radius of condensate $n$ [m], $\rho_{\mathrm p,n}$ its material density
 [$\mathrm{kg\,m^{-3}}$], $\beta_n$ the Cunningham slip factor [-], $\lambda$ the mean free path of the background gas
-[m], $\mathrm{Kn}=\lambda/a_n$ the Knudsen number [-], and $m$, $d$, $\epsilon$ the molecular mass [kg], diameter [m]
-and Lennard-Jones well depth [J] of the background gas; $k_{\mathrm B}$ is Boltzmann's constant, as in @sec-ch02.
-Tracked in ISSUES.md. $\mu$ is the dynamic viscosity of
-NOTATION.md section 8.
+[m], $\mathrm{Kn}=\lambda/a_n$ the Knudsen number [-], and $m_{\mathrm{mol}}$, $d_{\mathrm{mol}}$, $\epsilon_{\mathrm{LJ}}$ the
+molecular mass [kg], molecular diameter [m] and Lennard-Jones well depth [J] of the background gas (YAML `a-mass`,
+`a-diameter`, `a-epsilon-LJ`); $k_{\mathrm B}$ is Boltzmann's constant, as in @sec-ch02, and $\mu$ the dynamic viscosity
+of NOTATION.md §8. Bare $m$ is the momentum, bare $d$ is not used, and bare $\epsilon$ is the pivot tolerance, so all
+three carry a subscript here.
 
 ### Summary
 
@@ -46,26 +47,31 @@ build without `forcing/const-gravity`.
 
 ### Derivation
 
-Stokes drag on a sphere of radius $a_n$ moving slowly through a gas of viscosity $\mu$ balances its buoyant weight
-at the velocity $2a_n^2g_1(\rho_{\mathrm p,n}-\rho)/(9\mu)$. When the mean free path of the gas is not small compared
+Stokes drag on a sphere of radius $a_n$ moving slowly at velocity $w$ through a gas of viscosity $\mu$ is
+$6\pi\mu a_nw$; balancing it against the buoyant weight $\tfrac43\pi a_n^3(\rho_{\mathrm p,n}-\rho)g_1$ gives
+$w=2a_n^2g_1(\rho_{\mathrm p,n}-\rho)/(9\mu)$. When the mean free path of the gas is not small compared
 with the particle, the drag is reduced by the Cunningham factor $\beta_n=1+\mathrm{Kn}\,(1.256+0.4\,e^{-1.1/\mathrm{Kn}})$.
 Unless a non-zero `const-vsed` replaces it, the terminal velocity is
 
 $$
-w_{\mathrm{s},n} = \frac{2\beta_n\,a_n^2\,g_1\,(\rho_{\mathrm{p},n}-\rho)}{9\,\mu},
+w_{\mathrm{s},n} = \frac{2\beta_n\,a_n^2\,g_1\,(\rho_{\mathrm{p},n}-\rho)}{9\,\mu}.
 $$ {#eq-ch10-sed-stokes}
 
-clamped to $\pm$`upper-limit`. @eq-ch10-sed-stokes is computed in `SedVelImpl::forward` as `stokes`
-({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}); a non-zero `const_vsed` is the whole velocity.
+@eq-ch10-sed-stokes is computed in `SedVelImpl::forward` as `stokes`
+({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}). A non-zero `const_vsed` replaces it, and either
+value is then clamped to $\pm$`upper-limit`.
 The viscosity is the Chapman-Enskog value for a Lennard-Jones gas,
 
 $$
-\mu = \frac{5}{16}\,\frac{\sqrt{m\,k_{\mathrm B}T/\pi}\,(k_{\mathrm B}T/\epsilon)^{0.16}}{1.22\,d^2},
+\mu = \frac{5}{16}\,\frac{\sqrt{m_{\mathrm{mol}}\,k_{\mathrm B}T/\pi}\,(k_{\mathrm B}T/\epsilon_{\mathrm{LJ}})^{0.16}}{1.22\,d_{\mathrm{mol}}^2}.
 $$ {#eq-ch10-sed-viscosity}
 
-with molecular mass $m$,
-diameter $d$ and well depth $\epsilon$ from the YAML defaults of an $\mathrm{H_2}$ background, and the mean free path
-is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m)}$; the code calls $\mu$ `eta`
+This is the Chapman-Enskog viscosity $\mu=\tfrac5{16}\sqrt{\pi m_{\mathrm{mol}}k_{\mathrm B}T}\big/\big(\pi d_{\mathrm{mol}}^2\,\Omega_{\mathrm{c}}\big)$
+with the collision integral approximated as $\Omega_{\mathrm{c}}=1.22\,(k_{\mathrm B}T/\epsilon_{\mathrm{LJ}})^{-0.16}$ (local
+symbol; $\Omega$ alone is the rotation rate),
+with molecular mass $m_{\mathrm{mol}}$,
+diameter $d_{\mathrm{mol}}$ and well depth $\epsilon_{\mathrm{LJ}}$ from the YAML defaults of an $\mathrm{H_2}$ background, and the mean free path
+is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m_{\mathrm{mol}})}$; the code calls $\mu$ `eta`
 ({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}).
 The port confirms the sign convention ($g_1<0$ and a dense particle settle, `[C1]`), the two limits of
 $\beta_n$ (1 in the continuum, $1.656\,\mathrm{Kn}$ in the free-molecular limit, `[C2]`), that $\mu$ depends on $T$

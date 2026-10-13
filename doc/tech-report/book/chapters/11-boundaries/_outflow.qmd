@@ -16,12 +16,13 @@ context: the EOS for the sound speed, the coordinate for the face-normal frame, 
 backgrounds. The conserved-variable driver converts to primitives for it, and converts back with the dry
 density as the tracer carrier.
 
-Local symbols: $\mathbf W^{\mathrm{bg}}$ denotes the saved initial boundary background, which is distinct
-from the well-balanced reference. $v_{\mathrm{out}}$ is outward velocity [$\mathrm{m\,s^{-1}}$]; $Z_{\mathrm{ac}}$
-is acoustic impedance [$\mathrm{kg\,m^{-2}\,s^{-1}}$]; $a_+$ and $a_-$ are acoustic perturbations
-[$\mathrm{m\,s^{-1}}$]; $d_{\mathrm{ent}}$ is the advected density combination [$\mathrm{kg\,m^{-3}}$];
-$\alpha_{\mathrm{bc}}$ is a dimensionless admissibility factor. All are proposed in the chapter's notation issue.
-A prefix $\delta$ below means subtraction of this background, not the centroid offset $\delta_i$.
+Local symbols, with NOTATION.md §8a: $q_{\mathrm{bg}}$ is the saved initial boundary background of a primitive $q$
+(distinct from the well-balanced reference) and $\mathbf W_{\mathrm{bg}}$ the whole background; $d_q=q-q_{\mathrm{bg}}$ is the
+interior perturbation of $q$, with $d_\rho$ [$\mathrm{kg\,m^{-3}}$], $d_v$ [$\mathrm{m\,s^{-1}}$] for the outward velocity and
+$d_p$ [$\mathrm{Pa}$]; $Z=\rho_{\mathrm{bg}}c_{s,\mathrm{bg}}$ [$\mathrm{kg\,m^{-2}\,s^{-1}}$] is the acoustic impedance and
+$\alpha_{\mathrm{adm}}\in[0,1]$ the admissibility factor. New here: $v_{\mathrm{out}}$ the outward normal velocity
+[$\mathrm{m\,s^{-1}}$]; $\mathcal J_\pm=d_v\pm d_p/Z$ [$\mathrm{m\,s^{-1}}$] the two acoustic mode amplitudes; and
+$d_{\mathrm{ent}}=d_\rho-d_p/c_{s,\mathrm{bg}}^2$ [$\mathrm{kg\,m^{-3}}$] the advected (entropy) combination.
 
 ### Summary
 
@@ -47,54 +48,49 @@ $0.05$.
 
 ### Derivation
 
-Freeze an admissible background and an outward Cartesian face frame. Linearized mass, normal momentum and
-pressure equations have material derivatives proportional respectively to minus background density, minus
-inverse background density and minus background density times squared sound speed, all multiplying the
-appropriate normal derivative. For the outer x1 face, write the frozen material derivative as
-$\mathrm D/\mathrm Dt=\partial_t+v_{\mathrm{out}}^{\mathrm{bg}}\partial_1$.
-The three equations are
+Freeze an admissible background and an outward Cartesian face frame. For the outer $x_1$ face, write the frozen
+material derivative as $\mathrm D/\mathrm Dt=\partial_t+v_{\mathrm{out},\mathrm{bg}}\partial_1$. The linearized mass, normal
+momentum and pressure equations of the perturbation are
 
 $$
 \begin{aligned}
-\frac{\mathrm D\delta\rho}{\mathrm Dt}&=-\rho^{\mathrm{bg}}\partial_1\delta v_{\mathrm{out}},\\
-\frac{\mathrm D\delta v_{\mathrm{out}}}{\mathrm Dt}&=-\frac{1}{\rho^{\mathrm{bg}}}\partial_1\delta p,\\
-\frac{\mathrm D\delta p}{\mathrm Dt}&=-\rho^{\mathrm{bg}}(c_s^{\mathrm{bg}})^2\partial_1\delta v_{\mathrm{out}}.
+\frac{\mathrm Dd_\rho}{\mathrm Dt}&=-\rho_{\mathrm{bg}}\,\partial_1d_v,\\
+\frac{\mathrm Dd_v}{\mathrm Dt}&=-\frac{1}{\rho_{\mathrm{bg}}}\,\partial_1d_p,\\
+\frac{\mathrm Dd_p}{\mathrm Dt}&=-\rho_{\mathrm{bg}}c_{s,\mathrm{bg}}^2\,\partial_1d_v.
 \end{aligned}
 $$
 
-Eliminating the pressure and velocity coupling gives the combinations
+Adding $\pm1/Z$ times the pressure equation to the momentum equation, and subtracting $1/c_{s,\mathrm{bg}}^2$ times the
+pressure equation from the mass equation, decouples them into
 
 $$
 \begin{aligned}
-Z_{\mathrm{ac}}&=\rho^{\mathrm{bg}}c_s^{\mathrm{bg}},\\
-a_\pm&=\delta v_{\mathrm{out}}\pm\delta p/Z_{\mathrm{ac}},\\
-d_{\mathrm{ent}}&=\delta\rho-\delta p/(c_s^{\mathrm{bg}})^2.
+\partial_t\mathcal J_\pm+(v_{\mathrm{out},\mathrm{bg}}\pm c_{s,\mathrm{bg}})\,\partial_1\mathcal J_\pm&=0,\qquad
+\mathcal J_\pm=d_v\pm d_p/Z,\quad Z=\rho_{\mathrm{bg}}c_{s,\mathrm{bg}},\\
+\partial_t d_{\mathrm{ent}}+v_{\mathrm{out},\mathrm{bg}}\,\partial_1 d_{\mathrm{ent}}&=0,\qquad
+d_{\mathrm{ent}}=d_\rho-d_p/c_{s,\mathrm{bg}}^2 .
 \end{aligned}
 $$ {#eq-ch11-outflow-modes}
 
-The three combinations of @eq-ch11-outflow-modes are formed by the tensors `plus`, `minus` and `entropy` of
+The combinations of @eq-ch11-outflow-modes are formed by the tensors `plus`, `minus` and `entropy` of
 `radiating` ({{< code src/bc/bc_func.cpp radiating >}}), with `impedance` the background density times the
-background sound speed `c0`; the same function inverts them below.
-Adding and subtracting the linearized momentum equation and the pressure equation divided by the impedance
-yields transport of $a_\pm$ at the two acoustic speeds; subtracting the pressure equation divided by the
-squared sound speed from continuity cancels its divergence term and leaves advection of $d_{\mathrm{ent}}$.
-Integrating each constant-coefficient transport equation over a boundary-adjacent cell gives its incoming
-minus outgoing face transport. A characteristic entering from outside has no interior-determined
-perturbation: the boundary chooses zero perturbation for that incoming mode. The code uses the *current*
-outward velocity and sound speed `c` of the nearest owned cell for this selector, while
-@eq-ch11-outflow-modes uses the background impedance and sound speed. It is therefore a locally linear
-characteristic prescription, not the exact nonlinear exterior solution.
+background sound speed `c0`; the same function inverts them below. Each is carried along its own speed, so at an
+outer face $\mathcal J_+$ leaves the domain when $v_{\mathrm{out}}+c_s\ge0$, $\mathcal J_-$ when $v_{\mathrm{out}}-c_s\ge0$,
+and $d_{\mathrm{ent}}$ when $v_{\mathrm{out}}\ge0$. A characteristic entering from outside has no interior-determined
+perturbation: the boundary chooses zero perturbation for that incoming mode. The code uses the *current* outward
+velocity and sound speed `c` of the nearest owned cell for this selector, while @eq-ch11-outflow-modes uses the
+background impedance and sound speed. It is therefore a locally linear characteristic prescription, not the exact
+nonlinear exterior solution.
 
-Keep $a_+$ when $v_{\mathrm{out}}+c_s\ge0$, keep $a_-$ when $v_{\mathrm{out}}-c_s\ge0$, and otherwise set each
-to zero. Keep $d_{\mathrm{ent}}$, the tangential velocities, the composition and the tracer-ratio
-perturbations when $v_{\mathrm{out}}\ge0$; otherwise set them to zero. Equality selects the outgoing branch.
-Invert the split:
+Keep $\mathcal J_+$ when $v_{\mathrm{out}}+c_s\ge0$, keep $\mathcal J_-$ when $v_{\mathrm{out}}-c_s\ge0$, and otherwise set each
+to zero. Keep $d_{\mathrm{ent}}$, the tangential velocities, the composition and the tracer-ratio perturbations when
+$v_{\mathrm{out}}\ge0$; otherwise set them to zero. Equality selects the outgoing branch. Invert the split:
 
 $$
 \begin{aligned}
-\delta v_{\mathrm{out}}&=(a_++a_-)/2,\\
-\delta p&=Z_{\mathrm{ac}}(a_+-a_-)/2,\\
-\delta\rho&=d_{\mathrm{ent}}+\delta p/(c_s^{\mathrm{bg}})^2.
+d_v&=(\mathcal J_++\mathcal J_-)/2,\\
+d_p&=Z(\mathcal J_+-\mathcal J_-)/2,\\
+d_\rho&=d_{\mathrm{ent}}+d_p/c_{s,\mathrm{bg}}^2.
 \end{aligned}
 $$ {#eq-ch11-outflow-inverse}
 
@@ -106,8 +102,8 @@ in the velocity update. The same selected interior perturbation is supplied to e
 retains its own saved background.
 
 For any lower-bounded component $q$ with floor $q_{\min}$, admissibility requires
-$q^{\mathrm{bg}}+\alpha_{\mathrm{bc}}\delta q\ge q_{\min}$.
-If $\delta q<0$, division gives the bound $(q^{\mathrm{bg}}-q_{\min})/(-\delta q)$;
+$q_{\mathrm{bg}}+\alpha_{\mathrm{adm}}d_q\ge q_{\min}$.
+If $d_q<0$, division gives the bound $(q_{\mathrm{bg}}-q_{\min})/(-d_q)$;
 otherwise that component imposes no reduction. Start with one, take the minimum over all bounds, multiply
 each binding bound below one by $0.99$, and clamp the result to $[0,1]$. Apply this to density with the EOS
 density floor, pressure with the pressure floor, every $y_n$ with floor zero, the complement $1-\sum_n y_n$
@@ -115,9 +111,10 @@ with floor zero, and every passive tracer ratio $r_n$ with floor zero. The nonne
 the composition sum. The same factor multiplies every perturbation, including the tracers:
 
 $$
-\mathbf W^{\mathrm{ghost}}=\mathbf W^{\mathrm{bg,ghost}}+
-\alpha_{\mathrm{bc}}\delta\mathbf W.
+\mathbf W^{\mathrm{ghost}}=\mathbf W_{\mathrm{bg}}^{\mathrm{ghost}}+\alpha_{\mathrm{adm}}\,\mathbf d_{\mathbf W},
 $$ {#eq-ch11-outflow-admissible}
+
+with $\mathbf d_{\mathbf W}$ the selected perturbation of every primitive row.
 
 The tensor `alpha` of `radiating` ({{< code src/bc/bc_func.cpp radiating >}}) implements
 @eq-ch11-outflow-admissible through the closure `lower`, which folds one bound at a time into the running

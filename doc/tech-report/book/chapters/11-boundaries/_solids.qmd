@@ -17,9 +17,10 @@ is what the rectification guarantees along every grid line; and the solid cells 
 reconstruction and the implicit solve can read without producing a flux, which is what the placeholder fill,
 the face mirror and the masked rows provide.
 
-Local symbols: $D_i(b,l)$ is the minimum flip count after processing $i$ mask entries, ending with bit
-$b$ and capped run length $l$; $m_b$ is its required run length (counts). Bits and $\mathrm{cost}_i(b)$, the
-candidate flip cost at position $i$, are dimensionless.
+Local symbols: $D_i(b,\ell)$ is the minimum flip count after processing $i$ mask entries, ending with bit $b$ and capped
+run length $\ell$; $\ell^{\min}_b$ is the required run length of bit $b$ (counts): $\ell^{\min}_0=3$ for fluid, $\ell^{\min}_1=2$
+for solid. ($l$ is NOTATION's stencil offset and $m_1$ its momentum component, so neither is used here.)
+Bits and $\mathrm{cost}_i(b)$, the candidate flip cost at position $i$, are dimensionless.
 $\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$.
 These symbols are proposed in the notation issue.
 
@@ -54,35 +55,37 @@ applies that rule after the fluid side has been reconstructed: for every row the
 takes the fluid-side value, and the normal velocity row of the direction being swept takes its negative. A
 face with solid on both sides has no fluid flux interpretation in this argument.
 
-The rectification problem on one line minimizes the count of changed zeros. Set $m_0=3$ and $m_1=2$.
-A candidate equal to the original bit costs zero; changing zero to one costs one; changing one to zero has
-infinite cost. Start with $D_0(0,0)=D_0(1,0)=0$ and all other states infinite. Extending the current bit increments
-its run length, capped at $m_b$. Switching to the other bit starts length one only if the previous length is
-zero (the start) or at least $m_b$. For every permitted predecessor, update the candidate state by the minimum
+The rectification problem on one line minimizes the count of changed zeros. Set $\ell^{\min}_0=3$ and $\ell^{\min}_1=2$. A candidate equal to the original bit costs zero; changing zero to one costs
+one; changing one to zero has infinite cost. Start with $D_0(0,0)=D_0(1,0)=0$ and all other states infinite. Extending
+the current bit increments its run length, capped at $\ell^{\min}_b$. Switching from bit $b_{\mathrm{old}}$ to the other
+bit starts a run of length one only if the run being closed has length zero (the start) or at least
+$\ell^{\min}_{b_{\mathrm{old}}}$, the minimum of the bit being closed. For every permitted predecessor, update the candidate state by the minimum
 of its existing cost and predecessor cost plus the flip cost:
 
 $$
-D_{i+1}(b,l)\leftarrow\min\bigl(D_{i+1}(b,l),D_i(b_{\mathrm{old}},l_{\mathrm{old}})
+D_{i+1}(b,\ell)\leftarrow\min\bigl(D_{i+1}(b,\ell),D_i(b_{\mathrm{old}},\ell_{\mathrm{old}})
 +\mathrm{cost}_i(b)\bigr).
 $$ {#eq-ch11-solids-dp}
 
 `compute_min_flips` ({{< code src/bc/flip_zero_impl.h compute_min_flips >}}) implements @eq-ch11-solids-dp
 with the cost rule of `can_flip` ({{< code src/bc/flip_zero_impl.h can_flip >}}) and records the predecessor
 only on a strict improvement. The terminal run must also reach its minimum: the answer is the least cost
-over the end states whose run length is at least $m_b$, and a line with no admissible end state returns
+over the end states whose run length is at least $\ell^{\min}_b$, and a line with no admissible end state returns
 $-1$. Every admissible prefix ends in one of these states; induction on prefix length shows the recurrence
 retains the smallest possible cost. `reconstruct_solution`
 ({{< code src/bc/flip_zero_impl.h reconstruct_solution >}}) walks the recorded predecessors back and writes
 a minimizing line. This proves a line optimum, not a global multidimensional optimum after alternating
 sweeps. `flip_zero_cpu` ({{< code src/bc/bc_dispatch.cpp flip_zero_cpu >}}) runs the two kernels on every
-line of the tensor iterator with $m_0=3$, $m_1=2$ and only zero-to-one flips allowed, and sums the line
+line of the tensor iterator with $\ell^{\min}_0=3$, $\ell^{\min}_1=2$ and only zero-to-one flips allowed, and sums the line
 costs into an atomic counter. Check C5 compares an independent dynamic program with exhaustive enumeration
 for every binary line of lengths two through eight.
 
 For the partial implicit system, $\mathsf H=\operatorname{diag}(1,-1,1)$ on the density, normal momentum and
-energy rows. A reflecting ghost increment is $\mathsf H\Delta\mathbf U_i$. Substitution into the lower
-neighbour block contributes $\mathsf B_i\mathsf H\Delta\mathbf U_i$ to the diagonal; the upper side contributes
-$\mathsf C_i\mathsf H\Delta\mathbf U_i$. Thus
+energy rows. Row $i$ of the column system reads $\mathsf B_i\boldsymbol\delta_{i-1}+\mathsf A_i\boldsymbol\delta_i+\mathsf C_i\boldsymbol\delta_{i+1}$,
+with $\boldsymbol\delta_i$ the implicit solve's unknown (NOTATION.md §7). Next to a solid below, the ghost increment is
+the reflection $\boldsymbol\delta_{i-1}=\mathsf H\boldsymbol\delta_i$, so the lower term becomes $\mathsf B_i\mathsf H\boldsymbol\delta_i$ and
+joins the diagonal; next to a solid above, $\boldsymbol\delta_{i+1}=\mathsf H\boldsymbol\delta_i$ and $\mathsf C_i\mathsf H\boldsymbol\delta_i$ joins it.
+This is the closure of @sec-ch07-vic-closure, where $\mathsf H$ is written `Bnd`. Thus
 
 $$
 \begin{aligned}
