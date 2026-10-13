@@ -1,39 +1,74 @@
 ## The centred linear polynomials (`type: cp3`, `cp5`) {#sec-ch04-cp}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.5
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.5; src/recon/cp3.cpp, src/recon/cp5.cpp, src/recon/interp_impl.h, src/recon/recon_dispatch.cpp,
+         src/recon/interpolation.cpp, tests/test_weno.cpp at the pin
 status: draft
 -->
 
 ### Summary
 
-These are the plain polynomial reconstructions: fit a polynomial through a fixed number of neighbouring cell
-averages and evaluate it at the face. Nothing adapts, so they are the fast and accurate choice where the field
-is smooth and the wrong choice across a shock. They matter beyond their own switch because they are what the
-velocity and pressure rows actually use whenever a deck selects a WENO type (@sec-ch04-framework).
+These reconstructions fit one polynomial through three or five neighbouring cell averages and evaluate it at the
+face. The weights are fixed numbers, so the schemes are cheap and reach third and fifth order where the field is
+smooth, and they overshoot at a jump because nothing limits them. Besides their own switches they are the
+velocity and pressure interpolants whenever a deck selects `weno3` or `weno5` (@sec-ch04-framework). Both are
+off by default.
 
 ::: {.callout-note title="At a glance"}
-- Fixed-weight linear face interpolants of third and fifth order, with no limiter.
-- Switches: `type: cp3`, `type: cp5`; they are also the `interp2` partners of `weno3` and `weno5`.
-- Reach their nominal order on a smooth field and oscillate across a discontinuity.
-- The even-width helpers `cp2`, `cp4`, `cp6` exist for the upwind-biased forms and are not selectable.
+**Purpose.** Face value $\sum_l c_l\bar q_{i+l}$ with the weights of @eq-ch04-cp-weights, exact for polynomials of degree $n_{\mathrm s}-1$.
+
+**Data.** Reads 3 or 5 cell values per face; writes the two face states of each cell.
+
+**Placement.** Inside the reconstruction of each direction (@sec-ch04-framework), every stage.
+
+**Activation.** `type: cp3` or `cp5`, default off; also `interp2` of `weno3` and `weno5`. `scale` has no effect.
+
+**Guarantee / limits.** Third and fifth order on a uniform smooth field; unlimited, so it oscillates at jumps.
+
+**Evidence.** @tbl-ch04-cp-tests; `test_weno.release`, `derivation_check.py` `[C4]`, `recon_check.py` `[C1]`, `[C4]`.
 :::
+
+Local symbols (flagged to the editor): $l$ the stencil offset (NOTATION §1); $c_l$ the weight of cell $i+l$
+[-]; $n_{\mathrm s}$ the stencil width (count); $a_0, a_1, \dots$ the Taylor coefficients of @sec-ch04-dc; $\eta_n =
+n\epsilon_{\mathrm m}/(1 - n\epsilon_{\mathrm m})$ the standard rounding factor of an $n$-term sum.
 
 ### Derivation
 
-The weights are determined by requiring the formula to be exact when the underlying field is a polynomial of
-degree up to one less than the stencil width, with the cells carrying *averages* rather than point values.
-`[C1]` checks this symbolically rather than by assertion: for each of `cp2`, `cp3`, `cp4`, `cp5` and `cp6` it
-raises the degree of a test polynomial until the formula first fails, and recovers exactly the nominal order in
-every case, that is exact through degree one, two, three, four and five respectively.
+#### Where the weights come from
 
-Because the cells carry averages, the weights are *not* the Lagrange weights for point values; the distinction
-is the same one that section 4B is built on, and getting it wrong is the easiest way to lose an order.
+1. *What a weight set must do.* The lower-face value of cell $i$ is $\sum_lc_l\bar q_{i+l}$. Ask that it equal
+   $u(x_{i-1/2})$ whenever $u$ is a polynomial of degree at most $n_{\mathrm s}-1$.
+2. *Cell averages, not point values.* For $u = x^d$ the cell average over cell $i+l$ is
+   $\frac1h\int_{(l-1/2)h}^{(l+1/2)h}x^d\,\mathrm dx$, which differs from $(lh)^d$ for $d\ge2$. Using point values
+   here would give the Lagrange weights and lose an order.
+3. *Solve.* The conditions for $d = 0..n_{\mathrm s}-1$ are $n_{\mathrm s}$ linear equations in the
+   $n_{\mathrm s}$ weights. Their solution is
 
-`[C4]` then measures the face error on a smooth monotone profile and finds fitted orders of 3.02 for `cp3` and
-5.02 for `cp5` over $n_1 = 16 \to 64$. The same measurement through two critical points leaves `cp3` at 2.99:
-a linear scheme does not care about critical points, which is exactly the contrast @sec-ch04-weno needs.
+   $$
+   c^{(3)} = \left(\tfrac13, \tfrac56, -\tfrac16\right),\qquad
+   c^{(5)} = \left(-\tfrac1{20}, \tfrac9{20}, \tfrac{47}{60}, -\tfrac{13}{60}, \tfrac1{30}\right),
+   $$ {#eq-ch04-cp-weights}
+
+   for offsets $l = -1..1$ and $l = -2..2$. These are exactly the `cm` buffers of `Center3InterpImpl::reset` and
+   `Center5InterpImpl::reset`; `derivation_check.py` `[C4]` solves the system with sympy and compares.
+4. *The upper face is the mirror.* Solving at $x_{i+1/2}$ gives the same weights in reverse order, which is the
+   `cp = cm.flip(...)` buffer.
+5. *The leading error.* Put $u$ of degree $n_{\mathrm s}$ into the formula: the cp3 face value misses by
+   $-\tfrac{a_3}{2}h^3 = -\tfrac{1}{12}h^3\partial_1^3u$ and the cp5 one by $2a_5h^5 = \tfrac1{60}h^5\partial_1^5u$
+   (`[C4]`). `recon_check.py` `[C4]` measures fitted orders 3.02 and 5.02 over $n_1 = 16\to64$, and `cp3` keeps
+   2.99 through two critical points: a linear scheme does not see extrema. In the code, @eq-ch04-cp-weights is the `cm` buffer ({{< code src/recon/cp5.cpp Center5InterpImpl::reset >}}).
+
+#### Round-off
+
+1. *A dot product.* The kernel `interp_poly_impl` adds $n_{\mathrm s}$ products. The weights themselves are
+   rounded once when the buffer is built.
+2. *The standard bound.* The computed value differs from the exact sum by at most
+   $\eta_{n_{\mathrm s}+1}\sum_l\lvert c_l\rvert\lvert\bar q_{i+l}\rvert$.
+3. *For these weights* $\sum_l\lvert c_l\rvert$ is $\tfrac43$ for cp3 and $\tfrac{23}{15}$ for cp5, so the error is
+   at most $4\epsilon_{\mathrm m}\cdot\tfrac43\max\lvert\bar q\rvert \approx 5.9\times10^{-16}\max\lvert\bar q\rvert$
+   and $6\epsilon_{\mathrm m}\cdot\tfrac{23}{15}\max\lvert\bar q\rvert \approx 1.0\times10^{-15}\max\lvert\bar q\rvert$ in
+   double.
 
 ### Numerical method
 
@@ -46,44 +81,80 @@ from snapy_report.ch04.fig_recon_order import make_fig
 make_fig()
 ```
 
-The weights are written out as rationals at `interp_cp3` ({{< code src/recon/interp_simple.hpp interp_cp3 >}}) for `cp3` and
-`interp_cp5` ({{< code src/recon/interp_simple.hpp interp_cp5 >}}) for `cp5`; `cp2`, `cp4` and `cp6` sit beside them at
-`interp_cp2` ({{< code src/recon/interp_simple.hpp interp_cp2 >}}), `interp_cp4` ({{< code src/recon/interp_simple.hpp interp_cp4 >}}) and
-`interp_cp6` ({{< code src/recon/interp_simple.hpp interp_cp6 >}}). The even-width three are not registered as types: they exist because
-the upwind-biased forms `bp2`, `bp3` and `bp5` are built from them as a centred part plus a dissipative part.
-Those upwind forms are themselves unreachable at this pin, with no type string selecting them.
+**Stencil and ghosts.** cp3 reads three cells and needs two ghosts; cp5 reads five and needs three.
+
+**Which path runs.** `Center3InterpImpl::left` and `right` hand the `cm` or `cp` buffer to the dispatch
+`call_poly3`, whose CPU kernel is `interp_poly_impl<T, 3>`; cp5 is the same with 5. The scalar templates
+`interp_cp3` and `interp_cp5` of `interp_simple.hpp` are used only by tests, and `test_weno.release` holds the
+modules equal to them.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input.**
+
+```yaml
+dynamics:
+  reconstruct:
+    vertical:   {type: cp5}
+    horizontal: {type: cp3}
+```
+
+**What the parser accepts and refuses.** The framework's rules apply (@sec-ch04-framework). Only `cp3` and `cp5`
+are registered: `cp2`, `cp4`, `cp6` and the upwind-biased `bp2`, `bp3`, `bp5` exist only as templates in
+`interp_simple.hpp`, and naming them is refused ("Interp: unknown type").
+
+**The excerpt.** The buffer of `Center5InterpImpl::reset` ({{< code src/recon/cp5.cpp Center5InterpImpl::reset >}})
+and the kernel ({{< code src/recon/interp_impl.h interp_poly_impl >}}):
+
+```cpp
+  cm = register_buffer("cm", torch::tensor({-1. / 20., 9. / 20., 47. / 60.,
+                                            -13. / 60., 1. / 30.},
+                                           torch::kFloat64));
+  cp = register_buffer("cp", cm.flip({0}));
+  ...
+  for (int j = 0; j < nvar; ++j) {
+    OUT(j) = 0.;
+    for (int i = 0; i < N; ++i) {
+      OUT(j) += coeff[i] * INP(j, i);
+    }
+  }
+```
+
+`cm` is $c^{(5)}$ of @eq-ch04-cp-weights for the lower face, `cp` its mirror for the upper face (step 4), and the
+loop is the dot product of step 1 of the round-off argument.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
-| third-order weights | {{< code src/recon/interp_simple.hpp interp_cp3 >}} | `interp_cp3` | `type: cp3`, or `interp2` of `weno3` |
-| fifth-order weights | {{< code src/recon/interp_simple.hpp interp_cp5 >}} | `interp_cp5` | `type: cp5`, or `interp2` of `weno5` |
-| even-width helpers | {{< code src/recon/interp_simple.hpp interp_cp2 >}} | `interp_cp2` | not selectable |
-| upwind-biased forms | {{< code src/recon/interp_simple.hpp interp_bp3 >}} | `interp_bp3` | not selectable |
+| third-order weights | {{< code src/recon/cp3.cpp Center3InterpImpl::reset >}} | `cm` | `type: cp3`, or `interp2` of `weno3` |
+| fifth-order weights | {{< code src/recon/cp5.cpp Center5InterpImpl::reset >}} | `cm` | `type: cp5`, or `interp2` of `weno5` |
+| the kernel | {{< code src/recon/interp_impl.h interp_poly_impl >}} | `interp_poly_impl` | |
 | registration | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `Center3Interp` | |
+| test-only templates | {{< code src/recon/interp_simple.hpp interp_cp5 >}} | `interp_cp5` | not a production path |
 
 : Code map of the centred polynomials. {#tbl-ch04-cp-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| this chapter's check, `recon_check.py` | `[C1]` exactness by degree; `[C4]` measured orders 3.02 and 5.02 with no critical point | symbolic and fitted orders |
-| `tests/test_weno.cpp` | the WENO interpolants, which carry `cp3` and `cp5` as their smooth limit | per test |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_weno.release`, `interp_cp5m_torch1`–`3`, `interp_cp5p_torch4` | the cp5 module equals the template on random data, left and right faces | $10^{-6}$ | the test's constant, sized for single precision |
+| `derivation_check.py` `[C4]` (this report) | the weights solved from exactness equal the buffers; leading errors | exact | sympy |
+| `recon_check.py` `[C1]`, `[C4]` (this report) | exact to the nominal degree; fitted orders 3.02, 5.02 | symbolic; fitted order | stated in the check |
 
 : Tests of the centred polynomials. {#tbl-ch04-cp-tests}
 
-No ctest exercises `cp3` or `cp5` as a selected type on their own.
+`[C4]` of `derivation_check.py` and `[C1]` of `recon_check.py` hold symbolically; `[C4]` of `recon_check.py`
+fits 3.02 and 5.02 on a monotone profile.[^cp-run] `test_weno.release` passes at the pin on CPU, one rank
+(@tbl-ch04-ctest-run). No ctest selects `cp3` or `cp5` as a deck's type.
+
+[^cp-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/recon_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files].
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- No limiter. Across a discontinuity these interpolants oscillate, and nothing in the scheme detects that; the
-  floors of @sec-ch04-framework are the only thing standing between an overshoot and a negative density.
-:::
-
-1. **Uniform weights.** The rationals assume equal cell widths, so the measured orders above are orders on a
-   uniform grid only.
-2. **Unreachable code.** The even-width polynomials and all three upwind-biased forms are compiled and never
-   called at this pin.
+1. **No limiter.** Across a discontinuity these interpolants overshoot; only the equation of state's floors
+   stand between an overshoot and a negative density (@sec-ch08-reconfloors).
+2. **Uniform weights.** The rationals assume equal widths; the orders above are uniform-grid orders.
+3. **Test-only templates.** `interp_cp2`, `interp_cp4`, `interp_cp6` and the `bp` forms are compiled into the
+   tests; `interp_cp4` is also called by `src/diagnostics/`, which the build does not add.

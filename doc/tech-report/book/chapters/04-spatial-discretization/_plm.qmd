@@ -1,83 +1,172 @@
 ## PLM, the van Leer harmonic-mean slope (`type: plm`) {#sec-ch04-plm}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.4
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.4; src/recon/plm.cpp, src/recon/interpolation.hpp, src/recon/interpolation.cpp,
+         tests/test_plm.cpp at the pin
 status: draft
 -->
 
 ### Summary
 
-PLM takes the three cells around a face and fits a line through the middle one. What makes it a *limited*
-scheme rather than a plain centred slope is the choice of slope: the harmonic mean of the left and right
-differences, which collapses to zero whenever they disagree in sign.
+PLM fits a straight line through each cell and reads the two face states off its ends. The slope of the line is
+the harmonic mean of the differences to the two neighbours. That choice makes the slope zero at a local maximum
+or minimum and never steeper than twice the smaller difference, so a face value cannot overshoot its neighbours.
+The scheme is second order where the field is smooth and first order at extrema. It is selected by
+`type: plm` and is off by default.
 
 ::: {.callout-note title="At a glance"}
-- A piecewise-linear reconstruction whose slope is the harmonic mean of the two one-sided differences.
-- Switch: `type: plm`.
-- Second order where the field is smooth, first order at an extremum, and total-variation diminishing.
-- The slope is set to zero wherever the two one-sided differences have opposite signs.
+**Purpose.** Face states $\bar q_i \mp \tfrac12 D_i$ with the harmonic-mean slope $D_i$ of @eq-ch04-plm-slope.
+
+**Data.** Reads three cell values per cell; writes the two face states of each cell.
+
+**Placement.** Inside the reconstruction of each direction (@sec-ch04-framework), every stage.
+
+**Activation.** `type: plm`; default off. `scale` is read and has no effect.
+
+**Guarantee / limits.** Face values stay between neighbours; second order smooth, first order at extrema.
+
+**Evidence.** @tbl-ch04-plm-tests; `test_plm.release`, `derivation_check.py` `[C3]`, `recon_check.py` `[C5]`.
 :::
+
+Local symbols (flagged to the editor): $D_- = \bar q_i - \bar q_{i-1}$ and $D_+ = \bar q_{i+1} - \bar q_i$ the
+one-sided differences of cell $i$; $D_i$ its limited slope (all in the units of $q$, per cell); $a_0, a_1, \dots$ the Taylor
+coefficients of @sec-ch04-dc; $\epsilon_{\mathrm m}$ machine epsilon (NOTATION §7).
 
 ### Derivation
 
-Write the two one-sided differences as $\Delta_L = \phi_i - \phi_{i-1}$ and $\Delta_R = \phi_{i+1} - \phi_i$.
-The slope the code uses is
+#### The slope
+
+The code computes
 
 $$
-\Delta_m = \begin{cases}
-\dfrac{2\,\Delta_L\Delta_R}{\Delta_L + \Delta_R} & \Delta_L\Delta_R > 0,\\[2mm]
+D_i = \begin{cases}
+\dfrac{2\,D_-D_+}{D_- + D_+} & D_-D_+ > 0,\\[2mm]
 0 & \text{otherwise,}
 \end{cases}
+\qquad q^{\mathrm R}_i = \bar q_i - \tfrac12 D_i,\quad q^{\mathrm L}_{i+1} = \bar q_i + \tfrac12 D_i .
 $$ {#eq-ch04-plm-slope}
 
-In the code, @eq-ch04-plm-slope is the slope `dwm` of `interp_plm` ({{< code src/recon/interp_simple.hpp interp_plm >}}).
+#### Why a face value never leaves the range of its neighbours In the code, @eq-ch04-plm-slope is `dwm`, `wlv` and `wrv` ({{< code src/recon/plm.cpp PLMInterpImpl::forward >}}).
 
-and the left face value of cell $i$ is $\phi_i - \tfrac12\Delta_m$. Three properties follow, and `[C5]` checks
-all three on twenty thousand random triples.
+1. *At an extremum the slope is zero.* An extremum is exactly $D_-D_+\le0$, so both face values equal
+   $\bar q_i$.
+2. *Otherwise $D_-$ and $D_+$ have one sign*; take both positive (the negative case is the mirror image).
+3. *The slope is at most twice either difference.* $2D_+ - D_i = 2D_+^2/(D_- + D_+) \ge 0$ and
+   $2D_- - D_i = 2D_-^2/(D_- + D_+)\ge0$; `derivation_check.py` `[C3]` simplifies both with sympy.
+4. *Hence* $0 \le \tfrac12D_i \le D_+$, so $q^{\mathrm L}_{i+1} = \bar q_i + \tfrac12D_i \in [\bar q_i, \bar q_{i+1}]$,
+   and likewise $q^{\mathrm R}_i \in [\bar q_{i-1}, \bar q_i]$. No new extremum is created at a face, which is the
+   total-variation-diminishing property; `recon_check.py` `[C5]` finds no violation on 20 000 random triples.
 
-The slope vanishes at every extremum, because an extremum is exactly the case $\Delta_L\Delta_R \le 0$; the
-check measures the face value there against the cell value and finds them bitwise equal. That is what makes the
-scheme first order at an extremum and second order elsewhere.
+#### Why it is second order on a smooth field
 
-The face value never leaves the interval spanned by the two cells it sits between, which is the
-total-variation-diminishing property; the check finds no violation.
+1. *The two differences of cell averages.* With the Taylor coefficients of @sec-ch04-dc,
+   $D_\mp = a_1h \mp a_2h^2 + O(h^3)$.
+2. *Their harmonic mean.* $2D_-D_+/(D_-+D_+) = a_1h + \bigl(\tfrac54a_1a_3 - a_2^2\bigr)h^3/a_1 + O(h^4)$: the
+   centred slope to $O(h^3)$ wherever $a_1 \ne 0$.
+3. *The face value.* $\bar q_i + \tfrac12D_i - u(x_{i+1/2}) = -\tfrac{a_2}{6}h^2 + O(h^3)$: second order.
+   `derivation_check.py` `[C3]` derives both coefficients with sympy.
+4. *At an extremum* $a_1 = 0$, step 2 no longer holds, the slope is clipped to zero, and the face value is
+   first order as in @eq-ch04-dc-error.
 
-On a smooth field the two differences agree and @eq-ch04-plm-slope reduces to their common value, so the face
-value is the centred one and the scheme is second order. The check confirms the limit exactly on a linear field.
+#### Round-off: why the slope is finite and how far a face value can stray
+
+1. *No division by zero.* The quotient is taken only where $D_-D_+ > 0$; then $D_-$ and $D_+$ have one sign and
+   $\lvert D_- + D_+\rvert \ge \max(\lvert D_-\rvert, \lvert D_+\rvert) > 0$. A small additive guard could not do
+   this: for $D_\pm$ near the smallest normal single-precision number, $10^{-38}$, the guard itself would be
+   rounded away and the quotient would be $0/0$. `test_plm.release` feeds exactly such stencils
+   (`interp_plm_round_off_slopes_stay_finite`).
+2. *Count the roundings.* Each difference is one rounding, the product one more, the sum one, the quotient one:
+   with $\lvert\eta\rvert\le\epsilon_{\mathrm m}$ per operation, the computed slope is $D_i(1+\eta_D)$ with
+   $\lvert\eta_D\rvert \le 6\epsilon_{\mathrm m}$ to first order (two from the product's inputs plus one, one from
+   the sum's inputs plus one, one from the quotient).
+3. *The face value* adds one rounding: $\lvert\hat q^{\mathrm L}_{i+1} - q^{\mathrm L}_{i+1}\rvert \le
+   \epsilon_{\mathrm m}\lvert q^{\mathrm L}_{i+1}\rvert + 3\epsilon_{\mathrm m}\lvert D_i\rvert$, and by step 3 of the
+   bound above $\lvert D_i\rvert\le 2\min(\lvert D_-\rvert, \lvert D_+\rvert)$. So a face value can leave
+   $[\bar q_i, \bar q_{i+1}]$ by at most $\epsilon_{\mathrm m}\lvert q^{\mathrm L}_{i+1}\rvert +
+   6\epsilon_{\mathrm m}\min(\lvert D_-\rvert, \lvert D_+\rvert)$, about $10^{-15}$ of the local value in double.
 
 ### Numerical method
 
-The implementation is `dwm` ({{< code src/recon/interp_simple.hpp interp_plm >}}) and reads as @eq-ch04-plm-slope does, with the
-sign test written as a product. The file also carries `minmod`, `superbee`, `vanleer` and an MC limiter at
-[`interp_simple.hpp:11-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L11-L33), none of which the PLM interpolant calls: the harmonic mean is hard-coded.
-Those four functions are dead code at this pin.
+```{python}
+#| label: fig-ch04-plm-slope
+#| fig-cap: "The PLM slope. (a) The line PLM fits in each cell (green) through the cell values (sky-blue circles) of a smooth profile with a kink; at the extrema (vermillion squares) the slope is zero and the cell is flat. (b) The harmonic-mean slope as a function of the ratio of the two one-sided differences (green), the bound $2\\min(1, D_+/D_-)$ that keeps the face values between the neighbours (vermillion, dashed), and the unlimited centred slope (blue, dotted)."
+#| fig-alt: "Left: dots with short green line segments through them, flat at four boxed extrema. Right: a green curve rising from zero at ratio zero and staying below a dashed bound, with a dotted straight line for comparison."
+#| echo: false
+from snapy_report.ch04.fig_ch04_schemes import make_plm
+make_plm()
+```
+
+**Stencil and ghosts.** Three cells: `stencils()` is 3, so the framework needs two ghost cells.
+
+**Where it is used.** `PLMInterpImpl::forward` overrides the base class and returns both face states in one
+pass; `left` and `right` of the base class call it.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input.**
+
+```yaml
+dynamics:
+  reconstruct:
+    vertical:   {type: plm}
+    horizontal: {type: plm}
+```
+
+**What the parser accepts and refuses.** The framework's rules apply (@sec-ch04-framework). PLM has no limiter
+option: the harmonic mean is hard-coded, and a key such as `limiter` is refused by the reconstruct parser.
+
+**The excerpt.** `PLMInterpImpl::forward` ({{< code src/recon/plm.cpp PLMInterpImpl::forward >}}):
+
+```cpp
+  auto dw = w.narrow(dim, 1, size - 1) - w.narrow(dim, 0, size - 1);
+  auto dwl = dw.narrow(dim, 0, size - 2);
+  auto dwr = dw.narrow(dim, 1, size - 2);
+  auto dw2 = dwl * dwr;
+  // dw2 > 0 keeps dwl + dwr away from zero; an epsilon cannot (0/0 at 1e-38)
+  auto dwm =
+      torch::where(dw2 > 0, 2. * dw2 / (dwl + dwr), torch::zeros_like(dw2));
+
+  wlv.copy_(w.narrow(dim, 1, size - 2) - 0.5 * dwm);
+  wrv.copy_(w.narrow(dim, 1, size - 2) + 0.5 * dwm);
+```
+
+`dwl` and `dwr` are $D_-$ and $D_+$; `dwm` is $D_i$ of @eq-ch04-plm-slope with the branch written as a product;
+`wlv` and `wrv` are $q^{\mathrm R}_i$ and $q^{\mathrm L}_{i+1}$.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
-| the slope and face value | {{< code src/recon/interp_simple.hpp interp_plm >}} | `interp_plm` | `type: plm` |
+| the slope and face values | {{< code src/recon/plm.cpp PLMInterpImpl::forward >}} | `dwm` | `type: plm` |
+| stencil width | {{< code src/recon/interpolation.hpp PLMInterpImpl >}} | `stencils` | 3 |
 | registration | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `PLMInterp` | |
-| unused limiters | [`interp_simple.hpp:11-33`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/interp_simple.hpp#L11-L33) | `minmod` | never called |
 
 : Code map of PLM. {#tbl-ch04-plm-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/test_plm.cpp` | a constant field is reconstructed exactly in all three directions | allclose defaults |
-| this chapter's check | `[C5]` the harmonic mean: TVD, zero slope at every extremum, centred in the smooth limit | bitwise and round-off |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_plm.release`, `interp_plm_torch1`–`3` | the module equals the scalar template `interp_plm` on random data, in each direction | $2\times10^{-6}$ | the test's constant, sized for single precision |
+| `test_plm.release`, `interp_plm_round_off_slopes_stay_finite` | stencils near $10^{-38}$ and $10^{-23}$ give finite, bit-equal faces | exact | finiteness and bit equality |
+| `test_plm.release`, `reconstruct_preserves_a_constant_field` | a constant field is reproduced in all three directions | `allclose` defaults | `torch::allclose` |
+| `derivation_check.py` `[C3]` (this report) | the bound of step 3 and the smooth-limit coefficients | exact | sympy |
+| `recon_check.py` `[C5]` (this report) | TVD on random triples; zero slope at extrema; exact on a linear field | bitwise | stated in the check |
 
 : Tests of PLM. {#tbl-ch04-plm-tests}
 
-No test measures the order of PLM. Second order away from extrema is an argument from
-@eq-ch04-plm-slope and the check's smooth limit, not a measured ladder.
+`[C3]` holds symbolically, with smooth-limit face error $-\tfrac{a_2}{6}h^2$; `[C5]` finds no TVD violation in
+20 000 random triples and a face value equal to the cell value at every extremum.[^plm-run] `test_plm.release`
+passes at the pin on CPU, one rank (@tbl-ch04-ctest-run). No test measures the order of PLM on a refinement
+ladder.
+
+[^plm-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/recon_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files].
 
 ### Limits
 
-1. **Dead limiters.** Four limiter functions sit beside the interpolant and none is reachable. A reader
-   choosing a limiter from the file will not find a switch that selects one.
-2. **Uniform-mesh slope.** @eq-ch04-plm-slope assumes equal cell widths; on a stretched grid the harmonic mean
-   of the raw differences is not the limited slope of the underlying linear fit.
+1. **One limiter.** The harmonic mean is the only slope; `interp_simple.hpp` also defines `minmod`, `superbee`,
+   `vanleer` and an MC limiter, which no production path calls.
+2. **Uniform-grid slope.** @eq-ch04-plm-slope takes raw differences; on a stretched grid it is not the limited
+   slope of the underlying linear fit.
+3. **No measured order.** Second order away from extrema is derived (steps 1 to 3) and not measured on a ladder.

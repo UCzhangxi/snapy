@@ -1,58 +1,93 @@
 ## The $x_1$ mass-flux covariance (`SNAP_X1_MASS_COVARIANCE`) {#sec-ch04-x1masscov}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.17
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.17; src/hydro/hydro_forward.cpp, src/hydro/hydro.cpp, tests/test_x1_seam_split.cpp,
+         tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
-This is the $x_1$ member of the same family as @sec-ch04-fluxcov, and it comes from the same identity. The
-difference is where the error enters: not in a face average across the column, but in the primitive variable
-the code stores and reconstructs.
+The velocity the code stores in a cell is the momentum divided by the density, which in a stratified column is not
+the cell average of the velocity: the denser lower part of the cell weighs more. Reconstructing that stored
+value to the faces puts a second-order error into the vertical mass flux. This correction removes it by
+subtracting the leading term from the cell velocity just before the $x_1$ reconstruction, and puts the stored
+value back afterwards. It is the $x_1$ member of the family of @sec-ch04-fluxcov. It is off by default and acts
+only on the well-balanced $x_1$ path, that is with gravity on.
 
 ::: {.callout-note title="At a glance"}
-- The stored velocity is $m_1/\rho$, which is not the cell average of the velocity in a stratified column.
-- Switch: `SNAP_X1_MASS_COVARIANCE`, a build-time flag, default off.
-- The correction subtracts $\tfrac{h^2}{12}\rho_1 w_1/\rho$ from the reconstructed velocity before the solver runs.
-- It needs at least three $x_1$ cells per block, which the code enforces.
-- Next to a reflecting wall the density slope is one-sided, because the mirrored ghost is not the stratified column.
+**Purpose.** Reconstructs $v_1 - \tfrac{h_i^2}{12}\,\partial^{\mathrm h}_1\rho\,\partial^{\mathrm h}_1v_1/\rho$ instead of $v_1$, removing the gap of @eq-ch04-x1masscov-gap.
+
+**Data.** Reads $\rho$, $v_1$, `x1v`, `dx1f` with ghosts; changes only the $x_1$ face velocities, not the stored state.
+
+**Placement.** Every stage, in the well-balanced $x_1$ reconstruction of `HydroImpl::forward`, before the Riemann solve.
+
+**Activation.** Run-time environment variable `SNAP_X1_MASS_COVARIANCE`, read once, default off; needs $g_1 \ne 0$.
+
+**Guarantee / limits.** Stored-velocity gap goes from second to fourth order; one-sided slope at walls; $n_1 \ge 3$.
+
+**Evidence.** @tbl-ch04-x1masscov-tests; `test_x1_seam_split_x1_mass_covariance.release`, `derivation_check.py` `[C15]`, `covariance_check.py` `[C4]`–`[C6]`.
 :::
+
+Local symbols (flagged to the editor): $h_i$ the $x_1$ width of cell $i$ (`dx1f`, NOTATION §1); $\partial^{\mathrm h}_1q$ the
+centred difference over the centroids, as in @sec-ch04-fluxcov; $\partial^{\mathrm w}_1q$ the one-sided wall difference of
+step 2 below; $\langle\cdot\rangle$ a cell average (NOTATION §4).
 
 ### Derivation
 
-The code stores conserved variables as cell averages and forms the primitive velocity as $m_1/\rho$. Written
-out, that is $\langle\rho w\rangle/\langle\rho\rangle$, and by @eq-ch04-fluxcov-identity
+#### The gap
 
-$$
-\frac{\langle\rho w\rangle}{\langle\rho\rangle}
- = \langle w\rangle + \frac{h^2}{12}\,\frac{\rho' w'}{\rho} + O(h^4).
-$$ {#eq-ch04-x1masscov-gap}
+1. *What is stored.* The code stores $\langle\rho\rangle$ and $\langle\rho v_1\rangle$ and forms the primitive velocity
+   as their ratio.
+2. *What that ratio is.* By the identity of @sec-ch04-fluxcov,
 
-In the code, the second term of @eq-ch04-x1masscov-gap is subtracted from the stored velocity `wx1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+   $$
+   \frac{\langle\rho v_1\rangle}{\langle\rho\rangle} = \langle v_1\rangle + \frac{h^2}{12}\,\frac{\partial_1\rho\,\partial_1v_1}{\rho} + O(h^4),
+   $$ {#eq-ch04-x1masscov-gap}
 
-So the quantity the reconstruction is handed is not the cell average of the velocity: in a stratified column,
-where $\rho'$ is $O(1)$, it is the cell average plus a second-order term. Reconstructing it and multiplying by
-the face density puts that term straight into the face mass flux.
+   with no other $h^2$ term (`derivation_check.py` `[C15]`, sympy). In a stratified column $\partial_1\rho/\rho = -1/H$ is
+   $O(1)$ in units of the scale height, so the gap is a full second-order error.
+3. *Where it goes.* The reconstruction treats the stored value as $\langle v_1\rangle$; the face mass flux is the
+   face density times the reconstructed velocity, so it inherits the gap times $\rho$. In the code, @eq-ch04-x1masscov-gap is the term subtracted from `wx1[IVX]` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
-`[C4]` measures @eq-ch04-x1masscov-gap directly on an exponential density profile with a sinusoidal velocity,
-comparing the stored $m_1/\rho$ with the exact cell average of $w$: over $n_1 = 16 \to 128$ the gap falls as
-$2.89\times10^{-3}\to4.56\times10^{-5}$, a fitted order of 2.00, and after subtracting the discrete estimate
-of the second term it falls as $1.62\times10^{-4}\to4.07\times10^{-8}$, a fitted order of 3.99. The correction
-does what the identity says it should: second order becomes fourth.
+#### The correction and its order
 
-That is the whole scheme. It is worth noting what it does *not* claim. It recovers the cell average of the
-velocity; whether the resulting face mass flux is fourth order then depends on the reconstruction that follows,
-which for most types is lower order than that. The correction removes one specific second-order error, not
-every one.
+1. *Subtract the leading term.* The code replaces $v_1$ by $v_1 - \tfrac{h_i^2}{12}\partial^{\mathrm h}_1\rho\,\partial^{\mathrm h}_1v_1/\rho$ before
+   reconstructing, using the total density $\rho$ (`W[IDN]` before the reference is subtracted).
+2. *The centred differences are second order on cell averages.* $(\langle q\rangle_{i+1} - \langle q\rangle_{i-1})/(2h) =
+   \partial_1q + \tfrac{5}{4}a_3h^2 + O(h^4)$ with $a_3$ the cubic Taylor coefficient (`[C15]`). Their error times the
+   $h^2/12$ prefactor is $O(h^4)$.
+3. *Hence the corrected gap is fourth order* (`[C15]` finds the remainder starts at $h^4$). `covariance_check.py`
+   `[C4]` measures it on an exponential density with a sinusoidal velocity: the stored gap falls as
+   $2.89\times10^{-3}\to4.56\times10^{-5}$ over $n_1 = 16\to128$ (order 2.00), the corrected one as
+   $1.62\times10^{-4}\to4.07\times10^{-8}$ (order 3.99).
+4. *What this does not claim.* It recovers the cell average of the velocity. The face mass flux is then as
+   accurate as the reconstruction that follows, which for `dc` and `plm` is below fourth order.
 
-The wall is the one place the stencil changes. A reflecting boundary mirrors the density into the ghost cells
-evenly, and an even mirror is not the continuation of a stratified column, so a centred difference in the first
-interior cell would read a density slope that is not there. The code substitutes a one-sided second-order
-difference over the first three interior cells, and `[C6]` confirms that difference is second order, falling as
-$2.69\times10^{-3}\to4.44\times10^{-5}$ with a fitted order of 1.98. The corrected velocity is then mirrored
-*oddly* into the ghosts, which is the correct parity for a velocity at a reflecting wall.
+#### Walls
+
+1. *The mirrored ghost is not the column.* At a reflecting wall the density ghosts are an even mirror, so a centred
+   difference in the first cell would see a density slope near zero.
+2. *A one-sided second-order slope.* In the first cell above a physical, non-outflow bottom wall the code uses
+   $\partial^{\mathrm w}_1\rho = (-3\rho_i + 4\rho_{i+1} - \rho_{i+2})/\bigl(2(x_{1,i+1} - x_{1,i})\bigr)$, and in the last cell below
+   such a top wall the mirror image, $(3\rho_i - 4\rho_{i-1} + \rho_{i-2})/\bigl(2(x_{1,i} - x_{1,i-1})\bigr)$; the code writes both
+   as one lambda, `one_sided(i, s)` with `s` $= \pm1$. Both are $\partial_1\rho - \tfrac74a_3h^2 + O(h^3)$ on cell averages
+   (`[C15]`), and `covariance_check.py` `[C6]` measures order 1.98.
+3. *The velocity ghosts are odd.* After the correction the ghost velocities are set to the odd mirror of the
+   corrected interior, the parity of a velocity at a reflecting wall.
+4. *Three cells are needed.* The one-sided stencil spans three cells, so a block with fewer than three $x_1$ cells
+   would read a ghost; `HydroImpl::reset` refuses it.
+
+#### Round-off
+
+1. *At rest the correction is an exact zero.* $\partial^{\mathrm h}_1v_1$ of a zero velocity is an exact zero, so the
+   product is $0$ and the reconstructed velocities are the uncorrected ones bit for bit (`covariance_check.py`
+   `[C5]`).
+2. *Elsewhere* the correction is a product of five rounded factors and a quotient, relative error at most about
+   $7\epsilon_{\mathrm m}$ of the correction, which is itself $O(h^2/H^2)$ of $v_1$.
+3. *The stored state is untouched.* The corrected velocity is used for the reconstruction only; the clone of the
+   original is copied back, so no rounding of the correction reaches $\mathbf U$ except through the face fluxes.
 
 ### Numerical method
 
@@ -65,57 +100,88 @@ from snapy_report.ch04.fig_x1cov_order import make_fig
 make_fig()
 ```
 
-The block is at `x1_mass_covariance` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), inside the $x_1$ sweep and before the Riemann solver
-runs. The two derivatives use the centred helper at `d1_centred` ({{< code src/hydro/hydro_forward.cpp d1_centred >}}), which copies its
-end values rather than extrapolating. The correction itself is the single line at
-`dx1f` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), and it is applied to the reconstructed velocity, so the solver and
-everything downstream see the corrected value.
+**Where it sits.** Inside the well-balanced branch of the $x_1$ sweep (`wb_x1`: gravity on, a pressure row, not
+shallow water), after the hydrostatic reference has been subtracted from $p$ and $\rho$ and before
+`precon1->forward`. Without gravity the branch is not taken and the switch does nothing.
 
-The one-sided wall slope is at `one_sided` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), applied only at a boundary that is both
-physical and not outflow; an outflow boundary keeps the centred difference, since there is no mirror to
-distrust. The odd mirror of the corrected velocity follows at `narrow` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-
-The three-cell requirement is enforced where the switch is read, at `TORCH_CHECK` ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}): a block
-with fewer than three $x_1$ cells fails with a message naming the switch rather than silently reading a ghost.
-The switch itself is read once per process at `x1_mass_covariance` ({{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}}).
+**Ghosts and seams.** `d1_centred` copies its end values from the neighbours, so the outermost ghost slopes are
+not centred; the corrected interior is what the reconstruction reads at the faces it owns. At an internal $x_1$
+seam the ghosts are the neighbour's cells and the centred difference is used.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input.** The deck needs gravity; the switch is set in the environment:
+
+```bash
+SNAP_X1_MASS_COVARIANCE=1 ./run_hydro.release -i straka.yaml
+```
+
+**What the parser accepts and refuses.**
+
+1. *The variable is read once per process* into a function-local static, lower-cased; `0`, `false`, `off`, `no`
+   or empty are off, anything else on. Unset is off.
+2. *With the switch on and $g_1 \ne 0$, a block with fewer than three $x_1$ cells is refused* at construction
+   ("SNAP_X1_MASS_COVARIANCE needs at least 3 x1 cells per block, got 2; unset it"), because the wall slope spans
+   three cells.
+
+**The excerpt.** The block of `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+    if (x1_mass_covariance()) {
+      velocity = wx1[IVX].clone();
+      ...
+      auto rho_1 = d1_centred(density, x1v);
+      ...
+      if (phys_x1inner && !is_outflow(pmb->options->bfuncs()[0]))
+        rho_1.select(-1, is).copy_(one_sided(is, 1));
+      ...
+      auto w_1 = d1_centred(velocity, x1v);
+      wx1[IVX] -= dx1f * dx1f / 12. * rho_1 * w_1 / density;
+      ...
+    }
+    wtmp = precon1->forward(wx1, DIM1, /*floor=*/false);
+    ...
+    if (velocity.defined()) wx1[IVX].copy_(velocity);
+```
+
+`rho_1` and `w_1` are $\partial^{\mathrm h}_1\rho$ and $\partial^{\mathrm h}_1v_1$, with the wall slope of step 2; the `-=` line is step 1
+of the correction; the reconstruction reads the corrected velocity and the last line restores the stored one.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
-| the correction block | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
-| the centred derivative | {{< code src/hydro/hydro_forward.cpp d1_centred >}} | `d1_centred` | |
-| the correction itself | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dx1f` | |
-| one-sided slope at a wall | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `one_sided` | physical, not outflow |
-| odd mirror of the result | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flip` | physical, not outflow |
-| the three-cell check | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | |
-| the switch, read once | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `x1_mass_covariance` | |
+| the switch, read once | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `get_env` | default `"0"` |
+| the correction block | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_mass_covariance` | switch on, gravity on |
+| the centred difference | {{< code src/hydro/hydro_forward.cpp d1_centred >}} | `d1_centred` | |
+| one-sided wall slope | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `one_sided` | physical, not outflow |
+| the three-cell check | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | switch on, $g_1\ne0$ |
 
 : Code map of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/CMakeLists.txt` seam arm | a block with fewer than three $x_1$ cells is refused | the check fires |
-| this chapter's check | `[C4]` second order becomes fourth; `[C5]` bitwise zero at rest; `[C6]` the one-sided wall slope is second order | fitted orders, bitwise |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_x1_seam_split_x1_mass_covariance.release` | with the switch on, a block of 2 $x_1$ cells is refused with the message above and one of 3 is accepted | exact (throws or not) | a setup contract |
+| `derivation_check.py` `[C15]` (this report) | @eq-ch04-x1masscov-gap; centred and one-sided slopes second order; corrected gap fourth order | exact | sympy |
+| `covariance_check.py` `[C4]`–`[C6]` (this report) | measured orders 2.00 and 3.99; exact zero at rest; wall slope order 1.98 | fitted orders; bitwise | stated in the check |
 
 : Tests of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-tests}
 
+`[C15]` holds symbolically; `covariance_check.py` gives the orders quoted in the derivation and an exact zero at
+rest.[^x1c-run] The ctest entry passes at the pin on CPU (@tbl-ch04-ctest-run). No ctest measures the effect of the
+correction on a flow.
+
+[^x1c-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/covariance_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files]. `covariance_check.py` ports `d1_centred` and the
+    correction line, unchanged between the sha its header names and the code pin.
+
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- Default off. A deck that does not set the flag carries the second-order gap of
-  @eq-ch04-x1masscov-gap in every stratified column.
-- At least three $x_1$ cells per block are required, and the run fails rather than degrading if that is not met.
-:::
-
-1. **One error, not all of them.** The correction recovers the cell average of the velocity. The order of the
-   face mass flux that follows is set by the reconstruction, and for `dc` or `plm` that is lower than fourth.
-   @fig-ch04-x1masscov-order should be read as a measurement of the gap, not of the flux.
-2. **Outflow boundaries keep the centred stencil.** The one-sided slope is applied only at reflecting walls.
-   Whether the mirrored ghost at an outflow boundary is a good continuation of the column is not analysed in
-   any source, and this section does not claim it is.
-3. **The $x_1$ centroid conversion is elsewhere.** The radial member of this family, which converts between the
-   $r^2$ cell measure and the face measure in $x_1$, is inseparable from the well-balanced reference and is
-   covered in @sec-ch05.
+1. **Off by default.** A stratified column without the switch carries the second-order gap of
+   @eq-ch04-x1masscov-gap in every $x_1$ face mass flux.
+2. **Gravity only.** The correction sits in the well-balanced branch; a run without $g_1$ ignores the switch.
+3. **One error, not all of them.** The face mass flux is as accurate as the reconstruction; for `dc` or `plm` that
+   is below fourth order.
+4. **Outflow boundaries keep the centred stencil**, whose ghost may not continue the column; not analysed.
+5. **No flow test.** Only the setup check is a ctest.

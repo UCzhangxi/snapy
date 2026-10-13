@@ -1,98 +1,182 @@
-## The Riemann solver framework and the face-local frame {#sec-ch04-riemann}
+## The Riemann solver framework and the face-local frame (`dynamics/riemann-solver`) {#sec-ch04-riemann}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.8
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.8; src/riemann/riemann_solver.cpp, src/riemann/riemann_solver.hpp, src/riemann/*_impl.h,
+         src/riemann/lmars.cpp, hllc.cpp, roe.cpp, shallow_roe.cpp, plume_roe.cpp, src/hydro/hydro_forward.cpp,
+         src/hydro/hydro.cpp, src/scalar/scalar.cpp, examples/*.yaml at the pin
 status: draft
 -->
 
 ### Summary
 
-Every face carries one flux, and the solver's job is to produce it from the two one-sided states the
-reconstruction left there. Which solver is chosen changes the numbers but not the structure of the operator:
-the divergence of @sec-ch04-divergence consumes the result the same way whatever produced it.
+After reconstruction each face has two states, one from each side, and the solver turns them into the one flux
+the face carries. snapy has six solvers behind one interface; the deck picks one for all three directions. The
+solver also returns the face pressure the $x_1$ pressure force and the well-balanced path need, and three of the
+six cannot. Which solver a deck gets when it says nothing is not obvious: no `riemann-solver` block gives `hllc`,
+an empty block gives `roe`. The shipped decks name `lmars` (7), `hllc` (6) or `shallow-roe` (9).
 
 ::: {.callout-note title="At a glance"}
-- Takes the two face states of a direction and returns one flux per face.
-- Switches: `dynamics/riemann-solver/{type,dir}`; YAML defaults `roe` and `omni`.
-- Six types are registered: `roe`, `lmars`, `hllc`, `upwind`, `shallow-roe`, `plume-roe`.
-- The momentum rows are rotated into a face-local frame by an index map, not by a matrix.
-- Only some solvers can return a face pressure; the base class refuses the request outright.
+**Purpose.** One flux per face from $\mathbf W^{\mathrm L}_f, \mathbf W^{\mathrm R}_f$, rows renamed by @eq-ch04-riemann-frame.
+
+**Data.** Reads the two face states (and the equation of state); writes $\mathbf F_a$ and, on $x_1$, the face pressure.
+
+**Placement.** Every RK stage, in `HydroImpl::forward`, once per direction after the reconstruction.
+
+**Activation.** `dynamics/riemann-solver/{type,dir}`; no block: `hllc`, `omni`; block without keys: `roe`, `omni`.
+
+**Guarantee / limits.** Consistent solvers; only `lmars`, `hllc`, `roe` write a face pressure.
+
+**Evidence.** @tbl-ch04-riemann-tests; `test_riemann.release`, the probe run, `operator_check.py` `[C8]`.
 :::
+
+Local symbols (flagged to the editor): $\mathbf W^{\mathrm L}_f, \mathbf W^{\mathrm R}_f$ the left and right primitive
+states of face $f$ (NOTATION §4); $v_\perp$ the face-normal velocity and $v_{\parallel,1}, v_{\parallel,2}$ the two
+tangential ones in the face-local frame [m s$^{-1}$]; $p_f$ the face pressure [Pa]; `dim` the code's direction
+index, 3 for $x_1$, 2 for $x_2$, 1 for $x_3$.
 
 ### Derivation
 
-The physical flux through a face depends only on the component of velocity normal to it and on the two
-tangential components as passive quantities. Rather than rotate the state with a matrix, the code renames the
-rows: for direction `dim` the normal momentum row is
+#### Why one solver body serves all three directions
 
-$$
-\mathrm{ivx} = \mathrm{IPR} - \mathrm{dim},
-$$ {#eq-ch04-riemann-frame}
+1. *The flux through a face depends on the normal velocity.* Mass, energy and every species move with
+   $v_\perp$, the normal momentum also carries $p$, and the tangential momenta move passively.
+2. *The code renames rows instead of rotating vectors.* For direction `dim` the normal momentum row is
 
-In the code, @eq-ch04-riemann-frame is the line that sets `ivx` ({{< code src/riemann/lmars_impl.h lmars_impl >}}).
+   $$
+   \mathrm{ivx} = \mathrm{IPR} - \mathrm{dim},
+   $$ {#eq-ch04-riemann-frame}
 
-and the two tangential rows follow by cycling. `[C8]` checks that this is a permutation of the three momentum
-rows for each of the three directions, which is what makes a single solver body correct for all of them. The
-cost is that the row index of "the normal velocity" is not fixed, and reading any solver body requires holding
-@eq-ch04-riemann-frame in mind.
+   and the tangential rows are the next two in cyclic order, `ivy = IVX + ((ivx - IVX) + 1) % 3` and
+   `ivz = IVX + ((ivx - IVX) + 2) % 3`. With `IVX, IVY, IVZ, IPR` $= 1, 2, 3, 4$ this gives `ivx` $= 1, 2, 3$ for
+   $x_1, x_2, x_3$.
+3. *It is a permutation.* For each `dim` the three rows are distinct, so every momentum component is read and
+   written once; `operator_check.py` `[C8]` lists them. A renaming involves no arithmetic, so it adds no
+   round-off.
+4. *On a curved grid the renaming is not enough.* The velocity components are covariant or panel components, not
+   components in the face's orthonormal frame. `lmars`, `hllc` and `shallow-roe` call `prim2local{1,2,3}_` on
+   both states before solving and `flux2global{1,2,3}_` on the flux after (@sec-ch04-gnomonic); `roe` does not. In the code, @eq-ch04-riemann-frame is `ivx` ({{< code src/riemann/lmars_impl.h lmars_impl >}}).
 
-The rotation is only the labelling. On a curved grid the face-local frame is also a genuine change of basis,
-and that projection is done by the coordinate object before the solver is called, not inside it.
+#### Why some solvers refuse a run
+
+1. *The $x_1$ sweep always asks for a face pressure* when the block has more than one $x_1$ cell and the
+   equation of state is not `shallow-water`: `HydroImpl::reset` allocates `_face_pressure1` whenever
+   $n_{c1} > 1$, and `forward` passes it.
+2. *`upwind`, `plume-roe` and `shallow-roe` refuse a face-pressure request* with "Face-pressure output is not
+   implemented".
+3. *Hence `upwind` and `plume-roe` cannot run a compressible deck with a resolved $x_1$ axis*; the probe run
+   stops on the first stage with that message for both. `shallow-roe` runs because its equation of state turns
+   the request off.
 
 ### Numerical method
 
 ```{python}
 #| label: fig-ch04-riemann-face
-#| fig-cap: "One face and what the solver sees. The reconstruction leaves a left state (green) and a right state (blue) on the two sides of the face (thick orange line); the solver returns a single face velocity and face pressure (orange) from which the flux of every row is built. The arrow labelled n is the face normal, and the normal momentum row is selected by the index map rather than by a rotation matrix."
-#| fig-alt: "Two adjacent cells separated by a thick vertical line, with an arrow pointing right from the left cell labelled w L, an arrow pointing left from the right cell labelled w R, a normal direction arrow, and a label for the face velocity and pressure."
+#| fig-cap: "One face and what the solver sees. The reconstruction leaves a left state (green) and a right state (blue) on the two sides of the face (thick orange line); the solver returns one flux and, on $x_1$ faces, the face pressure (orange). The arrow labelled n is the face normal; the normal momentum row is selected by the index map rather than by a rotation matrix."
+#| fig-alt: "Two adjacent cells separated by a thick vertical line, with an arrow pointing right from the left cell labelled W L, an arrow pointing left from the right cell labelled W R, a normal direction arrow, and a label for the face velocity and pressure."
 #| echo: false
 from snapy_report.ch04.fig_riemann_face import make_fig
 make_fig()
 ```
 
-The factory is `create` ({{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}}) and the option parsing
-{{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}}, where the default type is `roe` and the default direction scope is
-`omni`. Note that the default is `roe` and not the `lmars` that the example decks select: a deck that omits
-the key does not get the production solver.
+| type | wave model | face pressure | frame projection | shipped decks |
+|---|---|---|---|---|
+| `lmars` | two acoustic waves, upwind state (@sec-ch04-lmars) | yes | yes | 7 |
+| `hllc` | two outer waves and a contact (@sec-ch04-hllc) | yes | yes | 6 |
+| `roe` | three linear waves, LLF fallback (@sec-ch04-roe) | yes | no | 0 |
+| `shallow-roe` | shallow-water Roe (@sec-ch04-shallow) | no | yes | 9 |
+| `plume-roe` | Lax-Friedrichs on primitive jumps (@sec-ch04-shallow) | no | no | 0 |
+| `upwind` | upwind by a given face velocity; the passive-scalar solver | no | no | 0 |
 
-The base class `forward` at {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::forward >}} is the `upwind` solver, and it is also the
-place where the face-pressure contract is enforced: it fails outright if a caller asks it for a face pressure.
-That matters because the well-balanced $x_1$ path of @sec-ch05 and the geometric source of @sec-ch04-sphsrc
-both need a face pressure, so choosing a solver that cannot produce one silently changes which pressure force
-the $x_1$ momentum row sees. Of the six types, `lmars`, `hllc` and `roe` write one.
+: The six solvers at the pin. "Shipped decks" counts `examples/*.yaml`. {#tbl-ch04-riemann-types}
 
-Each solver is declared in `LmarsSolverImpl` ([`riemann_solver.hpp:79-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.hpp#L79-L207)) as a thin module wrapping a dispatch call,
-and the numerics live in a header shared between the CPU and CUDA paths.
+**The scalar solver.** `ScalarImpl` requires `upwind` ("Passive scalars currently require the upwind solver")
+and calls it with the hydro mass flux as the fourth argument, so the scalar's flux is the mass flux times the
+upwind mixing ratio (@sec-ch08-scalar). Used as the hydro solver, the same argument would be the hydro's own
+flux buffer.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input.**
+
+```yaml
+dynamics:
+  riemann-solver:
+    type: lmars    # one of roe, lmars, hllc, upwind, shallow-roe, plume-roe
+    dir: omni      # read by shallow-roe only; it requires xy or yz
+```
+
+**What the parser accepts and refuses.** `RiemannSolverOptionsImpl::from_yaml` and the factory apply, in order:
+
+1. *No `riemann-solver` block*: the options object is returned as constructed, `type = "hllc"`, `dir = "omni"`
+   ({{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}}).
+2. *A block takes only `type` and `dir`*; any other key is refused by `check_keys` ("unknown key
+   'dynamics/riemann-solver/foo'. Valid keys: type, dir").
+3. *Inside a block a missing key defaults* to `type: roe` and `dir: omni`
+   ({{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}}).
+4. *An unknown type is refused* by `RiemannSolverImpl::create` ("RiemannSolver: unknown type exact").
+5. *`shallow-roe` refuses `dir: omni`* when it runs, and on a gnomonic grid requires `dir: yz` at construction
+   (@sec-ch04-shallow).
+6. *A solver without face pressure is refused on the first $x_1$ sweep* of a compressible deck (the second
+   derivation above).
+
+The probe against the pin build confirms items 1 to 4 and 6 (@sec-ch04-framework).
+
+**The excerpt.** The defaults and the factory ({{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}},
+{{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}}) and the row map of every solver body, here
+`lmars_impl` ({{< code src/riemann/lmars_impl.h lmars_impl >}}):
+
+```cpp
+  op->type() = node["type"].as<std::string>("roe");
+  op->dir() = node["dir"].as<std::string>("omni");
+  ...
+  if (opts->type() == "roe") {
+    return p->register_module(name, RoeSolver(opts, p));
+  } else if (opts->type() == "lmars") {
+  ...
+  auto ivx = IPR - dim;
+  auto ivy = IVX + ((ivx - IVX) + 1) % 3;
+  auto ivz = IVX + ((ivx - IVX) + 2) % 3;
+```
+
+The first two lines are item 3; the factory is item 4; the last three lines are @eq-ch04-riemann-frame and the
+cyclic tangential rows.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
-| option keys and defaults | {{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | type `roe`, dir `omni` |
-| the factory | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}} | `create` | six registered types |
-| upwind, and the face-pressure contract | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::forward >}} | `forward` | `type: upwind` |
-| the solver modules | [`riemann_solver.hpp:79-207`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/riemann/riemann_solver.hpp#L79-L207) | `LmarsSolverImpl` | |
-| the face-local index map | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `ivx` | every direction |
+| defaults with no block | {{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}} | `type` | `hllc`, `omni` |
+| defaults inside a block | {{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | `roe`, `omni` |
+| the factory | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}} | `create` | six types |
+| upwind, and the face-pressure refusal | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::forward >}} | `forward` | `type: upwind` |
+| face pressure always requested on $x_1$ | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `_face_pressure1` | $n_{c1}>1$ |
+| the $x_1$ call | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `face_pressure1` | not shallow water |
+| the row map | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `ivx` | every direction |
+| scalars require `upwind` | {{< code src/scalar/scalar.cpp ScalarImpl::reset >}} | `upwind` | passive scalars |
 
 : Code map of the Riemann framework. {#tbl-ch04-riemann-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/test_riemann.cpp` | the registered solvers against reference states | per test |
-| this chapter's check | `[C8]` the index map is a permutation of the momentum rows for all three directions | exact |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_riemann.release` | the registered solvers on reference states | per case | the test's constants |
+| the probe run (this report) | defaults with and without a block; unknown type and key refused; `upwind`, `plume-roe` refused on $x_1$ | exact (throws or constructs) | a parser contract |
+| `operator_check.py` `[C8]` (this report) | @eq-ch04-riemann-frame is a permutation for every direction | exact | integer arithmetic |
 
 : Tests of the Riemann framework. {#tbl-ch04-riemann-tests}
 
+`[C8]` lists the rows: `dim` 3 gives normal row 1 and tangential 2, 3; `dim` 2 gives 2 and 3, 1; `dim` 1 gives 3
+and 1, 2.[^rs-run] `test_riemann.release` passes at the pin on CPU, one rank (@tbl-ch04-ctest-run).
+
+[^rs-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch04/operator_check.py`, CPU,
+    double, 1 process; Python 3.12.10, numpy 2.5.3; output identical to the committed file]. The probe run is that
+    of @sec-ch04-framework.
+
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- The YAML default solver is `roe`, not the `lmars` the shipped decks use. Omitting the key changes the scheme.
-- Three of the six types cannot return a face pressure. Selecting one of those changes the $x_1$ pressure force
-  on a curved grid and in the well-balanced path, and the only signal is a hard failure if something asks.
-:::
-
-1. **`dir` is parsed and its effect is not documented.** The key is read into the options and no source in the
-   repository explains what scope `omni` selects against the alternatives.
+1. **Two defaults.** Omitting the block and writing an empty block give different solvers, `hllc` and `roe`.
+2. **`roe` is not projected.** On a gnomonic grid it solves in panel components (@sec-ch04-gnomonic); no test
+   runs `roe` on a curved grid.
+3. **`upwind` is the scalar solver.** As a hydro solver it is refused wherever $x_1$ is resolved, and elsewhere it
+   multiplies by the flux buffer it is handed.
+4. **`dir`** matters only to `shallow-roe`; for the other five it is parsed and unused.

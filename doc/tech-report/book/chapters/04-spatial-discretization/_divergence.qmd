@@ -1,61 +1,103 @@
 ## The finite-volume update and the flux divergence {#sec-ch04-divergence}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.1
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.1; src/coord/coordinate.cpp, src/hydro/hydro_forward.cpp, src/hydro/hydro_options.cpp at the pin
 status: draft
 -->
 
 ### Summary
 
-Every scheme in this chapter feeds one operator. A Runge-Kutta stage reconstructs the primitive state to the
-faces, solves a Riemann problem on each face to get a single flux there, and then books the net flux through the
-cell. Written for one cell $i$ and one direction,
+Every scheme of this chapter ends in one operator. A stage of the time integrator turns the cell averages into
+face fluxes, and this operator turns the face fluxes back into a change of each cell average: it adds up what
+flows in and out through the faces of a cell and divides by the cell's volume. Because every face value is
+added to one cell and subtracted from its neighbour, nothing is created or lost between cells, on any grid.
+The operator is always on; a direction can only be switched off as a whole.
 
 ::: {.callout-note title="At a glance"}
-- One stage forms $\Delta u = -\Delta t\,\nabla\!\cdot\!F$ on interior cells, then adds sources.
-- The divergence is a difference of $AF$ over the two faces of each direction, divided by $V$.
-- Switch: `dynamics/disable-flux-x1|x2|x3`, default false; disabling a direction also zeroes that gravity component.
-- Flux form, so the operator conserves by construction on any grid.
-- Geometric sources are added by the coordinate object, not by the divergence.
+**Purpose.** Forms $\Delta\mathbf U_i = -\Delta t\,\Delta_i[A\mathbf F]/V_i$ summed over three directions, @eq-ch04-divergence-fv.
+
+**Data.** Reads $\mathbf F_1, \mathbf F_2, \mathbf F_3$ on faces, $A$ and $V$; writes `_div`, then $\Delta\mathbf U$ on interior cells.
+
+**Placement.** Every RK stage, in `HydroImpl::forward`, after all face fluxes are final.
+
+**Activation.** Always on; `dynamics/disable-flux-x1|x2|x3` drops a direction and its gravity (default false).
+
+**Guarantee / limits.** Conservative on every grid; bitwise zero for a uniform flux on Cartesian only.
+
+**Evidence.** @tbl-ch04-divergence-tests; `derivation_check.py` `[C1]`, `operator_check.py` `[C1]`–`[C4]`.
 :::
 
-$$
-\Delta u_i = -\Delta t\,\frac{A_{i+1/2}F_{i+1/2} - A_{i-1/2}F_{i-1/2}}{V_i},
-$$ {#eq-ch04-divergence-fv}
-
-summed over $x_1$, $x_2$ and $x_3$. Nothing in @eq-ch04-divergence-fv depends on how $F$ was obtained: the
-reconstructions of @sec-ch04-framework and the Riemann solvers of @sec-ch04-riemann only decide the number that
-sits on the face. That separation is what makes the operator conservative whatever is plugged into it, and it is
-why the two correction schemes of @sec-ch04-fluxcov and @sec-ch04-x1masscov can act on the face value alone.
+Local symbols (flagged to the editor): $\mathbf F_a$ the numerical flux through faces normal to $x_a$ (NOTATION
+§4); $A_{a,f}$ the area of face $f$ normal to $x_a$ [m$^2$]; $\mathcal Q$ a set of cells and $\partial\mathcal Q$
+its outer faces; $\epsilon_{\mathrm m}$ machine epsilon (NOTATION §7).
 
 ### Derivation
 
-The finite-volume balance over a cell is exact, not an approximation: integrating $\partial_t u +
-\nabla\!\cdot\!F = 0$ over the cell and applying the divergence theorem gives
+#### From the conservation law to the cell update
+
+1. *The law.* snapy advances $\partial_t\mathbf U + \nabla\cdot\mathbf F = \mathbf S$ for the conserved vector
+   $\mathbf U$ of NOTATION §2. The source $\mathbf S$ belongs to other chapters; this section is the flux term.
+2. *Integrate over cell $i$.* The cell does not move, so the time derivative passes through the integral, and the
+   divergence theorem turns the volume integral of $\nabla\cdot\mathbf F$ into the outward flux through the cell's
+   faces:
+
+   $$
+   \frac{\mathrm{d}}{\mathrm{d}t}\int_{V_i}\mathbf U\,\mathrm{d}V
+    = -\oint_{\partial V_i}\mathbf F\cdot\hat{\mathbf n}\,\mathrm{d}A .
+   $$ {#eq-ch04-divergence-exact}
+
+3. *Split the boundary into faces.* A hexahedral cell has two faces per direction. Writing the face integral in
+   direction $a$ as the face area times the face average of the normal flux, $\int_f\mathbf F\cdot\hat{\mathbf n}\,
+   \mathrm{d}A = A_{a,f}\langle\mathbf F_a\rangle_f$, is exact; it is a definition of the face average.
+4. *Divide by $V_i$.* The left side becomes $\mathrm{d}\langle\mathbf U\rangle_{V_i}/\mathrm{d}t$, the rate of the
+   stored cell average.
+5. *The one approximation.* The scheme replaces each face average $\langle\mathbf F_a\rangle_f$ by the single
+   number the Riemann solver returns for that face. Everything that decides the accuracy of that number lives
+   in the reconstruction and the solver (@sec-ch04-framework, @sec-ch04-riemann) and in the two face-average
+   corrections of section 4B.
+6. *Multiply by the stage step.* One stage takes the right side times $\Delta t$:
 
 $$
-\frac{\mathrm{d}}{\mathrm{d}t}\int_{V_i} u\,\mathrm{d}V
- = -\oint_{\partial V_i} F\cdot n\,\mathrm{d}A .
-$$ {#eq-ch04-divergence-exact}
+\Delta\mathbf U_i = -\Delta t\sum_{a=1}^{3}\frac{A_{a,i+1/2}\mathbf F_{a,i+1/2} - A_{a,i-1/2}\mathbf F_{a,i-1/2}}{V_i},
+$$ {#eq-ch04-divergence-fv}
 
-The only approximation in @eq-ch04-divergence-fv is that each face integral is replaced by one number times the
-face area, so $F_{i\pm1/2}$ stands for the *face average* of the normal flux. Section 4B is entirely about the
-difference between that face average and the value a solver returns from cell data.
+with $i\pm\tfrac12$ the two faces of direction $a$. `derivation_check.py` `[C1]` checks step 2 in one dimension,
+$\int_{x_-}^{x_+}\partial_xF\,\mathrm{d}x = F(x_+) - F(x_-)$, with sympy. In the code, @eq-ch04-divergence-fv is `divergence` times `-dt` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).
 
-Two properties follow directly, and `[C1]` and `[C4]` check them. First, on a Cartesian block the two face areas
-of a direction are equal, so a flux that does not vary in that direction cancels exactly and a uniform state
-keeps a bitwise zero tendency. Second, summing $V_i$ times @eq-ch04-divergence-fv over any set of cells leaves
-only the fluxes through the outer boundary: interior faces appear twice with opposite signs. That telescoping is
-the whole conservation argument, and it is why a seam between two processes must carry a *single* value
-(@sec-ch04-seam) and why both terms of the 4B corrections are added to the face flux rather than to the cell
-tendency.
+#### Why the update conserves, on any grid
 
-On a curved grid the areas differ between the two faces of a direction and the cancellation is no longer
-pointwise. What survives is the integral identity: `[C2]` reproduces $\nabla\!\cdot\!(r\hat r) = 3$ to
-round-off from the code's own areas and volume, which is the identity the cubed-sphere volume test asserts cell
-by cell. The remainder of the curvature, the part that is not a difference of face fluxes, is the geometric
-source of @sec-ch04-sphsrc and @sec-ch04-gnomonic.
+1. *Each interior face appears twice.* Face $f$ between cells $i$ and $i+1$ enters $V_i\Delta\mathbf U_i$ with
+   $-\Delta t A_f\mathbf F_f$ and $V_{i+1}\Delta\mathbf U_{i+1}$ with $+\Delta t A_f\mathbf F_f$.
+2. *The same number both times.* The divergence reads one array element `flux1[f]` for both cells, so the two
+   terms are the same floating-point number with opposite signs.
+3. *Sum over any set of cells.* For a set $\mathcal Q$ the sum $\sum_{i\in\mathcal Q}V_i\Delta\mathbf U_i$
+   telescopes: only the faces of $\partial\mathcal Q$ survive. `derivation_check.py` `[C1]` sums six cells
+   symbolically and gets $G_{6} - G_{0}$; `operator_check.py` `[C4]` does it for random fluxes on a block.
+4. *No geometric assumption.* Steps 1 to 3 never used the shape of the cell, so the update conserves on the
+   Cartesian, spherical-polar and cubed-sphere grids alike. What breaks it is a face that carries two numbers,
+   one per side; @sec-ch04-seam is the one place the code has to arrange the single value by hand.
+
+#### Why a uniform flux gives an exact zero on Cartesian, and how large the residual is elsewhere
+
+1. *Cartesian.* The two faces of a direction have the same area, so a flux that is the same on both gives
+   $A\mathbf F - A\mathbf F$, and the difference of two identical floating-point numbers is exactly zero.
+   `operator_check.py` `[C1]` finds $0$ over a $5\times4\times3$ block.
+2. *Curved grids.* The areas differ, $A_{i+1/2}\ne A_{i-1/2}$, so a uniform flux leaves the geometric term
+   $\mathbf F(A_{i+1/2}-A_{i-1/2})/V_i$, which the coordinate's own source cancels (@sec-ch04-sphsrc).
+3. *The residual is round-off, bounded.* Write the $x_1$ term as $(a-b)/V$ with $a = A_{i+1/2}F_{i+1/2}$ and
+   $b = A_{i-1/2}F_{i-1/2}$. Every floating-point operation returns its exact result times $(1+\eta)$ with
+   $\lvert\eta\rvert\le\epsilon_{\mathrm m} = 2^{-53}$. Count the roundings: at most two in each area and in
+   the volume as the coordinate computes them, one in each product, one in the difference and one in the
+   quotient, so at most $k = 5$ along any path. To first order in $\epsilon_{\mathrm m}$ the computed term
+   differs from the exact one by at most $k\,\epsilon_{\mathrm m}(\lvert a\rvert+\lvert b\rvert)/V$.
+4. *The bound for the check's field.* For $\mathbf F = r\hat r$ per unit solid angle, $a = r_+^3$, $b = r_-^3$
+   and $V = (r_+^3 - r_-^3)/3$, so the bound is $3k\,\epsilon_{\mathrm m}(r_+^3 + r_-^3)/(r_+^3 - r_-^3)
+   \approx 2k\,\epsilon_{\mathrm m}\,r/h$ for a thin cell. On the $r\in[2,3]$, $h = 1/6$ grid of
+   `operator_check.py` `[C2]` that is $2\cdot5\cdot1.1\times10^{-16}\cdot3/(1/6) \approx 2.0\times10^{-14}$. The
+   tangential fluxes of $r\hat r$ are zero, so the $x_2$ and $x_3$ terms add nothing, and the measured
+   $\max\lvert\nabla\cdot(r\hat r) - 3\rvert = 3.6\times10^{-15}$ is inside the bound. The bound grows as
+   $r/h$: a thin shell far from the centre loses the most digits.
 
 ### Numerical method
 
@@ -70,44 +112,76 @@ make_fig()
 
 ```{python}
 #| label: fig-ch04-divergence-stage
-#| fig-cap: "The order of one Runge-Kutta stage. Each box is a step of the stage operator, in the order the code runs them; the colour marks which chapter owns the step, with orange the face work of this chapter, green the fourth-order face corrections of section 4B, vermillion the species limiter of @sec-ch08 and blue the implicit correction of the time-integration chapter. The divergence is the seventh box: every face value is final before it runs."
+#| fig-cap: "The order of one Runge-Kutta stage. Each box is a step of the stage operator, in the order the code runs them; the colour marks which chapter owns the step, with orange the face work of this chapter, green the face corrections of section 4B, vermillion the species limiter of @sec-ch08 and blue the implicit correction of @sec-ch07. The divergence runs only after every face value is final."
 #| fig-alt: "A left-to-right strip of nine labelled boxes joined by arrows, from the equation of state to the implicit correction."
 #| echo: false
 from snapy_report.ch04.fig_stage_pipeline import make_fig
 make_fig()
 ```
 
-The stage is `forward` at {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, which converts the conserved state to
-primitive with `peos` and then runs the sweeps in the order of @fig-ch04-divergence-stage. The divergence itself
-is `divergence` at {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}: it allocates one tendency tensor, adds the $AF$
-difference of each defined direction over the interior index range, and divides by the cell volume. A direction
-that is switched off simply has no flux tensor, so the same code covers one, two and three dimensions.
+**Where it runs.** `HydroImpl::forward` builds the three face fluxes, applies the seam average
+(@sec-ch04-seam) and the species limiter (@sec-ch08-theta), and then calls the coordinate's `forward`, which
+is `divergence` plus that grid's geometric source. The stage increment is $-\Delta t$ times the result on
+interior cells only; ghost cells keep a zero increment.
 
-The index convention matters when reading the code. Cells run from the first interior index to the last, and the
-faces of the same direction run one further, so the slices at `face_area1` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}) read one more
-face than there are cells. The tendency is written on interior cells only; ghost columns never receive one,
-which is why a correction that writes a ghost column is harmless.
+**Index ranges.** Cells of direction $x_1$ run from `il()` to `iu()`, and the faces from `il()` to `iu()+1`:
+`face_area1(si + 1, ei + 1) * flux1.slice(DIM1, si + 1, ei + 1)` is the upper face of every interior cell and
+`face_area1(si, ei) * flux1.slice(DIM1, si, ei)` the lower one. The same slicing holds for $x_2$ and $x_3$.
 
-The base `forward` at {{< code src/coord/coordinate.cpp CoordinateImpl::forward >}} is the Cartesian case: it discards the primitive
-state and the face pressure and returns the divergence alone. Every curved coordinate overrides it and adds its
-source on top of the same divergence.
-
-| quantity | lives at | from |
-|---|---|---|
-| $F_1$, $F_2$, $F_3$ | faces of its own direction | the Riemann solver, then the species limiter |
-| $A_{i\pm1/2}$, $V_i$ | faces, cells | `face_area1`, `cell_volume` |
-| $\Delta u$ | interior cells | minus $\Delta t$ times the divergence |
-
-: Where each quantity of the stage operator lives. {#tbl-ch04-divergence-lives}
+**Order.** The update itself is exact (steps 1 to 4 above); the order of the scheme is the order of the face
+value, set by the reconstruction (@sec-ch04-framework) and limited to second order by the face-average
+approximation of step 5 unless the corrections of section 4B are on.
 
 ### Code
 
-The symbol column is the citation's anchor: it is the identifier the cited range contains.
+**A minimal input.** The operator has no switch of its own; three keys drop a direction's flux:
 
-| what | code link | symbol | switch / condition |
+```yaml
+dynamics:
+  disable-flux-x1: false   # default false; true keeps no x1 flux in the update
+  disable-flux-x2: false
+  disable-flux-x3: false
+```
+
+**What the parser accepts and refuses.** `HydroOptionsImpl::from_yaml`
+({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}) applies, in order:
+
+1. *`dynamics` must be a map or empty*, else "dynamics must be a map": the keys below are read by name.
+2. *Unknown keys are refused* by `check_keys`; the accepted set is `equation-of-state`, `reconstruct`,
+   `riemann-solver`, `verbose`, `disable-flux-x1|x2|x3` and `wb-wall-clamp`. A misspelt `disable-flux` key is an
+   error, not a silently kept flux.
+3. *A non-boolean value is refused* by the YAML conversion of `as<bool>`.
+4. *Disabling a direction also zeroes that gravity component* (`grav1(0.)` and its siblings): with no flux in
+   $x_a$ there is no pressure gradient to balance $g_a$, and a kept $g_a$ would accelerate every cell without
+   limit.
+
+`divergence` itself refuses to run when no direction has a flux tensor ("At least one flux tensor must be
+defined"), because the output array takes its shape from the first defined flux.
+
+**The excerpt.** The $x_1$ part of `CoordinateImpl::divergence`
+({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}) and the line of `HydroImpl::forward` that
+turns it into the increment ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+  if (flux1.defined() > 0) {
+    dflx.slice(DIM1, si, ei) +=
+        face_area1(si + 1, ei + 1) * flux1.slice(DIM1, si + 1, ei + 1) -
+        face_area1(si, ei) * flux1.slice(DIM1, si, ei);
+  }
+  ...
+  return dflx / vol;
+  ...
+  du.index(interior) = -dt * _div.index(interior);
+```
+
+The first statement is the $a = 1$ term of the sum in @eq-ch04-divergence-fv, $A_{i+1/2}\mathbf F_{i+1/2} -
+A_{i-1/2}\mathbf F_{i-1/2}$; `return dflx / vol` is the division by $V_i$; the last line is the factor
+$-\Delta t$ on interior cells.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
 | the stage operator | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `forward` | every stage |
-| conserved to primitive | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `peos` | |
+| the increment on interior cells | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `interior` | |
 | the divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `divergence` | |
 | the $x_1$ term | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `face_area1` | $x_1$ flux defined |
 | Cartesian: divergence only | {{< code src/coord/coordinate.cpp CoordinateImpl::forward >}} | `forward` | cartesian |
@@ -117,29 +191,31 @@ The symbol column is the citation's anchor: it is the identifier the cited range
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| this section's check | `[C1]` bitwise zero tendency on a uniform Cartesian block; `[C2]` the radial identity; `[C3]` the volume is the exact radial integral; `[C4]` the sum of $V\,\nabla\!\cdot\!F$ is the boundary flux | round-off |
-| `tests/test_cubed_sphere_cell_volume.py` | six panel volumes sum to $\tfrac43\pi(r_o^3-r_i^3)$, and the radial identity per cell | `1e-12`, rest `1e-6` |
-| `tests/test_coordinate.cpp` | gnomonic areas and volumes, frame projections | allclose defaults |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_cubed_sphere_cell_volume_python` | six panel volumes sum to $\tfrac43\pi(r_o^3-r_i^3)$; $\nabla\cdot(r\hat r) = 3$ per cell | $10^{-12}$; $10^{-6}$ | the test's own constants |
+| `test_coordinate.release` | gnomonic areas, volumes and frame projections | `allclose` defaults | `torch::allclose` |
+| `derivation_check.py` `[C1]` (this report) | the cell integral is the face difference; six cells telescope | exact | sympy |
+| `operator_check.py` `[C1]`–`[C4]` (this report) | bitwise zero on Cartesian; $\nabla\cdot(r\hat r)=3$; exact radial volume; telescoping | bitwise; the round-off bound of step 4 | stated in the check |
 
 : Tests of the finite-volume update. {#tbl-ch04-divergence-tests}
 
-::: {.callout-important title="Check"}
-The check is `src/snapy_report/ch04/operator_check.py`, output `src/snapy_report/ch04/operator_check.out`,
-8 of 8 claims passing.
-:::
+`[C1]` of `derivation_check.py` holds symbolically.[^div-run] `operator_check.py` `[C1]` gives a tendency of
+exactly $0$ on a uniform Cartesian flux, `[C2]` gives $\lvert\nabla\cdot(r\hat r)-3\rvert = 3.6\times10^{-15}$,
+inside the derived bound of $2.0\times10^{-14}$, `[C3]` shows the midpoint volume $r^2h$ would be short by $h^3/12$ per unit solid angle,
+and `[C4]` gives a telescoping residual of $1.9\times10^{-16}$ relative. The two ctest entries pass at the pin on
+CPU, one rank (@tbl-ch04-ctest-run in @sec-ch04-fluxcov).
+
+[^div-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/operator_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files]. Outputs `derivation_check.out` and `operator_check.out`.
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- Cylindrical coordinates are not built: the source file carries a trailing underscore and is not compiled.
-- A uniform state is preserved bitwise only on a Cartesian block; on a curved grid the cancellation is an
-  integral identity and holds to round-off, not bitwise.
-:::
-
-1. **Ghost tendencies.** No tendency is ever formed on a ghost cell, so a correction that writes one cannot
-   reach the state. That is a property of the current index ranges, not something the code asserts.
-2. **One value per face.** The operator assumes each face carries one number. Where two processes own the same
-   face that has to be arranged explicitly (@sec-ch04-seam); where the two sides disagree, averaging hides the
-   disagreement rather than removing it.
+1. **Cylindrical coordinates are not built.** The source file carries a trailing underscore and is not compiled
+   (@sec-ch03).
+2. **Ghost tendencies.** No increment is formed on a ghost cell, so a correction that writes one cannot reach the
+   state. That is a property of the index ranges above, not an assertion in the code.
+3. **One value per face.** The operator conserves only if each face carries one number. Across a process seam
+   that is arranged by averaging (@sec-ch04-seam), which hides a disagreement between the two sides rather than
+   removing it.

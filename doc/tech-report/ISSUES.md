@@ -106,3 +106,23 @@ symbol enters NOTATION.md.
 
 - ch15 notation proposal: `\zeta_{15}` is a dimensionless convergence exponent and `\psi_{15}` its positive error coefficient (density units / m^exponent) in the verification-metric derivation. Both are local pending editor registration; neither $\zeta$ nor $\psi$ appears in NOTATION. They replace the conflicting convergence symbols: $\nu$ is kinematic viscosity, $\nu_{nk}$ a stoichiometric coefficient, and $C$ the Courant number.
 - ch15 also uses `\mathbf n` for the dimensionless outward unit normal in the divergence theorem; proposed notation entry, defined locally and not used as a species index.
+## Chapter 4 local symbols (draft)
+
+Owners: chapter 4 / editor. Each scheme file lists its symbols in a "Local symbols" line after its At-a-glance box;
+remove that line when the symbol enters NOTATION.md.
+- Reconstruction: $D_-, D_+, D_i$ (PLM differences and slope); $c_l$, $n_{\mathrm s}$, $\eta_n$ (stencil weights, width,
+  rounding factor); $p_\ell, \beta_\ell, d_\ell, \omega_\ell, \alpha_\ell$, $\epsilon_{\mathrm W}$, $s_q$, $\zeta_{\mathrm{ex}}$ (WENO
+  candidates, indicators, weights, floor, stencil scale, critical-point offset; $\ell$ indexes candidates because $k$
+  is the $x_3$ index); $a_0, a_1, \dots$ (Taylor coefficients).
+- Riemann solvers: $v_\perp, v_{\parallel,1}, v_{\parallel,2}$ (face-frame velocities); $p_f$, $v_f$ (face pressure and
+  velocity); $\rho_{\mathrm{av}}, \gamma_{\mathrm{av}}, c_{\mathrm{av}}$; $\hat H$ (specific total enthalpy);
+  $\lambda^{\mathrm L}, \lambda^{\mathrm R}, \lambda_{\mathrm c}, p_{\mathrm c}, p_{\mathrm{pv}}, \zeta^{\mathrm K}, \lambda_{\mathrm{tiny}}, \mathbf D, \mathcal J^{\mathrm K}, \Pi^{\mathrm K}$ (HLLC);
+  $\varrho_{\mathrm K}$, superscript $\mathrm{Roe}$, $\lambda_\mp, \lambda_0, \alpha_\mp, \alpha_0, \alpha_\parallel, \mathbf r_\ell$, $a_{\mathrm{LF}}$ (Roe);
+  $\boldsymbol\psi$, $\mathbf f$, $a$ (plume-roe). $d_{\mathrm{sw}}$ is chapter 2's local symbol, reused.
+- Sources and 4B: $p^{\mathrm{sh}}$ (shifted pressure; the code's `p*`, renamed because the star is the thermodynamic
+  reference state); $\partial^{\mathrm h}_1$, $\partial^{\mathrm w}_1$ (centred and one-sided $x_1$ differences);
+  $\sigma^2_{\mathrm A,i}$ (`face_moment2_x1`); $y_{\mathrm d}$; for the buoyancy ratio $y_{\mathrm v}, X_{\mathrm v},
+  \mu_{\mathrm{mix}}, \alpha_{\mathrm v}, \Gamma, b, \Upsilon$ and the superscripts $\mathrm{ex}$, $\mathrm{err}$.
+- Overlap for the editor: chapter 12 writes the same face moments as $\sigma^{2,\mathrm{face}}_i$ and
+  $\delta^{\mathrm{face}}_i$, chapter 3 as `face_moment2_x1` and $x_{1,i} - x^{\mathrm A}_{1,i}$; chapter 4 follows chapter 3
+  and writes the moment $\sigma^2_{\mathrm A,i}$. One form should enter NOTATION.md §1.

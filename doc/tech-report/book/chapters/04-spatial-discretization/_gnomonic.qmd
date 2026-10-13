@@ -1,94 +1,161 @@
-## Geometric sources on the gnomonic cubed sphere {#sec-ch04-gnomonic}
+## Geometric sources and the face frame on the gnomonic cubed sphere: placement in the stage {#sec-ch04-gnomonic}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.15
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.15; src/coord/gnomonic_equiangle.cpp, src/riemann/lmars.cpp, hllc.cpp, roe.cpp,
+         shallow_roe.cpp, src/hydro/hydro_forward.cpp, tests/test_hydrostatic.cpp, tests/test_coordinate.cpp at the pin;
+         the metric, the solid angle and the source derivation are in @sec-ch03-gnomonic
 status: draft
 -->
 
 ### Summary
 
-The cubed sphere replaces the polar singularity with six panels of an equiangular gnomonic grid. Within a panel
-the two tangential coordinates are angles about two different axes, and they are not orthogonal: the metric has
-an off-diagonal term, and the geometric source carries cross terms because of it.
+On the cubed sphere the two horizontal coordinates of a panel are not orthogonal, so the stage needs two things
+the Cartesian grid does not: the face states must be turned into an orthonormal frame before a Riemann solver
+sees them, and the momentum rows get geometric sources. The geometry and the derivation of the sources are set
+out in @sec-ch03-gnomonic; this section is where they enter the stage operator, which solvers turn the frame and
+which do not, and the two forms of the radial pressure force. Both are always on for this grid.
 
 ::: {.callout-note title="At a glance"}
-- The same structure as the spherical-polar source, on a grid whose two tangential directions are not orthogonal.
-- Switch: none; selected by the `gnomonic-equiangle` coordinate type.
-- The solid angle is exact, from a corner difference, and the radial integral is exact.
-- The non-orthogonal metric adds cosine cross terms the spherical-polar source does not have.
-- The cell centre is the arithmetic mid-radius, which is not the centroid of the cell measure.
+**Purpose.** Face-frame projection around the solver, then the radial source and @eq-ch03-gnomonic-src2 after the divergence.
+
+**Data.** Reads $\mathbf W$ (or $p^{\mathrm{sh}}$), the $x_1$ face pressures and the panel metric; writes `_div` and projected face states.
+
+**Placement.** Every stage: projection inside the solver call; sources inside the coordinate's `forward`.
+
+**Activation.** `geometry: {type: gnomonic-equiangle}`; the projection runs in `lmars`, `hllc`, `shallow-roe`, not `roe`.
+
+**Guarantee / limits.** A six-panel isentropic shell stays at rest to $10^{-14}$; `roe` solves in panel components.
+
+**Evidence.** @tbl-ch04-gnomonic-tests; `test_hydrostatic.release`, `test_coordinate.release`, `gnomonic_check.py` `[C1]`–`[C3]`.
 :::
+
+Local symbols (flagged to the editor): $\xi, \eta$ the panel angles and $\psi$ the angle between the two panel
+coordinate lines, as in @sec-ch03-gnomonic; $p^{\mathrm{sh}}$ the shifted pressure of @sec-ch04-sphsrc; $v_\perp$ as in @sec-ch04-riemann.
 
 ### Derivation
 
-The exactness of the geometry is the part worth stating. The solid angle of a cell is a difference of corner
-values at `solid_angle_kj` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}), which is exact for a gnomonic quadrilateral rather than
-a quadrature of it, and the radial face area and volume are that solid angle times the exact radial factors at
-{{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::face_area1 >}} and {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::cell_volume >}}. Because both use
-the *same* solid angle, the radial identity `[C2]` checks holds on this grid for the same reason it holds on
-the spherical-polar one, and the six panels' volumes sum to the shell volume exactly, which is what the
-cubed-sphere volume test asserts. A port of the corner formula confirms the exactness. The cells of a panel sum to
-$4\pi/6$ for any partition, to $4\times10^{-15}$ [check `src/snapy_report/ch04/gnomonic_check.py`, output
-`gnomonic_check.out`, `[C1]`]. Each cell equals the solid-angle integral over its cube-face rectangle to
-$3\times10^{-15}$ (`[C2]`). Solid angle times the radial factor sums to the shell volume (`[C3]`).
+None new: the metric and the sources are derived in @sec-ch03-gnomonic, and the steps below place them in the stage.
 
-The source itself is at `forward` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}), with the radial part at
-`src1` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}) and the two tangential parts at
-`src2` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}). The metric coefficients they use are built once at
-`x_ov_rD_kji` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}). No source in the repository derives these cross terms; this
-section records their form from the code and refers the geometry itself to @sec-ch03.
+#### Why the solver must see orthonormal components
+
+1. *The stored velocity components are panel components.* The two horizontal components are along the $\xi$ and
+   $\eta$ coordinate lines, which meet at an angle $\psi \ne \tfrac\pi2$ away from the panel centre
+   (@sec-ch03-gnomonic).
+2. *A solver needs the normal velocity.* Every solver body takes `WL(ivx)` as $v_\perp$ (@eq-ch04-riemann-frame),
+   which is the face-normal component only in an orthonormal frame.
+3. *Hence the projection.* `lmars`, `hllc` and `shallow-roe` call `prim2local{1,2,3}_` on both face states, which
+   sets the face metric and turns the components into the face's orthonormal frame, and `flux2global{1,2,3}_` on
+   the flux after; @sec-ch03-gnomonic derives the matrices.
+4. *`roe` skips step 3.* `RoeSolverImpl::forward` passes the states as stored. On this grid its `ivx` row is a
+   panel component, not $v_\perp$, wherever $\psi \ne \tfrac\pi2$. No test runs `roe` here.
+
+#### The sources the coordinate adds
+
+1. *Radial.* $\rho(v_2v_{\underline 2} + v_3v_{\underline 3})/r$ plus the pressure part, with $v_{\underline 2}, v_{\underline 3}$ the lowered
+   components and $r$ the midpoint radius `x1v`. With face pressures the pressure part is the area-weighted face
+   difference minus the face gradient, exactly as step 3 of @sec-ch04-sphsrc, so the net radial pressure force is
+   the face difference; without them it is $2p/r$. There is no `SNAP_X1_CENTROID_EXACT` branch on this grid.
+2. *Tangential.* @eq-ch03-gnomonic-src2 for $m_2$ and its mirror for $m_3$, with the coefficients built once in
+   `reset`.
+3. *Shifted pressure.* With the face-flux covariance on, the centroid shift is non-zero on this grid, so the
+   sources read $p^{\mathrm{sh}}$ for the reason given in @sec-ch04-sphsrc.
+
+#### Round-off at rest
+
+1. *The balance is a cancellation of computed terms*, the pressure inside the flux divergence against the
+   pressure part of the sources, bounded as in @sec-ch04-sphsrc by $k\epsilon_{\mathrm m}$ times the sum of the
+   magnitudes of the cancelling terms over $V$.
+2. *The measured residual is inside it.* `test_hydrostatic.release` runs a six-panel isentropic shell for 100
+   steps (WENO5, LMARS) and finds a maximum spurious vertical velocity of $6.8\times10^{-15}$, against its bound of
+   $10^{-8}$.
 
 ### Numerical method
 
-The radial pressure force is the same plain difference of face pressures as on the spherical-polar grid, so
-everything said in @sec-ch04-sphsrc about the dependence on the solver applies here unchanged.
+```{python}
+#| label: fig-ch04-gnomonic-frame
+#| fig-cap: "The face frame on the gnomonic grid. The stored panel components are projected into the face's orthonormal frame before the solver and the flux is returned to the panel after it, for lmars, hllc and shallow-roe; roe skips both steps (vermillion)."
+#| fig-alt: "Four boxes joined by arrows: panel components, projection to the face frame, Riemann solver, projection back; and a vermillion line saying roe does not project."
+#| echo: false
+from snapy_report.ch04.fig_ch04_schemes import make_gnomonic
+make_gnomonic()
+```
 
-One property deserves care. The cell centre on this grid is the arithmetic mid-radius, at
-`x1v` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}), and not the centroid of the cell's own $r^2$ measure. A cell average
-and a value at that centre therefore differ at second order, which matters whenever initial conditions are
-written as point values at the stored centre and read as cell averages. The derivation note records this as a
-consistency condition on how a deck's initial state is prepared, not as an error in the grid.
-
-The exact volume is used unconditionally. A consequence recorded in the pull request that made it so is that
-the usual switch-off property does not hold on this grid: turning the related corrections off does not return
-the code bitwise to the previous answer, because the volume itself changed. That is consistent with the code
-and is recorded here for a reader comparing runs across that change.
+**Panel seams.** The face states of the two panels at a panel edge are exchanged after reconstruction, so both
+sides solve the same face (@sec-ch03-gnomonic); the radial cell centre is the midpoint, not the volume centroid,
+which the gravity work of @sec-ch06 accounts for.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
-|---|---|---|---|
-| exact solid angle | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `solid_angle_kj` | |
-| radial face area | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::face_area1 >}} | `face_area1` | |
-| exact cell volume | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::cell_volume >}} | `cell_volume` | |
-| metric coefficients | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `x_ov_rD_kji` | |
-| the source | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}} | `forward` | gnomonic-equiangle |
-| mid-radius cell centre | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `x1v` | |
+**A minimal input**, as in the six-panel rest test:
 
-: Code map of the gnomonic geometric source. {#tbl-ch04-gnomonic-code}
+```yaml
+geometry:
+  type: gnomonic-equiangle
+distribute:
+  layout: cubed-sphere
+dynamics:
+  riemann-solver: {type: lmars}
+```
+
+**What the parser accepts and refuses.** `reset` requires `nx2 == nx3` and `interp_order` 2
+(@sec-ch03-gnomonic); `shallow-roe` on this grid requires `dir: yz` (@sec-ch04-shallow). Nothing refuses `roe`.
+
+**The excerpt.** The radial source of `GnomonicEquiangleImpl::forward`
+({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}) and the projection of
+`LmarsSolverImpl::forward` ({{< code src/riemann/lmars.cpp LmarsSolverImpl::forward >}}):
+
+```cpp
+    auto src1 = rho * (v2 * v_2 + v3 * v_3) / radius;
+    if (face_pressure1.defined()) {
+      ...
+    } else {
+      src1 += 2.0 * pr / radius;
+    }
+    div[IVX] -= src1;
+  ...
+  switch (dim) {
+    case 1:
+      pcoord->prim2local3_(wl);
+      pcoord->prim2local3_(wr);
+```
+
+`src1` is step 1 of the sources with its two branches; the `switch` is step 3 of the frame derivation for $x_3$
+faces.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| the sources | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}} | `src1` | gnomonic-equiangle |
+| projection in LMARS | {{< code src/riemann/lmars.cpp LmarsSolverImpl::forward >}} | `prim2local3_` | `type: lmars` |
+| projection in HLLC | {{< code src/riemann/hllc.cpp HLLCSolverImpl::forward >}} | `prim2local3_` | `type: hllc` |
+| no projection in Roe | {{< code src/riemann/roe.cpp RoeSolverImpl::forward >}} | `call_roe` | `type: roe` |
+| metric coefficients | {{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}} | `x_ov_rD_kji` | |
+
+: Code map of the gnomonic source and frame placement. {#tbl-ch04-gnomonic-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/test_cubed_sphere_cell_volume.py` | six panel volumes sum to the shell volume; the radial identity per cell | `1e-12`, rest `1e-6` |
-| `tests/test_hydrostatic.cpp` | a six-panel isentropic shell stays at rest over 100 steps | $\max\lvert v_1\rvert < 10^{-8}$ |
-| `tests/test_coordinate.cpp` | the radial source uses the face pressure, and preserves a face-pressure gradient | `1e-8`, `1e-6` |
-| this chapter's check, `gnomonic_check.py` | `[C1]`-`[C3]` the solid angle is exact and telescopes | round-off |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_hydrostatic.release` | a six-panel isentropic shell stays at rest over 100 steps | $\max\lvert v_1\rvert < 10^{-8}$ | the test's constant |
+| `test_coordinate.release`, `radial_source_uses_face_pressure_in_x1_momentum`, `radial_source_preserves_face_pressure_gradient` | the radial source with face pressures | $10^{-8}$; $10^{-6}$ | the test's `allclose` arguments |
+| `test_cubed_sphere_cell_volume_python` | six panel volumes sum to the shell; $\nabla\cdot(r\hat r) = 3$ per cell | $10^{-12}$; $10^{-6}$ | the test's constants |
+| `gnomonic_check.py` `[C1]`–`[C3]` (this report) | the corner solid angle telescopes and is exact; the shell volume | round-off | stated in the check |
 
-: Tests of the gnomonic geometric source. {#tbl-ch04-gnomonic-tests}
+: Tests of the gnomonic source and frame placement. {#tbl-ch04-gnomonic-tests}
+
+`test_hydrostatic.release` gives $6.8\times10^{-15}$ at the pin.[^gn-run] `gnomonic_check.py` `[C1]` sums the cells of
+a panel to $4\pi/6$ within $3.6\times10^{-15}$, `[C2]` matches a 64-point quadrature to $3.0\times10^{-15}$ relative,
+and `[C3]` the shell volume to $3.3\times10^{-16}$. The ctest entries pass at the pin on CPU, one rank
+(@tbl-ch04-ctest-run).
+
+[^gn-run]: [sha: the code pin; deck: the test's own six-panel shell; run: `tests/test_hydrostatic.release` of a
+    Release build of the pin, CPU, double, 1 process, torch 2.10.0, kintera 2.6.2.dev4+g914389b40; and
+    `python3 src/snapy_report/ch04/gnomonic_check.py`, Python 3.12.10, numpy 2.5.3, output identical to the
+    committed file].
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- The stored cell centre is the mid-radius, not the centroid of the cell measure. Initial conditions written as
-  point values there are consistent with the scheme only if they are intended as cell averages.
-- The exact volume is unconditional, so a run before and after that change does not agree bitwise even with the
-  related corrections switched off.
-:::
-
-1. **The exact-centroid switch does nothing here.** It is defined for the radial measure of the spherical-polar
-   grid and has no effect on this one.
-2. **No derivation on record.** The cross terms of the source are recorded from the code only. A reader wanting
-   to check them has to re-derive the gnomonic metric, which @sec-ch03 sets out.
+1. **`roe` is not projected** on this grid (step 4 of the frame derivation); its results there are not tested.
+2. **One pressure-force form.** There is no centroid-exact branch on this grid; the face difference balances
+   gravity against the midpoint-radius cell values.

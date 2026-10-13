@@ -1,60 +1,111 @@
-## PPM (`type: ppm`) {#sec-ch04-ppm}
+## PPM: accepted by the parser, throws on the first stage (`type: ppm`) {#sec-ch04-ppm}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.7
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.7; src/recon/ppm.cpp, src/recon/interpolation.hpp, src/recon/interpolation.cpp,
+         src/recon/reconstruct.cpp at the pin
 status: draft
 -->
 
 ### Summary
 
-PPM is selectable and does nothing. The factory accepts the string and registers an interpolant, but the
-function behind it returns its centre argument unchanged, which is precisely the donor-cell reconstruction of
-@sec-ch04-dc. This section exists to record that, because the switch is live and silent.
+The piecewise-parabolic method would fit a parabola in each cell. At the pin it is not implemented: the parser
+accepts `type: ppm` and the block is built, but the first time a stage reconstructs, the interpolant throws "PPM
+interpolation is not implemented yet." and the run stops. Nothing runs at reduced accuracy; the deck fails. The
+type is off by default. A deck that wants a third-order reconstruction uses `cp3` or `weno3` (@sec-ch04-cp,
+@sec-ch04-weno).
 
 ::: {.callout-note title="At a glance"}
-- The type is accepted and registered, but the interpolant is a stub: it returns the cell value.
-- Switch: `type: ppm`. Selecting it gives donor cell, at donor cell's accuracy, under another name.
-- Nothing warns. A deck naming `ppm` runs first order and reports no error.
+**Purpose.** None at the pin: the interpolant body throws (step 4 of the Derivation).
+
+**Data.** Would read five cells per face; writes nothing.
+
+**Placement.** Would run inside the reconstruction of each direction (@sec-ch04-framework).
+
+**Activation.** `type: ppm` is accepted and registered; default off.
+
+**Guarantee / limits.** The first stage throws a `std::runtime_error`; no face state is produced.
+
+**Evidence.** @tbl-ch04-ppm-tests; the probe run of @sec-ch04-framework.
 :::
+
+Local symbols (flagged to the editor): $n_{\mathrm s}$ the stencil width (count), as in @sec-ch04-cp.
 
 ### Derivation
 
-There is nothing to derive. `[C6]` of `recon_check.py` evaluates the function on a thousand random five-cell stencils and finds
-the returned face value equal to the centre cell value in every one, to the last bit.
+None at the pin: the interpolant throws before it computes anything, and the steps below show why the run stops.
+
+#### Why the run stops rather than degrades
+
+1. *The factory accepts the name.* `InterpImpl::create` returns `PPMInterp` for `type: ppm`, so construction
+   succeeds.
+2. *Construction reads the stencil width.* `PPMInterpImpl::stencils()` returns 5, so the framework sets three
+   ghost cells and the block is built with them.
+3. *The first reconstruction calls `forward`.* `_apply_inplace` calls `pinterp->forward(w, dim, outl, outr)`.
+4. *`PPMInterpImpl::forward` throws before writing anything.* Its body computes the output shape and then
+   executes `throw std::runtime_error("PPM interpolation is not implemented yet.")`; the `return` after it is
+   unreachable: $\mathcal W[q]$ has no value for this type, because the call never returns.
+5. *Hence no face state of any accuracy is produced*, and there is no round-off to bound. The probe run of
+   @sec-ch04-framework builds a block with `type: ppm` and runs one stage: it stops with exactly this message.
 
 ### Numerical method
 
-The body is one line, at `interp_ppm` ({{< code src/recon/interp_simple.hpp interp_ppm >}}): the five arguments are accepted and the middle
-one is returned. The surrounding machinery is complete, so the stub is reached through the ordinary path: the
-factory registers it at `PPMInterp` ({{< code src/recon/interpolation.cpp InterpImpl::create >}}) and the framework calls it exactly as it calls
-any other interpolant.
-
-Because the declared stencil width is that of a five-point scheme, a block selecting `ppm` is also required to
-carry the ghost width of a five-point scheme, so the stub costs the ghost cells of a method it does not
-implement.
+No figure: there is no reconstruction to draw. The behaviour a reader expected lives nowhere in the code at the
+pin; the closest working interpolants are cp3 (third order, unlimited) and weno3 (third order where smooth,
+limited).
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input** that the parser accepts and the first stage refuses:
+
+```yaml
+dynamics:
+  reconstruct:
+    vertical:   {type: ppm}
+    horizontal: {type: ppm}
+```
+
+**What the parser accepts and refuses.** The reconstruct parser accepts `ppm` as any other registered type
+(@sec-ch04-framework). The refusal comes at run time, from the interpolant, as described above.
+
+**The excerpt.** `PPMInterpImpl::forward` ({{< code src/recon/ppm.cpp PPMInterpImpl::forward >}}):
+
+```cpp
+  auto vec = w.sizes().vec();
+  vec[dim] -= stencils() - 1;  // reduce size by stencils - 1
+
+  throw std::runtime_error("PPM interpolation is not implemented yet.");
+
+  return std::make_pair(w, w);
+```
+
+The `throw` line is step 4; the `return` is never reached.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
-| the stub | {{< code src/recon/interp_simple.hpp interp_ppm >}} | `interp_ppm` | `type: ppm` |
+| the throwing body | {{< code src/recon/ppm.cpp PPMInterpImpl::forward >}} | `runtime_error` | `type: ppm` |
+| stencil width 5 | {{< code src/recon/interpolation.hpp PPMInterpImpl >}} | `stencils` | |
 | registration | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `PPMInterp` | |
 
 : Code map of PPM. {#tbl-ch04-ppm-code}
 
 ### Tests
 
-No test selects `type: ppm`. The only check on it is this chapter's `[C6]`, which asserts the stub behaviour
-rather than any reconstruction property.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| the probe run (this report) | `type: ppm` constructs and the first stage throws "PPM interpolation is not implemented yet." | exact (throws) | a run-time contract |
+
+: Tests of PPM. {#tbl-ch04-ppm-tests}
+
+No ctest selects `type: ppm`. The probe is the run of @sec-ch04-framework.[^ppm-probe] The template
+`interp_ppm` of `interp_simple.hpp`, which returns the centre value, is not on any production path;
+`recon_check.py` `[C6]` checks that template, not the module.
+
+[^ppm-probe]: [sha: the code pin; deck and run: those of the framework probe of @sec-ch04-framework; snapy
+    2.11.10.dev1+g6fbb397 Release, torch 2.10.0, CPU, 1 process].
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- Selecting `ppm` silently gives a first-order scheme. There is no warning, and the accuracy loss relative to
-  the name is total.
-:::
-
-1. **Open question.** Whether PPM should be implemented or the type removed is a decision for the maintainers.
-   Leaving it selectable is the one option with no defensible reading, since a deck can ask for it and be
-   answered with donor cell.
+1. **The run stops.** Selecting `ppm` ends the run on its first stage. Whether to implement PPM or to refuse the
+   type in the parser is a decision for the maintainers.
+2. **Ghost cost before the failure.** The block is built with three ghost cells for a method that never runs.

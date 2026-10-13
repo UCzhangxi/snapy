@@ -1,89 +1,171 @@
-## Geometric sources on the spherical-polar grid {#sec-ch04-sphsrc}
+## Geometric sources on the spherical-polar grid: placement in the stage {#sec-ch04-sphsrc}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.14
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.14; src/coord/spherical_polar.cpp, src/hydro/hydro_forward.cpp at the pin; the metric and
+         the source derivation are in @sec-ch03-sphpolar
 status: draft
 -->
 
 ### Summary
 
-In curvilinear coordinates the divergence of a tensor is not a difference of face fluxes alone: the basis
-vectors turn from face to face, and the leftover is a source. The coordinate object adds it on top of the same
-divergence every grid uses, which is why @sec-ch04-divergence can be written once for all geometries.
+On a spherical-polar grid the momentum equations have terms that are not a difference of face fluxes, because
+the unit vectors turn from cell to cell. The coordinate object adds them right after the flux divergence. Their
+derivation, coefficients and tests live with the grid in @sec-ch03-sphpolar; this section is how the stage
+operator calls them. Two things belong here: which of three forms the radial pressure force takes, and the
+shifted pressure the source reads when the face-flux covariance of @sec-ch04-fluxcov is on. The source is always
+on for this grid.
 
 ::: {.callout-note title="At a glance"}
-- The part of the curvature that is not a difference of face fluxes, added after the divergence.
-- Switch: none; it is what the spherical-polar coordinate does instead of the Cartesian pass-through.
-- The radial source carries the centrifugal terms of the two tangential velocities.
-- The radial pressure force uses the face pressures when a solver provides them.
-- Areas and volume are exact integrals, not midpoint values.
+**Purpose.** Subtracts @eq-ch04-sphsrc-src1 and the $m_2$, $m_3$ sources from the divergence of each cell.
+
+**Data.** Reads $\mathbf W$ (or $\mathbf W$ with $p^{\mathrm{sh}}$), the $x_1$ face pressures and $\mathbf F_1$; writes `_div`.
+
+**Placement.** Every stage, inside the coordinate's `forward`, after `divergence` and before the forcings.
+
+**Activation.** `geometry: {type: spherical-polar}`; the branch depends on the face pressure and `SNAP_X1_CENTROID_EXACT`.
+
+**Guarantee / limits.** A uniform pressure is balanced to round-off; exact rest with the covariance on via $p^{\mathrm{sh}}$.
+
+**Evidence.** @tbl-ch04-sphsrc-tests; `test_coordinate.release`, `test_radial_face_moments.release`, `operator_check.py` `[C2]`, `[C3]`.
 :::
+
+Local symbols (flagged to the editor): $\langle r^{-1}\rangle_{V_i}$ the cell average of $1/r$, `coord_src1_i`, as in
+@sec-ch03-sphpolar; $p_{i\pm1/2}$ the face pressures the solver returns [Pa]; $x^{\mathrm A}_{1,i}$ the face centroid of
+@sec-ch03-facemoments; $p^{\mathrm{sh}}$ the shifted cell pressure of step 3 below [Pa]; $\partial_1^{\mathrm h}p$ the code's
+centred $x_1$ pressure difference `d1_pressure`.
 
 ### Derivation
 
-The geometric factors are built once in the coordinate's own buffers and the source is assembled at
-`forward` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}). The radial source is the centrifugal pair
+#### Which radial pressure force a cell gets
 
-$$
-S_1 = \frac{A_{23}}{V}\,\rho\,(v_\theta^2 + v_\phi^2),
-$$ {#eq-ch04-sphsrc-src1}
+1. *The radial source.* @sec-ch03-sphpolar derives the $m_1$ source as $\langle r^{-1}\rangle_{V_i}\rho(v_2^2 + v_3^2)$ plus a
+   pressure part. The code subtracts
 
-at `coord_src1_i` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}): a parcel moving tangentially at constant radius needs an inward
-force to stay there, and in a radial momentum equation written in fluxes that force appears as a source. The
-coefficient is a ratio of the cell's own tangential area to its volume, not a nominal $1/r$, so the identity
-survives on a stretched radial grid.
+   $$
+   S^{(1)}_i = \langle r^{-1}\rangle_{V_i}\,\rho_i\left(v_{2,i}^2 + v_{3,i}^2\right) + S^{p}_i
+   $$ {#eq-ch04-sphsrc-src1}
 
-The areas and volume themselves are exact integrals of the metric, not midpoint approximations:
-`face_area1` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_area1 >}}) for the radial face, `cell_volume` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::cell_volume >}}) for
-the volume, which carries the exact $(r_+^3 - r_-^3)/3$. `[C3]` shows what that buys: the midpoint form
-$r^2h$ would be short by $h^3/12$ per unit solid angle, so the exact form removes a second-order volume error
-that would otherwise appear in every tendency. `[C2]` then confirms that the areas and volume together
-reproduce $\nabla\!\cdot\!(r\hat r) = 3$ to $3.6\times10^{-15}$ over a test block, which is the identity the
-cubed-sphere volume test asserts cell by cell.
+   from the $m_1$ row of the divergence, with $S^p_i$ one of three forms.
+2. *No face pressure:* $S^p_i = 2\langle r^{-1}\rangle_{V_i}p_i$ (@eq-ch03-sphpolar-src1).
+3. *Face pressures from the solver:* $S^p_i$ is @eq-ch03-sphpolar-facep, the area-weighted difference minus the face
+   gradient. Its first term cancels the pressure part of the flux divergence exactly, so the net radial pressure
+   force is $-(p_{i+1/2} - p_{i-1/2})/h_i$: the same face difference the well-balanced reconstruction balances
+   against gravity (@sec-ch05-wbx1).
+4. *Face pressures and `SNAP_X1_CENTROID_EXACT`:* the face difference is replaced by the $r^2$-weighted moment of a
+   quintic through six faces, derived in @sec-ch05.
+5. *Which runs in practice.* Every compressible deck with a resolved $x_1$ axis passes face pressures
+   (@sec-ch04-riemann), so step 3 or 4 is the production branch; step 2 runs for a block with one $x_1$ cell. In the code, @eq-ch04-sphsrc-src1 is `src1` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}).
 
-The radial pressure force is the part with a choice in it. With a solver that returns a face pressure the force
-can be built from those face values; without one it is a plain difference. The code comment at
-`exact_x1` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}) states the consequence carefully: with the face pressures the
-pressure force is the $r^2$-weighted average of the gradient, which balances $g\rho$ for a hydrostatic column
-of $r^2$ means, while the plain difference balances $g\langle\rho\rangle$ instead. Which of those is wanted is
-the subject of @sec-ch05, and the exact-centroid switch that selects it belongs there, not here.
+#### Why the source reads a shifted pressure when the covariance is on
+
+1. *The covariance changes the tangential pressure flux.* On a curved grid the centroid part of
+   @sec-ch04-fluxcov adds $-(x_{1,i} - x^{\mathrm A}_{1,i})\,\partial^{\mathrm h}_1p$ to the face-normal momentum flux of every
+   $x_2$ and $x_3$ face.
+2. *At rest the tangential balance is a cancellation.* With $v = 0$ the $x_2$ flux of $m_2$ is the face pressure,
+   and the curvature source $\langle r^{-1}\rangle\langle\cot\theta\rangle p$ cancels its divergence for a pressure
+   uniform in $\theta$ (@sec-ch03-sphpolar).
+3. *Hence the source must read the same pressure.* `HydroImpl::forward` builds a copy of $\mathbf W$ with
+   $p^{\mathrm{sh}}_i = p_i - (x_{1,i} - x^{\mathrm A}_{1,i})\,\partial^{\mathrm h}_1p_i$ and calls the coordinate's `forward` with it,
+   so the flux and the source carry the same shifted pressure and the rest state keeps its exact cancellation.
+4. *Only where the faces are corrected.* If a resolved direction's faces carry no covariance row, its source row
+   is taken from a second call with the plain $\mathbf W$; on a grid whose centroid shift is zero (Cartesian) the
+   shift is skipped, because $p^{\mathrm{sh}} = p$ there.
+
+#### Round-off of the balance
+
+1. *Analytic cancellation, numerical residual.* In the face-pressure branch the area-weighted pressure difference
+   of $S^p_i$ cancels the pressure carried inside the $m_1$ face flux. The flux row is $\rho v_\perp^2 + p_f$ summed
+   before the divergence, so the two terms are not the same floating-point number and cancel only to round-off.
+2. *The bound.* Counting the roundings as in @sec-ch04-divergence (at most $k = 5$ along any path), the residual of
+   the pressure part is at most $k\epsilon_{\mathrm m}(A_{i+1/2}\lvert F_{i+1/2}\rvert + A_{i-1/2}\lvert F_{i-1/2}\rvert +
+   A_{i+1/2}\lvert p_{i+1/2}\rvert + A_{i-1/2}\lvert p_{i-1/2}\rvert)/V_i$, of order $4k\epsilon_{\mathrm m}p\,r/h$ at rest.
+3. *The no-face-pressure branch* balances a uniform pressure to the same kind of bound; `operator_check.py` `[C2]`
+   measures $3.6\times10^{-15}$ for the analogous radial identity, inside its bound of $2.0\times10^{-14}$.
 
 ### Numerical method
 
-The source is added after `CoordinateImpl::forward` has produced the divergence, at
-{{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}, so the flux part and the source part are never mixed. The shallow-water
-equation of state takes a different branch at `eos_type` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}), since it has no pressure
-row of the kind the force needs.
+```{python}
+#| label: fig-ch04-sphsrc-order
+#| fig-cap: "What the spherical-polar coordinate adds after the divergence, in order: the centrifugal part of the radial source, the radial pressure force in one of three branches, and the $m_2$, $m_3$ sources derived in chapter 3. With the face-flux covariance on, the source reads the shifted pressure $p^{\\mathrm{sh}}$ (green)."
+#| fig-alt: "Four boxes joined by arrows, with three coloured lines of text under the third box naming the three pressure-force branches, and a green line about the shifted pressure."
+#| echo: false
+from snapy_report.ch04.fig_ch04_schemes import make_sphsrc
+make_sphsrc()
+```
+
+**Order of operations.** `SphericalPolarImpl::forward` calls `CoordinateImpl::forward`, which is `divergence`,
+then subtracts `src1` from the $m_1$ row and the $m_2$, $m_3$ sources from theirs. The shallow-water equation of
+state skips the pressure part of `src1` and uses no `IPR` row.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
-|---|---|---|---|
-| the source assembly | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `forward` | spherical-polar |
-| divergence first | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `CoordinateImpl` | |
-| centrifugal radial source | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `coord_src1_i` | |
-| the exact radial face area | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_area1 >}} | `face_area1` | |
-| the exact cell volume | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::cell_volume >}} | `cell_volume` | |
-| the second face moment for section 4B | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_moment2_x1 >}} | `face_moment2_x1` | |
-| the face centroid shift for section 4B | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_centroid_shift_x1 >}} | `face_centroid_shift_x1` | |
+**A minimal input.**
 
-: Code map of the spherical-polar geometric source. {#tbl-ch04-sphsrc-code}
+```yaml
+geometry:
+  type: spherical-polar
+  bounds: {x1min: 6.4e6, x1max: 6.5e6, x2min: 0.5, x2max: 2.6, x3min: 0., x3max: 6.283185307179586}
+```
+
+**What the parser accepts and refuses.** The geometry block is parsed with the grid (@sec-ch03-sphpolar). The
+source has no key; the branch of step 4 is the environment variable `SNAP_X1_CENTROID_EXACT`, read once per
+process (@sec-ch05).
+
+**The excerpt.** The radial source of `SphericalPolarImpl::forward`
+({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}) and the shifted pressure of
+`HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+  auto src1 =
+      coord_src1_i * prim[IDN] * (prim[IVY].square() + prim[IVZ].square());
+  ...
+    if (exact_x1) {
+      src1.slice(-1, si, ei) += x1_pressure_source(*x1src_, face_pressure1);
+    } else if (face_pressure1.defined()) {
+      ...
+    } else {
+      src1 += 2.0 * coord_src1_i * prim[IPR];
+    }
+  }
+  div[IVX] -= src1;
+  ...
+    wsrc[IPR].narrow(-1, 1, n1 - 2) -=
+        dsh * d1_pressure(w[IPR], x1v, pmb->pcoord->il(), pmb->pcoord->iu());
+```
+
+`src1` before the branch is the first term of @eq-ch04-sphsrc-src1; the three branches are steps 4, 3 and 2 of
+the first derivation; the last line is $p^{\mathrm{sh}}$ of step 3 of the second.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| the source assembly | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `src1` | spherical-polar |
+| the three pressure branches | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `exact_x1` | face pressure, `SNAP_X1_CENTROID_EXACT` |
+| the shifted pressure | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wsrc` | covariance on, curved grid |
+| the centred pressure difference | {{< code src/hydro/hydro_forward.cpp d1_pressure >}} | `d1_pressure` | |
+
+: Code map of the spherical-polar source placement. {#tbl-ch04-sphsrc-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/test_coordinate.cpp` | the geometry against reference formulas, and the frame projections | allclose defaults |
-| `tests/test_radial_face_moments.cpp` | the curved face centroid shift and second moment equal the exact rationals | `1e-14` |
-| this chapter's check | `[C2]` the radial identity to round-off; `[C3]` the exact volume against the midpoint form | round-off, symbolic |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_coordinate.release`, `geometry_matches_athena_reference_formulas` | centroids, areas, volume and `coord_src1_i` against reference formulas | rel. and abs. $10^{-12}$ | the test's `allclose` arguments |
+| `test_radial_face_moments.release` | the face moment and shift equal the exact rationals | $10^{-14}$ | the test's constant |
+| `operator_check.py` `[C2]`, `[C3]` (this report) | $\nabla\cdot(r\hat r) = 3$ from the coded areas and volume; the exact radial volume | the round-off bound of @sec-ch04-divergence | stated in the check |
 
-: Tests of the spherical-polar geometric source. {#tbl-ch04-sphsrc-tests}
+: Tests of the spherical-polar source placement. {#tbl-ch04-sphsrc-tests}
+
+`[C2]` gives $3.6\times10^{-15}$ and `[C3]` shows the midpoint volume would be short by $h^3/12$ per unit solid
+angle.[^sph-run] Both ctest entries pass at the pin on CPU, one rank (@tbl-ch04-ctest-run). The source's own
+derivation checks are those of @sec-ch03-sphpolar.
+
+[^sph-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch04/operator_check.py`, CPU,
+    double, 1 process; Python 3.12.10, numpy 2.5.3; output identical to the committed file].
 
 ### Limits
 
-1. **The pressure force depends on the solver.** A solver that returns no face pressure gets the plain
-   difference, so the balance the column achieves depends on a key in a different section of the deck. The
-   consequences belong to @sec-ch05.
-2. **Only the radial source is covered here.** The tangential sources and their metric coefficients are part of
-   the same `forward` and are described with the grid they belong to in @sec-ch03.
+1. **The branch depends on the solver.** A solver with no face pressure (@sec-ch04-riemann) gives step 2, whose
+   balance against gravity differs from the face difference the well-balanced path assumes.
+2. **No test of the shifted pressure on this grid.** The exact rest with the covariance on is argued in steps 1 to
+   4 and exercised by the covariance tests (@sec-ch04-fluxcov) on the gnomonic grid, not here.
