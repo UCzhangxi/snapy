@@ -7,7 +7,9 @@ snapy@e894700ff7aee30b52882e5202b16461413780b0, with the YAML defaults at :65-72
 
 The claims test what the operator DOES to a state, not what its formula says: C1 reorders
 the passes and measures the difference, C2 measures the mass and energy a floor invents,
-and C3 compares the shipped repair against the one the code comment says it replaced.
+and C3 compares the shipped repair against the one the code comment says it replaced. C8 ports the
+multi-parent borrow and its normalised fractions (equation_of_state.cpp:136-160, 262-268) at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5.
 
 Run: python3 floors_check.py   (numpy only; exits with the number of failed claims)
 """
@@ -208,7 +210,43 @@ def check_C7():
            f"equality loses. A density 1.002 times the floor is a hit under neither test")
 
 
-for fn in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7):
+def check_C8():
+    """_borrow.qmd. The parent fractions are cached normalised, f_k = nu_k mu_k / sum nu mu
+    (equation_of_state.cpp:136-160), and the deficit d < 0 of a cloud is added as d f_k to each
+    parent before the cloud is set to zero (:262-268). The cell total changes by d (sum f_k - 1)
+    plus the rounding of the additions: zero because the fractions sum to one, for any number of
+    parents. The same additions with un-normalised weights nu_k mu_k do not conserve."""
+    from fractions import Fraction as Fr
+    rng = np.random.default_rng(8)
+    u = np.finfo(np.float64).eps / 2
+    worst, raw_worst, n = 0., 0., 0
+    for _ in range(2000):
+        k = int(rng.integers(1, 5))                          # parents of the nucleation reaction
+        nu = rng.integers(1, 4, k).astype(float)
+        mu = rng.uniform(0.002, 0.2, k)                      # kg/mol
+        mass = nu * mu                                        # :148
+        total_mass = 0.
+        for m in mass:                                        # :150, in order
+            total_mass += m
+        frac = mass / total_mass                              # :157-160
+        vap = rng.uniform(1e-3, 1e-2, k)
+        d = -rng.uniform(0., 2e-4)                            # the deficit, :264
+        new = vap + d * frac                                  # :266
+        change = sum(Fr(a) for a in new) - sum(Fr(a) for a in vap) - Fr(d)   # cloud d -> 0
+        bound = u * ((k + 1) * abs(d) + float(new.sum()))
+        worst = max(worst, float(abs(change)) / bound)
+        raw = vap + d * mass                                  # the same additions, un-normalised
+        raw_worst = max(raw_worst, abs(float(raw.sum() - vap.sum() - d)))
+        n += 1
+    report("C8", worst <= 1. and raw_worst > 1e-6,
+           "the borrow conserves the cell total because the parent fractions are normalised",
+           f"over {n} cells with 1 to 4 parents the total changes by at most {worst:.2f} of "
+           f"eps_m/2 ((K + 1)|d| + sum of the parents); the same additions with the un-normalised "
+           f"weights nu mu change it by up to {raw_worst:.2e}")
+
+
+CHECKS = (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8)
+for fn in CHECKS:
     fn()
-print(f"{7 - len(FAIL)}/7 claims pass")
+print(f"{len(CHECKS) - len(FAIL)}/{len(CHECKS)} claims pass")
 sys.exit(len(FAIL))

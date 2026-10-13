@@ -10,7 +10,7 @@ status: draft
 
 A negative condensate is repaired by moving the deficit out of the parent vapour of the same cell. The
 condensate is set to exactly zero and the total mass of the cell does not change. It is the one repair of
-this chapter that conserves mass and elements.
+this chapter that conserves mass, and it conserves elements when the nucleation reaction is mass-balanced.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Repair a negative condensate by borrowing the deficit from its parent vapour in the same cell.
@@ -21,10 +21,14 @@ this chapter that conserves mass and elements.
 
 **Activation.** With the limiter, for clouds that carry parent-vapour metadata; a parentless cloud is skipped.
 
-**Guarantee / limits.** Exactly conservative in mass and elements; a cell whose vapour cannot cover the deficit goes vapour-negative.
+**Guarantee / limits.** Conserves the cell's mass to round-off; elements only for a mass-balanced reaction; vapour may go negative.
 
-**Evidence.** `[C3]` of `floors_check`; no ctest isolates the borrow.
+**Evidence.** `[C3]`, `[C8]` of `floors_check`; no ctest isolates the borrow.
 :::
+
+Local symbols: $d_{\mathrm c}$ [kg m$^{-3}$] is the deficit of a cloud, its negative part; $f_n$ the cached
+fraction of parent $n$ and $N_{\mathrm{par}}$ the number of parents. $\nu_{nk}$, $\mu_n$, $\rho_n$ and $\epsilon_{\mathrm m}$ are
+NOTATION.md's.
 
 ### Derivation
 
@@ -32,8 +36,20 @@ A negative condensate does not mean mass is missing. It means the tracer flux ov
 the mass is in a neighbour. Clamping it to zero invents that mass, one way, every time.
 
 The alternative the code takes is to move mass between rows of the same cell. It takes the deficit out of the parent
-vapour and set the condensate to exactly zero. Total mass in the cell is unchanged, and so are the elements, because
-vapour and its condensate are the same substance in different phases.
+vapours and sets the condensate to exactly zero. A cloud's parents are the vapour reactants of the first nucleation
+reaction that produces it, possibly several, and each gets the cached fraction
+
+$$
+f_n = \frac{\nu_{nk}\,\mu_n}{\sum_{m}\nu_{mk}\,\mu_m} , \qquad \sum_n f_n = 1 ,
+$$ {#eq-ch08-borrow-fractions}
+
+with the sums over the $N_{\mathrm{par}}$ parents $n$ of reaction $k$ (`parent_mass`,
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::cache_cloud_parents_ >}}). A deficit $d_{\mathrm c}<0$ adds
+$d_{\mathrm c}f_n$ to parent $n$ and removes $d_{\mathrm c}$ from the cloud, so the cell total changes by
+$d_{\mathrm c}\sum_n f_n - d_{\mathrm c} = 0$. The conservation comes
+from the normalisation, not from the phases (`[C8]`). The elements are conserved as well only if the reaction is
+mass-balanced, so that the parents' $\sum_n\nu_{nk}\mu_n$ is the cloud's molar mass times its coefficient; the code
+does not check that.
 
 `[C3]` measures the difference rather than asserting it. Over two thousand cells with a negative condensate, clamping
 to zero adds $3.770\times10^{-2}$ of mass, while the borrow changes the total by exactly $0$ [check
@@ -64,8 +80,10 @@ the same state receives the identical repair without any communication. That is 
 2. The repair is per cell, so a ghost cell holding a copy of the same state receives the identical repair with no
    communication.
 3. A cloud without nucleation metadata has no parent and is flagged for the column repair of @sec-ch08-fixvapor.
-4. The cell total changes only by the rounding of the parent additions, at most $\tfrac12\epsilon_{\mathrm m}$ times the sum
-   of the parent masses per cell. `[C3]` measures exactly $0$ on 2000 cells.
+4. With $N_{\mathrm{par}}$ parents the cell total changes only by rounding: $\sum_n f_n$ is one to within
+   $N_{\mathrm{par}}$ roundings, and each addition rounds its product and its sum, so to first order the change is at
+   most $\tfrac12\epsilon_{\mathrm m}\bigl((N_{\mathrm{par}}+1)\lvert d_{\mathrm c}\rvert + \sum_n\rho_n\bigr)$, with
+   $\rho_n$ the repaired parent densities. `[C3]` measures exactly $0$ for one parent; `[C8]` at most $0.92$ of the bound for one to four.
 
 ### Code
 
@@ -97,17 +115,19 @@ mass fractions.
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| this chapter's check | `[C3]` the borrow conserves mass where a clamp invents it | exact | the check's own bound: `floors_check.py` `check_C3` asserts the borrow's total-mass drift below $10^{-18}$ over 2000 cells, round-off on that sum |
+| this chapter's check | `[C3]` the borrow conserves mass where a clamp invents it; `[C8]` with several parents, through the normalised fractions | exact; round-off | the check's own bounds: `floors_check.py` `check_C3` asserts the borrow's total-mass drift below $10^{-18}$ over 2000 cells; `check_C8` asserts the derived round-off bound |
 
 : Tests of the condensate borrow. {#tbl-ch08-borrow-tests}
 
 The chapter's check compares the borrow with a clamp on synthetic cells.[^ch08-borrow-run] `[C3]`: over 2000
 cells with a negative condensate, clamping to zero adds $3.770\times10^{-2}$ of mass while the borrow changes
-the total by exactly $0$, and no cell went vapour-negative. No ctest isolates the borrow: **missing evidence**
+the total by exactly $0$, and no cell went vapour-negative. `[C8]`: over 2000 cells with one to four parents the
+total changes by at most $0.92$ of the bound, while the same additions with the un-normalised weights $\nu_{nk}\mu_n$
+change it by up to $1.95\times10^{-4}$. No ctest isolates the borrow: **missing evidence**
 for a snapy run.
 
 [^ch08-borrow-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/floors_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
-    `floors_check.out`, line `[C3]`.
+    `floors_check.out`, lines `[C3]` and `[C8]`.
 
 ### Limits
 
