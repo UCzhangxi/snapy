@@ -6,27 +6,39 @@ sources: OUTLINE.md 13.5; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; tests/test_
 status: draft
 -->
 
+### Summary
+
 When a step goes wrong, snapy throws it away and tries again with a smaller step. This section explains what the
 log says when that happens, and what it says when a run ends, so a user can tell a normal stop from a failure.
 How a step is accepted or rejected (the six causes, the collective decision, the halving and the restore) is
 @sec-ch07-redo.
 
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**What it does.** Prints, for every rejected step, a list of the causes that rejected it. At the end of the run
-it prints why the run stopped, and returns exit status 1 when none of the normal stop reasons holds.
+**Purpose.** Prints the causes of every rejected step, and at the end why the run stopped, with exit status 1 if abnormal.
 
-**Switch.** None.
+**Data.** Reads the globally reduced cause mask, the redo count and the stop reasons; writes log lines and the status.
 
-**Order.** Not a discretisation.
+**Placement.** `MeshBlockImpl::apply_redo` after each redo decision; `MeshBlockImpl::finalize` at the end of the run.
 
-**Defining equation.** None; the section reads the decision of @sec-ch07-redo as a log.
+**Activation.** Always; the limits are `integration/tlim`, `nlim` and pyharp's `max_redo` (default 5, not a YAML key).
+
+**Guarantee / limits.** Each list decodes to its mask; names the causes, not the cells or ranks that raised them.
+
+**Evidence.** The Tests layer below, @tbl-ch13-redo-view-tests.
 :::
+
+Local symbols: none. The section names the cause bits in the text and uses no mathematical symbol.
 
 ### Derivation
 
-There is nothing to derive; the section states how the log encodes the decision. A rejected step prints
+There is nothing to derive; the section states how the log encodes the decision. Why each printed list identifies
+its mask, in three steps:
+
+1. *One name per bit.* `apply_redo` prints `floor`, `clamp`, `limiter`, `nan`, `saturation` and `vic-solve` for the
+   bits 1, 2, 4, 8, 16 and 32 of the mask, each only when its bit is set.
+2. *A fixed order.* The names are written in bit order, so a set of bits has one spelling.
+3. *Hence the list decodes back to the mask*, and the 63 nonzero masks give 63 different lists (`[C1]`). The logic is
+   on integers, so there is no round-off. A rejected step prints
 `Redoing the step with smaller dt (causes: ...)`. The list names each set bit of the globally reduced cause mask
 once, in bit order: `floor` (1), `clamp` (2), `limiter` (4), `nan` (8), `saturation` (16), `vic-solve` (32). The 63
 nonzero masks print 63 different lists, and each list decodes back to its mask; mask 37 prints
@@ -60,6 +72,30 @@ or a test harness sees it as the exit code ({{< code examples/run_hydro.cpp main
 
 ### Code
 
+**A minimal input.** The stop reasons come from the integration block:
+
+```yaml
+integration:
+  tlim: 600.     # stop at this time
+  nlim: 200      # or after this many cycles; -1 (the default) disables it
+```
+
+`max_redo` is not read from YAML: pyharp's `from_yaml` reads only `type`, `cfl`, `tlim`, `nlim`, `ncycle_out` and
+`verbose`, so it keeps its default 5 unless set from code
+([`pyharp integrator.cpp:24-29`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L24-L29)).
+
+**What is refused, and why.** Nothing at input. At run time the run stops past `max_redo` redos with "Maximum number
+of redo attempts exceeded. Terminating." (`[C2]`).
+
+**The code, mapped to the log** ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}):
+
+```cpp
+<< (causes & 1 ? " floor" : "") << (causes & 2 ? " clamp" : "")
+<< (causes & 4 ? " limiter" : "") << (causes & 8 ? " nan" : "")
+<< (causes & 16 ? " saturation" : "")
+<< (causes & 32 ? " vic-solve" : "") << ")." << std::endl;
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | local flags | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}} | `local_redo_flags` | |
@@ -82,12 +118,18 @@ or a test harness sees it as the exit code ({{< code examples/run_hydro.cpp main
 
 : Tests of the redo causes and termination status. {#tbl-ch13-redo-view-tests}
 
+`[C1]` of `redo_view_check.py` decodes all 63 lists back to their masks (37 prints `floor limiter vic-solve`); `[C2]`
+gives the two terminal messages; `[C3]` shows that of the 32 combinations of stop reasons only the empty one returns
+status 1.
+
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [code: the messages of `apply_redo` and `finalize` at the code pin, ported as
-string logic; deck: the check itself; run: `python3 redo_view_check.py`, numpy 2.4.6]. ctest cases:
+**Evidence.** Check numbers from `redo_view_check.py` (lines `[C1]`–`[C3]`).[^ch13-redo-chk] ctest cases:
 **pending: pinned ctest run**.
 **Coverage.** Logic only.
 :::
+
+[^ch13-redo-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch13/redo_view_check.py`, CPU, double,
+    1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `redo_view_check.out`, lines `[C1]`–`[C3]`.
 
 ### Limits
 

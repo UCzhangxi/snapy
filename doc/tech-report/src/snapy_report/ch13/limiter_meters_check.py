@@ -1,9 +1,11 @@
 """Executable check of the positivity-limiter meters (chapter 13, _limiter-meters.qmd).
 
-What is checked: the meters accumulated in HydroImpl::forward (src/hydro/hydro_forward.cpp:648-705) from
+What is checked: the meters accumulated in HydroImpl::forward (src/hydro/hydro_forward.cpp:762-818) from
 flux_positivity_theta (src/hydro/flux_positivity.cpp:22-72) with the round-off bounds of
-src/hydro/flux_positivity.hpp:18-23, and their printing (src/mesh/meshblock.cpp:1102-1107) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy on a one-dimensional settling column. Claims C1-C4.
+src/hydro/flux_positivity.hpp:18-23, and their printing (src/mesh/meshblock.cpp:1111-1116) at the code pin
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported to numpy on a one-dimensional settling column. Claims C1-C4;
+C5 ports the gate that turns the census on (hydro_forward.cpp:762, with the covariance rows of :687-709, :720-741 and
+the early returns of _flux_covariance at :92-94).
 
 Run: python3 limiter_meters_check.py   (numpy only; exits with the number of failed claims)
 """
@@ -92,9 +94,39 @@ def check_C4_values_when_the_limiter_never_ran():
                   "not printed", "thetamin %.1f, severe %d, limcut %s" % (m["thetamin"], m["severe"], m["limcut"]))
 
 
+def census_runs(limiter, ny, n1, n2, n3, flux_cov=True, eos="ideal-moist"):
+    """The gate of hydro_forward.cpp:762: (limiter || cov2 || cov3) && ny > 0, where cov2 (cov3) is true when the x2
+    (x3) axis is resolved, SNAP_FLUX_COVARIANCE is on (its default) and _flux_covariance returns a tensor, which it does
+    unless n1 < 3 or the EOS is shallow water."""
+    cov_rows = flux_cov and n1 >= 3 and eos != "shallow-water"
+    cov2 = n2 > 1 and cov_rows
+    cov3 = n3 > 1 and cov_rows
+    return (limiter or cov2 or cov3) and ny > 0
+
+
+def check_C5_census_gate():
+    """RED: the reading 'the meters count only with limiter: true' is contradicted by the code gate for a 2-D moist
+    run at the defaults. GREEN: the corrected reading (limiter: true, or a covariance row added in x2 or x3) agrees with
+    the gate on every case of the table."""
+    cases = [(lim, ny, n1, n2, n3, cov, eos) for lim in (False, True) for ny in (0, 2) for n1 in (1, 32)
+             for n2 in (1, 16) for n3 in (1, 8) for cov in (False, True) for eos in ("ideal-moist", "shallow-water")]
+    old = lambda lim, ny, *_: lim and ny > 0
+    new = lambda lim, ny, n1, n2, n3, cov, eos: (lim or ((n2 > 1 or n3 > 1) and cov and n1 >= 3
+                                                          and eos != "shallow-water")) and ny > 0
+    code = [census_runs(*c) for c in cases]
+    red = sum(old(*c) != g for c, g in zip(cases, code))
+    green = sum(new(*c) != g for c, g in zip(cases, code))
+    default_2d = census_runs(False, 2, 32, 16, 1)
+    ok = red > 0 and green == 0 and default_2d
+    return report("C5", ok, "the census runs with limiter: true, or with a face-flux covariance row in x2 or x3 "
+                  "(SNAP_FLUX_COVARIANCE, default on), whenever species are present",
+                  "2-D moist run, limiter false, defaults: census %s; 'limiter only' disagrees with the gate on %d of %d "
+                  "cases (RED), the corrected reading on %d (GREEN)" % (default_2d, red, len(cases), green))
+
+
 def main():
     checks = [check_C1_hand_computed_settling_column, check_C2_roundoff_drain_is_not_severe, check_C3_roundoff_bounds,
-              check_C4_values_when_the_limiter_never_ran]
+              check_C4_values_when_the_limiter_never_ran, check_C5_census_gate]
     sys.exit(sum(not c() for c in checks))
 
 

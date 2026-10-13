@@ -7,22 +7,29 @@ sources: OUTLINE.md 13.1; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; src/mesh/cy
 status: draft
 -->
 
+### Summary
+
 Every few cycles a run prints one line that records how much mass and energy the domain holds. Comparing two
 lines of the same run shows whether a total drifted. The line also carries a few run-long meters of the limiters and
 the implicit solver, so a user can see whether they acted.
 
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**What it does.** Every `ncycle_out` cycles, sums the interior conserved state times the cell volume over all
-local blocks, reduces the sums to the root rank, and prints them on one line with the run-to-date meters.
+**Purpose.** Prints, every `ncycle_out` cycles, the volume integrals of the conserved state and the run-to-date meters.
 
-**Switch.** `integration/ncycle_out`, read by pyharp's integrator; 0 turns the line off.
+**Data.** Reads `hydro_u` and the meter buffers of every local block; writes one log line on the root rank.
 
-**Order.** Not a discretisation; exact sums up to round-off.
+**Placement.** At the top of a cycle, after the step is chosen, through `print_cycle_info`; the sums describe the step start.
 
-**Defining equation.** @eq-ch13-cycle-ke.
+**Activation.** `integration/ncycle_out` (pyharp default 1); 0 turns the line off.
+
+**Guarantee / limits.** Exact sums up to the round-off bound below; a record, not a check.
+
+**Evidence.** The Tests layer below, @tbl-ch13-cycle-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $c_{23}$ [-] the cosine of the angle between the $x_2$ and $x_3$
+axes of a cell (code `cosine_cell_kj`); $N$ the number of terms of a sum [count]. $\rho_i$, $m_j$, $V_i$, $g_1$,
+$x_{1,i}$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
 
 `mass0=` is the dry mass, and `masst=` adds every species. `ke=` is the kinetic energy, and `ie=` (block line) or
 `energy=` (Mesh line) is the integrated total energy $E_{\mathrm{tot}}=\sum_iV_iE_i$, with $E$ the total energy
@@ -41,12 +48,27 @@ $$
 \mathrm{pe} = \sum_i \rho_i\,(-g_1 x_{1,i})\,V_i ,
 $$ {#eq-ch13-cycle-ke}
 
-where $m^j$ is $m_j$ raised with the metric of the cell. Only the angle $\theta$ between $x_2$ and $x_3$ enters,
-with $c = \cos\theta$, so $m^2 = (m_2 - c\,m_3)/(1-c^2)$ and $m^3 = (m_3 - c\,m_2)/(1-c^2)$. For $c = 0.5$ and
+where $m^j$ is $m_j$ raised with the metric of the cell. Only the cosine $c_{23}$ between $x_2$ and $x_3$ enters, so
+$m^2 = (m_2 - c_{23}\,m_3)/(1-c_{23}^2)$ and $m^3 = (m_3 - c_{23}\,m_2)/(1-c_{23}^2)$. For $c_{23} = 0.5$ and
 $(m_2, m_3) = (3, 4)$ the contraction is $13/0.75$ against 25 when the axes are orthogonal [check
 `src/snapy_report/ch13/cycle_check.py`, output `cycle_check.out`, `[C1]`]. Both integrals weigh the total
 density. Moving 0.5 of a density of 2.5 into species changes neither, while dropping it gives 1.25 times the
 kinetic energy (`[C2]`). With $g_1 = -10$ and $\rho = 2.5$, pe is $25\sum_i x_{1,i}V_i$ (`[C3]`).
+
+Why the line measures the state the step starts from, in three steps:
+
+1. *It reads the conserved state.* `ke` is formed from `u`, the conserved `hydro_u`, divided by the total density
+   `rho` of the same state, and `pe` from that `rho`; the primitives, which can be one stage stale, are not read.
+2. *It weighs the total density.* `rho` is the dry row plus every species row, so moving mass between dry gas and
+   species changes neither integral (`[C2]`).
+3. *It is printed before the step.* The driver calls `print_cycle_info` at the top of the cycle, so the sums are
+   those of the state the step will advance.
+
+*Round-off.* Each token is a floating-point sum of $N$ cell terms, the interior cells of all blocks, added in an
+order the decomposition sets. By the bound of @sec-ch14-collectives (step 4) it differs from the exact sum by at
+most $(N-1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert\text{term}_i\rvert$, so two decompositions of one state can print
+values up to twice that apart. `[C4]` measures $1.1\times10^{-16}$ relative for four blocks summed locally and then
+reduced once.
 
 In the code, @eq-ch13-cycle-ke is the `ke` and `pe` of the block loop ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
 
@@ -77,7 +99,7 @@ added only with a constant gravity whose `grav1` is nonzero. Under the `SNAP_GRA
 logs the corrected potential energy of @sec-ch06-dwork instead.
 
 The block sums are then reduced once to the root rank, with `reduce` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}):
-SUM for the integrals and the meter totals, MIN for the smallest limiter $\theta$, MAX for the VIC clamp residual.
+SUM for the integrals and the meter totals, MIN for the smallest limiter factor $\Theta$, MAX for the VIC clamp residual.
 Summing four blocks locally and then once more gives the whole-domain sums to $10^{-16}$ (`[C4]`). The printing
 follows: `mass0=` always, `masst=` with species, `ke=`, the energy and `pe=` when they exist, then the meter group
 after the literal ` run-to-date:` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
@@ -88,6 +110,29 @@ A single block prints through `MeshBlockImpl::print_cycle_info` with the label `
 from the same function, so the Mesh line carries `ke=`, `pe=` and the meters too.
 
 ### Code
+
+**A minimal input.** One line every ten cycles:
+
+```yaml
+integration:
+  type: rk3
+  ncycle_out: 10   # 0 turns the line off
+```
+
+**What is refused, and why.** Nothing. pyharp's `IntegratorOptionsImpl::from_yaml` reads `type`, `cfl`, `tlim`,
+`nlim`, `ncycle_out` and `verbose` without a key check, and the line is skipped when `ncycle_out` is 0
+([`pyharp integrator.cpp:24-29`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L24-L29)).
+
+**The code, mapped to @eq-ch13-cycle-ke** ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}):
+
+```cpp
+coord_vec_raise_(mom, coord->cosine_cell_kj);                        // m^j from m_j, c_23
+auto ke = 0.5 * (u.narrow(0, IVX, 3) * mom).sum(0, true) / rho;     // m_j m^j / (2 rho)
+add(ke_sum, (ke * vol).index(interior).sum({1, 2, 3}));
+...
+auto pe = rho * (-grav1 * coord->x1v);                               // rho (-g1 x1)
+add(pe_sum, (pe * vol).index(interior).sum({1, 2, 3}));
+```
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -117,11 +162,17 @@ from the same function, so the Mesh line carries `ke=`, `pe=` and the meters too
 
 : Tests of the cycle-line budget. {#tbl-ch13-cycle-tests}
 
+`[C1]` of `cycle_check.py` confirms the raised contraction ($13/0.75$ against 25 for $c_{23}=0.5$); `[C2]` the total
+density as denominator; `[C3]` the potential energy $25\sum_ix_{1,i}V_i$; `[C4]` the reduction; `[C5]` the 13 and 14
+printed decimals of the block and Mesh lines.
+
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [code: the sums of `print_cycle_diagnostics` at the code pin, ported to numpy;
-deck: the check itself; run: `python3 cycle_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Evidence.** Check numbers from `cycle_check.py` (lines `[C1]`–`[C5]`).[^ch13-cycle-chk] ctest cases: **pending: pinned ctest run**.
 **Coverage.** CPU sums; the reductions run over any process group.
 :::
+
+[^ch13-cycle-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch13/cycle_check.py`, CPU, double,
+    1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `cycle_check.out`, lines `[C1]`–`[C5]`.
 
 ### Limits
 

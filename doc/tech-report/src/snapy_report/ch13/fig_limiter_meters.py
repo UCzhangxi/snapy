@@ -1,6 +1,6 @@
 """The settling column of limiter_meters_check: theta of each cell and the offered and cut |flux| of each face,
-from which thetamin, thetasevere and limcut are read (src/hydro/hydro_forward.cpp:648-705 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0). Computed with limiter_meters_check.
+from which thetamin, thetasevere and limcut are read (src/hydro/hydro_forward.cpp:762-818 at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5). Computed with limiter_meters_check.
 """
 import numpy as np
 
@@ -18,7 +18,7 @@ def make_fig():
     a1.axhline(0.9, color=fs.VERMILLION, lw=0.8, ls="--")
     a1.text(5.4, 0.92, "severe below 0.9", fontsize=fs.SMALL_PT, color=fs.VERMILLION, ha="right")
     a1.set_xlabel("cell")
-    a1.set_ylabel(r"$\theta$")
+    a1.set_ylabel(r"$\Theta$")
     a1.set_ylim(0, 1.1)
     k = np.arange(len(flux))
     a2.bar(k - 0.18, np.abs(flux), width=0.34, color=fs.ORANGE, label="offered")
