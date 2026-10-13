@@ -24,15 +24,15 @@ the $r^2\sin\theta$ metric).
 | $\varphi$ | $x_3$ on a spherical-polar grid (azimuth); never the potential (source notes: $\phi$ in coord code) | [rad] | @sec-ch03-sphpolar | x3 |
 | $\xi, \eta$ | the two gnomonic-equiangle panel coordinates of a cubed-sphere block ($x_2, x_3$) (source notes: $\alpha,\beta$) | [rad] | @sec-ch03-gnomonic |  |
 | $i, j, k$ | cell indices in $x_1, x_2, x_3$ |  | @sec-ch01-stage | `i`, `j`, `k` |
-| $i\pm\tfrac12$ | the $x_1$ faces of cell $i$; also written $f$ for a generic face |  | — |  |
+| $i\pm\tfrac12$ | the $x_1$ faces of cell $i$; also written $f$ for a generic face |  | @sec-ch04-divergence |  |
 | $n_1, n_2, n_3$ | interior cells per block in each direction (source notes: `nz` for $n_1$) |  | @sec-ch04-dc | `nx1`, `nx2`, `nx3` |
 | $n_g$ | ghost cells on each side (source notes: NG) |  | @sec-ch03-globalgrid | `nghost` |
 | $x_{1,i\pm1/2}$ | face positions (source notes: $r_\pm$, $z_\pm$) |  | @sec-ch03-sphpolar | `x1f` |
 | $x_{1,i}$ | cell volume centroid ($r_{c,i}$ on spherical-polar) (source notes: $r_c$) |  | @sec-ch03-cartesian | `x1v` |
 | $x^{\mathrm{m}}_{1,i}$ | cell midpoint $\tfrac12(x_{1,i-1/2}+x_{1,i+1/2})$ ($r^{\mathrm{m}}_i$ on spherical-polar); it is not the cell average of $x_1$, which is the centroid $x_{1,i}$ (source notes: $\bar r$, $\bar x_1$) |  | @sec-ch03-sphpolar |  |
-| $h_i$ | $x_1$ width of cell $i$, $x_{1,i+1/2}-x_{1,i-1/2}$; written $\Delta x_1$ where the direction must be explicit (source notes: $\Delta z$, $h$) |  | @sec-ch06-dwork | `dx1f` |
+| $h_i$ | $x_1$ width of cell $i$, $x_{1,i+1/2}-x_{1,i-1/2}$; written $\Delta x_1$ where the direction must be explicit (source notes: $\Delta z$, $h$) |  | @sec-ch04-sphsrc | `dx1f` |
 | $\Delta_\pm$ | centroid spacings $x_{1,i+1}-x_{1,i}$ ($+$) and $x_{1,i}-x_{1,i-1}$ ($-$), used in non-uniform stencils; never $h_\pm$, which would read as cell widths (source notes: $h_\pm$) |  | — |  |
-| $l$ | stencil offset index ($\bar\rho_{i+l}$); never $k$, which is the $x_3$ index (source notes: $k$ in figure scripts) |  | @sec-ch05-refkernel |  |
+| $l$ | stencil offset index ($\bar\rho_{i+l}$); never $k$, which is the $x_3$ index (source notes: $k$ in figure scripts) |  | @sec-ch04-cp |  |
 | $\vartheta$ | local phase $\pi h/\lambda_w$ of a wave of wavelength $\lambda_w$ in a Fourier error estimate |  | @sec-ch05-wbref4 |  |
 | $\delta_i$ | centroid offset $x_{1,i}-x^{\mathrm{m}}_{1,i}$ (zero on Cartesian) (source notes: $\delta$) |  | @sec-ch03-facemoments |  |
 | $A_{i\pm1/2}$ | $x_1$ face area (source notes: $A_f$) |  | @sec-ch03-cartesian | `face_area1()` |
@@ -72,7 +72,7 @@ all $N_y$ species and excludes dry air.
 | $\hat h$ | specific enthalpy $e + p/\rho$ (source notes: $h$ (not used: $h$ is the cell width)) | [J kg$^{-1}$] | @sec-ch02-ideal-moist |  |
 | $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$; excludes potential energy (source notes: $E$) | [J m$^{-3}$] | @sec-ch01-initialization | conserved `u[IPR]` |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | vector | @sec-ch01-stage | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` |
-| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch07-vic-reject | `hydro_w` |
+| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch04-framework | `hydro_w` |
 | $c_{v,n}, c_{p,n}$ | specific heats of species $n$ at constant volume and pressure, **per unit mass of that species**; $c_{v,n} = c^{\mathrm{ref}}_n R_n$ with $c^{\mathrm{ref}}_n$ the dimensionless table value. $n=\mathrm{d}$ is dry air: $c_{v,\mathrm{d}}, c_{p,\mathrm{d}}$ | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `cref_R` |
 | $c_v, c_p$ | mixture specific heats **per unit total mass**, $c_v = \sum_n y_n c_{v,n}$ over dry air and every species; a chapter that needs the per-dry-mass form writes it out and says so | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `"VT->cv"` |
 | $\gamma$ | mixture ratio of specific heats $c_p/c_v$, local, varies with composition; $\gamma_{\mathrm{d}}$ is the dry value | [-] | @sec-ch02-ideal-gas | `gamma`, `"W->A"` |
@@ -87,7 +87,7 @@ all $N_y$ species and excludes dry air.
 | $\theta_p$ | dry potential temperature, $\theta_p = T(p_\star/p)^{R_{\mathrm{d}}/c_{p,\mathrm{d}}}$, referred to the thermodynamic reference pressure $p_\star$ of §2a and formed with the **dry** constants whatever the composition (source notes: $\theta$ (not used: $\theta$ is colatitude)) | [K] | — |  |
 | $\theta_v$ | virtual potential temperature: $\theta_p$ of the dry-equivalent state with the same density; defined in the chapter that first uses it | [K] | @sec-ch13-output-diag |  |
 | $\Theta$ | the positivity limiter's donor factor in $[0,1]$: the fraction of a requested face flux the limiter allows. Capital, because $\theta$ is the colatitude |  | @sec-ch03-thetacopy | `theta`, meters `thetamin`, `thetasevere` |
-| $H$ | a density or pressure scale height (source notes: $H$) | [m] | @sec-ch05-refkernel |  |
+| $H$ | a density or pressure scale height (source notes: $H$) | [m] | @sec-ch04-fluxcov |  |
 
 : State, thermodynamics and species. {#tbl-appa-2}
 
@@ -121,7 +121,7 @@ the symbol in math, and never let the two touch.
 | $F_{i+1/2}$ | total $x_1$ mass flux density at face $i+\tfrac12$, the sum of the dry and every mass-carrying species row | [kg m$^{-2}$ s$^{-1}$] | @sec-ch04-divergence | `_flux1[IDN] + sum _flux1[ICY..]` |
 | $G_{i+1/2}$ | $x_1$ mass flow through the face, $A_{i+1/2}F_{i+1/2}$ (per steradian on spherical-polar) |  | — |  |
 | $\mathcal F^E_{i+1/2}$ | $x_1$ energy flux density (enthalpy and kinetic energy advection, pressure work) |  | — | `_flux1[IPR]` |
-| $q^{\mathrm{L}}_f, q^{\mathrm{R}}_f$ | reconstructed left and right states of a quantity $q$ at face $f$ |  | — | `wl`, `wr` |
+| $q^{\mathrm{L}}_f, q^{\mathrm{R}}_f$ | reconstructed left and right states of a quantity $q$ at face $f$ |  | @sec-ch04-framework | `wl`, `wr` |
 | $q^{\pm}$ | upper/lower in $x_1$; used only for faces of one cell, $q_\pm = q_{i\pm1/2}$ |  | — |  |
 | $\mathcal W[\cdot]$ | the reconstruction operator (PLM, WENO5, cp3/cp5...) acting on cell values |  | — | `precon1`.. |
 | $\mathcal K_f$ | the cp3/cp5/weno5 curvature flux, $\mathcal K_{i-1/2} = \tfrac{1}{12}(x_{1,i}-x_{1,i-1})(m_{1,i}-m_{1,i-1})$, zero at physical $x_1$ boundaries |  | — | `curv_flux1` |
@@ -135,7 +135,7 @@ the symbol in math, and never let the two touch.
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
 | $\langle q\rangle_{V_i}$ | volume average of a function $q(x)$ over cell $i$ on its own measure, $\tfrac{1}{V_i}\int_{V_i}q\,dV$ |  | — |  |
-| $\bar q_i$ | the cell average stored by the code, written with the bar only where a point value of the same quantity also appears. The overbar means the cell average and nothing else: a midpoint, a reference or a background value never carries a bar |  | — |  |
+| $\bar q_i$ | the cell average stored by the code, written with the bar only where a point value of the same quantity also appears. The overbar means the cell average and nothing else: a midpoint, a reference or a background value never carries a bar |  | @sec-ch04-dc |  |
 | $q(x_{1,i})$ | point value at the centroid |  | — |  |
 | $\Delta_i[q]$ | $x_1$ face difference over cell $i$, $q_{i+1/2}-q_{i-1/2}$; with areas, $\Delta_i[Aq] = A_{i+1/2}q_{i+1/2}-A_{i-1/2}q_{i-1/2}$ |  | — |  |
 | $\nabla_{\!1}\!\cdot G$ | discrete $x_1$ divergence, $\Delta_i[AF]/V_i$ |  | — |  |
@@ -146,7 +146,7 @@ the symbol in math, and never let the two touch.
 | $\operatorname{cov}_i(a,b)$ | the in-cell covariance $\langle ab\rangle_{V_i} - \langle a\rangle_{V_i}\langle b\rangle_{V_i}$; to leading order $\sigma_i^2\,\partial_1a\,\partial_1b$ |  | — |  |
 | $\dot q$ | time derivative of a cell average produced by one operator (stated each time) |  | — |  |
 | $[q]_{\mathrm{walls}}$ | $q$ at the top wall minus $q$ at the bottom wall |  | — |  |
-| $\partial_1 q$, $\partial_1^2 q$, $\partial_1^3 q$ | derivatives of a smooth field $q(x_1)$ with respect to $x_1$, evaluated where stated; a prime is never used for a derivative, because $\rho'$ is the reference perturbation (§6) |  | @sec-ch04-fluxcov |  |
+| $\partial_1 q$, $\partial_1^2 q$, $\partial_1^3 q$ | derivatives of a smooth field $q(x_1)$ with respect to $x_1$, evaluated where stated; a prime is never used for a derivative, because $\rho'$ is the reference perturbation (§6) |  | @sec-ch04-dc |  |
 
 : Operators and averages. {#tbl-appa-4}
 
@@ -155,8 +155,8 @@ the symbol in math, and never let the two touch.
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
 | $g_1, g_2, g_3$ | constant gravity components; $g_1<0$ points to decreasing $x_1$ | [m s$^{-2}$] | @sec-ch02-laws | `grav1`.. |
-| $\phi$ | gravitational potential, $\phi(x_1) = -g_1x_1$ (increases upward); never an angle |  | @sec-ch04-plm | `phi_cell`, `phi_face` |
-| $\phi_i$, $\phi_{i\pm1/2}$ | $\phi$ at the centroid and at the faces |  | @sec-ch04-plm | `phi_cell`, `phi_face` |
+| $\phi$ | gravitational potential, $\phi(x_1) = -g_1x_1$ (increases upward); never an angle |  | @sec-ch06 | `phi_cell`, `phi_face` |
+| $\phi_i$, $\phi_{i\pm1/2}$ | $\phi$ at the centroid and at the faces |  | @sec-ch06-cell | `phi_cell`, `phi_face` |
 | $\alpha_{\mathrm{nh}}$ | non-hydrostatic factor in $[0,1]$: the fraction of gravity applied as a body force |  | @sec-ch05-hsmode | `non-hydrostatic` |
 | $\mathrm{PE}_d$ | discrete potential energy $\sum_iV_i\rho_i\phi_i$ |  | @sec-ch06 | (logged `pe=` with the switch off) |
 | $P$ | corrected discrete potential energy $\sum_iV_i[\rho_i\phi_i - g_1\sigma_i^2s_i[\rho]]$, exact to $O(h^4)$ |  | @sec-ch06 | (logged `pe=` with the switch on) |
@@ -169,7 +169,7 @@ the symbol in math, and never let the two touch.
 | $\mathcal E$ | the conserved energy functional of a scheme, named each time ($\mathcal E = \sum_iV_iE_i+P$ under D, $\sum_iV_iE_i+\mathrm{PE}_d$ under the plain face form) |  | @sec-ch06-dwork | (logged `ie=` + `pe=`) |
 | $M$, $M_{\mathrm{wall}}$ | total mass of the domain, and total mass of the $x_1$ wall cells |  | @sec-ch06-fixer |  |
 | $\mathcal D$ | the $E+\mathrm{PE}_d$ defect of a step, the quantity the gravity-work fixer removes | [J] | @sec-ch06-cell | `gravity_work_defect()` |
-| $F^{\mathrm{ref}}$ | the total $x_1$ mass flux as the Riemann solver returns it (dry plus every species row), before sedimentation and the positivity limiter change the flux; under `gravity-work: cell` only $F-F^{\mathrm{ref}}$ is booked as face work. Not a reference-state flux: the superscript is not the hydrostatic $\mathrm{ref}$ of §6 (the code comment writes $F^R$) | [kg m$^{-2}$ s$^{-1}$] | @sec-ch06-cell | `bflux1` |
+| $F^{\mathrm{ref}}$ | the total $x_1$ mass flux as the Riemann solver returns it (dry plus every species row), before sedimentation and the positivity limiter change the flux; under `gravity-work: cell` only $F-F^{\mathrm{ref}}$ is booked as face work. Not a reference-state flux: the superscript is not the hydrostatic $\mathrm{ref}$ of §6 (the code comment writes $F^R$) | [kg m$^{-2}$ s$^{-1}$] | @sec-ch04-seam | `bflux1` |
 
 : Gravity, potential energy and gravity work. {#tbl-appa-5}
 
@@ -182,9 +182,9 @@ $p_{\mathrm{ref}}$ for $10^5$ Pa.
 
 | symbol | meaning | units/shape | first used | code |
 |--------------|--------------------------------------------|--------------|--------------|--------------|
-| $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ | cell reference density and pressure of the well-balanced $x_1$ reconstruction |  | @sec-ch05-wbx1 | `rho_ref`, `p_ref` |
+| $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ | cell reference density and pressure of the well-balanced $x_1$ reconstruction |  | @sec-ch04-weno | `rho_ref`, `p_ref` |
 | $\rho_{\mathrm{sf}}, p_{\mathrm{sf}}$ | face ("scan face") reference density and pressure |  | @sec-ch05 |  |
-| $\rho' = \rho - \rho_{\mathrm{ref}}$ | the perturbation the reconstruction acts on; the prime means "minus the reference", never a derivative |  | @sec-ch04-x1masscov |  |
+| $\rho' = \rho - \rho_{\mathrm{ref}}$ | the perturbation the reconstruction acts on; the prime means "minus the reference", never a derivative |  | @sec-ch05-wbx1 |  |
 | $\chi^s_i$ | the binomially smoothed $\chi$ of the default reference |  | @sec-ch05-refkernel |  |
 | $B$ | the binomial weights $(1,4,6,4,1)/16$ |  | @sec-ch07-split |  |
 
@@ -257,7 +257,7 @@ reference to pyharp or pydisort.
 | $\varepsilon$ | relative error of the linear convective onset growth rate against its oracle; $\varepsilon_{\mathrm{eff}}$ the one-step effective value |  | @sec-ch02-ideal-moist |  |
 | $\lVert\cdot\rVert_\infty$, $\lVert\cdot\rVert_1$ | max-norm and 1-norm errors of a named quantity, e.g. $\lVert W^{\mathrm{D}}-g_1\langle F\rangle\rVert_\infty$; never $e_\infty$ or $e_1$, because $e$ is the specific internal energy (§2), and never $\mathcal E$, which is the conserved energy functional (§5) |  | — |  |
 | $\mathcal O$ | an oracle (exact or reference value) |  | @sec-ch15 |  |
-| $\lambda_w$ | a wavelength (named) |  | @sec-ch05-wbref4 |  |
+| $\lambda_w$ | a wavelength (named) |  | @sec-ch04-fluxcov |  |
 
 : Diagnostics and errors. {#tbl-appa-9}
 

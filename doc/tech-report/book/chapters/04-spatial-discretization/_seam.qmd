@@ -17,7 +17,7 @@ fluxes and lets both blocks keep the average. The exchange and its message tags 
 axis is split across processes and has no switch.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Both blocks keep $\tfrac12(\mathbf F^{\mathrm B}_s + \mathbf F^{\mathrm T}_s)$ on seam face $s$, @eq-ch03-x1seams-average.
+**Purpose.** Both blocks keep $\tfrac12(\mathbf F^{\mathrm B}_f + \mathbf F^{\mathrm T}_f)$ on the seam face $f$, @eq-ch03-x1seams-average.
 
 **Data.** Reads this block's and the neighbour's seam slab (flux rows, $p_f$, $F^{\mathrm{ref}}$); writes them back averaged.
 
@@ -30,8 +30,8 @@ axis is split across processes and has no switch.
 **Evidence.** @tbl-ch04-seam-tests; `test_x1_seam_split_mp.release`, `seam_check.py` `[C1]`, `[C2]`.
 :::
 
-Local symbols (flagged to the editor): $s$ an $x_1$ seam face, $\mathrm B$ and $\mathrm T$ the blocks below and above
-it, as in @sec-ch03-x1seams; $\mathbf F^{\mathrm B}_s, \mathbf F^{\mathrm T}_s$ the seam flux each block computed;
+Local symbols (flagged to the editor): $f$ the $x_1$ seam face (NOTATION's generic face; @sec-ch03-x1seams writes
+it $s$), $\mathrm B$ and $\mathrm T$ the blocks below and above it; $\mathbf F^{\mathrm B}_f, \mathbf F^{\mathrm T}_f$ the seam flux each block computed;
 $F^{\mathrm{ref}}$ the Riemann mass flux kept for the gravity work (NOTATION §5).
 
 ### Derivation
@@ -40,10 +40,10 @@ None new: the seam average is @eq-ch03-x1seams-average, and the steps below show
 
 #### Why two values break conservation, and why the average restores it bit for bit
 
-1. *Each block books its own value.* Block B subtracts $A_s\mathbf F^{\mathrm B}_s\Delta t$ from its top cell and
-   block T adds $A_s\mathbf F^{\mathrm T}_s\Delta t$ to its bottom cell.
-2. *The column total misses their difference.* Summing over both blocks leaves $A_s(\mathbf F^{\mathrm T}_s -
-   \mathbf F^{\mathrm B}_s)\Delta t$ in addition to the boundary fluxes; `seam_check.py` `[C1]` measures a leak of
+1. *Each block books its own value.* Block B subtracts $A_f\mathbf F^{\mathrm B}_f\Delta t$ from its top cell and
+   block T adds $A_f\mathbf F^{\mathrm T}_f\Delta t$ to its bottom cell.
+2. *The column total misses their difference.* Summing over both blocks leaves $A_f(\mathbf F^{\mathrm T}_f -
+   \mathbf F^{\mathrm B}_f)\Delta t$ in addition to the boundary fluxes; `seam_check.py` `[C1]` measures a leak of
    $0.020170$ that equals $A(\mathbf F^{\mathrm T} - \mathbf F^{\mathrm B})$.
 3. *Floating-point addition is commutative.* Block B computes $\tfrac12(\mathbf F^{\mathrm B} + \mathbf F^{\mathrm T})$ and
    block T computes $\tfrac12(\mathbf F^{\mathrm T} + \mathbf F^{\mathrm B})$; the sums are the same bits, and halving is
@@ -105,7 +105,7 @@ split axis are set out with the layout in @sec-ch03-x1seams.
         unpack(iu + 1, 0.5 * (up_mine[0] + theirs[0]));
 ```
 
-`pack` builds the one message of step 4; the `unpack` line is step 3, $\tfrac12(\mathbf F^{\mathrm B}_s + \mathbf F^{\mathrm T}_s)$, on
+`pack` builds the one message of step 4; the `unpack` line is step 3, $\tfrac12(\mathbf F^{\mathrm B}_f + \mathbf F^{\mathrm T}_f)$, on
 the top face of block B.
 
 | what | code link | symbol | switch |
