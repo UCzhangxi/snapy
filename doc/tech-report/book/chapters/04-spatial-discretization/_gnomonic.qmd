@@ -87,16 +87,26 @@ which the gravity work of @sec-ch06 accounts for.
 
 ### Code
 
-**A minimal input**, as in the six-panel rest test:
+**A minimal input**, as in the six-panel rest test `tests/test_cubed_sphere_cell_volume.yaml`:
 
 ```yaml
 geometry:
   type: gnomonic-equiangle
+  bounds: {x1min: 6.0e6, x1max: 6.4e6, x2min_pi: -0.25, x2max_pi: 0.25, x3min_pi: -0.25, x3max_pi: 0.25}
+  cells: {nx1: 8, nx2: 8, nx3: 8, nghost: 3}   # nx2 == nx3
 distribute:
   layout: cubed-sphere
+  nb2: 1
+  nb3: 1
+  blocks_per_process: 6    # all six panels in one process
 dynamics:
   riemann-solver: {type: lmars}
 ```
+
+The radii are in metres and the panel angles in units of $\pi$. With `blocks_per_process: 1` the deck needs six
+processes (@sec-ch14-launch). That test file is the complete deck; on a build at the pin
+([Install and run](#sec-preface-install)) it runs a short rest run of it with
+`ctest --test-dir build -R test_cubed_sphere_cell_volume_python`.
 
 **What the parser accepts and refuses.** `reset` requires `nx2 == nx3` and `interp_order` 2
 (@sec-ch03-gnomonic); `shallow-roe` on this grid requires `dir: yz` (@sec-ch04-shallow). Nothing refuses `roe`.

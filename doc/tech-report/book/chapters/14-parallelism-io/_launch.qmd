@@ -102,11 +102,21 @@ tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` do
 ```yaml
 distribute:
   layout: slab
+  nb2: 4                  # four blocks along x2: two processes times two blocks
   blocks_per_process: 2
 ```
 
-and the launcher sets the environment, for example `torchrun --no-python --nproc-per-node=2 ./run_hydro -i card.yaml`
-with `MASTER_PORT` exported, or `api/pd-run 2 ./run_hydro -i card.yaml`.
+and the launcher sets the environment. With these keys in a copy of `straka_single.yaml`, saved as `card.yaml` in
+`build/bin` ([Install and run](#sec-preface-install)), either of
+
+```bash
+torchrun --no-python --nproc-per-node=2 --master-port=29573 ./straka.release card.yaml
+BACKEND=gloo pd-run 2 ./straka.release card.yaml
+```
+
+runs it; `pd-run` is on the path after `pip install .` in the source checkout. `pd-run` asks for UCX unless
+`BACKEND` is set, and a build without UCX stops with "backend=ucx requested, but snapy was built without UCX
+support".
 
 **What is refused, and why.**
 

@@ -90,12 +90,14 @@ make_fig()
 build. For the WB seam row in a Release build:
 
 ```bash
-env SNAP_WB_REF4=0 SNAP_X1_CENTROID_EXACT=0 SNAP_X1_MASS_COVARIANCE=0 \
+env -u SNAP_X1_CENTROID_EXACT SNAP_WB_REF4=0 SNAP_X1_MASS_COVARIANCE=0 \
   SNAP_FLUX_COVARIANCE=0 SNAP_GRAVITY_WORK_RADIAL_EXACT=0 \
   ctest --test-dir build -R '^test_x1_seam_split_wb_ref4.release$' --output-on-failure
 ```
 
 CTest overrides WB for this registered arm; the other values prevent inherited study flags from changing it.
+`SNAP_X1_CENTROID_EXACT` is removed with `-u`, not set to `0`: the arm asserts that the variable is unset, and an
+unset variable is the off state it checks. `-u` comes before the assignments, which the `env` of macOS requires.
 This row supplies its own deck, so no extra YAML is needed. A missing entry, disabled arm or empty selection is
 not evidence. Setup refusals constrain configuration only, and cannot certify an error norm.
 
