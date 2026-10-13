@@ -29,6 +29,10 @@ gravity-work fixer.
 **Evidence.** `test_mesh_multi_block.<b>` (two ranks, `allclose`), `test_mesh_exchange_python` (exact); see Tests.
 :::
 
+Local symbols: $n_b$ is the number of local blocks of a rank, $n_p$ the number of ranks and $n_{\mathrm{cell}}$ the
+interior cells of a block. $a_{kj}$ is the contribution of cell $j$ to block term $b_k$ of the fixer sum.
+$\delta_{\mathrm{mach}} = 2^{-53}$ is the unit round-off in double precision.
+
 ### Derivation
 
 No separate derivation: this section describes an interface or control-flow path, and the operators are derived
@@ -69,11 +73,13 @@ make_fig()
    ({{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}}); a minimum selects an operand and adds no round-off.
 2. The redo decision combines the blocks' flags on the device and crosses the process group once
    ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}); a flag is 0 or 1, so the combination is exact.
-3. The gravity-work fixer sums five terms per block over the local blocks, then once over the group with SUM
-   ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}). A sum of $N$ doubles accumulated in sequence has an error of at
-   most $(N-1)\,\delta_{\mathrm{mach}}\sum|b_k|$ with $\delta_{\mathrm{mach}} = 2^{-53}$. With $B$ local blocks on $p$
-   ranks that is $(Bp-1)\,\delta_{\mathrm{mach}}$ of the sum of the terms' magnitudes. A different block count
-   therefore changes the common correction by round-off only.
+3. The gravity-work fixer sums five terms per block over the $n_b$ local blocks, then once over the $n_p$ ranks
+   with SUM ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}). Each block term $b_k$ is itself a sum of
+   $n_{\mathrm{cell}}$ cell contributions $a_{kj}$ (@sec-ch06-fixer). A sum of $n$ doubles accumulated in sequence
+   has an error of at most $(n-1)\,\delta_{\mathrm{mach}}$ times the sum of the terms' magnitudes. The per-block
+   sums therefore contribute at most $(n_{\mathrm{cell}}-1)\,\delta_{\mathrm{mach}}\sum_{k,j}|a_{kj}|$, and the
+   combination of the $n_b n_p$ block terms at most $(n_b n_p - 1)\,\delta_{\mathrm{mach}}\sum_k|b_k|$. A different
+   block count therefore changes the common correction by round-off only.
 
 ### Code
 

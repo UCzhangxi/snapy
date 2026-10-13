@@ -124,13 +124,18 @@ make_fig()
 ```
 
 **Why the combine is exact up to a bounded round-off.** Fix one cell and one row. The combine evaluates
-$w_0\mathbf U^n + w_1\mathbf U + w_2\Delta\mathbf U$ with three products and two sums, five roundings in
-all, each with relative error at most $\delta_{\mathrm{mach}} = 2^{-53}$. Dropping products of two rounding
-errors, the computed value differs from the exact one by at most
-$5\,\delta_{\mathrm{mach}}\,(|w_0\mathbf U^n| + |w_1\mathbf U| + |w_2\Delta\mathbf U|)$; the recurrence
-of @eq-ch01-stage-weight inherits one such bound per stage. The transfer update `P - P_above` of
-@eq-ch01-stage-transfer is one subtraction, exact when the two transfers lie within a factor of two of each
-other and otherwise rounded once.
+$w_0\mathbf U^n + w_1\mathbf U + w_2\Delta\mathbf U$ with three products and two sums, five roundings in all, each
+with relative error at most $\delta_{\mathrm{mach}} = 2^{-53}$. Dropping products of two rounding errors, the computed
+value differs from the exact one by at most
+$5\,\delta_{\mathrm{mach}}\,(|w_0\mathbf U^n| + |w_1\mathbf U| + |w_2\Delta\mathbf U|)$; the recurrence of
+@eq-ch01-stage-weight inherits one such bound per stage. The transfer update of @eq-ch01-stage-transfer is three
+operations per cell ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). They are the product $r_n M$
+that forms each face transfer `P`, the subtraction `P - P_above`, and the division by the cell volume. Each product
+rounds once, so the two transfers carry an absolute error of at most
+$\delta_{\mathrm{mach}}(|J^{\mathrm{tr}}_{n,i-1/2}| + |J^{\mathrm{tr}}_{n,i+1/2}|)$ into the difference. The
+subtraction itself is exact only when the two transfers have the same sign and lie within a factor of two of each
+other. Otherwise it rounds once more, by at most $\delta_{\mathrm{mach}}$ of the difference. The division adds one
+rounding of the result. When the two transfers nearly cancel, the product errors are not small relative to the result.
 
 ### Code
 

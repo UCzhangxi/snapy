@@ -19,7 +19,7 @@ the $r^2\sin\theta$ metric).
 |--------------|--------------------------------------------|--------------|--------------|--------------|
 | $x_1, x_2, x_3$ | the three coordinate directions; $x_1$ is always the vertical (radial) direction |  | @sec-ch01-construction | x1, x2, x3 |
 | $z$ | $x_1$ on a Cartesian grid (height) | [m] | @sec-ch03-layouts | `x1v`, `x1f` |
-| $r$ | $x_1$ on a spherical-polar grid (radius) | [m] | @sec-ch01-driver | `x1v`, `x1f` |
+| $r$ | $x_1$ on a spherical-polar grid (radius) | [m] | @sec-ch01-initialization | `x1v`, `x1f` |
 | $\theta$ | $x_2$ on a spherical-polar grid (colatitude) | [rad] | @sec-ch03-sphpolar | x2 |
 | $\varphi$ | $x_3$ on a spherical-polar grid (azimuth); never the potential (source notes: $\phi$ in coord code) | [rad] | @sec-ch03-sphpolar | x3 |
 | $\xi, \eta$ | the two gnomonic-equiangle panel coordinates of a cubed-sphere block ($x_2, x_3$) (source notes: $\alpha,\beta$) | [rad] | @sec-ch03-gnomonic |  |
@@ -56,13 +56,13 @@ all $N_y$ species and excludes dry air.
 | $\rho$ | total density, dry plus every species that carries mass | [kg m$^{-3}$] | @sec-ch01-initialization | primitive `w[IDN]`; conserved `u[IDN]` $+\sum$ `u[ICY+n-1]` |
 | $\rho_{\mathrm{d}}$ | dry-air density | [kg m$^{-3}$] | @sec-ch01-scalar | conserved `u[IDN]` |
 | $y_n$ | mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$; this is snapy's composition variable and the only one the state vector carries (source notes: $q_n$) | [-] | @sec-ch01-initialization | primitive `w[ICY+n-1]` |
-| $r_n$ | mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1) | [-] | @sec-ch01-stage | `s/rho_d` in `src/scalar` |
-| $\rho_n$ | partial density of species $n$, $\rho y_n$ | [kg m$^{-3}$] | @sec-ch02-laws | conserved `u[ICY+n-1]` |
+| $r_n$ | mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1) | [-] | @sec-ch01-initialization | `s/rho_d` in `src/scalar` |
+| $\rho_n$ | partial density of species $n$, $\rho y_n$ | [kg m$^{-3}$] | @sec-ch01-scalar | conserved `u[ICY+n-1]` |
 | $\mathcal V, \mathcal C$ | the vapour and condensate index sets; $n\in\mathcal V$ runs $1..N_v$ and $n\in\mathcal C$ runs $N_v+1..N_y$, in that order, as the rows are stored |  | @sec-ch02-ideal-moist | `vapor_ids`, `cloud_ids` |
 | $N_v, N_c, N_y$ | the number of vapours, of condensates, and of species rows, $N_y=N_v+N_c$ | count | — | `nvapor`, `ncloud`, `ny` |
 | $\mathbf v = (v_1,v_2,v_3)$ | velocity (source notes: $u, w$) | [m s$^{-1}$] | @sec-ch01-initialization | `w[IVX]`, `w[IVY]`, `w[IVZ]` |
 | $m_1, m_2, m_3$ | momentum density $\rho v_a$ (source notes: $m$) |  | @sec-ch03-sphpolar | `u[IVX]`.. |
-| $p$ | pressure | [Pa] | @sec-ch02-laws | `w[IPR]` |
+| $p$ | pressure | [Pa] | @sec-ch01-mesh | `w[IPR]` |
 | $T$ | temperature | [K] | @sec-ch02-ideal-moist | `"W->T"` |
 | $e$ | specific internal energy | [J kg$^{-1}$] | @sec-ch02-ideal-gas |  |
 | $u^{\star}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{\star}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$; the energy zero of each species, not a fitted constant. The star, not a superscript $(0)$, because $(0)$ is the explicit RK increment (§7) | [J kg$^{-1}$] | @sec-ch10-satadj | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) |
@@ -210,7 +210,7 @@ $p_{\mathrm{ref}}$ for $10^5$ Pa.
 | $\partial\mathbf F/\partial\mathbf U$ | flux Jacobian |  | — | `dfdq_*` |
 | $\Phi$ | the gravity source Jacobian; upright, not sans-serif like the other matrices, because the math font has no sans-serif Greek and `\mathsf` drops the glyph in the PDF |  | @sec-ch06-vic | `Phi` |
 | $\omega^{\mathrm{lo}}_i, \omega^{\mathrm{hi}}_i$ | the implicit face-work weights $\tfrac12A_{i\mp1/2}\lvert x_{1,i}-x_{1,i\mp1/2}\rvert/V_i$ |  | @sec-ch06-vic | `work_lo`, `work_hi` |
-| $C$ | Courant number (named: acoustic, advective, vertical acoustic) |  | @sec-ch03-gnomonic | `cfl` |
+| $C$ | Courant number (named: acoustic, advective, vertical acoustic) |  | @sec-ch01-driver | `cfl` |
 | $\epsilon_{\mathrm{piv}}$ | LU pivot tolerance |  | @sec-ch07 |  |
 | $\epsilon_{\mathrm{m}}$ | machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$) |  | @sec-ch02-saturation |  |
 | $\mathsf I$ | the identity matrix, sized by context | matrix | @sec-ch02-laws |  |
