@@ -9,11 +9,11 @@ status: draft
 ### Summary
 
 When the borrow of @sec-ch08-borrow cannot cover a deficit from the parent vapour in the same cell, the vapour itself
-goes negative. A local repair has no mass to work with. The column repair is the fallback: it looks along the whole
-$x_1$ column for mass to move.
+goes negative. A local repair has no mass to work with. The column repair is the fallback: it looks along the $x_1$
+column for mass to move, the whole column on the two stage calls and the block's piece of it on the others.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Repair a negative vapour by moving mass along the whole $x_1$ column, weighted by cell volume.
+**Purpose.** Repair a negative vapour by moving mass along its $x_1$ column, weighted by cell volume.
 
 **Data.** In: the interior vapour and cloud rows, the dry density, the cell volumes. Out: the rows repaired in place, or an error.
 
@@ -113,11 +113,13 @@ been run for this report at the pin: **pending a pinned ctest run**.
 ::: {.callout-warning title="Limits"}
 - The vapour path throws when the column cannot be repaired. That is a crash, not a degraded run, and
   it is the intended behaviour rather than a defect.
-- The repair needs the whole column. On a split $x_1$ axis it gathers across ranks, so it is a
-  collective operation inside what is otherwise a local limiter.
+- The repair sees the whole column only on the two stage calls, which pass `whole_column` true. On a split $x_1$
+  axis those calls gather across ranks, so they are a collective operation inside what is otherwise a local limiter.
+  The calls inside the equation-of-state conversions repair only the block's piece of a split column: a vapour
+  deficit the piece cannot cover throws there even when the rest of the column could cover it.
 :::
 
 1. **Not ported.** The conservation claim is read from the code and its comment and asserted by one ctest on
    one grid; no check in this chapter measures it.
-2. **Cost.** Gathering a column is communication in the middle of the equation-of-state call. Nothing in
+2. **Cost.** Gathering a column is communication inside the conserved pass of the two stage calls. Nothing in
    the repository measures how often it fires or what it costs.
