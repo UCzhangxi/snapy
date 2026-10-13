@@ -35,7 +35,7 @@ reference on plain means is then the Cartesian one, and the switch implies `SNAP
 Local symbols: $\langle q\rangle_i$ the $r^2$ mean and $\overline q_i$ the plain mean of cell $i$; $r^{\mathrm m}_i$ [m] the
 mid-radius and $\Delta$ [m] the width $\Delta x_{1,i}$; $x$ [-] the local coordinate; $c_{i,l}$ [-] the conversion
 weights and $c^S_{i,l}$ [m$^{-1}$] the source weights over the window starting at cell or face $i_0$, offset $l$;
-$m$ the monomial degree; $\tilde p$ [Pa] the quintic through six face pressures; $S_i$ [Pa m$^{-1}$] the radial
+$d_{\mathrm{mon}}$ the monomial degree; $\tilde p$ [Pa] the quintic through six face pressures; $S_i$ [Pa m$^{-1}$] the radial
 pressure source. $\delta_i$, $A_{i\pm1/2}$, $V_i$, $p^{*}$ and $\epsilon_{\mathrm m}$ are NOTATION's.
 
 On Cartesian blocks the switch only implies `SNAP_WB_REF4`; on cubed-sphere blocks it does nothing (their $x_{1v}$ is
@@ -90,11 +90,11 @@ For the $x_1$ maps only, each primitive row is replaced by
 $$
 \begin{aligned}
 \overline q_i &= \sum_{l=0}^{4} c_{i,l}\,\langle q\rangle_{i_0+l}, \\
-\sum_l c_{i,l}\,\langle x^m\rangle_{i_0+l} &= \overline{x^m}_i = \big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80}\big)_m,
+\sum_l c_{i,l}\,\langle x^{d_{\mathrm{mon}}}\rangle_{i_0+l} &= \overline{x^{d_{\mathrm{mon}}}}_i = \big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80}\big)_{d_{\mathrm{mon}}},
 \end{aligned}
 $$ {#eq-ch05-x1cent-conv}
 
-for the monomials $m=0..4$, window $i_0=\max(\mathrm{lo},\min(\mathrm{hi}-4,i-2))$, centred, inside the owned cells at a physical wall and inside the
+for the monomial degrees $d_{\mathrm{mon}}=0..4$, window $i_0=\max(\mathrm{lo},\min(\mathrm{hi}-4,i-2))$, centred, inside the owned cells at a physical wall and inside the
 array at a seam. The moments are integrated by four-point Gauss-Legendre, exact to degree 7 while every integrand has degree at most 6, and the $5\times5$ system
 is solved once per block. The conversion is exact for degree 4 and not 5, on uniform and stretched grids and in the
 wall windows, and its weights sum to 1 (`[C16]`). @eq-ch05-x1cent-conv is `x1_plain_mean_stencils`
@@ -162,12 +162,25 @@ velocity, `SNAP_X1_MASS_COVARIANCE` subtracts the covariance part (@sec-ch04-x1m
 *Round-off.* The conversion is a five-term sum, so by the dot-product bound $\overline q_i$ carries at most
 $5\epsilon_{\mathrm m}\sum_l\lvert c_{i,l}\rvert\max\lvert\langle q\rangle\rvert$ besides the rounding of the weights from
 the $5\times5$ solve, which is not bounded here; for $\Delta\ll r$ the weights approach the plain fourth-order
-ones and $\sum_l\lvert c_{i,l}\rvert$ stays of order 1. The pressure force is a difference of two terms each of size
-about $p/\Delta x_1$ (since $A/V\approx1/\Delta x_1$), so it rounds to a few $\epsilon_{\mathrm m}\,p/\Delta x_1$, which
-is a few $\epsilon_{\mathrm m}H_p/\Delta x_1$ in units of $g\rho$, with $H_p=p/(\rho g)$ the pressure scale height. The
-constant is not derived. The rest test's column ($\rho=1-0.3(r-r_0)$, $g=1$, $\Delta x_1=1/16$) has
-$H_p/\Delta x_1$ between 38 and 40, so $\epsilon_{\mathrm m}H_p/\Delta x_1\approx8.9\times10^{-15}$; its rest forces with the
-switch, $0.9$ to $3.3\times10^{-14}$ (@tbl-ch05-x1cent-rest), are 1 to 4 times that.
+ones and $\sum_l\lvert c_{i,l}\rvert$ stays of order 1. The pressure force is the source minus the flux divergence, two terms each of size about
+$p/\Delta x_1$ (since $A/V\approx1/\Delta x_1$). For the constant-pressure identity of @eq-ch05-x1cent-source the
+rounding count is, to first order with $\tfrac12\epsilon_{\mathrm m}$ per operation:
+
+1. *The flux difference.* $(r_{i+1/2}^2p-r_{i-1/2}^2p)/V_i$ rounds the two squares and the two products, each by
+   $\tfrac12\epsilon_{\mathrm m}$ of a term of size $r^2p/V_i\approx p/\Delta x_1$: at most $2\epsilon_{\mathrm m}\,p/\Delta x_1$. The
+   subtraction and the division round the difference, of size $2p/r$, and add $\epsilon_{\mathrm m}p/r$.
+2. *The source.* `apply` sums six products, so by the dot-product bound it carries at most
+   $3\epsilon_{\mathrm m}\sum_l\lvert c^S_{i,l}\rvert p$, of size $\epsilon_{\mathrm m}p/r$ since $c^S\sim 1/r$.
+3. *The common volume.* $V_i$ divides both terms, so its rounding scales the net force, not the two large terms.
+4. *Hence* $\lvert S_i-(A_{i+1/2}-A_{i-1/2})p/V_i\rvert\le2\epsilon_{\mathrm m}\,p/\Delta x_1$ for $r\gg\Delta x_1$. A float64 port of
+   `x1_pressure_source_stencils` measures at most $0.90\,\epsilon_{\mathrm m}\,p/\Delta x_1$ at $r_0$ = 5, 60 and 1000
+   (`derivation_check.py`, `XC-4`), inside it. In units of $g\rho$ the bound is $2\epsilon_{\mathrm m}H_p/\Delta x_1$, with
+   $H_p=p/(\rho g)$ the pressure scale height.
+
+The rest test's column ($\rho=1-0.3(r-r_0)$, $g=1$, $\Delta x_1=1/16$) has $H_p/\Delta x_1$ between 38 and 40, so the
+bound is $1.8\times10^{-14}$ in units of $g\rho$; its rest forces with the switch, $0.86$ to $3.3\times10^{-14}$
+(@tbl-ch05-x1cent-rest), include the rounding of the reconstruction, the Riemann flux and the gravity source as well,
+which is not derived here.
 
 ### Numerical method
 
@@ -179,7 +192,7 @@ explicitly; the stencils are built once per block in double precision.
 
 ```{python}
 #| label: fig-ch05-x1cent-window
-#| fig-cap: "The maps of `SNAP_X1_CENTROID_EXACT`, $x_1 = r$ to the right. Top: a radial cell, its mid-radius $\\overline{r}_i$ (dotted) and its $r^2$ centroid $x_{1v}$ (bluish-green line) $\\Delta x_1^2/(6\\overline{r}_i)$ [m] further out. Middle: the five-cell window that converts $r^2$ means to the plain mean of cell $i$, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
+#| fig-cap: "The maps of `SNAP_X1_CENTROID_EXACT`, $x_1 = r$ to the right. Top: a radial cell, its mid-radius $r^{\\mathrm{m}}_i$ (dotted) and its $r^2$ centroid $x_{1v}$ (bluish-green line), to leading order $\\Delta x_1^2/(6r^{\\mathrm{m}}_i)$ [m] further out. Middle: the five-cell window that converts $r^2$ means to the plain mean of cell $i$, centred in the interior and one-sided at the wall (thick black line). Bottom: the six-face window of the pressure source (orange triangles), which reaches two faces past a seam (dashed reddish-purple line) into the neighbour's hatched ghost cells."
 #| fig-alt: "A single wide cell with two vertical lines inside, below it a row of nine cells with brackets over five cells, and a third row of cells with a dashed seam and six triangles crossing it."
 #| echo: false
 from snapy_report.ch05.fig_x1cent_window import make_fig
@@ -267,7 +280,7 @@ a non-Cartesian geometry under it. A block too thin for the stencils (`usable` f
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |----------------|-------------|-----|-----|
-| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | linear-density column of $r^2$ means, $r_0/H$ = 5 and 1000, explicit and vertically implicit, $\alpha_{\mathrm{nh}}$ = 1 and 0: on, $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)<10^{-10}$ in interior and wall cells; off, $>10^{-8}$ at $r_0/H=5$ | `TOL_ON 1e-10`, `TOL_OFF 1e-8` | round-off margin; an ignored switch fails |
+| `tests/test_x1_centroid_rest.py` (`test_x1_centroid_rest_python`) | linear-density column of $r^2$ means at base radius $r_0$ = 5 and 1000 and depth 2 ({{< code tests/test_x1_centroid_rest.py R0S >}}, {{< code tests/test_x1_centroid_rest.py LZ >}}), explicit and vertically implicit, $\alpha_{\mathrm{nh}}$ = 1 and 0: on, $\max\lvert\rho v_1\rvert/(\Delta t\,g\rho)<10^{-10}$ in interior and wall cells; off, $>10^{-8}$ at $r_0=5$ | `TOL_ON 1e-10`, `TOL_OFF 1e-8` | round-off margin; an ignored switch fails |
 | `tests/test_x1_seam_split.cpp` (`test_x1_seam_split_x1_centroid.release`), `centroid_exact_split_matches_one_block` | split equals one block after 20 steps, $\alpha_{\mathrm{nh}}$ = 1 and 0 | $10^{-13}$ | round-off |
 | `test_x1_seam_split_mp_x1_centroid` (2 ranks) | two ranks equal two blocks and one block | $10^{-13}$ | round-off |
 | `test_balance_column_x1_centroid`, `test_face_floor_x1_centroid` | the balance and floor tests with the switch | as in their sections | as there |
@@ -275,7 +288,7 @@ a non-Cartesian geometry under it. A block too thin for the stencils (`usable` f
 
 : Tests of `SNAP_X1_CENTROID_EXACT`. {#tbl-ch05-x1cent-tests}
 
-| $r_0/H$ | implicit | $\alpha_{\mathrm{nh}}$ | off, interior / wall | on, interior / wall |
+| $r_0$ | implicit | $\alpha_{\mathrm{nh}}$ | off, interior / wall | on, interior / wall |
 |---|---|---|---|---|
 | 5 | 0 | 1 | $2.377\times10^{-5}$ / $2.699\times10^{-5}$ | $2.447\times10^{-14}$ / $2.127\times10^{-14}$ |
 | 5 | 0 | 0 | $5.997\times10^{-8}$ / $7.447\times10^{-7}$ | $1.156\times10^{-14}$ / $1.168\times10^{-14}$ |
@@ -291,16 +304,17 @@ prints.[^ch05-x1c-tab] {#tbl-ch05-x1cent-rest}
 
 `[C16]` confirms that the conversion is exact to degree 4 and not 5 (degree-5 error $0.12$) and that its weights sum to
 1 within $2.2\times10^{-16}$. `[C17]` proves both source identities in exact rationals, the constant-pressure balance
-and the by-parts form of the net force. `[C18]` derives $\delta_i=2h^2r^{\mathrm m}/(h^2+12(r^{\mathrm m})^2)$ and its
+and the by-parts form of the net force. `[C18]` derives $\delta_i=2\Delta^2r^{\mathrm m}/(\Delta^2+12(r^{\mathrm m})^2)$ and its
 series.[^ch05-x1c-chk]
 
 [^ch05-x1c-chk]: [sha: the formulas the check ports, as its header records them; deck: the
     check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU, double, 1 process; Python 3.11.13, numpy
-    2.4.6, sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`, lines `[C16]`-`[C18]`.
+    2.4.6, sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`, lines `[C16]`-`[C18]`. The float64 port of the source identity is
+    `XC-4` of `derivation_check.py` (same run, numpy 2.4.6, seed 3), output `derivation_check.out`.
 
 ::: {.callout-important title="Test"}
 **Evidence.** Check numbers come from `wbref_check.py` (`[C16]`–`[C18]`). At the pin
-(@tbl-ch05-x1cent-rest) the rest force with the switch is at round-off in every case and without it the $r_0/H=5$
+(@tbl-ch05-x1cent-rest) the rest force with the switch is at round-off in every case and without it the $r_0=5$
 column feels $2.4\times10^{-5}$; the seam arm prints a split-against-one-block gap of 0 in both modes and the 2-rank
 arm 0 against both two blocks and one block.[^ch05-x1c-run]
 **Coverage.** CPU; the CUDA twins were not run (**pending: a CUDA run at the pin**).

@@ -20,7 +20,7 @@ def make_fig():
     ax.plot(xx, w, color=fs.BLACK, label="$w(r)$")
     ax.axhline(plain, color=fs.BLUE, ls="--", label="plain mean of $w$")
     ax.axhline(favre, color=fs.VERMILLION, ls=":", label="$\\langle\\rho w\\rangle/\\langle\\rho\\rangle$")
-    ax.set_xlabel("$(r - \\overline{r}_i)/h$ [-]")
+    ax.set_xlabel("$(r - r^{\\mathrm{m}}_i)/\\Delta x_1$ [-]")
     ax.set_ylabel("$w$ [arb.]")
     ax.set_yticks([])
     ax.legend(loc="upper left")

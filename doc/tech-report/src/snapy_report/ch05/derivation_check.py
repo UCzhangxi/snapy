@@ -1,6 +1,6 @@
 """Chapter 5 derivation checks: the sympy claims behind the derivation steps of the chapter 5 sections.
 
-Pure sympy, no snapy import; each line prints PASS or FAIL and the claim. The formulas are those of chengcli/snapy
+sympy, plus one numpy port (XC-4); no snapy import; each line prints PASS or FAIL and the claim. The formulas are those of chengcli/snapy
 at the book pin 6fbb39750f62b83df096058a4746e77d0a634bc5. Run: python3 src/snapy_report/ch05/derivation_check.py
 """
 import sympy as sp
@@ -103,3 +103,35 @@ ok("RK5-2 rho_sf - W[rho_ref] = H^2/12 (p' chi' + 2 p chi'') + c H^2/6 chi'' + O
 pp,K,g,gam=sp.symbols('p K g gamma',positive=True)
 aa=(gam-1)/gam; rho_=(pp/K)**(1/gam)
 ok("LG-1 d(p^a)/dx = a p^(a-1)(-rho g) = -a g / K^(1/gamma)", sp.simplify(aa*pp**(aa-1)*(-rho_*g)+aa*g/K**(1/gam))==0)
+
+# --- XC-4: float64 round-off of the constant-pressure source identity (x1_pressure_source_stencils)
+import numpy as np
+_gx, _gw = np.polynomial.legendre.leggauss(4)
+def _lag(X, j, x):
+    p = 1.0
+    for m_ in range(len(X)):
+        if m_ != j: p *= (x - X[m_]) / (X[j] - X[m_])
+    return p
+def _src_weights(xf, i, s0):
+    c = 0.5 * (xf[i] + xf[i + 1]); h_ = xf[i + 1] - xf[i]
+    X = [(xf[s0 + j] - c) / h_ for j in range(6)]
+    vol = (xf[i + 1] ** 3 - xf[i] ** 3) / 3.
+    wt = []
+    for j in range(6):
+        w_ = 0.0
+        for q_ in range(4):
+            rr = c + 0.5 * h_ * _gx[q_]
+            w_ += 0.5 * h_ * _gw[q_] * rr * _lag(X, j, 0.5 * _gx[q_])
+        wt.append(w_ * 2. / vol)
+    return wt, vol
+_eps = np.finfo(float).eps; _rng = np.random.default_rng(3); _worst = 0.0
+for _r0 in (5., 60., 1000.):
+    xf = _r0 + np.arange(33) / 16.
+    for i in range(3, 27):
+        wt, vol = _src_weights(xf, i, i - 2)
+        p0 = 1.0 + 0.3 * _rng.random()
+        S = 0.0
+        for w_ in wt: S += w_ * p0
+        flux = (xf[i + 1] ** 2 * p0 - xf[i] ** 2 * p0) / vol
+        _worst = max(_worst, abs(S - flux) / (_eps * p0 / (xf[i + 1] - xf[i])))
+ok("XC-4 constant-p source identity in float64 within the derived 2 eps p/dx (max %.2f eps p/dx, r0 = 5, 60, 1000)" % _worst, _worst <= 2.0)

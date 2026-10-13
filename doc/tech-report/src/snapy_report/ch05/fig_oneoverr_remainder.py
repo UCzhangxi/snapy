@@ -28,7 +28,7 @@ def make_fig():
         ax.set_xticks(rh)
         ax.set_xticklabels([f"{v:g}" for v in rh])
         ax.minorticks_off()
-        ax.set_xlabel("$r_0/H$ [-]")
+        ax.set_xlabel("$r_0/L_z$ [-]")
         ax.set_title(title, fontsize=fs.SMALL_PT)
     axes[0].set_ylabel("$D$ [-]")
     axes[1].set_ylim(-0.0005, 0.0025)
