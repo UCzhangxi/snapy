@@ -1,68 +1,112 @@
 ## Overview and code-map verification {#sec-ch15-ch01}
 
-A test result is useful only when the test loaded the intended implementation. Start here before interpreting
-the execution and stage assertions in @sec-ch01.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+Before any number from a test can be believed, two plainer questions need answers: which copy of snapy did the
+test load, and did the pieces that chapter 1 describes (the driver loop, the stage combine, the block exchange,
+the device dispatch) run as described? This section collects the tests that answer those questions for
+@sec-ch01. It tells the reader which test to run, what each one asserts and with what tolerance, and what a pass
+does not prove. A tolerance quoted here is the test author's acceptance criterion read from the source, not a
+measured error.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 1 claims (package origin, driver, stage combine, exchange, dispatch) to six registered tests.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Test inputs and thresholds read from the source; no new solver measurement.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; nothing here changes a default.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** A source assertion establishes a contract, not a pass at the pin.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch01-assertions.
 :::
 
-**Local symbols.** Package paths and exit codes are exact discrete values; no physical symbol is introduced.
+Local symbols (flagged to the editor, ISSUES.md): none; the code names `root`, `where` and the exit code 125 are
+exact discrete values, and the tolerances are those of the notation table's quantities.
+
+The six tests split into one precondition and five behaviour checks. The precondition is the import-path check:
+a Python test that passes against the wrong package proves nothing about the pinned build. The five behaviour
+checks cover a resumed run, a collective redo decision, the order of scripted stage forcings, a two-process block
+exchange and a long CUDA reconstruction line.
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, step by step, each tied to the source at the pin.
 
-1. Establish which package ran before interpreting a stage result. The top-level assertions in
-   {{< code tests/test_python_import_path.py >}} resolve the imported file and require it below the supplied root.
-2. Check search-path ordering as well as membership. The same assertions require the supplied root first
-   and retain the caller's extra entry, so a passing import alone cannot hide a changed search path.
-3. Treat an unconfigured check as missing evidence. That file exits with code 125 when the root is absent;
-   the registration in {{< code tests/CMakeLists.txt >}} marks that return code as a skip.
-
-Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
-They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
-and equality contracts have no tolerance budget to enlarge.
+1. *Establish which package ran before reading any stage result.* The top-level code of
+   {{< code tests/test_python_import_path.py >}} resolves the file that `import snapy` loaded and requires it to lie
+   below the root the build supplied; it also requires the caller's own search-path entry to survive, so a passing
+   import cannot hide a reordered `PYTHONPATH`.
+2. *Treat an unconfigured precondition as missing evidence.* The same script exits with code 125 when no root was
+   supplied, and its registration declares `SKIP_RETURN_CODE 125` ({{< code tests/CMakeLists.txt >}}), so `ctest`
+   reports a skip, not a pass.
+3. *Read an exact contract as exact.* `Mesh.check_redo_is_one_decision_across_ranks`
+   ({{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}}) compares the
+   restored `hydro_u` with the saved copy by `torch::equal`; one differing bit is a failure, and there is no
+   tolerance to widen.
+4. *Read a tolerance as the author's choice.* The resumed-run comparison uses an absolute tolerance of $10^{-12}$
+   on each logged value and $10^{-9}$ on the termination time
+   ({{< code tests/run_restart_cycle_limit.py assert_close >}}); the stage-forcing order test uses
+   rtol = atol = $10^{-12}$ ({{< code tests/test_user_output.cpp UserForcing.scripted_stage_forcings_add_tendencies_in_list_order >}}).
+   Neither number is a derived round-off bound; the bound of @sec-ch15 applies only to the reductions inside them.
+5. *Keep the device arms apart.* `test_weno5_cuda_line` is registered only in a CUDA build
+   ({{< code tests/CMakeLists.txt >}}), and the `DeviceTest` fixture skips a device that is not available
+   ({{< code tests/device_testing.hpp >}}); a skipped CUDA arm is not a CPU/CUDA agreement.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
+Read the assertion and its registration, then run the selection in a build configured from the code pin, as
+@fig-ch15-evidence and the procedure of @sec-ch15 prescribe. For this section the registrations are
+`snapy_add_python_test` for the import check, `setup_test` for the single-process executables,
+`setup_parallel_test` for the two-rank cases and an explicit `add_test` for the restart runner
+({{< code tests/CMakeLists.txt >}}). Record device, precision, process count and every skip separately.
 
-#### How to use this evidence
+### Code
 
-From the repository root, replace `build` with the configured build of the code pin. First list the selection,
-then run it; require a nonempty list and inspect skips in the output:
+| what | code link | symbol | switch |
+|---|---|---|---|
+| package origin and search path | {{< code tests/test_python_import_path.py >}} | top-level assertions | `SNAPY_TEST_PYTHONPATH` |
+| resumed run equals uninterrupted run | {{< code tests/run_restart_cycle_limit.py main >}} | `main` | `--build-dir` |
+| one redo decision across ranks | {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} | `Mesh.check_redo_is_one_decision_across_ranks` | 2 ranks |
+| stage forcings add in list order | {{< code tests/test_user_output.cpp UserForcing.scripted_stage_forcings_add_tendencies_in_list_order >}} | `UserForcing.scripted_stage_forcings_add_tendencies_in_list_order` | none |
+| local and remote neighbours arrive | {{< code tests/test_mesh_multi_block.cpp Mesh.multi_block_exchange >}} | `Mesh.multi_block_exchange` | 2 ranks |
+| long CUDA line matches the CPU | {{< code tests/test_weno5_cuda_line.cpp expect_matches_cpu >}} | `expect_matches_cpu` | `CUDA` build |
+
+: Assertions this catalogue reads. {#tbl-ch15-ch01-sources}
+
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
 
 ```bash
-ctest --test-dir build -C Release -N -R '^test_python_import_path_python$'
-ctest --test-dir build -C Release --output-on-failure -R '^test_python_import_path_python$'
+ctest --test-dir build -N -R '^test_python_import_path_python$'
+ctest --test-dir build --output-on-failure -R '^test_python_import_path_python$'
 ```
 
-No simulation YAML applies to this import check. Configure the build with `SNAPY_TEST_PYTHONPATH` pointing
-to the intended package root. An absent root skips the check; an imported file outside it fails the assertion.
+The other rows are selected the same way:
 
-The excerpt from {{< code tests/test_python_import_path.py >}} shows the assertion's inputs and contract:
+```bash
+ctest --test-dir build -N -R '^test_restart_cycle_limit$'
+ctest --test-dir build -N -R '^test_check_redo_parallel\.release$'
+ctest --test-dir build -N -R '^test_user_output\.release$'
+ctest --test-dir build -N -R '^test_mesh_multi_block\.release$'
+ctest --test-dir build -N -R '^test_weno5_cuda_line\.release$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`. The `.release` suffix is the build type
+`setup_test` appends ({{< code cmake/macros/macro_setup_test.cmake >}}). No simulation YAML applies to the import check; it is
+configured at build time with `SNAPY_TEST_PYTHONPATH` pointing at the intended package root. An absent root makes
+the script exit 125 (a skip); an imported file outside the root fails the assertion; an empty selection prints
+"No tests were found!!!" and is not a result (@sec-ch15).
+
+The contract of the import check, from the top-level code of {{< code tests/test_python_import_path.py >}}:
 
 ```python
 root = Path(sys.argv[1]).resolve()
@@ -70,60 +114,38 @@ where = Path(snapy.__file__).resolve()
 assert root in where.parents, f"snapy imported from {where}, expected under {root}"
 ```
 
-`root` is the intended package directory and `where` is the imported file. This is a path-membership
-precondition for the error metrics in @sec-ch15, not a numerical error estimate.
-
-### Code
-
-| what | code link | symbol | switch |
-|---|---|---|---|
-| 1 | {{< code tests/test_python_import_path.py >}} | `top-level assertions` | test selection |
-| 2 | {{< code tests/run_restart_cycle_limit.py main >}} | `main` | test selection |
-| 3 | {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} | `Mesh.check_redo_is_one_decision_across_ranks` | test selection |
-| 4 | {{< code tests/test_user_output.cpp UserForcing.scripted_stage_forcings_add_tendencies_in_list_order >}} | `UserForcing.scripted_stage_forcings_add_tendencies_in_list_order` | test selection |
-| 5 | {{< code tests/test_mesh_multi_block.cpp Mesh.multi_block_exchange >}} | `Mesh.multi_block_exchange` | test selection |
-| 6 | {{< code tests/test_weno5_cuda_line.cpp expect_matches_cpu >}} | `expect_matches_cpu` | test selection |
-
-: Assertion definitions for this catalogue. {#tbl-ch15-ch01-sources}
-
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
+`root` is the intended package directory and `where` the file that was imported. This is a membership
+precondition for every other row, not a numerical error estimate.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_python_import_path_python` | Imported package is under the supplied root; caller search path survives | exact paths; exit 125 if unconfigured | Source assertion 1 |
-| `test_restart_cycle_limit` | First resumed cycle and logged totals match the uninterrupted run | absolute $10^{-12}$; termination time $10^{-9}$ | Source assertion 2 |
-| `test_check_redo_parallel.release` | Ranks share the redo decision and restore saved tensors | exact tensor equality | Source assertion 3 |
-| `test_user_output.release` | Scripted stage forcings add increments in list order | rtol = atol = $10^{-12}$ | Source assertion 4 |
-| `test_mesh_multi_block.release` | Both local and remote neighbour payloads arrive | library-default allclose | Source assertion 5 |
-| `test_weno5_cuda_line.release` | Long-line CUDA reconstruction agrees with CPU | absolute error below $10^{-12}$ | Source assertion 6 |
+| `test_python_import_path_python` | the imported package lies under the supplied root; the caller's search-path entry survives | exact paths; exit 125 when unconfigured | the script's assertions |
+| `test_restart_cycle_limit` | the first resumed cycle and its logged totals match the uninterrupted run | absolute $10^{-12}$; termination time $10^{-9}$ | `assert_close` in the runner |
+| `test_check_redo_parallel.release` | both ranks take one redo decision and restore the saved tensors | exact (`torch::equal`) | the test |
+| `test_user_output.release` | scripted stage forcings add their increments in list order | rtol = atol = $10^{-12}$ | the test |
+| `test_mesh_multi_block.release` | local and remote neighbour payloads both arrive | `allclose` defaults (`side_is_uniform`) | the helper |
+| `test_weno5_cuda_line.release` | a long CUDA reconstruction line agrees with the CPU | absolute $<10^{-12}$ | the test |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch01-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch01-assertions}
 
-The `assert_close` helper supplies the default absolute tolerance
-({{< code tests/run_restart_cycle_limit.py assert_close >}}).
-The `side_is_uniform` helper supplies the allclose comparison
-({{< code tests/test_mesh_multi_block.cpp side_is_uniform >}}).
-The report-only `src/snapy_report/ch01/stage_check.py` checks the stage-weight, face-transfer and dry-source
-identities of @sec-ch01-stage. Its symbolic checks exercise formulas rather than a compiled stage.
-`DeviceTest` skips unavailable devices; its parameter instantiation includes CPU and CUDA in float32 and
-float64, with MPS commented out ({{< code tests/device_testing.hpp >}}).
+`assert_close` is the runner's own helper with a default absolute tolerance of $10^{-12}$
+({{< code tests/run_restart_cycle_limit.py assert_close >}}); `side_is_uniform` wraps `torch::allclose` with its
+default tolerances ({{< code tests/test_mesh_multi_block.cpp side_is_uniform >}}). The report-only check of
+@sec-ch01-stage, `src/snapy_report/ch01/stage_check.py`, exercises the stage-weight, face-transfer and dry-source
+identities on a port and imports no snapy.
 
-[C1] The import-path test checks package origin and search-path preservation, subject to its configured-root
-precondition. [C2] Its skip code is not evidence that the compiled stage or any device kernel ran.[^ch15-ch01-five-choice]
+`[C1]` The import-path row checks package origin and search-path preservation, under its configured-root
+precondition. `[C2]` Its skip code is not evidence that the compiled stage or any device kernel ran.[^ch15-ch01-run]
 
-[^ch15-ch01-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
-    the commands above are reproduction instructions, not a solver run record. No compiled test, device
-    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
-    ranks, switch environment and skips with any future result.
+[^ch15-ch01-run]: [sha: the code pin; the six selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record; a future record must carry versions,
+    precision, device, ranks, switch environment and skips.
 
 ### Limits
 
-Split-source ghost freshness, initialization versus restart ghost equivalence, MPS execution and dependency
-compatibility are not established by these selected assertions. Runtime switch coverage is not expanded here;
-see @sec-ch12-matrix.
+These six tests do not establish ghost freshness after a split source, the equivalence of initialization and
+restart ghosts, MPS execution, or the compatibility of dependency versions. Runtime switch coverage is the
+matrix of @sec-ch12-matrix.

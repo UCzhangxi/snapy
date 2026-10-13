@@ -1,129 +1,151 @@
 ## Thermodynamics evidence {#sec-ch15-ch02-tests}
 
-Thermodynamic tests must distinguish a reversible state conversion from the choice of energy zero.
-This catalogue supports @sec-ch02 and separates those checks from phase-change conservation.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+An equation of state converts the conserved state of a cell into pressure and temperature and back. Two
+different things can go wrong: the conversion may not be reversible, or the energy zero of a species may be
+wrong while every conversion still round-trips. This section collects the tests that check the two separately
+for @sec-ch02, and it keeps both apart from the phase-change budget, which is a conservation question rather
+than a conversion question. Each row names the test, what it asserts and the tolerance its author chose.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 2 claims (reversible conversions, energy zero, cache, phase change) to six registered tests.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Conserved and primitive arrays of the fixtures; tolerances read from the source.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; the fixtures choose the EOS.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** A round trip proves reversibility, not the energy zero and not conservation.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch02-tests-assertions.
 :::
 
-**Local symbols.** `cons` and `cons2` are arrays of conserved densities before and after a conversion; `prim` is the
-primitive-state array. Each row keeps its own physical units, so the absolute comparison tolerance is row-dependent.
+Local symbols (flagged to the editor, ISSUES.md): none; `cons`, `cons2` and `prim` are the test's arrays of
+conserved densities before and after a conversion and of primitive variables, each row in its own units of the
+notation table, so an absolute tolerance on them is row-dependent.
+
+The six tests fall into three groups: the reversibility and cache checks of the moist-mixture and ideal
+conversions, the energy-zero checks of the ideal-moist and ideal-gas offsets, and one conservation check through
+a wall phase change.
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, each step tied to the source at the pin.
 
-1. Check reversibility before energy conventions: `DeviceTest.moist_mixture` converts a conserved state
-   to primitive variables and back ({{< code tests/test_eos.cpp DeviceTest.moist_mixture >}}).
-2. Exercise the cache separately: the same test multiplies pressure by 1.25 and compares the refreshed
-   temperature with a computation from a clone. A round trip alone would not detect a stale temperature.
-3. Keep the energy zero separate from reversibility: `DeviceTest.ideal_moist_internal_energy_offset`
-   scales the supplied density field and checks the corresponding offset
-   ({{< code tests/test_eos.cpp DeviceTest.ideal_moist_internal_energy_offset >}}).
-
-Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
-They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
-and equality contracts have no tolerance budget to enlarge.
+1. *Check reversibility before conventions.* `DeviceTest.moist_mixture`
+   ({{< code tests/test_eos.cpp DeviceTest.moist_mixture >}}) converts a conserved state to primitive variables
+   and back and requires `torch::allclose(cons, cons2, 1.E-6, 1.E-6)`: the round trip is accepted to one part in
+   a million, relative and absolute.
+2. *Exercise the cache on its own.* The same test multiplies the pressure by 1.25, requires the temperature to
+   have moved (`EXPECT_FALSE` on `allclose` between the two temperatures) and requires the refreshed temperature to agree
+   with one computed from a clone. A round trip alone would not catch a stale cached temperature.
+3. *Keep the energy zero separate from reversibility.* `DeviceTest.ideal_moist_internal_energy_offset`
+   ({{< code tests/test_eos.cpp DeviceTest.ideal_moist_internal_energy_offset >}}) compares the offset with the
+   expected one to $10^{-6}$ and requires the offset of a quarter-size tendency to be a quarter of the offset:
+   the energy zero is linear in the densities. `DeviceTest.ideal_gas_internal_energy_offset_is_zero`
+   ({{< code tests/test_eos.cpp DeviceTest.ideal_gas_internal_energy_offset_is_zero >}}) requires the ideal-gas
+   offset to vanish to $10^{-12}$.
+4. *Check the temperature map against a straight line.* `main` of
+   {{< code tests/test_eos_temp2inteng.py main >}} round-trips four temperatures (50, 100, 200 and 400 K) with a
+   relative tolerance of $10^{-12}$ and requires the internal energy to be affine in $T$, with curvature below
+   $10^{-12}$, so that the species reference offset sits in the intercept.
+5. *Read the phase-change row as a budget, not a conversion.*
+   `WallSaturation.phase_change_preserves_energy_and_water`
+   ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}) first
+   asserts a positive, finite time step and fewer than 10000 steps, then requires the volume-weighted energy and
+   water totals to drift by less than $10^{-12}$ of their initial values (the ratio form of @sec-ch15) and the
+   cloud mass to have moved in the expected direction. The round-off bound of @sec-ch15 covers only the
+   reductions inside it.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
-
-#### How to use this evidence
-
-From the repository root, replace `build` with the configured build of the code pin. First list the selection,
-then run it; require a nonempty list and inspect skips in the output:
-
-```bash
-ctest --test-dir build -C Release -N -R '^test_eos\.release$'
-ctest --test-dir build -C Release --output-on-failure -R '^test_eos\.release$'
-```
-
-Use the fixture selected by `make_block` ({{< code tests/test_eos.cpp make_block >}}),
-which loads `test_eos.yaml`; no extra YAML key activates this
-assertion. Keep the build test inputs and thermodynamic data available. A fixture-loading failure is not an EOS result.
-
-The excerpt from `DeviceTest.moist_mixture` ({{< code tests/test_eos.cpp DeviceTest.moist_mixture >}}) shows the assertion's inputs and contract:
-
-```cpp
-auto prim = peos->forward(cons);
-  auto cons2 = peos->compute("W->U", {prim});
-
-  EXPECT_TRUE(torch::allclose(cons, cons2, 1.E-6, 1.E-6));
-```
-
-The two conversions form the round trip; `allclose` applies the Tests-table absolute and relative tolerances
-to its two arrays. This checks state recovery, not the volume-weighted conservation budget in @eq-ch15-budget.
+Read the assertion and its registration, then run the selection in a build configured from the code pin
+(@fig-ch15-evidence, @sec-ch15). The C++ cases are parametrised over device and precision by `DeviceTest`
+({{< code tests/device_testing.hpp >}}); a device that is not available is skipped, and the skip must be
+recorded as such. The two Python tests are registered by `snapy_add_python_test`
+({{< code tests/CMakeLists.txt >}}).
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| 1 | {{< code tests/test_eos.cpp DeviceTest.moist_mixture >}} | `DeviceTest.moist_mixture` | test selection |
-| 2 | {{< code tests/test_eos.cpp DeviceTest.ideal_moist_internal_energy_offset >}} | `DeviceTest.ideal_moist_internal_energy_offset` | test selection |
-| 3 | {{< code tests/test_eos.cpp DeviceTest.ideal_gas_internal_energy_offset_is_zero >}} | `DeviceTest.ideal_gas_internal_energy_offset_is_zero` | test selection |
-| 4 | {{< code tests/test_eos_temp2inteng.py main >}} | `main` | test selection |
-| 5 | {{< code tests/test_eos_species_registry.py main >}} | `main` | test selection |
-| 6 | {{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} | `WallSaturation.phase_change_preserves_energy_and_water` | test selection |
+| round trip and cache refresh | {{< code tests/test_eos.cpp DeviceTest.moist_mixture >}} | `DeviceTest.moist_mixture` | fixture `test_eos.yaml` |
+| ideal-moist energy offset | {{< code tests/test_eos.cpp DeviceTest.ideal_moist_internal_energy_offset >}} | `DeviceTest.ideal_moist_internal_energy_offset` | fixture |
+| ideal-gas offset is zero | {{< code tests/test_eos.cpp DeviceTest.ideal_gas_internal_energy_offset_is_zero >}} | `DeviceTest.ideal_gas_internal_energy_offset_is_zero` | fixture |
+| temperature map is affine | {{< code tests/test_eos_temp2inteng.py main >}} | `main` | `--rtol` |
+| own species table | {{< code tests/test_eos_species_registry.py main >}} | `main` | `TOL` |
+| wall phase change conserves | {{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} | `WallSaturation.phase_change_preserves_energy_and_water` | none |
 
-: Assertion definitions for this catalogue. {#tbl-ch15-ch02-tests-sources}
+: Assertions this catalogue reads. {#tbl-ch15-ch02-tests-sources}
 
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
+
+```bash
+ctest --test-dir build -N -R '^test_eos\.release$'
+ctest --test-dir build --output-on-failure -R '^test_eos\.release$'
+```
+
+The other rows are selected the same way:
+
+```bash
+ctest --test-dir build -N -R '^test_eos_temp2inteng_python$'
+ctest --test-dir build -N -R '^test_eos_species_registry_python$'
+ctest --test-dir build -N -R '^test_wall_saturation\.release$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`. No simulation YAML activates these assertions: the C++
+cases load `test_eos.yaml` through `make_block` ({{< code tests/test_eos.cpp make_block >}}), so the build's
+test inputs and thermodynamic data must be present, and a fixture that fails to load is not an EOS result. An
+empty selection prints "No tests were found!!!" and is not a result either (@sec-ch15).
+
+The contract of the round trip, from `DeviceTest.moist_mixture`
+({{< code tests/test_eos.cpp DeviceTest.moist_mixture >}}):
+
+```cpp
+auto prim = peos->forward(cons);
+auto cons2 = peos->compute("W->U", {prim});
+EXPECT_TRUE(torch::allclose(cons, cons2, 1.E-6, 1.E-6));
+```
+
+The two conversions form the round trip and `allclose` applies the row's tolerances to the two arrays. This
+checks state recovery; it is not the volume-weighted budget of @eq-ch15-budget.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_eos.release` | Moist-mixture round trip and cache refresh after pressure mutation | rtol = atol = $10^{-6}$ | Source assertion 1 |
-| `test_eos.release` | Ideal-moist offset scales linearly with the supplied density field | rtol = atol = $10^{-6}$ | Source assertion 2 |
-| `test_eos.release` | Ideal-gas energy offset is zero | rtol = atol = $10^{-12}$ | Source assertion 3 |
-| `test_eos_temp2inteng_python` | Temperature round trip, affinity and energy intercept | relative $10^{-12}$, $10^{-12}$, $10^{-10}$ | Source assertion 4 |
-| `test_eos_species_registry_python` | Conversions survive global table mutation; step output unchanged | relative below `TOL`; exact step | Source assertion 5 |
-| `test_wall_saturation.release` | Condensation/evaporation changes cloud mass and preserves energy/water | relative drift below $10^{-12}$ | Source assertion 6 |
+| `test_eos.release` | moist-mixture round trip, and the cache refreshes after a pressure change | rtol = atol = $10^{-6}$ | the test |
+| `test_eos.release` | the ideal-moist offset matches and scales linearly with the densities | rtol = atol = $10^{-6}$ | the test |
+| `test_eos.release` | the ideal-gas offset is zero | rtol = atol = $10^{-12}$ | the test |
+| `test_eos_temp2inteng_python` | temperature round trip at four temperatures; the energy is affine in $T$ | relative $10^{-12}$; curvature $<10^{-12}$ | `--rtol` default and the script |
+| `test_eos_species_registry_python` | conversions survive a mutation of the global table; the step output is unchanged | relative below `TOL` $= 10^{-14}$; exact step | `TOL` in the script |
+| `test_wall_saturation.release` | a wall phase change moves cloud mass and preserves energy and water | relative drift $<10^{-12}$ | the test |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch02-tests-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch02-tests-assertions}
 
-The temperature inputs are 50, 100, 200 and 400 K in `main` above, not measured temperature errors.
-The registry constant `TOL` is $10^{-14}$ ({{< code tests/test_eos_species_registry.py TOL >}}).
-The `src/snapy_report/ch02/*_check.py` scripts exercise the chapter's formulas. ANEOS is an illustration,
-not validation against an external thermodynamic table.
+The registry constant is `TOL` ({{< code tests/test_eos_species_registry.py TOL >}}). The report-only
+`src/snapy_report/ch02/*_check.py` scripts exercise the chapter's formulas on ports and import no snapy; the
+ANEOS wrapper has no linked implementation to test (@sec-ch02-aneos).
 
-[C1] The moist-mixture assertion checks the round trip and pressure-mutation cache refresh. [C2] The offset
-assertion checks density scaling; neither assertion establishes phase-equilibrium convergence.[^ch15-ch02-five-choice]
+`[C1]` The moist-mixture row checks the round trip and the cache refresh after a pressure change. `[C2]` The
+offset rows check the energy zero and its linearity; no row establishes phase-equilibrium
+convergence.[^ch15-ch02-run]
 
-[^ch15-ch02-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
-    the commands above are reproduction instructions, not a solver run record. No compiled test, device
-    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
-    ranks, switch environment and skips with any future result.
+[^ch15-ch02-run]: [sha: the code pin; the selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record.
 
 ### Limits
 
-A passed conversion does not establish phase-equilibrium convergence, active-set completeness or multi-rank
-thermodynamics. No compiled EOS or saturation test was run for this catalogue. Tolerance values are inherited
-assertion constants, not a derived bound on roundoff.
+A passed conversion does not establish phase-equilibrium convergence, the completeness of the active set of
+reactions, or thermodynamics across ranks. The tolerances are the authors' acceptance constants, not derived
+round-off bounds; @sec-ch15 bounds only the reductions inside the wall test.

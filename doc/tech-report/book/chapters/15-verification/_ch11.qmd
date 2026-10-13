@@ -1,137 +1,160 @@
 ## Boundary-condition evidence {#sec-ch15-ch11}
 
-Boundary tests must check the representation of the state as well as values in ghost cells.
-This catalogue supports @sec-ch11, including characteristic outflow, walls and solids.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+A boundary test has to check more than the numbers in the ghost cells. It must check that the state keeps its
+representation (conserved rows stay conserved, tracers stay per unit dry mass), that an outgoing wave leaves
+rather than reflects, that a saved boundary reference survives a restart, and that a solid wall inside the
+domain keeps the fluid segments apart. This section collects the tests that do this for the boundaries of
+@sec-ch11: the radiating characteristic boundary on every face, walls and corners, restart continuation, device
+agreement, and immersed solids.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 11 claims (radiating modes, representation, outflow, restart, devices, solids) to seven registered tests.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Ghost and interior states, reflection measures and segment masses of the fixtures; thresholds read from the source.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; the fixtures choose the EOS and the faces.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** A mode or pulse test does not cover every outflow, implicit and well-balanced combination.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch11-assertions.
 :::
 
-**Local symbols.** `v` and `r` below are state dictionaries for uninterrupted and restarted runs. Their `hydro_u` entries
-contain conserved densities; `boundary_reference_w` stores primitive reference values with row-specific units.
+Local symbols (flagged to the editor, ISSUES.md): none; `v` and `r` are the test's state dictionaries of the
+uninterrupted and the restarted run, whose `hydro_u` entries are conserved cell averages in the units of the
+notation table.
+
+The seven tests fall into three groups: five cases of one executable that exercise the radiating boundary
+(modes on all faces, representation and order, acoustic pulses, restart continuation, CPU against CUDA), and
+two Python runs of the implicit column with an immersed solid, one of them with the corrected-PE work on.
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, each step tied to the source at the pin.
 
-1. Preserve the boundary reference across restart: `radiating.restart_continuation_and_missing_reference`
-   saves a state and checks equality of the restored reference
-   ({{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}}).
-2. Continue both states for three steps. The same test requires exact equality of the conserved hydro and
-   scalar arrays, so merely loading a checkpoint is not sufficient.
-3. Remove the reference and repeat initialization. The test expects `c10::Error`; an old checkpoint without
-   this state cannot silently count as the same radiating-boundary continuation.
-
-Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
-They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
-and equality contracts have no tolerance budget to enlarge.
+1. *Read the mode row by precision.* `DeviceTest.radiating_modes_all_faces`
+   ({{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}}) fills every face with a
+   characteristic mode and bounds the ghost values by 0.03 in float32 and $10^{-8}$ in float64; the float32
+   number is a coarse acceptance, not an error estimate.
+2. *Read the representation row as two tolerances.* `radiating.mixed_faces_preserve_representation_and_order`
+   ({{< code tests/test_radiating_boundary.cpp radiating.mixed_faces_preserve_representation_and_order >}})
+   compares the filled conserved state with the expected one at rtol $10^{-12}$ and atol $10^{-9}$, and the
+   tracers at rtol = atol = $10^{-12}$; the absolute tolerance on `hydro_u` is set by the magnitude of its rows.
+3. *Read the pulse row as a reflection bound.* `radiating.acoustic_pulses`
+   ({{< code tests/test_radiating_boundary.cpp radiating.acoustic_pulses >}}) sends a pulse of either sign at an
+   outflow face with PLM and WENO5 reconstruction and requires the reflected fraction below 0.05.
+4. *Read the restart row as exact.* `radiating.restart_continuation_and_missing_reference`
+   ({{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}}) saves a
+   state, restarts from it, continues both for three steps and requires the saved reference and the continued
+   `hydro_u` and `scalar_s` to agree by `torch::equal`; then it deletes the reference from the file and requires
+   initialization to throw `c10::Error`. An old checkpoint without the reference cannot pass as a continuation.
+5. *Read the device row as a comparison.* `radiating.cpu_cuda_agreement`
+   ({{< code tests/test_radiating_boundary.cpp radiating.cpu_cuda_agreement >}}) bounds the CPU and CUDA fills
+   by rtol = atol = $10^{-10}$, and is skipped when CUDA is unavailable; a skip is not an agreement.
+6. *Read the solid rows as budgets.* The top-level code of {{< code tests/test_implicit_stratified_solid.py >}}
+   requires every arm to end finite with the relative mass drift of each fluid segment below $10^{-12}$
+   (`solid_run`, {{< code tests/test_implicit_stratified_solid.py solid_run >}}); with the corrected-PE work on,
+   the curved-grid energy of `curved_energy` ({{< code tests/test_implicit_stratified_solid.py curved_energy >}})
+   must drift by at most `EPE_TOL` $= 10^{-11}$, the constant it imports from the tall-column test
+   ({{< code tests/test_implicit_face_work_operator.py EPE_TOL >}}). The ratio form and the reduction bound of
+   @sec-ch15 apply to both.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
-
-#### How to use this evidence
-
-From the repository root, replace `build` with the configured build of the code pin. First list the selection,
-then run it; require a nonempty list and inspect skips in the output:
-
-```bash
-ctest --test-dir build -C Release -N -R '^test_radiating_boundary\.release$'
-ctest --test-dir build -C Release --output-on-failure -R '^test_radiating_boundary\.release$'
-```
-
-For this ideal-gas restart case, `block_for` loads `test_radiating_boundary.yaml` and sets the EOS
-({{< code tests/test_radiating_boundary.cpp block_for >}}). Use the shipped fixture rather than adding a new
-activation key. The restart assertion deliberately refuses a checkpoint lacking `boundary_reference_w`.
-
-The excerpt from `radiating.restart_continuation_and_missing_reference`
-({{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}}) shows the assertion's inputs and contract:
-
-```cpp
-EXPECT_TRUE(torch::equal(v.at("hydro_u"), r.at("hydro_u")));
-  EXPECT_TRUE(torch::equal(v.at("scalar_s"), r.at("scalar_s")));
-  v.erase("boundary_reference_w");
-  save_restart(v, b->cycle, path);
-  EXPECT_THROW(restarted->initialize(r, path.c_str()), c10::Error);
-```
-
-The equality checks compare continuation states; deleting the reference tests the refusal path.
-This is an exact restart contract, not a bound on the conservation residual in @eq-ch15-budget.
+Read the assertion and its registration, then run the selection in a build configured from the code pin
+(@fig-ch15-evidence, @sec-ch15). The radiating executable holds all five C++ rows; its mode case is a
+`DeviceTest` case and its CUDA comparison skips without a device ({{< code tests/device_testing.hpp >}}). The
+radial-exact solid arm is a separate registration that sets `SNAP_GRAVITY_WORK_RADIAL_EXACT=1` in the test's
+environment ({{< code tests/CMakeLists.txt >}}). Record device, precision, process count and every skip
+separately.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| 1 | {{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}} | `DeviceTest.radiating_modes_all_faces` | test selection |
-| 2 | {{< code tests/test_radiating_boundary.cpp radiating.mixed_faces_preserve_representation_and_order >}} | `radiating.mixed_faces_preserve_representation_and_order` | test selection |
-| 3 | {{< code tests/test_radiating_boundary.cpp radiating.acoustic_pulses >}} | `radiating.acoustic_pulses` | test selection |
-| 4 | {{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}} | `radiating.restart_continuation_and_missing_reference` | test selection |
-| 5 | {{< code tests/test_radiating_boundary.cpp radiating.cpu_cuda_agreement >}} | `radiating.cpu_cuda_agreement` | test selection |
-| 6 | {{< code tests/test_implicit_stratified_solid.py solid_run >}} | `solid_run` | test selection |
-| 7 | {{< code tests/test_implicit_stratified_solid.py >}} | `top-level assertions` | test selection |
+| modes on all faces | {{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}} | `DeviceTest.radiating_modes_all_faces` | fixture EOS |
+| representation and order | {{< code tests/test_radiating_boundary.cpp radiating.mixed_faces_preserve_representation_and_order >}} | `radiating.mixed_faces_preserve_representation_and_order` | none |
+| outflow pulses | {{< code tests/test_radiating_boundary.cpp radiating.acoustic_pulses >}} | `radiating.acoustic_pulses` | none |
+| restart continuation | {{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}} | `radiating.restart_continuation_and_missing_reference` | none |
+| CPU against CUDA | {{< code tests/test_radiating_boundary.cpp radiating.cpu_cuda_agreement >}} | `radiating.cpu_cuda_agreement` | CUDA present |
+| solid segments | {{< code tests/test_implicit_stratified_solid.py solid_run >}} | `solid_run` | none |
+| curved energy with the switch | {{< code tests/test_implicit_stratified_solid.py curved_energy >}} | `curved_energy` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
 
-: Assertion definitions for this catalogue. {#tbl-ch15-ch11-sources}
+: Assertions this catalogue reads. {#tbl-ch15-ch11-sources}
 
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
+
+```bash
+ctest --test-dir build -N -R '^test_radiating_boundary\.release$'
+ctest --test-dir build --output-on-failure -R '^test_radiating_boundary\.release$'
+```
+
+The other rows are selected the same way:
+
+```bash
+ctest --test-dir build -N -R '^test_implicit_stratified_solid_python$'
+ctest --test-dir build -N -R '^test_implicit_stratified_solid_radial_exact_python$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`. The restart case builds its block
+with `block_for` ({{< code tests/test_radiating_boundary.cpp block_for >}}), which loads
+`test_radiating_boundary.yaml` with the ideal-gas EOS; use the shipped fixture rather than a new key. The
+restart assertion refuses, on purpose, a checkpoint that lacks `boundary_reference_w`. An empty selection prints
+"No tests were found!!!" and is not a result (@sec-ch15).
+
+The contract of the restart case, from `radiating.restart_continuation_and_missing_reference`
+({{< code tests/test_radiating_boundary.cpp radiating.restart_continuation_and_missing_reference >}}):
+
+```cpp
+EXPECT_TRUE(torch::equal(v.at("hydro_u"), r.at("hydro_u")));
+EXPECT_TRUE(torch::equal(v.at("scalar_s"), r.at("scalar_s")));
+v.erase("boundary_reference_w");
+save_restart(v, b->cycle, path);
+EXPECT_THROW(restarted->initialize(r, path.c_str()), c10::Error);
+```
+
+The two equalities compare the continued states; deleting the reference tests the refusal path. This is an
+exact contract, not a bound on the residual of @eq-ch15-budget.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_radiating_boundary.release` | Characteristic modes on all faces and EOS fixtures | float32 0.03; float64 $10^{-8}$ | Source assertion 1 |
-| `test_radiating_boundary.release` | Mixed face fills preserve representation and ordering | hydro rtol $10^{-12}$; atol $10^{-9}$ | Source assertion 2 |
-| `test_radiating_boundary.release` | Outflow pulse reflection stays bounded | reflection below 0.05 | Source assertion 3 |
-| `test_radiating_boundary.release` | Saved reference continues exactly; missing reference is rejected | exact equality; exception | Source assertion 4 |
-| `test_radiating_boundary.release` | CPU and CUDA boundary results agree | rtol = atol = $10^{-10}$ | Source assertion 5 |
-| `test_implicit_stratified_solid_python` | Solid-separated fluid segments retain mass and finite state | relative segment-mass drift below $10^{-12}$ | Source assertion 6 |
-| `test_implicit_stratified_solid_radial_exact_python` | Curved-grid corrected-energy budget closes | relative drift at most $10^{-12}$ | Source assertion 7 |
+| `test_radiating_boundary.release` | characteristic modes on all six faces, for the fixture EOSs | 0.03 in float32; $10^{-8}$ in float64 | the test |
+| `test_radiating_boundary.release` | mixed face fills keep the representation and the order | `hydro_u` rtol $10^{-12}$, atol $10^{-9}$; tracers $10^{-12}$ | the test |
+| `test_radiating_boundary.release` | an outflow pulse of either sign reflects little | reflection $<0.05$ | the test |
+| `test_radiating_boundary.release` | a saved reference continues exactly; a missing one is refused | exact (`torch::equal`); `c10::Error` | the test |
+| `test_radiating_boundary.release` | the CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | the test |
+| `test_implicit_stratified_solid_python` | solid-separated segments keep their mass and end finite | relative segment-mass drift $<10^{-12}$ | the script |
+| `test_implicit_stratified_solid_radial_exact_python` | the curved-grid corrected energy closes | relative drift $\le10^{-11}$ | `EPE_TOL` of the tall-column test |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch11-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch11-assertions}
 
-The solid-segment acceptance thresholds are top-level assertions in
-{{< code tests/test_implicit_stratified_solid.py >}}; `solid_run` constructs their inputs.
-The curved-energy quantity is assembled by `curved_energy`
-({{< code tests/test_implicit_stratified_solid.py curved_energy >}}).
-The acceptance assertion is top-level code in the same file. It covers both spherical-polar and
-gnomonic-equiangle cases; it is not restricted to the earlier spherical-polar-only inventory.
-`src/snapy_report/ch11/boundary_check.py` retains the symbolic parity, acoustic inversion, admissibility,
-corner averaging, partition, closure and wall-reference checks.
+The solid script's acceptance assertions are top-level code and cover the spherical-polar and the
+gnomonic-equiangle grids. The report-only `src/snapy_report/ch11/boundary_check.py` checks the parity,
+acoustic inversion, admissibility, corner averaging, partition, closure and wall-reference identities on ports
+and imports no snapy.
 
-[C1] The restart assertion checks saved-reference equality, continued-state equality and rejection of a
-missing reference. [C2] It does not replace the separate acoustic-reflection or CPU/CUDA assertions.[^ch15-ch11-five-choice]
+`[C1]` The restart row checks saved-reference equality, continued-state equality and the refusal of a missing
+reference. `[C2]` It does not replace the separate pulse and device rows, and a skipped CUDA comparison is not
+an agreement.[^ch15-ch11-run]
 
-[^ch15-ch11-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
-    the commands above are reproduction instructions, not a solver run record. No compiled test, device
-    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
-    ranks, switch environment and skips with any future result.
+[^ch15-ch11-run]: [sha: the code pin; the selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record.
 
 ### Limits
 
-A mode or pulse test does not establish every outflow/implicit/well-balanced combination. Thin solid
-geometries, scalar/diffusion coupling and stretched-wall convergence need separate evidence.
-The explicit device comparison can skip CUDA; a skip is not a successful comparison.
+A mode or pulse test does not establish every combination of outflow, implicit solve and well-balanced
+reference. Thin solid geometries, the coupling of solids with scalars and diffusion, and convergence at a
+stretched wall need their own evidence. The device comparison skips without CUDA, and a skip is not a pass.

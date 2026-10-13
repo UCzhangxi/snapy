@@ -1,136 +1,170 @@
 ## Grids and geometry evidence {#sec-ch15-ch03-tests}
 
-Geometry verification checks both local metric formulas and agreement between decomposed blocks.
-The latter can fail even when each block has the correct volume; @sec-ch03 explains the geometric construction.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+A grid can be wrong in two different ways. The metric of one block (its face areas, volumes and curvature
+sources) can disagree with the formulas of @sec-ch03, or every block can be right on its own while the blocks
+disagree with each other where they meet. This section collects the tests that check both for the grids and
+the exchange of @sec-ch03: analytic metric comparisons, bitwise agreement of a decomposed grid with the whole,
+and conservation across panel seams and column splits. Each row names the test, what it asserts and the
+tolerance its author chose.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 3 claims (metrics, decomposition, seams, column splits) to eight registered tests.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Face coordinates, areas, volumes and conserved totals of the fixtures; tolerances read from the source.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; the seam arms are set by their registration's environment.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** Exact face agreement in one process is not conservation across ranks.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch03-tests-assertions.
 :::
 
-**Local symbols.** `got` and `want` below are face-coordinate arrays with the same length units. `ng` is a ghost-cell
-count and `ix2` is a dimensionless cell offset; neither is a physical distance.
+Local symbols (flagged to the editor, ISSUES.md): none; `got` and `want` are the test's face-coordinate
+arrays [m], `ng` its ghost-cell count and `ix2` its dimensionless cell offset.
+
+The eight tests fall into three groups: the metric of one block against reference formulas and exact
+integrals, the equality of a decomposed grid with the undecomposed one, and the conservation of totals across
+cubed-sphere panel seams and $x_1$ column splits, in one process and across two ranks.
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, each step tied to the source at the pin.
 
-1. Separate metric accuracy from decomposition consistency. `SphericalPolar.geometry_matches_athena_reference_formulas`
-   compares metric arrays with analytic reference formulas
-   ({{< code tests/test_coordinate.cpp SphericalPolar.geometry_matches_athena_reference_formulas >}}).
-2. Compare the same physical faces after repartitioning. `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise`
-   slices the whole-grid reference using the block's cell offset
-   ({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}).
-3. Require equality for this contract. That assertion uses `torch::equal`, so a small floating-point discrepancy
-   is a failure rather than an allowed metric error. This source test is not a multi-process exchange run.
+1. *Separate metric accuracy from decomposition consistency.*
+   `SphericalPolar.geometry_matches_athena_reference_formulas`
+   ({{< code tests/test_coordinate.cpp SphericalPolar.geometry_matches_athena_reference_formulas >}}) compares
+   cell centres, face areas, volumes and the curvature sources with closed-form references by `allclose` at
+   rtol = atol = $10^{-12}$: a tolerance, because the formulas are evaluated in a different order.
+2. *Require equality where the code promises it.*
+   `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise`
+   ({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}})
+   slices the whole-grid faces with each block's offset and compares by `torch::equal`; the block faces are
+   the same numbers, so one differing bit is a failure. `CubedSphere.subdivided_panel_exchange_matches_one_block`
+   ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}})
+   makes the same demand of faces, spacings and density after one stage for 1, 2 and 4 blocks per panel edge.
+3. *Read an exact-integral row as a relative tolerance.*
+   `RadialFaceMoments.closed_forms_match_the_exact_integrals`
+   ({{< code tests/test_radial_face_moments.cpp RadialFaceMoments.closed_forms_match_the_exact_integrals >}})
+   accepts the face-centroid shift and second moment within $10^{-14}$ of their exact values, relative.
+4. *Read a seam row as a budget.* `arm_conservation`
+   ({{< code tests/test_flux_covariance_seams.py arm_conservation >}}) forms volume-weighted totals over six
+   panels and requires their relative drift below `DRIFT_TOL` $= 10^{-12}$, the ratio form of @sec-ch15; the
+   same script requires a rest state to stay below `REST_TOL` $= 10^{-9}$ in $|v|/c_s$ and the on/off arms to
+   differ by at least `DIFF_TOL` $= 10^{-13}$, so that an ignored switch fails.
+5. *Read a column-split row by its arm.* `radial_exact_split_gap`
+   ({{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}}) compares a column split into two blocks
+   with one block at three resolutions. With the corrected-PE work on, the gap must be exactly zero and the
+   split column's energy drift at most $10^{-13}$; with it off, the gap may be round-off, at most $10^{-13}$.
+   Across two ranks, `X1SeamSplitMp.split_across_two_ranks_matches_one_process`
+   ({{< code tests/test_x1_seam_split_mp.cpp X1SeamSplitMp.split_across_two_ranks_matches_one_process >}})
+   bounds the gap to the in-process split and to one block by $10^{-13}$ each, and the drift by $10^{-13}$
+   with the switch on.
 
-Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
-They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
-and equality contracts have no tolerance budget to enlarge.
+The round-off bound of @sec-ch15 covers the reductions inside the budget rows; the equality rows have no
+tolerance to widen.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
-
-#### How to use this evidence
-
-From the repository root, replace `build` with the configured build of the code pin. First list the selection,
-then run it; require a nonempty list and inspect skips in the output:
-
-```bash
-ctest --test-dir build -C Release -N -R '^test_coordinate\.release$'
-ctest --test-dir build -C Release --output-on-failure -R '^test_coordinate\.release$'
-```
-
-The decomposition case constructs its options in C++; there is no user YAML switch for its equality
-contract. Run from the configured build so other cases in the executable can find their fixtures.
-An unavailable fixture or an empty test selection supplies no geometry evidence.
-
-The excerpt from `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise`
-({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}) shows the assertion's inputs and contract:
-
-```cpp
-auto got = blk->x2f.narrow(0, ng, op->nx2() + 1);
-      auto want = ref->x2f.narrow(0, ng + op->ix2(), op->nx2() + 1);
-```
-
-The first slice selects owned block faces; the second selects the matching reference faces.
-The following `torch::equal` assertion enforces zero discrepancy, a stronger condition than a tolerance on @sec-ch15.
+Read the assertion and its registration, then run the selection in a build configured from the code pin
+(@fig-ch15-evidence, @sec-ch15). The `X1SeamSplit` arms are separate ctest entries that set a switch in the
+test's environment and require exactly one passing case ({{< code tests/CMakeLists.txt >}}); the two-rank
+arms launch the executable with `torchrun` and two processes. Record device, precision, process count and
+every skip separately.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| 1 | {{< code tests/test_coordinate.cpp SphericalPolar.geometry_matches_athena_reference_formulas >}} | `SphericalPolar.geometry_matches_athena_reference_formulas` | test selection |
-| 2 | {{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}} | `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise` | test selection |
-| 3 | {{< code tests/test_radial_face_moments.cpp RadialFaceMoments.closed_forms_match_the_exact_integrals >}} | `RadialFaceMoments.closed_forms_match_the_exact_integrals` | test selection |
-| 4 | {{< code tests/test_cubed_sphere_cell_volume.py main >}} | `main` | test selection |
-| 5 | {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}} | `CubedSphere.subdivided_panel_exchange_matches_one_block` | test selection |
-| 6 | {{< code tests/test_flux_covariance_seams.py arm_conservation >}} | `arm_conservation` | test selection |
-| 7 | {{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}} | `radial_exact_split_gap` | test selection |
-| 8 | {{< code tests/test_x1_seam_split_mp.cpp X1SeamSplitMp.split_across_two_ranks_matches_one_process >}} | `X1SeamSplitMp.split_across_two_ranks_matches_one_process` | test selection |
+| spherical-polar metric | {{< code tests/test_coordinate.cpp SphericalPolar.geometry_matches_athena_reference_formulas >}} | `SphericalPolar.geometry_matches_athena_reference_formulas` | none |
+| decomposed faces equal the whole | {{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}} | `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise` | none |
+| radial face moments | {{< code tests/test_radial_face_moments.cpp RadialFaceMoments.closed_forms_match_the_exact_integrals >}} | `RadialFaceMoments.closed_forms_match_the_exact_integrals` | none |
+| cubed-sphere cell volumes | {{< code tests/test_cubed_sphere_cell_volume.py main >}} | `main` | none |
+| subdivided panels after a stage | {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}} | `CubedSphere.subdivided_panel_exchange_matches_one_block` | none |
+| seam conservation | {{< code tests/test_flux_covariance_seams.py arm_conservation >}} | `arm_conservation` | `SNAP_FLUX_COVARIANCE` |
+| column split, one process | {{< code tests/test_x1_seam_split.cpp radial_exact_split_gap >}} | `radial_exact_split_gap` | `SNAP_GRAVITY_WORK_RADIAL_EXACT` |
+| column split, two ranks | {{< code tests/test_x1_seam_split_mp.cpp X1SeamSplitMp.split_across_two_ranks_matches_one_process >}} | `X1SeamSplitMp.split_across_two_ranks_matches_one_process` | 2 ranks |
 
-: Assertion definitions for this catalogue. {#tbl-ch15-ch03-tests-sources}
+: Assertions this catalogue reads. {#tbl-ch15-ch03-tests-sources}
 
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
+
+```bash
+ctest --test-dir build -N -R '^test_coordinate\.release$'
+ctest --test-dir build --output-on-failure -R '^test_coordinate\.release$'
+```
+
+The other rows are selected the same way:
+
+```bash
+ctest --test-dir build -N -R '^test_radial_face_moments\.release$'
+ctest --test-dir build -N -R '^test_cubed_sphere_cell_volume_python$'
+ctest --test-dir build -N -R '^test_cubed_sphere_exchange\.release$'
+ctest --test-dir build -N -R '^test_flux_covariance_seams_python$'
+ctest --test-dir build -N -R '^test_x1_seam_split_radial_exact\.release$'
+ctest --test-dir build -N -R '^test_x1_seam_split_mp_radial_exact\.release$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`. The decomposition case builds its options in C++ and has no YAML switch; the seam and split arms take
+their switch from the registration, so set nothing by hand. A test executable must run from the configured
+build so its sibling cases find their fixtures; an empty selection prints "No tests were found!!!" and is not a
+result (@sec-ch15).
+
+The contract of the decomposition case, from
+`CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise`
+({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}):
+
+```cpp
+auto got = blk->x2f.narrow(0, ng, op->nx2() + 1);
+auto want = ref->x2f.narrow(0, ng + op->ix2(), op->nx2() + 1);
+EXPECT_TRUE(torch::equal(got, want));
+```
+
+The first slice is the block's owned faces, the second the matching faces of the whole grid; `torch::equal`
+demands zero discrepancy, a stronger condition than any tolerance of @sec-ch15.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_coordinate.release` | Spherical-polar metric matches reference formulas | rtol = atol = $10^{-12}$ | Source assertion 1 |
-| `test_coordinate.release` | Decomposed faces reproduce the undecomposed grid | bitwise equality | Source assertion 2 |
-| `test_radial_face_moments.release` | Face centroid shift and second moment match exact integrals | relative $10^{-14}$ | Source assertion 3 |
-| `test_cubed_sphere_cell_volume_python` | Shell-volume sum, radial divergence and rest checks | per assertion in `main` | Source assertion 4 |
-| `test_cubed_sphere_exchange.release` | Subdivided panels agree with one block after a stage | bitwise equality | Source assertion 5 |
-| `test_flux_covariance_seams_python` | Panel-seam conservation, covariance on, cell gravity work | relative drift below $10^{-12}$ | Source assertion 6 |
-| `test_x1_seam_split_radial_exact.release` | Split column matches one block; corrected-energy budget closes | gap 0; drift at most $10^{-13}$ | Source assertion 7 |
-| `test_x1_seam_split_mp_radial_exact.release` | Two ranks agree with local split and one-block states | relative gap at most $10^{-13}$ | Source assertion 8 |
+| `test_coordinate.release` | the spherical-polar metric matches the reference formulas | rtol = atol = $10^{-12}$ | the test |
+| `test_coordinate.release` | decomposed faces reproduce the undecomposed grid | exact (`torch::equal`) | the test |
+| `test_radial_face_moments.release` | face-centroid shift and second moment match the exact integrals | relative $10^{-14}$ | the test |
+| `test_cubed_sphere_cell_volume_python` | shell volumes sum to the exact value; a rest state stays at rest; no step is rejected | `REST_TOL` $= 10^{-6}$ in $|v|/c_s$ | the script |
+| `test_cubed_sphere_exchange.release` | 2 and 4 blocks per panel edge agree with 1 after a stage | exact (`torch::equal`) | the test |
+| `test_flux_covariance_seams_python` | six-panel totals are conserved; rest holds; the switch acts | drift $<10^{-12}$; rest $<10^{-9}$; difference $\ge10^{-13}$ | `DRIFT_TOL`, `REST_TOL`, `DIFF_TOL` |
+| `test_x1_seam_split_radial_exact.release` | the split column equals one block and its energy budget closes | gap exactly 0; drift $\le10^{-13}$ | the test |
+| `test_x1_seam_split_mp_radial_exact.release` | two ranks agree with the in-process split and with one block | gaps $\le10^{-13}$; drift $\le10^{-13}$ | the test |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch03-tests-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch03-tests-assertions}
 
-The seam acceptance test is `main`
-({{< code tests/test_flux_covariance_seams.py main >}}); `arm_conservation` constructs its measurements.
-The switch-off radial-exact registration uses the same `radial_exact_split_gap` assertion with a state-gap
-bound of $10^{-13}$ rather than exact equality. It does not assert the corrected-energy drift in that arm.
-The seam threshold `DRIFT_TOL` is defined in {{< code tests/test_flux_covariance_seams.py DRIFT_TOL >}}.
-`src/snapy_report/ch03/geometry_check.py` checks radial moments, spherical-polar identities, gnomonic transforms,
-Morton order and the interpolation slide bound independently of snapy.
+The seam script's entry point is `main` ({{< code tests/test_flux_covariance_seams.py main >}}) and its
+thresholds are the three module constants ({{< code tests/test_flux_covariance_seams.py DRIFT_TOL >}}). The
+switch-off arm of the column split, `test_x1_seam_split_radial_exact_off.release`, runs the same assertion
+with the gap bounded by $10^{-13}$ instead of exact equality and no drift assertion. The report-only
+`src/snapy_report/ch03/geometry_check.py` checks the radial moments, the spherical-polar identities, the
+gnomonic transforms, the Morton order and the interpolation slide bound on ports and imports no snapy.
 
-[C1] The coordinate executable contains both analytic metric comparisons and exact decomposition checks.
-[C2] Exact face agreement does not establish conservation across communicating ranks; use the separate seam rows for that.[^ch15-ch03-five-choice]
+`[C1]` The coordinate executable holds both the analytic metric comparison and the exact decomposition check.
+`[C2]` Exact face agreement in one process says nothing about conservation across communicating ranks; the
+seam and two-rank rows cover that.[^ch15-ch03-run]
 
-[^ch15-ch03-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
-    the commands above are reproduction instructions, not a solver run record. No compiled test, device
-    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
-    ranks, switch environment and skips with any future result.
+[^ch15-ch03-run]: [sha: the code pin; the selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record.
 
 ### Limits
 
-A panel subdivision in one process is not an MPI result. The selected geometry and exchange assertions do not
-establish every corner stencil or every curvature source. The independent slide bound does not execute the
-exchange. See @sec-ch12-matrix for configurations needing runtime evidence.
+A panel subdivision in one process is not a multi-process result. The selected tests do not establish every
+corner stencil or every curvature source, and the slide bound of the report check does not execute the
+exchange. Configurations that need runtime evidence are listed in @sec-ch12-matrix.

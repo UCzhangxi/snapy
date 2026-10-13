@@ -1,114 +1,159 @@
 ## Moist physics coupling evidence {#sec-ch15-ch10-tests}
 
-Moist verification needs separate checks for phase adjustment, species repair and transport.
-A local repair can conserve mass without validating the coupled kinetics discussed in @sec-ch10.
-
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
-sources: tests named in the Code table
+sources: tests named in the Code table; tests/CMakeLists.txt at the pin
 status: draft
 -->
 
 ### Summary
 
+Moist physics couples three things that can each be right or wrong on their own: the phase change that moves
+water between vapour and cloud, the repairs that keep species masses non-negative, and the transport that
+carries species and tracers through the grid. A local repair can conserve mass perfectly while the coupled
+kinetics of @sec-ch10 is wrong, so the tests must be read one contract at a time. This section collects the
+tests for phase change, repair, transport, sedimentation and the collective retry, with the threshold each one
+applies.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** Connect the chapter's claims to executable assertions.
+**Purpose.** Ties the chapter 10 claims (phase change, repair, transport, sedimentation, retry) to six registered tests.
 
-**Data.** Test inputs and thresholds; no new solver measurements.
+**Data.** Volume-weighted energy and water totals, species rows and fluxes of the fixtures; thresholds read from the source.
 
-**Placement.** Verification outside the simulation step.
+**Placement.** Verification outside the simulation step, in a build at the code pin.
 
-**Activation.** Select the named tests; this catalogue changes no defaults.
+**Activation.** Select the tests by their ctest name; the fixtures choose the EOS and the species.
 
-**Guarantee / limits.** Source coverage does not establish a runtime pass.
+**Guarantee / limits.** No single row establishes a full kinetics-step mass and energy budget.
 
-**Evidence.** The Tests layer distinguishes report checks from solver tests.
+**Evidence.** The Tests layer below, @tbl-ch15-ch10-tests-assertions.
 :::
 
-Local symbols: total energy and total water mass use the volume-weighted sums defined in @sec-ch15. The code names `de` and `dw` denote dimensionless relative drifts, not changes with energy or mass units.
+Local symbols (flagged to the editor, ISSUES.md): none; the test's `de` and `dw` are the dimensionless relative
+drifts of the energy and water totals, the ratio form of @sec-ch15.
+
+The six tests fall into four groups: one conservation budget through a wall phase change, two repair contracts
+(a stoichiometric debit and a refused net deficit), two transport contracts (a bounded scalar ratio and the
+donor cell of a rising cloud), and one collective contract (a shared retry decision).
 
 ### Derivation
 
-The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
-these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+Why the catalogue reads these tests the way it does, each step tied to the source at the pin.
 
-1. Phase change can redistribute water while preserving its total. `WallSaturation.phase_change_preserves_energy_and_water` sums both vapor and cloud slots with cell volumes ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
-2. The same test separately checks that cloud mass changes in the expected direction. A conserved but inactive phase-change path would not satisfy that control ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
-3. Its relative drift uses a nonzero initial total, as derived in @sec-ch15. The prescribed tolerance includes more than summation round-off; the bound in @sec-ch15 explains why a reduction residual alone cannot measure coupling accuracy.
+1. *Read the phase-change row as a budget with a control.*
+   `WallSaturation.phase_change_preserves_energy_and_water`
+   ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}) first
+   asserts a positive, finite time step and fewer than 10000 steps, then sums the vapour and cloud rows with cell
+   volumes and requires the relative drift of energy and of water below $10^{-12}$. It also requires the cloud
+   mass to have grown (condensation) or to have all but vanished (evaporation), so an inactive phase change
+   that conserves trivially fails.
+2. *Read the debit row by its three tolerances.*
+   `DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass`
+   ({{< code tests/test_condensate_conservation.cpp DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass >}})
+   requires the total mass unchanged to $10^{-12}$, each parent at its expected value to $10^{-6}$, and the cloud
+   deficit cleared exactly (`torch::equal` with zeros). The two tolerances are not float32 and float64
+   alternatives; both apply in every device and precision case.
+3. *Read the refusal row as a refusal.* `eos_limiter.rejects_column_in_net_deficit_without_writing`
+   ({{< code tests/test_eos.cpp eos_limiter.rejects_column_in_net_deficit_without_writing >}}) calls the repair kernel
+   `fix_vapor_impl` ({{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}) on a column whose deficit the cells
+   below cannot cover, requires the return code 1, and requires the vapour vector to be unchanged afterwards: a
+   refused repair leaves the state alone.
+4. *Read the transport rows as bounds.* `DeviceTest.scalar_upper_bound_holds_both_sides`
+   ({{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}}) bounds the transported
+   ratio by $1 + \text{tol}$ above and $-\text{tol}$ below with tol $= 10^{-5}$ in float32 and $10^{-12}$ in
+   float64. `sedimentation.rising_cloud_is_taken_from_the_cell_below`
+   ({{< code tests/test_sedimentation_guards.cpp sedimentation.rising_cloud_is_taken_from_the_cell_below >}})
+   requires the cloud and energy fluxes at each face to equal twice the donor cell's values within
+   $10^{-9}$ relative.
+5. *Read the retry row as exact.* `Mesh.check_redo_is_one_decision_across_ranks`
+   ({{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}}) requires the
+   restored tensors to equal the saved ones by `torch::equal` on both ranks.
+
+The round-off bound of @sec-ch15 covers the reductions of the budget row; it explains why a residual far below
+$10^{-12}$ is expected from summation alone.
 
 ### Numerical method
 
-Read the assertion and its registration, then run the selected test in a build of the code pin.
-Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
-formula check cannot establish that the compiled implementation ran.
+Read the assertion and its registration, then run the selection in a build configured from the code pin
+(@fig-ch15-evidence, @sec-ch15). The wall, debit and scalar cases are `DeviceTest` cases and skip an
+unavailable device ({{< code tests/device_testing.hpp >}}); the retry case is a two-rank registration
+({{< code tests/CMakeLists.txt >}}). Record device, precision, process count and every skip separately.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| 1 | {{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} | `WallSaturation.phase_change_preserves_energy_and_water` | test selection |
-| 2 | {{< code tests/test_condensate_conservation.cpp DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass >}} | `DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass` | test selection |
-| 3 | {{< code tests/test_eos.cpp eos_limiter.rejects_column_in_net_deficit_without_writing >}} | `eos_limiter.rejects_column_in_net_deficit_without_writing` | test selection |
-| 4 | {{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}} | `DeviceTest.scalar_upper_bound_holds_both_sides` | test selection |
-| 5 | {{< code tests/test_sedimentation_guards.cpp expect_rising_cloud_taken_from_below >}} | `expect_rising_cloud_taken_from_below` | test selection |
-| 6 | {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} | `Mesh.check_redo_is_one_decision_across_ranks` | test selection |
+| wall phase change conserves | {{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}} | `WallSaturation.phase_change_preserves_energy_and_water` | none |
+| stoichiometric debit | {{< code tests/test_condensate_conservation.cpp DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass >}} | `DeviceTest.multi_vapor_condensate_debits_stoichiometric_mass` | none |
+| refused net deficit | {{< code tests/test_eos.cpp eos_limiter.rejects_column_in_net_deficit_without_writing >}} | `eos_limiter.rejects_column_in_net_deficit_without_writing` | none |
+| bounded scalar ratio | {{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}} | `DeviceTest.scalar_upper_bound_holds_both_sides` | none |
+| rising cloud donor cell | {{< code tests/test_sedimentation_guards.cpp sedimentation.rising_cloud_is_taken_from_the_cell_below >}} | `sedimentation.rising_cloud_is_taken_from_the_cell_below` | none |
+| one retry decision | {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} | `Mesh.check_redo_is_one_decision_across_ranks` | 2 ranks |
 
-: Assertion definitions for this catalogue. {#tbl-ch15-ch10-tests-sources}
+: Assertions this catalogue reads. {#tbl-ch15-ch10-tests-sources}
 
-The numbered source entries above map directly to the Tests table. CTest registration names and environments
-come from `setup_test`, `snapy_add_python_test` and the explicit entries in
-{{< code tests/CMakeLists.txt >}}. The `.release` suffix denotes a Release build;
-other configurations use their build suffix through `setup_test`
-({{< code cmake/macros/macro_setup_test.cmake >}}).
-
-#### How to use
-
-This test builds its state in C++; it has no user YAML activation. The CTest registration is
-{{< code tests/CMakeLists.txt >}}. From a configured Release build at the pin, select:
+**How to select the tests.** From the repository root, with `build` the directory configured from the code pin,
+list the selection and then run it:
 
 ```bash
-ctest --output-on-failure -R '^test_wall_saturation.release$'
+ctest --test-dir build -N -R '^test_wall_saturation\.release$'
+ctest --test-dir build --output-on-failure -R '^test_wall_saturation\.release$'
 ```
 
-`WallSaturation.phase_change_preserves_energy_and_water` asserts a positive finite timestep and fewer than 10000 steps
-before advancing; failure of these checks invalidates the setup, not merely the reported drift
-({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
-That definition maps the relative-drift identity in @sec-ch15 to:
+The other rows are selected the same way:
+
+```bash
+ctest --test-dir build -N -R '^test_condensate_conservation\.release$'
+ctest --test-dir build -N -R '^test_eos\.release$'
+ctest --test-dir build -N -R '^test_scalar\.release$'
+ctest --test-dir build -N -R '^test_sedimentation_guards\.release$'
+ctest --test-dir build -N -R '^test_check_redo_parallel\.release$'
+```
+
+Run each listed selection with `--output-on-failure` in place of `-N`. The wall case builds its state in C++ and has no YAML activation; a failed setup
+assertion (a non-positive time step, or 10000 steps reached) invalidates the run before any drift is read. An
+empty selection prints "No tests were found!!!" and is not a result (@sec-ch15).
+
+The drift of the wall case, from `WallSaturation.phase_change_preserves_energy_and_water`
+({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}):
 
 ```cpp
 double de = std::abs(total(IPR) / e0 - 1.);
 double dw = std::abs((total(ICY) + total(ICY + 1)) / water0 - 1.);
+EXPECT_LT(de, 1.e-12);
+EXPECT_LT(dw, 1.e-12);
 ```
 
-`total` is the interior volume-weighted reduction; `e0` and `water0` are its initial reference totals.
-The two expressions measure different conserved quantities and require separate assertions.
+`total` is the volume-weighted interior reduction of @eq-ch15-budget; `e0` and `water0` are the initial
+references. Energy and water are two conserved quantities and get two assertions.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_wall_saturation.release` | Wall phase change preserves total energy and water | relative drift below $10^{-12}$ | Source assertion 1 |
-| `test_condensate_conservation.release` | Two parents pay the stoichiometric debit; cloud deficit is cleared | mass allclose $10^{-12}$; parents $10^{-6}$; cloud exact | Source assertion 2 |
-| `test_eos.release` | Net-deficit column is rejected without changing the state | failure code 1; unchanged vector | Source assertion 3 |
-| `test_scalar.release` | Transported scalar ratio stays bounded on both sides | float32 $10^{-5}$; float64 $10^{-12}$ | Source assertion 4 |
-| `test_sedimentation_guards.release` | Rising cloud is taken from below | absolute error at most $10^{-9}$ times reference | Source assertion 5 |
-| `test_check_redo_parallel.release` | A retry decision and rollback are shared by ranks | exact tensor equality | Source assertion 6 |
+| `test_wall_saturation.release` | a wall phase change moves cloud mass and preserves energy and water | relative drift $<10^{-12}$ | the test |
+| `test_condensate_conservation.release` | two parents pay the stoichiometric debit; the cloud deficit is cleared | mass $10^{-12}$; parents $10^{-6}$; cloud exact | the test |
+| `test_eos.release` | a net-deficit column is refused and left unchanged | return code 1; vector unchanged | the test |
+| `test_scalar.release` | the transported scalar ratio stays within its bounds on both sides | $10^{-5}$ in float32; $10^{-12}$ in float64 | the test |
+| `test_sedimentation_guards.release` | a rising cloud is taken from the cell below | relative $10^{-9}$ | the test |
+| `test_check_redo_parallel.release` | both ranks take one retry decision and restore the saved tensors | exact (`torch::equal`) | the test |
 
-: Acceptance criteria read from the code pin; no solver pass is claimed. {#tbl-ch15-ch10-tests-assertions}
+: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch10-tests-assertions}
 
-The parent-debit tolerances above distinguish conserved total mass from the individual parent values; they
-are not float64/float32 alternatives. The test uses both tolerances in each device/dtype case.
-The existing `src/snapy_report/ch10/{fixvapor,borrow,kinetics,tracer,sed,redo}_check.py` scripts
-check ported formulas. Their fixture comparison is separate from a tolerance test of physical quantities.
+The report-only `src/snapy_report/ch10/{fixvapor,borrow,kinetics,tracer,sed,redo}_check.py` scripts exercise
+the chapter's formulas on ports and import no snapy; their fixture comparisons are not tolerance tests of
+physical quantities.
 
-[C1] Energy and total-water conservation are checked separately from the cloud-change control.
-[C2] Species repair, transport and collective retry rows retain distinct tolerances and failure contracts.
-No single row establishes a complete coupled kinetics budget.[^ch15-ch10-provenance]
+`[C1]` Energy and water conservation are asserted separately from the cloud-change control. `[C2]` The repair,
+transport and retry rows keep distinct tolerances and failure contracts; none of them is a kinetics-step
+budget.[^ch15-ch10-run]
 
-[^ch15-ch10-provenance]: Source read at `6fbb39750f62b83df096058a4746e77d0a634bc5`; no compiled CPU, CUDA or distributed test was run for this rewrite. The command is an instruction for a future pinned build. Independent formula checks are not substituted for that execution.
+[^ch15-ch10-run]: [sha: the code pin; the selection names were checked against the registrations of
+    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
+    section]. The commands are reproduction instructions, not a run record.
 
 ### Limits
 
-These selected assertions do not establish a full kinetics-step mass/energy budget, an evaporation-rate
-validation, saturation across a decomposed wall or MPS sedimentation. The broader repair registrations
-remain in the test index (@sec-appc); runtime combinations remain in @sec-ch12-matrix.
+These tests do not establish a full kinetics-step mass and energy budget, an evaporation-rate validation,
+saturation across a decomposed wall, or sedimentation on MPS. The broader repair registrations are in the test
+index (@sec-appc); the runtime combinations are in @sec-ch12-matrix.
