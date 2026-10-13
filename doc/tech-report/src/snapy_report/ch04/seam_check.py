@@ -1,8 +1,8 @@
 """Executable check of the x1 seam flux average (chapter 4, _seam.qmd).
 
 What is checked: the telescoping identity the section states and the average both ranks book at an x1 seam,
-unpack(..., 0.5 * (mine + theirs)) in HydroImpl::forward (src/hydro/hydro_forward.cpp:487-495 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0), on a one-dimensional column split into two blocks whose
+unpack(..., 0.5 * (mine + theirs)) in HydroImpl::forward (src/hydro/hydro_forward.cpp:570-578 at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5), on a one-dimensional column split into two blocks whose
 reconstructions disagree at the seam. Claims C1-C2.
 
 Run: python3 seam_check.py   (numpy only; exits with the number of failed claims)

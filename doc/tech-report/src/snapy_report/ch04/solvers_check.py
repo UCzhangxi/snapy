@@ -2,7 +2,7 @@
 
 What is checked: hllc_impl (src/riemann/hllc_impl.h:16-130), roe_impl (src/riemann/roe_impl.h:23-211) and
 shallow_roe_impl (src/riemann/shallow_roe_impl.h:14-72, with shallow_water_roe_sound_speed of
-src/eos/shallow_water_impl.h:18-20) at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line for a
+src/eos/shallow_water_impl.h:18-20) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line for a
 dry ideal gas (ny = 0, not ideal-moist) in the x1 direction (dim = 3, so ivx = IVX). el and er are the internal
 energy densities the dispatch passes (peos "W->I", src/riemann/hllc.cpp:36). Claims C1-C6.
 

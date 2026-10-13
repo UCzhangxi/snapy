@@ -2,7 +2,7 @@
 
 What is checked: the exact solid angle of a cell's x1 face as the corner sum of
 atan(x y / sqrt(1 + x^2 + y^2)), x = tan x2f, y = tan x3f (solid_angle_kj, src/coord/gnomonic_equiangle.cpp:124-137
-at snapy@e894700ff7aee30b52882e5202b16461413780b0), ported to numpy. Claims C1-C3.
+at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5), ported to numpy. Claims C1-C3.
 
 Run: python3 gnomonic_check.py   (numpy only; exits with the number of failed claims)
 """

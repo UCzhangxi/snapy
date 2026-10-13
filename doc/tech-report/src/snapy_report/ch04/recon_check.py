@@ -1,7 +1,7 @@
 """Executable check of the reconstruction family (chapter 4, _framework/_dc/_plm/_cp/_weno/_ppm).
 
 Every interpolant below is a numpy port, coefficient for coefficient, of
-src/recon/interp_simple.hpp at snapy@e894700ff7aee30b52882e5202b16461413780b0
+src/recon/interp_simple.hpp at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5
 (interp_cp2 :43-45, interp_plm :57-63, interp_ppm :67-69, interp_cp3 :73-75,
 interp_cp4 :79-82, interp_weno3 :94-106, interp_cp5 :110-114, interp_cp6 :118-121,
 interp_weno5 :134-153), and of the selection in src/recon/interpolation.cpp:11-39
