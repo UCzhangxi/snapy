@@ -5,7 +5,8 @@ Fails, listing file:line, for a line inside an `::: {.callout-note title="At a g
 bold field label (`**Word(s).**`) and is not preceded by a blank line or by the opening fence.
 `python3 tools/fix_glance_boxes.py` fixes every such line.
 Also requires opening prose before glance boxes and local-symbols notes;
-`python3 tools/fix_glance_order.py` moves the paragraph without reflow.
+`python3 tools/fix_glance_order.py` moves the paragraph without reflow when it directly follows the box;
+otherwise the section needs a hand-written opening.
 Missing prose and boxes over six content lines are reported without failing.
 
     python3 tools/check_glance_boxes.py              # every .qmd under book/
@@ -38,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"check_glance_boxes: FAIL, {bad} label lines (python3 tools/fix_glance_boxes.py fixes them)")
         return 1
     if order_bad:
-        print(f"check_glance_boxes: FAIL, {order_bad} sections (run tools/fix_glance_order.py)")
+        print(f"check_glance_boxes: FAIL, {order_bad} sections (run tools/fix_glance_order.py; sections it leaves alone need a hand-written opening)")
         return 1
     print("check_glance_boxes: pass")
     return 0
