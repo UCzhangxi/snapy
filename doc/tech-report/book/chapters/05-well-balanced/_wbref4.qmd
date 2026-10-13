@@ -32,8 +32,8 @@ replaces the log-mean cell pressure by the average of a cubic through four face 
 :::
 
 Local symbols: $\mathsf F$ [-] the five-point filter; $\Pi$ [kg m$^{-2}$] the primitive of the cell reference
-density; $i_0$ the first cell of a stencil window, $l$ the cell offset in it and $\iota$ the face offset; $\ell_\iota$
-the Lagrange basis polynomial of face $i_0+\iota$; $\tilde p$ [Pa] the cubic through four face pressures; $\zeta$ a
+density; $i_0$ the first cell of a stencil window, $l$ the cell offset in it and $l_{\mathrm f}$ the face offset; $\ell_{l_{\mathrm f}}$
+the Lagrange basis polynomial of face $i_0+l_{\mathrm f}$; $\tilde p$ [Pa] the cubic through four face pressures; $\zeta$ a
 Gauss-Legendre node; $n_{\mathrm{poly}}$ the polytropic index and $\mathcal S_i$ [J kg$^{-1}$ K$^{-1}$ s$^{-1}$] the entropy
 tendency of cell $i$, both in the order test. $\vartheta$, $\lambda_w$, $\chi$, $\eta_{\rho,f}$, $\mathcal W$, $\Delta x_1$, $n_g$ and $\epsilon_{\mathrm m}$ are NOTATION's
 or @sec-ch05-refkernel's.
@@ -91,19 +91,19 @@ same reference. Ghosts are never read.
 $$
 \begin{aligned}
 \rho_{\mathrm{sf},f} &= \partial_1 \Pi(x_{1,f}), \\
-\Pi(x_{1,i_0+\iota}) &= \sum_{l<\iota}\rho_{\mathrm{ref},i_0+l}\,\Delta x_{1,i_0+l},
+\Pi(x_{1,i_0+l_{\mathrm f}}) &= \sum_{l<l_{\mathrm f}}\rho_{\mathrm{ref},i_0+l}\,\Delta x_{1,i_0+l},
 \end{aligned}
 $$ {#eq-ch05-wbref4-face}
 
-with $\Pi$ the quartic through the primitive at the five faces $\iota=0..4$ (four cells), window $i_0=f-2$ kept inside the owned cells at a
+with $\Pi$ the quartic through the primitive at the five faces $l_{\mathrm f}=0..4$ (four cells), window $i_0=f-2$ kept inside the owned cells at a
 clamped wall, physical spacing. On a uniform grid of width $\Delta x_1$, $\Pi$ takes the values $0,\ \Delta x_1\rho_{\mathrm{ref},i_0},\ \Delta x_1(\rho_{\mathrm{ref},i_0}+\rho_{\mathrm{ref},i_0+1}),\dots$
-at the faces $\iota=0..4$; writing $\Pi$ in the Lagrange basis $\ell_\iota$ of those five faces and differentiating,
-$\rho_{\mathrm{sf},i_0+\iota}=\partial_1\Pi(x_{1,i_0+\iota})=\sum_{l=0}^{3}\rho_{\mathrm{ref},i_0+l}\,\Delta x_1\sum_{\iota'>l}\partial_1\ell_{\iota'}(x_{1,i_0+\iota})$, which on
-$\rho_{\mathrm{ref},i_0..i_0+3}$ is $(25,-23,13,-3)/12$ at $\iota=0$ (the wall face), $(3,13,-5,1)/12$ at $\iota=1$ (the next) and
-$(-1,7,7,-1)/12$ at $\iota=2$ (the interior face, window $i_0=f-2$) (`[C8]`). The face is exact for cubic
+at the faces $l_{\mathrm f}=0..4$; writing $\Pi$ in the Lagrange basis $\ell_{l_{\mathrm f}}$ of those five faces and differentiating,
+$\rho_{\mathrm{sf},i_0+l_{\mathrm f}}=\partial_1\Pi(x_{1,i_0+l_{\mathrm f}})=\sum_{l=0}^{3}\rho_{\mathrm{ref},i_0+l}\,\Delta x_1\sum_{l'_{\mathrm f}>l}\partial_1\ell_{l'_{\mathrm f}}(x_{1,i_0+l_{\mathrm f}})$, which on
+$\rho_{\mathrm{ref},i_0..i_0+3}$ is $(25,-23,13,-3)/12$ at $l_{\mathrm f}=0$ (the wall face), $(3,13,-5,1)/12$ at $l_{\mathrm f}=1$ (the next) and
+$(-1,7,7,-1)/12$ at $l_{\mathrm f}=2$ (the interior face, window $i_0=f-2$) (`[C8]`). The face is exact for cubic
 point profiles on any grid, so $\eta_{\rho,f}=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
 mid-column offset $3.22\times10^{-12}$, $5.18\times10^{-14}$, $6.91\times10^{-16}$ relative at $n_1$ = 32, 64, 128, orders
-5.96 and 6.23, against order 2.00 for the kernel; at $n_1=256$ it is $1.38\times10^{-16}$, below $\epsilon_{\mathrm \iota}$, so
+5.96 and 6.23, against order 2.00 for the kernel; at $n_1=256$ it is $1.38\times10^{-16}$, below $\epsilon_{\mathrm l_{\mathrm f}}$, so
 that level measures round-off, not truncation). @eq-ch05-wbref4-face is built as the weights `awt`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
 and applied by `wb_ref4_faces`
