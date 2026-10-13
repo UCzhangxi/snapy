@@ -140,3 +140,12 @@ remove that line when the symbol enters NOTATION.md.
 - Overlap for the editor: chapter 12 writes the same face moments as $\sigma^{2,\mathrm{face}}_i$ and
   $\delta^{\mathrm{face}}_i$, chapter 3 as `face_moment2_x1` and $x_{1,i} - x^{\mathrm A}_{1,i}$; chapter 4 follows chapter 3
   and writes the moment $\sigma^2_{\mathrm A,i}$. One form should enter NOTATION.md §1.
+
+## Chapter 9 drop-in local symbols (draft)
+
+The eight non-framework active forcing sections now define their local symbols after the glance boxes.
+The editor owns registration of these definitions; NOTATION.md is unchanged. In particular the drop-ins
+use $n_{\mathrm{dep}}$ for deposition depth, $L_{\mathrm{spg}}$ and $\alpha_{\mathrm{spg}}$ for sponge width and stage drag,
+$\mathsf D$ and $\ell$ for the user-forcing dictionary and module index, $\boldsymbol\Pi$ and $K_{\Delta t}$ for viscous
+stress and the time-step coefficient, $\alpha_{\mathrm f}$ for wall extrapolation, and $c_0$, $\eta$ for the constant
+profile product and its relative face excess. The full units and meanings are in the eight local-symbol paragraphs.

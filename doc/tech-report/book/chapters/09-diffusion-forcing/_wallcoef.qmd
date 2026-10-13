@@ -41,6 +41,12 @@ four names count, {{< code tests/test_diffusion.cpp diffusion_options.wall_names
 these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/wallcoef_check.py`, output `wallcoef_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): cells $0$ and $1$ the wall cell and its interior neighbour; $h_0$, $h_1$ [m]
+their $x_1$ widths; $q$ the cell field whose face value is taken ($\rho$ or $\rho c_v$, either times an $x_1$ profile); $q_f$ its
+value on the wall face; $\alpha_{\mathrm f}=h_0/(h_0+h_1)$ [-] the extrapolation weight (code `t`; $t$ is time in NOTATION.md),
+the same weight as @sec-ch09-relax's at-face target; $H$ [m] the scale height of the check's profile. $h$ and $\epsilon_{\mathrm m}$
+are NOTATION.md's.
+
 The rule is restricted to $x_1$ and to a list of boundary names. An $x_2$ or $x_3$ reflecting face is as likely to
 be a symmetry plane, where the mirror is exact and the average is the better estimate; and `reflecting` is the
 default for every face a configuration does not name, so a wider rule would change runs that did not ask for it.
@@ -54,16 +60,29 @@ the two centre values, evaluated at the face, is
 
 $$
 \begin{aligned}
-q_f &= (1+t)\,q_0 - t\,q_1, \\
-t &= \frac{h_0}{h_0+h_1},
+q_f &= (1+\alpha_{\mathrm f})\,q_0 - \alpha_{\mathrm f}\,q_1, \\
+\alpha_{\mathrm f} &= \frac{h_0}{h_0+h_1},
 \end{aligned}
 $$ {#eq-ch09-wallcoef-extrap}
 
 the same expression at both walls, because the offset to the face and the direction to the second cell change
 sign together. @eq-ch09-wallcoef-extrap is `extrapolate_to_wall`
-({{< code src/forcing/diffusion.cpp extrapolate_to_wall >}}). It is exact for a linear $q$ on any widths, to
-$8.9\times10^{-16}$ over 100 random stretched columns, and so second order for a smooth one.[^wall-c] If
-$q_f\le0$ the code returns $q_0$, which also reads no ghost (`[C3]`).
+({{< code src/forcing/diffusion.cpp extrapolate_to_wall >}}). Why it is exact for a linear $q$, in three steps.
+
+1. *The line through the two centres* has slope $(q_0-q_1)/[(h_0+h_1)/2]$ toward the wall.
+2. *The wall face* is $h_0/2$ from the centre of cell 0, so $q_f=q_0+\tfrac{h_0}{2}\cdot\tfrac{2(q_0-q_1)}{h_0+h_1}
+   =(1+\alpha_{\mathrm f})q_0-\alpha_{\mathrm f}q_1$, @eq-ch09-wallcoef-extrap, with no assumption on $h_0$, $h_1$.
+3. *Hence* it is exact for a linear $q$ on any widths, and, by Taylor's theorem, second order for a smooth one.
+
+*Round-off.* `t` is one addition and one division, $\hat\alpha_{\mathrm f}=\alpha_{\mathrm f}(1+\eta_\alpha)$ with $\lvert\eta_\alpha\rvert\le2\cdot\tfrac{\epsilon_{\mathrm m}}2$,
+and `(1. + t) * vnear - t * vnext` adds four roundings, so to first order
+
+$$
+\lvert\hat q_f-q_f\rvert\le\tfrac{\epsilon_{\mathrm m}}2\big[2\alpha_{\mathrm f}\lvert q_0-q_1\rvert+2(1+\alpha_{\mathrm f})\lvert q_0\rvert+\alpha_{\mathrm f}\lvert q_1\rvert+\lvert q_f\rvert\big]
+$$
+
+(check: at most 0.761 of it), consistent with $8.9\times10^{-16}$ relative over 100 random stretched columns.[^wall-c]
+If $q_f\le0$ the code returns $q_0$, which also reads no ghost (`[C3]`).
 
 The mirror average, by contrast, returns $q_0$ itself. For $\rho=\rho_0e^{-x_1/H}$ with the lower wall at $x_1=0$
 the ratio of the mirror average to the wall value is exactly $e^{-h/2H}$ at the lower wall and $e^{+h/2H}$ at the
@@ -103,6 +122,35 @@ as one quantity (@sec-ch09-x1profile). It runs wherever the module computes a co
 
 ### Code
 
+**A minimal input.** The rule has no key; it fires when a named reflecting function is installed on an $x_1$ face:
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: reflecting   # recorded as reflecting_inner: the wall face is extrapolated
+    x1-outer: reflecting
+forcing:
+  diffusion: {nu_iso: 0.5, kappa_iso: 0.25}
+```
+
+**What is refused, and why.** Nothing: the rule is a choice inside `face_coefficient`. A boundary function installed
+with no recorded name is not refused but warned about once ("a boundary function is installed with no recorded name,
+so it cannot be classified as a wall …", {{< code src/mesh/meshblock_options.cpp >}}), and the average is kept there.
+
+**The code, mapped to @eq-ch09-wallcoef-extrap** (`extrapolate_to_wall` and `face_coefficient`):
+
+```cpp
+auto t = wnear / (wnear + wnext);
+...
+auto wall = (1. + t) * vnear - t * vnext;
+return torch::where(wall > 0., wall, vnear);
+...
+if (nface < 3) return out;  // fewer than two active cells to extrapolate from
+```
+
+`wnear`, `wnext` are $h_0$, $h_1$ and `t` is $\alpha_{\mathrm f}$; `wall` is $q_f$, replaced by $q_0$ (`vnear`) when not positive; the last
+line keeps the two-cell average on a block with fewer than two interior $x_1$ cells.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | @eq-ch09-wallcoef-extrap and the fallback | {{< code src/forcing/diffusion.cpp extrapolate_to_wall >}} | `extrapolate_to_wall` | |
@@ -124,6 +172,8 @@ as one quantity (@sec-ch09-x1profile). It runs wherever the module computes a co
 
 ### Tests
 
+The derived round-off checks [D3b] pass.[^dropin-wallcoef]
+
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_diffusion.cpp` (`test_diffusion.release`), `wall_face_coefficient_reads_no_ghost` | on a linear density a uniform $\mathrm{d}T/\mathrm{d}n$ gives the same tendency in every interior cell, wall cells included | $10^{-5}$ | float32 arm |
@@ -140,7 +190,7 @@ as one quantity (@sec-ch09-x1profile). It runs wherever the module computes a co
 the solver on a stratified column is **not measured at the pin**: no committed deck runs it. ctest cases:
 **pending a pinned ctest run**.
 **Coverage.** CPU float32/float64 and CUDA when present for the `DeviceTest` cases; no multi-rank test; no
-stretched grid, because snapy has none, so the general weight $t\ne\tfrac12$ is covered only by `[C1]`.
+stretched grid, because snapy has none, so the general weight $\alpha_{\mathrm f}\ne\tfrac12$ is covered only by `[C1]`.
 :::
 
 ### Limits
@@ -164,3 +214,9 @@ solids are read as fluid by the diffusion module, with a face heat capacity abou
    order in others. Not observed to fire; not measured.
 5. **Block too short.** With fewer than two interior $x_1$ cells, `nface` $<3$, the average is kept
    ({{< code src/forcing/diffusion.cpp face_coefficient >}}).
+
+[^dropin-wallcoef]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
+    [D3b]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
+    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
+    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
+    (`--mutate D3b`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).

@@ -46,7 +46,14 @@ decays as $e^{-\nu t}$ over 100 steps, {{< code tests/test_diffusion.cpp DeviceT
 run at the pin. Check: `python3 src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out` lines `[C1]`–`[C8]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
-The module adds its own time-step bound, $\Delta t\le \Delta x_{\min}^2/(2n_{\mathrm{dim}}K)$, with $\Delta x_{\min}$ the smallest cell width over the active directions, which the solver takes
+Local symbols (flagged to the editor, ISSUES.md): $\boldsymbol\Pi$ [Pa] the viscous stress tensor ($\tau$ is a named relaxation
+time in NOTATION.md); $F^{(m_b)}_a$ [Pa] and $F^{(E)}_a$ [W m$^{-2}$] the momentum and energy fluxes through a face normal to
+$x_a$; $\delta_{ab}$ the Kronecker delta; $n_{\mathrm{dim}}$ the number of active directions; $\Delta x_{\min}$ [m] the smallest
+active cell width; $K_{\Delta t}$ [m$^2$ s$^{-1}$] the coefficient of the time-step bound; $G$ [-] the forward-Euler
+amplification of the checkerboard mode; $\varsigma_{\max}$ the largest value of an $x_1$ profile (@sec-ch09-x1profile).
+$\nu$, $\mu$, $\kappa$, $c_v$, $c_{p,\mathrm d}$, $c_{v,\mathrm d}$, $R_{\mathrm d}$, $g_1$, $h$, $\vartheta$, $\lambda_w$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
+
+The module adds its own time-step bound, $\Delta t\le \Delta x_{\min}^2/(2n_{\mathrm{dim}}K_{\Delta t})$, with $\Delta x_{\min}$ the smallest cell width over the active directions, which the solver takes
 together with the hyperbolic bound before the Courant factor is applied (@sec-ch07-cfl). The YAML parser refuses
 the keys `K` and `type`.
 
@@ -59,8 +66,8 @@ refuses every grid but Cartesian). Units: $\mathbf v$ [$\mathrm{m\,s^{-1}}$], $T
 #### Continuous fluxes
 
 The Newtonian stress for a fluid with no bulk viscosity is
-$\boldsymbol\tau = \mu[\nabla\mathbf v + (\nabla\mathbf v)^{\mathsf T} - \tfrac23(\nabla\cdot\mathbf v)\mathsf I]$, and
-the momentum and energy equations gain $\nabla\cdot\boldsymbol\tau$ and $\nabla\cdot(\boldsymbol\tau\cdot\mathbf v)$
+$\boldsymbol\Pi = \mu[\nabla\mathbf v + (\nabla\mathbf v)^{\mathsf T} - \tfrac23(\nabla\cdot\mathbf v)\mathsf I]$, and
+the momentum and energy equations gain $\nabla\cdot\boldsymbol\Pi$ and $\nabla\cdot(\boldsymbol\Pi\cdot\mathbf v)$
 plus the divergence of the Fourier heat flux, a conductivity times $\nabla T$. Written as fluxes through a face
 normal to $x_a$, with $\mu=\nu\rho$ and the conductivity $\kappa\rho c_v$ in the default form,
 
@@ -104,8 +111,15 @@ The tendency subtracts $\Delta t$ times the `divergence` of the three flux array
 
 Three properties follow, and a line-by-line port of the module checks them:[^vis-c]
 
-1. **Conservation.** Momentum and total energy change only by flux differences, so their column sums
-   telescope; on a periodic column they are zero to round-off (`[C4]`).
+1. **Conservation.** Momentum and total energy change only by flux differences: the module's increment is
+   `du -= dt * coord->divergence(...)`, the operator of @sec-ch02-laws, which forms each face product for both
+   neighbours from identical operands, so the volume-weighted column sum telescopes to the outer faces (`[C4]`).
+   In floating point each cell's increment carries three roundings, the face difference, the division by $V_i$ and
+   the product with $\Delta t$, so on one active direction
+   $\bigl\lvert\sum_iV_i\widehat{\Delta\mathbf U}_i+\Delta t([A\mathbf F]_{\mathrm{out}}-[A\mathbf F]_{\mathrm{in}})\bigr\rvert
+   \le3\cdot\tfrac{\epsilon_{\mathrm m}}2\,\Delta t\sum_i\lvert\Delta_i[A\mathbf F]\rvert$ (check: at most 0.139 of it over 200 columns). The
+   subtraction from `du` adds one rounding of each row's new value, $\tfrac{\epsilon_{\mathrm m}}2\lvert\Delta\mathbf U_i^{\mathrm{new}}\rvert$, relative
+   to the whole increment of the cell.
 2. **Dissipation.** The kinetic-energy part of the update is removed and the same amount is added to the internal
    energy through the work term; for a random shear the net internal-energy change is positive (`[C5]`).
 3. **Accuracy.** For a transverse velocity the tendency is $\nu\rho$ times the three-point Laplacian to round-off,
@@ -119,16 +133,16 @@ Three properties follow, and a line-by-line port of the module checks them:[^vis
 
 #### Time-step bound
 
-Forward Euler on the $n_{\mathrm{dim}}$-dimensional three-point Laplacian with coefficient $K$ amplifies the
-checkerboard mode by $G = 1 - 4n_{\mathrm{dim}}K\Delta t/h^2$, so $|G|\le1$ requires
+Forward Euler on the $n_{\mathrm{dim}}$-dimensional three-point Laplacian with coefficient $K_{\Delta t}$ amplifies the
+checkerboard mode by $G = 1 - 4n_{\mathrm{dim}}K_{\Delta t}\Delta t/h^2$, so $|G|\le1$ requires
 
 $$
-\Delta t \le \frac{\Delta x_{\min}^2}{2n_{\mathrm{dim}}K},
+\Delta t \le \frac{\Delta x_{\min}^2}{2n_{\mathrm{dim}}K_{\Delta t}},
 $$ {#eq-ch09-viscosity-dt}
 
-with $K=\max(\nu\varsigma_{\max}^{\nu},\kappa\varsigma_{\max}^{\kappa})$ in the default form ($\varsigma_{\max}$ the
+with $K_{\Delta t}=\max(\nu\varsigma_{\max}^{\nu},\kappa\varsigma_{\max}^{\kappa})$ in the default form ($\varsigma_{\max}$ the
 largest value of an $x_1$ profile of @sec-ch09-x1profile, 1 without one) and
-$K=\max(\mu/\rho_{\min}, \kappa/(\rho c_v)_{\min})$ with `dynamic: true`, in `max_time_step`
+$K_{\Delta t}=\max(\mu/\rho_{\min}, \kappa/(\rho c_v)_{\min})$ with `dynamic: true`, in `max_time_step`
 ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}}). At the bound $|G|=1$ exactly (`[C6]`). The
 solver takes the minimum of @eq-ch09-viscosity-dt and the hyperbolic bound through `pdiffusion`
 ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}) and then multiplies by the Courant factor `cfl`
@@ -142,15 +156,20 @@ so $\partial_tT = \kappa\nabla^2T$: `kappa_iso` is the thermal diffusivity of $T
 into enthalpy, $\rho c_p\partial_tT = \kappa\rho c_v\nabla^2T$, and $T$ diffuses at $\kappa/\gamma$, 0.714286 of
 $\kappa$ for $\gamma=1.4$ (`[C7]`). A run sits between the two, depending on how fast the pressure adjusts.
 
-On a resting adiabat, $\partial_zT = -g/c_p$ and $\rho\propto T^{c_v/R}$; the temperature gradient is uniform but
-$\rho c_v$ is not, and the interior heats at
+On a resting dry adiabat with $z=x_1$, the interior heating rate follows in four steps.
+
+1. *The profile.* $\partial_zT=-\lvert g_1\rvert/c_{p,\mathrm d}$, uniform; $p\propto T^{c_{p,\mathrm d}/R_{\mathrm d}}$ and $\rho=p/(R_{\mathrm d}T)\propto T^{c_{v,\mathrm d}/R_{\mathrm d}}$.
+2. *The flux divergence at fixed density.* $\rho c_{v,\mathrm d}\partial_tT=\partial_z(\kappa\rho c_{v,\mathrm d}\partial_zT)=\kappa c_{v,\mathrm d}\,\partial_z\rho\,\partial_zT$,
+   because $\partial_z^2T=0$.
+3. *The density gradient.* $\partial_z\rho/\rho=(c_{v,\mathrm d}/R_{\mathrm d})\,\partial_zT/T$.
+4. *Hence* $\partial_tT=\kappa(c_{v,\mathrm d}/R_{\mathrm d})(\partial_zT)^2/T$, which is
 
 $$
-\partial_tT = \frac{\kappa g^2c_v}{R\,c_p^2\,T},
+\partial_tT = \frac{\kappa \lvert g_1\rvert^2c_{v,\mathrm d}}{R_{\mathrm d}\,c_{p,\mathrm d}^2\,T},
 $$ {#eq-ch09-viscosity-adiabat}
 
 $7.93\times10^{-7}$ $\mathrm{K\,s^{-1}}$ per unit $\kappa$ at $T=300$ $\mathrm{K}$ for dry air
-($R=287$, $c_p=1004.5$ $\mathrm{J\,kg^{-1}\,K^{-1}}$, $g=9.8$ $\mathrm{m\,s^{-2}}$). The discrete operator
+($R_{\mathrm d}=287$, $c_{p,\mathrm d}=1004.5$ $\mathrm{J\,kg^{-1}\,K^{-1}}$, $\lvert g_1\rvert=9.8$ $\mathrm{m\,s^{-2}}$). The discrete operator
 reproduces @eq-ch09-viscosity-adiabat at second order: relative errors $1.85\times10^{-6}$, $4.63\times10^{-7}$
 and $1.16\times10^{-7}$ at $n_1$ = 64, 128, 256 (`[C8]`).
 
@@ -182,6 +201,46 @@ the two-cell average. The module runs in every Runge–Kutta stage, explicit, th
 operator at a wall through the solver is **not measured**.
 
 ### Code
+
+**A minimal input.** The test deck's block ({{< code tests/test_diffusion.yaml >}}); viscosity needs `nghost: 2`:
+
+```yaml
+forcing:
+  diffusion:
+    nu_iso: 0.5        # m^2 s^-1, kinematic: times the face density
+    kappa_iso: 0.25    # m^2 s^-1, thermal diffusivity: times the face rho c_v
+    dynamic: false     # true: nu_iso is mu [Pa s], kappa_iso a conductivity [W m^-1 K^-1]
+```
+
+**What is refused, and why.**
+
+1. *The legacy keys `K` and `type`*, with "DiffusionOptions: legacy 'K' and 'type' keys are unsupported; use
+   'nu_iso' and 'kappa_iso'." ({{< code src/forcing/diffusion.cpp >}}), and any other unknown key, by `check_keys` ({{< code src/forcing/diffusion.cpp >}}).
+2. *A coefficient that is not a finite number $\ge0$*, with "DiffusionOptions: KEY must be a finite number >= 0"
+   ({{< code src/forcing/diffusion.cpp >}}); *`dynamic` other than the literal `true` or `false`* ({{< code src/forcing/diffusion.cpp >}}).
+3. *At setup, with a positive coefficient:* a non-Cartesian grid, "[Diffusion] Only cartesian coordinates are
+   supported."; viscosity with fewer than two ghosts, "[Diffusion] Isotropic viscosity requires nghost >= 2.";
+   conduction without a positive reference $c_v$ ({{< code src/forcing/diffusion.cpp >}}). The stencil needs two ghosts, and the face
+   coefficient needs $c_v$.
+4. *At run time*, a non-finite coefficient or a non-positive bound in `max_time_step` ({{< code src/forcing/diffusion.cpp >}}).
+
+**The code, mapped to @eq-ch09-viscosity-flux** (`DiffusionImpl::forward`, per direction and velocity row):
+
+```cpp
+auto momentum_flux = options->dynamic()
+                         ? -options->nu_iso() * stress
+                         : -options->nu_iso() * rho_face * stress;
+flux[IVX + ivar].index(face_index).copy_(momentum_flux);
+flux[IPR].index(face_index) +=
+    face_average(w[IVX + ivar], idir, face_start, face_end) *
+    momentum_flux;
+...
+du -= dt * coord->divergence(fluxes[0], fluxes[1], fluxes[2]);
+```
+
+`stress` is the bracket of the first row (with `2. * stress - (2. / 3.) * div_face` on the diagonal, {{< code src/forcing/diffusion.cpp >}}), so
+`momentum_flux` is $F^{(m_b)}_a$; the `+=` line is the work $\sum_bv_bF^{(m_b)}_a$ of the second row, to which the heat flux
+`- kappa_iso * coef * dtdn` is added ({{< code src/forcing/diffusion.cpp >}}); the last line is $-\Delta t\,\nabla\cdot\mathbf F$.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -215,6 +274,8 @@ operator at a wall through the solver is **not measured**.
    it throws on a non-finite coefficient or a non-positive bound.
 
 ### Tests
+
+The derived round-off checks [D4, D5, D5n] pass.[^dropin-viscosity]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -260,3 +321,9 @@ coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer 
    grows toward the wall. The default `cfl` of 0.9 leaves a margin; not measured at the pin.
 6. **Untested combinations.** Diffusion with an implicit scheme, with sedimentation, or on several ranks is not run
    by any ctest listed here. See the switch coverage matrix, @sec-ch12-matrix.
+
+[^dropin-viscosity]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
+    [D4, D5, D5n]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
+    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
+    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
+    (`--mutate D4`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).

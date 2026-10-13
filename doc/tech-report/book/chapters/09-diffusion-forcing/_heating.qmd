@@ -6,8 +6,6 @@ sources: OUTLINE.md 9.7; src/forcing/body_heat.cpp, top_cool.cpp, bot_heat.cpp, 
 status: draft
 -->
 
-<!-- Local symbols: $E_{\mathrm{tot}} = \sum_iE_iV_i$, the integrated total energy of a column, with cell $E$ the
-     total energy density (book map row 15). NOTATION.md has no entry for it yet. -->
 
 ### Summary
 
@@ -43,6 +41,12 @@ fluxes in $\Delta t$, {{< code tests/test_forcing.cpp forcing.boundary_fluxes_sc
 `python3 src/snapy_report/ch09/heating_check.py`, output `heating_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): $\dot T$ [K s$^{-1}$] the heating rate `dTdt`; $p_{\min}$, $p_{\max}$ [Pa]
+the pressure band; $F$ [W m$^{-2}$] the boundary flux `flux`; $n_{\mathrm{dep}}$ the number of cells `depth` it is spread
+over (NOTATION.md does not use a bare $d$); $\Delta x_{1,\mathrm b}$ [m] the $x_1$ width of the boundary cell, `dz`;
+$\overline{\Delta x_1}$ [m] the mean $x_1$ width of the $n_{\mathrm{dep}}$ cells; $E_{\mathrm{tot}}=\sum_iE_iV_i$ [J] the integrated total
+energy. $\rho$, $p$, $c_v$, $E$, $\Delta t$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
+
 The default `pmax` is 1 $\mathrm{Pa}$: a `body-heat` block that does not set `pmin` and `pmax` heats only cells with
 $0\le p\le1$ $\mathrm{Pa}$, which in most decks is none.
 
@@ -59,28 +63,36 @@ with $c_v$ the mixture value of the equation of state at the cell's state, in `B
 ({{< code src/forcing/body_heat.cpp BodyHeatImpl::forward >}}). For a constant $c_v$ at fixed density this raises
 $T$ by exactly $\dot T\Delta t$;[^heat-c3] a $c_v$ that depends on $T$ makes it first order in $\Delta t$.
 
-*Boundary fluxes.* A flux $F$ [$\mathrm{W\,m^{-2}}$] spread over the $d$ cells next to the boundary is applied to
+*Boundary fluxes.* A flux $F$ [$\mathrm{W\,m^{-2}}$] spread over the $n_{\mathrm{dep}}$ cells next to the boundary is applied to
 each of those cells as a uniform volumetric rate
 
 $$
-\Delta E_i = \Delta t\,\frac{F}{\Delta x_{1,\mathrm b}\,d} ,
+\Delta E_i = \Delta t\,\frac{F}{\Delta x_{1,\mathrm b}\,n_{\mathrm{dep}}} ,
 $$ {#eq-ch09-heating-flux}
 
 with $\Delta x_{1,\mathrm b}$ the $x_1$ width of the boundary cell, `dz`, in `TopCoolImpl::forward`
 ({{< code src/forcing/top_cool.cpp TopCoolImpl::forward >}}) and `BotHeatImpl::forward`
-({{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}}). The integrated total energy
-$E_{\mathrm{tot}} = \sum_iE_iV_i$ of the column changes, per unit horizontal area, by
-$\sum_i\Delta E_i\,\Delta x_{1,i} = \Delta t\,F\,\overline{\Delta x_1}/\Delta x_{1,\mathrm b}$, with $\overline{\Delta x_1}$ the
-mean $x_1$ width of the $d$ cells: exactly $F$ per unit time on uniform cells, and $F$ times
-$\overline{\Delta x_1}/\Delta x_{1,\mathrm b}$ otherwise, 0.872 for cells growing upward
-by 10 % with $d=4$.[^heat-c12] On a spherical-polar grid the cell volume is not $\Delta x_1$ times a fixed area, so the
+({{< code src/forcing/bot_heat.cpp BotHeatImpl::forward >}}). What the column receives follows in three steps.
+
+1. *Per cell.* Each of the $n_{\mathrm{dep}}$ cells gains @eq-ch09-heating-flux, the same value in every cell.
+2. *Per unit horizontal area.* On a Cartesian grid a cell's energy is $E_i\Delta x_{1,i}$ per unit area, so the column
+   gains $\sum_i\Delta E_i\,\Delta x_{1,i} = \Delta t\,F\,n_{\mathrm{dep}}\overline{\Delta x_1}/(\Delta x_{1,\mathrm b}n_{\mathrm{dep}})
+   = \Delta t\,F\,\overline{\Delta x_1}/\Delta x_{1,\mathrm b}$.
+3. *Hence* exactly $F$ per unit time on uniform cells, and $F\,\overline{\Delta x_1}/\Delta x_{1,\mathrm b}$ otherwise: 0.872 for
+   cells growing upward by 10 % with $n_{\mathrm{dep}}=4$.[^heat-c12]
+
+*Round-off.* The per-cell value `dt * flux / (dz * depth)` carries three roundings (the two products and the
+division), so it is within $3\cdot\tfrac{\epsilon_{\mathrm m}}2$ relative of $\Delta t\,F/(\Delta x_{1,\mathrm b}n_{\mathrm{dep}})$, and the
+delivered column energy within the same relative bound (check: at most 0.870 of it). Adding it into the energy
+row adds one more rounding of the row's new value, $\tfrac{\epsilon_{\mathrm m}}2\lvert\Delta E_i^{\mathrm{new}}\rvert$, which is relative to the
+whole increment of the cell, not to the heating. On a spherical-polar grid the cell volume is not $\Delta x_1$ times a fixed area, so the
 delivered power is not $F$ either; not measured.
 
 *Exact and truncated.* Both sources are exact pointwise for the stage-entry state; nothing is truncated in space.
 
 [^heat-c3]: `python3 src/snapy_report/ch09/heating_check.py`, output `heating_check.out`, line `[C3]`; a numpy port
     of the three `forward` functions at the pin, double precision.
-[^heat-c12]: Same command, lines `[C1]` (uniform cells: $-30$ $\mathrm{W\,m^{-2}}$ delivered for $F=-30$, $d=4$) and
+[^heat-c12]: Same command, lines `[C1]` (uniform cells: $-30$ $\mathrm{W\,m^{-2}}$ delivered for $F=-30$, $n_{\mathrm{dep}}=4$) and
     `[C2]` (ratio 0.871713).
 
 ### Numerical method
@@ -89,7 +101,7 @@ delivered power is not $F$ either; not measured.
 
 ```{python}
 #| label: fig-ch09-heating-column
-#| fig-cap: "Where the three heating modules act in an $x_1$ column bounded by walls (thick black lines). Blue: the top $d$ cells cooled by top-cool, a flux $F\\le0$ in $\\mathrm{W\\,m^{-2}}$; vermillion: the bottom $d$ cells heated by bot-heat, $F\\ge0$; orange: the cells inside the pressure band $p_{\\min}\\le p\\le p_{\\max}$ (in $\\mathrm{Pa}$) of body-heat; light blue: untouched cells."
+#| fig-cap: "Where the three heating modules act in an $x_1$ column bounded by walls (thick black lines). Blue: the top $n_{\\mathrm{dep}}$ cells cooled by top-cool, a flux $F\\le0$ in $\\mathrm{W\\,m^{-2}}$; vermillion: the bottom $n_{\\mathrm{dep}}$ cells heated by bot-heat, $F\\ge0$; orange: the cells inside the pressure band $p_{\\min}\\le p\\le p_{\\max}$ (in $\\mathrm{Pa}$) of body-heat; light blue: untouched cells."
 #| fig-alt: "A vertical stack of ten cells with the top three, the bottom two and three middle cells shaded, each labelled with the module and its formula."
 #| echo: false
 from snapy_report.ch09.fig_heating_column import make_fig
@@ -101,6 +113,44 @@ All three are cell sources: no stencil and no ghosts are read. `body-heat` acts 
 the boundary fill overwrites. They run in every stage, explicit, in the forcing loop (@sec-ch09-framework).
 
 ### Code
+
+**A minimal input.** Convection driven from below and cooled from above:
+
+```yaml
+forcing:
+  bot-heat: {flux: 30., depth: 2}            # W m^-2 >= 0, spread over the 2 bottom cells
+  top-cool: {flux: -30., depth: 2}           # W m^-2 <= 0
+  body-heat: {dTdt: 1.e-5, pmin: 5.e4, pmax: 1.e5}   # K s^-1 inside 0.5-1 bar; pmax defaults to 1 Pa
+```
+
+**What is refused, and why.**
+
+1. *An unknown key* in each block, by `check_keys`.
+2. *`pmin` > `pmax`*, with "BodyHeatOptions: pmin must not exceed pmax." ({{< code src/forcing/body_heat.cpp >}}): the band would be empty.
+3. *A positive `top-cool` flux*, with "TopCool flux must be negative" ({{< code src/forcing/top_cool.cpp >}}; zero is accepted), and a
+   negative `bot-heat` flux, with "BotHeat flux must be positive" ({{< code src/forcing/bot_heat.cpp >}}; zero is accepted): each
+   module has one direction.
+4. *`depth` $\le0$*, with "TopCool depth must be greater than zero" or "BotHeat depth must be greater than zero"
+   ({{< code src/forcing/top_cool.cpp >}}, {{< code src/forcing/bot_heat.cpp >}}).
+
+**The code, mapped to @eq-ch09-heating-body and @eq-ch09-heating-flux:**
+
+```cpp
+// BodyHeatImpl::forward
+auto mask =
+    torch::logical_and(pres >= options->pmin(), pres <= options->pmax());
+du[IPR].index(interior) += torch::where(mask, dt * options->dTdt() * rho * cv,
+                                        torch::zeros_like(pres));
+// TopCoolImpl::forward
+if (!phydro->pmb->options->is_physical_boundary(0, 0, 1)) return du;
+auto dz = pcoord->dx1f[iu];
+du[IPR].slice(-1, iu + 1 - options->depth(), iu + 1) +=
+    dt * options->flux() / (dz * options->depth());
+```
+
+`mask` is $p_{\min}\le p_i\le p_{\max}$ and the `where` line @eq-ch09-heating-body; `dz` is $\Delta x_{1,\mathrm b}$ of the top cell
+and the last line @eq-ch09-heating-flux on the top $n_{\mathrm{dep}}$ cells. `BotHeatImpl::forward` is the mirror image with
+`narrow(-1, il, depth)` and `dx1f[il]`.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -126,6 +176,8 @@ the boundary fill overwrites. They run in every stage, explicit, in the forcing 
 
 ### Tests
 
+The derived round-off checks [D2] pass.[^dropin-heating]
+
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_forcing.cpp` (`test_forcing.release`), `body_heat_uses_pressure_mask_and_mixture_cv` | heating only inside the band, with the mixture $c_v$ | `allclose` defaults | closed form |
@@ -145,7 +197,7 @@ $x_1$ split.
 
 ### Limits
 
-1. **Stretched cells.** @eq-ch09-heating-flux uses the boundary cell's width for all $d$ cells, so the delivered
+1. **Stretched cells.** @eq-ch09-heating-flux uses the boundary cell's width for all $n_{\mathrm{dep}}$ cells, so the delivered
    power is $F$ only on uniform cells (`[C2]`).
 2. **Curved grids.** No correction for the cell volume of spherical-polar or cubed-sphere grids; not measured.
 3. **`depth` against the block.** `depth` is checked to be positive but not against the block's $x_1$ cell count;
@@ -153,3 +205,9 @@ $x_1$ split.
    an $x_1$ split a `depth` that reaches past that block is not continued into the next. What a `depth` beyond the
    block's interior cells does is not tested.
 4. **`body-heat` default band** `pmax` = 1 $\mathrm{Pa}$ (above).
+
+[^dropin-heating]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
+    [D2]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
+    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
+    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
+    (`--mutate D2`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).

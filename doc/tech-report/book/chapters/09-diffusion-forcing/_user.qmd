@@ -39,22 +39,28 @@ $w_2^{(s)}$ times it for every integrator, {{< code tests/test_stage_forcing_dry
 absolute); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/user_check.py`, output `user_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
 
+Local symbols (flagged to the editor, ISSUES.md): $\mathsf D$ the dictionary of named block buffers and stage variables
+handed to every module ($V$ is the cell volume in NOTATION.md); $\ell=1..N_{\mathrm u}$ the user modules, in load order ($q$ is
+NOTATION.md's generic field); $\mathbf G^{[\ell]}$ the `hydro_du` of module $\ell$, an increment over the full step, in
+the units of $\mathbf U$; $\Delta\mathbf U^{\mathrm{nat}}$ the native increment of the stage; $s$ the stage index (the code's `stage`;
+the superscript $(s)$ of NOTATION.md). $\Delta t$ and $w_2^{(s)}$ are NOTATION.md's.
+
 The returned `hydro_du` is added as it is. The block does not multiply it by $\Delta t$: a module that models
 a rate $\mathbf S$ returns $\Delta t\,\mathbf S$ itself.
 
 ### Derivation
 
 Let $\Delta\mathbf U^{\mathrm{nat}}$ be the native increment of the stage (@eq-ch09-framework-stage plus the
-implicit correction) and $\mathbf G^{q}$ the `hydro_du` of user module $q = 1..Q$. The stage hands the
+implicit correction) and $\mathbf G^{[\ell]}$ the `hydro_du` of user module $\ell=1..N_{\mathrm u}$. The stage hands the
 integrator
 
 $$
-\Delta\mathbf U = \Delta\mathbf U^{\mathrm{nat}} + \sum_{q=1}^{Q}\mathbf G^{q}(\mathbf V, \Delta t, s),
+\Delta\mathbf U = \Delta\mathbf U^{\mathrm{nat}} + \sum_{\ell=1}^{N_{\mathrm u}}\mathbf G^{[\ell]}(\mathsf D, \Delta t, s),
 $$ {#eq-ch09-user-add}
 
-with $\mathbf V$ the dictionary of block buffers and stage variables. @eq-ch09-user-add is the loop over
+with $\mathsf D$ the dictionary of block buffers and stage variables. @eq-ch09-user-add is the loop over
 `user_stage_forcings` in `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
-Every module sees $\mathbf V$ as it was before any user module ran: `stage_forcing_variables` builds the
+Every module sees $\mathsf D$ as it was before any user module ran: `stage_forcing_variables` builds the
 dictionary once, from the stage variables and not from the increments
 ({{< code src/mesh/meshblock.cpp stage_forcing_variables >}}). Through the Runge–Kutta average a user increment
 enters the step with the stage weight $w_2^{(s)}$, exactly as a native one; the test below asserts that for rk1,
@@ -85,6 +91,49 @@ make_fig()
 ```
 
 ### Code
+
+**A minimal input.** No YAML key: a module is scripted and saved in Python, and its file name handed to the block (or
+the `Mesh`, which has the same call, {{< code python/csrc/pymesh.cpp >}}):
+
+```python
+from typing import Dict
+import torch
+
+class DrySource(torch.nn.Module):
+    def forward(self, variables: Dict[str, torch.Tensor], dt: float,
+                stage: int) -> Dict[str, torch.Tensor]:
+        du = torch.zeros_like(variables["hydro_u"])
+        du[0] = dt * 1.e-6 * variables["hydro_u"][0]   # an increment over the step, not a rate
+        return {"hydro_du": du}
+
+torch.jit.script(DrySource().eval()).save("dry_source.pt")
+block.set_user_stage_forcings(["dry_source.pt"])
+```
+
+**What is refused, and why** (each a `TORCH_CHECK` naming "User stage forcing N"):
+
+1. *A return value that is not `Dict[str, Tensor]`*, a non-string key or a non-tensor value
+   (`stage_forcing_result`, {{< code src/mesh/meshblock.cpp >}}): the block cannot add it.
+2. *A `hydro_du` or `scalar_ds` of another shape* than the native increment ({{< code src/mesh/meshblock.cpp >}}).
+3. *`scalar_ds` without passive scalars*, or before the native scalar tendencies exist ({{< code src/mesh/meshblock.cpp >}}).
+4. *Any other key*, with "returned unsupported key 'KEY'. Expected one or both of: hydro_du, scalar_ds."
+   ({{< code src/mesh/meshblock.cpp >}}): a misspelt key would otherwise be dropped silently.
+
+**The code, mapped to @eq-ch09-user-add** (`MeshBlockImpl::advance_local`):
+
+```cpp
+if (!user_stage_forcings.empty()) {
+  auto inputs = stage_forcing_variables(*this, vars);
+  for (size_t i = 0; i < user_stage_forcings.size(); ++i) {
+    auto result = user_stage_forcings[i]->forward({inputs, dt, stage});
+    apply_extra_forcing(stage_forcing_result(result, i),
+                        "User stage forcing " + std::to_string(i));
+  }
+}
+```
+
+`inputs` is $\mathsf D$, built once per stage; each call is $\mathbf G^{[\ell]}(\mathsf D,\Delta t,s)$, and `apply_extra_forcing` adds it to
+the native increment with `fut_hydro_du.add_` ({{< code src/mesh/meshblock.cpp >}}), the sum of @eq-ch09-user-add.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
