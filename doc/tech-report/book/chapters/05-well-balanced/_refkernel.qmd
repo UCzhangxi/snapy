@@ -34,9 +34,10 @@ perturbation and the entropy mode would bypass the reconstruction.
 
 Local symbols: $g=-g_1>0$ [$\mathrm{m\,s^{-2}}$] the downward magnitude of gravity; $c$ [Pa] the column constant of the
 face pressures; $\alpha_H=\Delta x_1/(2H)$ the half-cell height in scale heights, with NOTATION's $H$; $\varsigma$ the
-cell-unit coordinate and $w^{\mathrm c}_m$ the six cell-average weights (the superscript keeps them apart from the RK
+cell-unit coordinate, $\iota$ the face index of a six-face stencil, $d_{\mathrm{mon}}$ a monomial degree and
+$w^{\mathrm c}_\iota$ the six cell-average weights (the superscript keeps them apart from the RK
 weights $w^{(s)}_k$); $\eta_{\rho,f}$ [$\mathrm{kg\,m^{-3}}$] the face-density offset; $\psi$ a function sampled at cell
-centres. $\chi$, $\chi^s$, $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $h$ and $\epsilon_{\mathrm m}$ are NOTATION's.
+centres. $\chi$, $\chi^s$, $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $\Delta x_1$ and $\epsilon_{\mathrm m}$ are NOTATION's.
 
 The kernel has a C++ implementation shared by the CPU and CUDA paths and a tensor implementation for MPS. The wall
 closure of the smoothed ratio and of the six-face rows is @sec-ch05-wallclamp; the anchor relay across $x_1$ seams
@@ -97,12 +98,12 @@ p_{\mathrm{ref},i} = \tfrac{1}{1440}\big(&11\,p_{\mathrm{sf},i-5/2} - 93\,p_{\ma
 \end{aligned}
 $$ {#eq-ch05-refkernel-pref}
 
-In cell units $\varsigma=(x_1-x_{1,i})/\Delta x_1$ (local symbol), the faces sit at $\varsigma_m=m-\tfrac52$, $m=0..5$. The cell
-average of the quintic through them is $\sum_m w^{\mathrm c}_m\,p_{\mathrm{sf},m}$ with weights that reproduce the cell means of the
+In cell units $\varsigma=(x_1-x_{1,i})/\Delta x_1$ (local symbol), the faces sit at $\varsigma_\iota=\iota-\tfrac52$, $\iota=0..5$. The cell
+average of the quintic through them is $\sum_\iota w^{\mathrm c}_\iota\,p_{\mathrm{sf},\iota}$ with weights that reproduce the cell means of the
 monomials,
 
 $$
-\sum_{m=0}^{5}w^{\mathrm c}_m\,\varsigma_m^{\,n}=\int_{-1/2}^{1/2}\varsigma^{\,n}\,\mathrm d\varsigma=\Big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80},\ 0\Big)_n,\qquad n=0..5,
+\sum_{\iota=0}^{5}w^{\mathrm c}_\iota\,\varsigma_\iota^{\,d_{\mathrm{mon}}}=\int_{-1/2}^{1/2}\varsigma^{\,d_{\mathrm{mon}}}\,\mathrm d\varsigma=\Big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80},\ 0\Big)_{d_{\mathrm{mon}}},\qquad d_{\mathrm{mon}}=0..5,
 $$
 
 whose solution is $(11,-93,802,802,-93,11)/1440$ (`[C1]`), coded as `w6` $=\{11/1440,\,-31/480,\,401/720,\dots\}$
@@ -161,14 +162,14 @@ This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smo
 
 *Face-density offset.* What the solver uses is $\rho_{\mathrm{sf}}+\mathcal W[\overline\rho-\rho_{\mathrm{ref}}]
 =\mathcal W[\overline\rho]+\eta_{\rho,f}$ with $\eta_{\rho,f}=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]$ (local symbol: the
-offset of face $f$ [$\mathrm{kg\,m^{-3}}$]). On a uniform grid of width $h$, with $p$, $\rho$ and $\chi=\rho/p$ the point
+offset of face $f$ [$\mathrm{kg\,m^{-3}}$]). On a uniform grid of width $\Delta x_1$, with $p$, $\rho$ and $\chi=\rho/p$ the point
 values and derivatives taken at the face, and $\mathcal W$ a reconstruction that returns the face value of the function
-whose cell averages it is given, to $O(h^4)$, the four expansions of the derivation note[^ch05-ref-off] are:
+whose cell averages it is given, to $O(\Delta x_1^4)$, the four expansions of the derivation note[^ch05-ref-off] are:
 
-1. ratio of averages: from $\overline q=q+\tfrac{h^2}{24}\partial_1^2q$ at the cell centre,
-   $\chi_i=\overline\rho_i/\overline p_i=\chi+\tfrac{h^2}{24}\big(\partial_1^2\rho-\chi\,\partial_1^2p\big)/p$;
-2. binomial bias: $\chi^s_i=\chi_i+\tfrac{h^2}{2}\partial_1^2\chi$, from the second moment 1 of $(1,4,6,4,1)/16$;
-3. two-cell mean: $\tfrac12(\chi^s_{i-1}+\chi^s_i)=\chi^s(x_{1,f})+\tfrac{h^2}{8}\partial_1^2\chi$;
+1. ratio of averages: from $\overline q=q+\tfrac{\Delta x_1^2}{24}\partial_1^2q$ at the cell centre,
+   $\chi_i=\overline\rho_i/\overline p_i=\chi+\tfrac{\Delta x_1^2}{24}\big(\partial_1^2\rho-\chi\,\partial_1^2p\big)/p$;
+2. binomial bias: $\chi^s_i=\chi_i+\tfrac{\Delta x_1^2}{2}\partial_1^2\chi$, from the second moment 1 of $(1,4,6,4,1)/16$;
+3. two-cell mean: $\tfrac12(\chi^s_{i-1}+\chi^s_i)=\chi^s(x_{1,f})+\tfrac{\Delta x_1^2}{8}\partial_1^2\chi$;
 4. cell pressure: $p_{\mathrm{ref},i}=\overline p_i+c$ and $p_{\mathrm{sf},f}=p(x_{1,f})+c$, with $c$ the column constant.
 
 Then, from @eq-ch05-refkernel-dens,
@@ -182,14 +183,14 @@ $$
 $$
 
 the last line because cell values that are point samples of a function $\psi$ are the cell averages of
-$\psi-\tfrac{h^2}{24}\partial_1^2\psi$. Subtracting, and using $\partial_1^2\rho=\chi\,\partial_1^2p+2\,\partial_1p\,\partial_1\chi+p\,\partial_1^2\chi$,
+$\psi-\tfrac{\Delta x_1^2}{24}\partial_1^2\psi$. Subtracting, and using $\partial_1^2\rho=\chi\,\partial_1^2p+2\,\partial_1p\,\partial_1\chi+p\,\partial_1^2\chi$,
 
 $$
 \eta_{\rho,f} = \frac{h^2}{12}\big(\partial_1p\,\partial_1\chi+2p\,\partial_1^2\chi\big) + \frac{h^2}{6}\,c\,\partial_1^2\chi + O(h^4).
 $$ {#eq-ch05-refkernel-offset}
 
-The anchor makes $c$ itself $O(h^2p)$ (the factor $\sinh\alpha_H/\alpha_H$ of @eq-ch05-refkernel-anchor), so the last term is
-$O(h^4)$ and the offset is the first term, with $\chi=\rho/p$ the point ratio. `[C14]` measures $\eta_{\rho,f}$ at the
+The anchor makes $c$ itself $O(\Delta x_1^2p)$ (the factor $\sinh\alpha_H/\alpha_H$ of @eq-ch05-refkernel-anchor), so the last term is
+$O(\Delta x_1^4)$ and the offset is the first term, with $\chi=\rho/p$ the point ratio. `[C14]` measures $\eta_{\rho,f}$ at the
 middle face of a polytrope against fifth-order linear reconstruction and finds the ratio to the first term 1.0022,
 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
 
@@ -272,7 +273,7 @@ for (int m = 0; m < 6; ++m) {
 if (value >= lower && value <= upper) cell_pref = value;
 ```
 
-`w6` are the weights $w^{\mathrm c}_m$ of @eq-ch05-refkernel-pref; the loop is the sum over the six faces; the last
+`w6` are the weights $w^{\mathrm c}_\iota$ of @eq-ch05-refkernel-pref; the loop is the sum over the six faces; the last
 line keeps the result only inside the cell's own two face pressures, otherwise `cell_pref` stays their mean.
 
 | what | code link | symbol | switch |

@@ -32,9 +32,10 @@ replaces the log-mean cell pressure by the average of a cubic through four face 
 :::
 
 Local symbols: $\mathsf F$ [-] the five-point filter; $\Pi$ [kg m$^{-2}$] the primitive of the cell reference
-density; $s$ the first cell of a stencil window, $l$ the cell offset in it and $m$ the face offset; $\ell_m$ the
-Lagrange basis polynomial of face $s+m$; $\tilde p$ [Pa] the cubic through four face pressures; $\zeta$ a
-Gauss-Legendre node. $\chi$, $\eta_{\rho,f}$, $\mathcal W$, $\Delta x_1$, $n_g$ and $\epsilon_{\mathrm m}$ are NOTATION's
+density; $i_0$ the first cell of a stencil window, $l$ the cell offset in it and $\iota$ the face offset; $\ell_\iota$
+the Lagrange basis polynomial of face $i_0+\iota$; $\tilde p$ [Pa] the cubic through four face pressures; $\zeta$ a
+Gauss-Legendre node; $n_{\mathrm{poly}}$ the polytropic index and $\mathcal S_i$ [J kg$^{-1}$ K$^{-1}$ s$^{-1}$] the entropy
+tendency of cell $i$, both in the order test. $\vartheta$, $\lambda_w$, $\chi$, $\eta_{\rho,f}$, $\mathcal W$, $\Delta x_1$, $n_g$ and $\epsilon_{\mathrm m}$ are NOTATION's
 or @sec-ch05-refkernel's.
 
 Guards keep the kernel's values wherever the new ones would leave the local range or the column is under-resolved,
@@ -63,7 +64,7 @@ $$
 $$ {#eq-ch05-wbref4-dref}
 
 $\mathsf F$ has unit sum, zero first, second and third moments and fourth moment $-\tfrac32$ in cell units, and zero response
-at $k\Delta x_1=\pi$ (`[C3]`), so $\mathsf F\chi=\chi+O(\Delta x_1^4)$ for smooth $\chi$ and the two-cell mode is still removed; its reach, $\pm2$, is
+to the two-cell mode, wavelength $\lambda_w=2\Delta x_1$ ($\vartheta=\pi/2$) (`[C3]`), so $\mathsf F\chi=\chi+O(\Delta x_1^4)$ for smooth $\chi$ and the two-cell mode is still removed; its reach, $\pm2$, is
 the binomial's, so ghost depth and seam exchange are unchanged. With $p_{\mathrm{ref}}=\overline p+c+O(\Delta x_1^6)$
 (@sec-ch05-refkernel) the cell reference is $\overline\rho+c\chi+O(\Delta x_1^4)$, and the smooth $c\chi$ is carried
 consistently by the face value below. @eq-ch05-wbref4-dref is built in `wb_ref4_stencils` as the filter row `F` ($\mathsf F$)
@@ -90,19 +91,19 @@ same reference. Ghosts are never read.
 $$
 \begin{aligned}
 \rho_{\mathrm{sf},f} &= \partial_1 \Pi(x_{1,f}), \\
-\Pi(x_{1,s+m}) &= \sum_{l<m}\rho_{\mathrm{ref},s+l}\,\Delta x_{1,s+l},
+\Pi(x_{1,i_0+\iota}) &= \sum_{l<\iota}\rho_{\mathrm{ref},i_0+l}\,\Delta x_{1,i_0+l},
 \end{aligned}
 $$ {#eq-ch05-wbref4-face}
 
-with $\Pi$ the quartic through the primitive at the five faces $m=0..4$ (four cells), window $s=f-2$ kept inside the owned cells at a
-clamped wall, physical spacing. On a uniform grid of width $h$, $\Pi$ takes the values $0,\ h\rho_{\mathrm{ref},s},\ h(\rho_{\mathrm{ref},s}+\rho_{\mathrm{ref},s+1}),\dots$
-at the faces $m=0..4$; writing $\Pi$ in the Lagrange basis $\ell_m$ of those five faces and differentiating,
-$\rho_{\mathrm{sf},s+m}=\partial_1\Pi(x_{1,s+m})=\sum_{l=0}^{3}\rho_{\mathrm{ref},s+l}\,h\sum_{m'>l}\partial_1\ell_{m'}(x_{1,s+m})$, which on
-$\rho_{\mathrm{ref},s..s+3}$ is $(25,-23,13,-3)/12$ at $m=0$ (the wall face), $(3,13,-5,1)/12$ at $m=1$ (the next) and
-$(-1,7,7,-1)/12$ at $m=2$ (the interior face, window $s=f-2$) (`[C8]`). The face is exact for cubic
+with $\Pi$ the quartic through the primitive at the five faces $\iota=0..4$ (four cells), window $i_0=f-2$ kept inside the owned cells at a
+clamped wall, physical spacing. On a uniform grid of width $\Delta x_1$, $\Pi$ takes the values $0,\ \Delta x_1\rho_{\mathrm{ref},i_0},\ \Delta x_1(\rho_{\mathrm{ref},i_0}+\rho_{\mathrm{ref},i_0+1}),\dots$
+at the faces $\iota=0..4$; writing $\Pi$ in the Lagrange basis $\ell_\iota$ of those five faces and differentiating,
+$\rho_{\mathrm{sf},i_0+\iota}=\partial_1\Pi(x_{1,i_0+\iota})=\sum_{l=0}^{3}\rho_{\mathrm{ref},i_0+l}\,\Delta x_1\sum_{\iota'>l}\partial_1\ell_{\iota'}(x_{1,i_0+\iota})$, which on
+$\rho_{\mathrm{ref},i_0..i_0+3}$ is $(25,-23,13,-3)/12$ at $\iota=0$ (the wall face), $(3,13,-5,1)/12$ at $\iota=1$ (the next) and
+$(-1,7,7,-1)/12$ at $\iota=2$ (the interior face, window $i_0=f-2$) (`[C8]`). The face is exact for cubic
 point profiles on any grid, so $\eta_{\rho,f}=\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]=O(\Delta x_1^4)$ (`[C14]`:
 mid-column offset $3.22\times10^{-12}$, $5.18\times10^{-14}$, $6.91\times10^{-16}$ relative at $n_1$ = 32, 64, 128, orders
-5.96 and 6.23, against order 2.00 for the kernel; at $n_1=256$ it is $1.38\times10^{-16}$, below $\epsilon_{\mathrm m}$, so
+5.96 and 6.23, against order 2.00 for the kernel; at $n_1=256$ it is $1.38\times10^{-16}$, below $\epsilon_{\mathrm \iota}$, so
 that level measures round-off, not truncation). @eq-ch05-wbref4-face is built as the weights `awt`
 ({{< code src/hydro/wb_ref4.cpp wb_ref4_stencils >}})
 and applied by `wb_ref4_faces`
@@ -178,10 +179,10 @@ from snapy_report.ch05.fig_wbref4_stencils import make_fig
 make_fig()
 ```
 
-**The oracle and the measured order.** The test drives a neutral polytrope ($\gamma=5/3$, $g=m+1$ with
-$m=1/(\gamma-1)$, $T_0=1+L_z-z$) seeded with a divergence-free overturning mode of amplitude $10^{-4}$, takes one RK3
-step, and measures $N^2_{\mathrm{eff}}=\tfrac g\gamma\sum_i(-\delta s_i)v_{1,i}/\sum_iv_{1,i}^2$ from the entropy tendency of the mode
-minus that of the rest state. For this column the exact cell-average tendencies vanish at linear order, so every
+**The oracle and the measured order.** The test drives a neutral polytrope ($\gamma=5/3$, $g=n_{\mathrm{poly}}+1$ with
+the polytropic index $n_{\mathrm{poly}}=1/(\gamma-1)$, $T_0=1+L_z-z$) seeded with a divergence-free overturning mode of amplitude $10^{-4}$, takes one RK3
+step, and measures $N^2_{\mathrm{eff}}=\tfrac g\gamma\sum_i(-\mathcal S_i)v_{1,i}/\sum_iv_{1,i}^2$ from the entropy tendency $\mathcal S_i$ of
+the mode minus that of the rest state. For this column the exact cell-average tendencies vanish at linear order, so every
 $N^2_{\mathrm{eff}}$ is scheme error. @fig-ch05-wbref4-order shows the four arms at the pin.[^ch05-wb4-fig]
 
 [^ch05-wb4-fig]: Data `src/snapy_report/ch05/data/wb_ref4_order.json`, from `python tests/test_wb_ref4_order.py` (from the
@@ -293,7 +294,7 @@ The only user-facing error is the ghost-depth check of step 2.
 : Tests of `SNAP_WB_REF4`. {#tbl-ch05-wbref4-tests}
 
 `[C3]` confirms the moments of $\mathsf F$ (unit sum, zero first to third, fourth $-\tfrac32$) and its zero response at
-$k\Delta x_1=\pi$. `[C7]` confirms the two cubic wall rows and that the two end cells keep $\chi$ exactly. `[C8]`
+the two-cell mode, $\vartheta=\pi/2$. `[C7]` confirms the two cubic wall rows and that the two end cells keep $\chi$ exactly. `[C8]`
 derives the three face rows, interior, wall and next, in exact rationals. `[C14]` measures the face offset quoted in
 the Derivation, order 2.00 for the kernel and about 6 with the switch until round-off.
 
