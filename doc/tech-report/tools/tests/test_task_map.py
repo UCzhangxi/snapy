@@ -112,3 +112,22 @@ def test_task_map_citations_do_not_make_a_section_cited(tmp_path):
     (book / "chapters" / "17-appendices" / "_appg-task-map.qmd").write_text("**Q-001.** Why? See One, @sec-ch01-one.\n")
     _, detail = rg.xref_counts(book)
     assert "ch01: section sec-ch01-one is not cited from another chapter" in detail
+
+
+def test_the_render_gate_runs_the_task_map_gate(tmp_path):
+    import shutil
+    import render_gate as rg
+    report = tmp_path / "report"
+    shutil.copytree(BOOK, report / "book")
+    (report / "tools").mkdir()
+    data = report / "tools" / "task-map.yaml"
+    shutil.copy(FIX / "good.yaml", data)
+    frag = report / "book" / "chapters" / "17-appendices" / "_appg-task-map.qmd"
+    assert g.main(["--data", str(data), "--book", str(report / "book"), "--fragment", str(frag)]) == 0
+    assert rg.gate_task_map(report / "book") == 0
+    shutil.copy(FIX / "missing-id.yaml", data)
+    assert rg.gate_task_map(report / "book") == 1
+    shutil.copy(FIX / "broken-dest.yaml", data)
+    assert rg.gate_task_map(report / "book") >= 1
+    data.unlink()
+    assert rg.gate_task_map(report / "book") == 0   # not the report layout: skipped

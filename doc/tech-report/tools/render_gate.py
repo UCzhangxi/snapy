@@ -1127,6 +1127,33 @@ def gate_chapter_list(book):
     return 0 if status == 0 else max(1, len([m for m in msgs if not m.startswith("fix:")]))
 
 
+def gate_task_map(book):
+    """N2: every question of the bank has one task-map record, every destination is a label of the book, and the
+    committed Appendix G is a fresh generation (tools/gen_task_map.py). Checked in the report's layout, where
+    tools/task-map.yaml is."""
+    data = book.parent / "tools" / "task-map.yaml"
+    if not data.exists():
+        print("\n[task-map gate] no tools/task-map.yaml next to the book: skipped")
+        return 0
+    import gen_task_map
+    try:
+        records = gen_task_map.load(data.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        print(f"\n[task-map gate] {data.name} does not parse: {exc}")
+        return 1
+    bad = gen_task_map.problems(records, gen_task_map.labels(book))
+    frag = book / "chapters" / "17-appendices" / gen_task_map.FRAGMENT.name
+    if not bad and (not frag.exists() or frag.read_text(encoding="utf-8")
+                    != gen_task_map.render(records, gen_task_map.labels(book))):
+        bad.append(f"{frag.name} is stale; run python3 tools/gen_task_map.py")
+    c = gen_task_map.counts(records)
+    print("\n[task-map gate] " + (f"{sum(c.values())} questions, every one with a record and a destination or a reason"
+                                    if not bad else f"{len(bad)} problem(s)"))
+    for m in bad:
+        print(f"  ✗ {m}")
+    return len(bad)
+
+
 def gate_figstyle(book):
     """Figure code styles only through snapy_report.figstyle; per-chapter counts may only shrink
     (tools/check_figstyle.py, STYLE 6). Checked in the report's layout, where the baseline file is."""
@@ -1319,6 +1346,7 @@ def main(argv):
                 "unwritten-scheme refs": sorted(unwritten_scheme_refs(book))}
     record("unwritten-chapter refs", gate_unwritten_chapter_refs(book))
     record("unwritten-scheme refs", gate_unwritten_scheme_refs(book))
+    record("task map", gate_task_map(book))
     pending, errors = gate_snapy_report(book)
     results["snapy_report"] = "fail" if errors else ("pending" if pending else "pass")
     record("frozen placeholders", gate_frozen_placeholders(book, pending))
