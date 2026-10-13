@@ -30,6 +30,9 @@ restart file replaces all of that with saved tensors.
 **Evidence.** `test_scalar.<b>` and `test_mesh_multi_block.<b>` (`allclose`, exact shapes); see the Tests layer.
 :::
 
+Local symbols: $r_n$ is the mixing ratio of passive scalar $n$ per unit dry mass (`scalar_r`). $r_n^{\mathrm{back}}$
+is the ratio recovered by dividing the seeded scalar density by the conserved dry density.
+
 ### Derivation
 
 No separate derivation: this section describes an interface or control-flow path, and the operators are derived
@@ -71,7 +74,7 @@ make_fig()
    background must keep ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}}).
 3. The scalar density is seeded as ratio times the conserved dry density. The ratio the solver later recovers by
    division is then the one the caller gave, up to one rounding per entry. A product and a quotient each round once,
-   so $|r^{\mathrm{back}} - r| \le 2\,\delta_{\mathrm{mach}}\,|r|$ with $\delta_{\mathrm{mach}} = 2^{-53}$.
+   so $|r_n^{\mathrm{back}} - r_n| \le 2\,\delta_{\mathrm{mach}}\,|r_n|$ with $\delta_{\mathrm{mach}} = 2^{-53}$.
 
 ### Code
 
@@ -104,7 +107,9 @@ In Python a restart goes through `block.initialize_from_restart(path)`; in C++ t
 `initialize`. Both return the saved time instead of zero.
 
 Refused: a `hydro_w` or `scalar_r` whose shape is not (variables, $x_3$, $x_2$, $x_1$) of the block, and a missing
-`scalar_r` when the card declares scalars. Each refusal comes with a message naming the expected shape. The lines that
+`scalar_r` when the card declares scalars. The `hydro_w` refusal names the expected shape in its message; the two
+`scalar_r` refusals say only that the tensor is required or has an incorrect shape
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}}). The lines that
 capture the outflow background and fill the physical ghosts are these
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}}):
 

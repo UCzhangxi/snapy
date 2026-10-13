@@ -28,6 +28,9 @@ just computed. This section follows that call, which runs after the hydro call i
 **Evidence.** `test_scalar.<b>`: shape, finiteness and the bound ($10^{-5}$ float32, $10^{-12}$ float64); see Tests.
 :::
 
+Local symbols: $\rho_n$ is the density of passive scalar $n$ (`scalar_s`) and $r_n = \rho_n/\rho_{\mathrm{d}}$ its
+mixing ratio per unit dry mass (`scalar_r`).
+
 ### Derivation
 
 No separate derivation: this section describes an interface or control-flow path, and the operators are derived
@@ -65,7 +68,7 @@ make_fig()
 1. The scalar is advected as a ratio so that it rides on the hydro's dry-mass flux exactly. The Riemann call for the
    scalar receives the hydro's $x_1$ flux of `IDN` as the mass flux
    ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). A uniform ratio is thus transported as a uniform ratio.
-2. The ratio is formed by one division per cell, $r = s/\rho_{\mathrm{d}}$, rounded once. The relative error is at
+2. The ratio is formed by one division per cell, $r_n = \rho_n/\rho_{\mathrm{d}}$, rounded once. The relative error is at
    most $\delta_{\mathrm{mach}} = 2^{-53}$, and the product that forms the flux from it adds one more.
 3. The donor factor is exchanged raw, because the donor of a seam face is the neighbour's edge cell and an
    interpolated ghost is not its factor (@sec-ch11-exchange).
@@ -95,6 +98,8 @@ make_fig()
 ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}):
 
 ```yaml
+dynamics:
+  equation-of-state: {type: ideal-gas, limiter: true}  # a positive upper-bound needs the limiter
 scalar:
   names: [dye, tracer2]   # sets nvar = 2
   upper-bound: 1.0        # default -1: no bound
