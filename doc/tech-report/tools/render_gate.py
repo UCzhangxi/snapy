@@ -1226,6 +1226,24 @@ def gate_tables(book):
     return len(msgs)
 
 
+def gate_do_cards(book):
+    """The runnable cards against tools/do-cards.yaml (STYLE "Reader standards", N8; tools/check_do_cards.py): the same
+    card set in the sources and the data file, a deck for every runnable card, every deck resolving in the repository,
+    and no stale named exception."""
+    report = book.parent
+    data = report / "tools" / "do-cards.yaml"
+    if not data.exists():
+        print("\n[do-cards gate] no tools/do-cards.yaml next to the book: skipped")
+        return 0
+    import check_do_cards
+    status, msgs = check_do_cards.check(report, data)
+    print("\n[do-cards gate] " + ("every card has a record, a deck that resolves, and no stale exception"
+                                  if status == 0 else f"{len(msgs)} problem(s)"))
+    for m in msgs:
+        print(f"  ✗ {m}")
+    return len(msgs)
+
+
 def gate_hand_typed_chapters(book):
     """A chapter named by a hand-typed number ("Chapter 7", "chapter 12") instead of a cross-ref
     (@sec-chNN) or, for a chapter not written yet, its name in words (STYLE 10.1)."""
@@ -1339,6 +1357,7 @@ def main(argv):
                     ("chapter list", gate_chapter_list),
                     ("figstyle", gate_figstyle),
                     ("tables", gate_tables),
+                    ("do cards", gate_do_cards),
                     ("hand-typed chapter", gate_hand_typed_chapters))
     for name, gate in source_gates:
         record(name, gate(book))
