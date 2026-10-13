@@ -14,11 +14,14 @@ Every measure is exact: the $x_1$ face area is $r^2$ times the exact solid angle
 $\tfrac13(r_+^3 - r_-^3)$ times the same solid angle, and the $x_2$, $x_3$ face areas are planar sectors. The curvature
 sources are built so that a uniform pressure at rest is in exact discrete balance.
 
-Local symbols (flagged to the editor): $X = \tan\xi$, $Y = \tan\eta$ [-]; $C = \sqrt{1+X^2}$, $D = \sqrt{1+Y^2}$,
+Local symbols (flagged to the editor): $\xi, \eta \in [-\pi/4, \pi/4]$ the two panel angles [rad]; $X = \tan\xi$, $Y = \tan\eta$ [-]; $C = \sqrt{1+X^2}$, $D = \sqrt{1+Y^2}$,
 $Q = \sqrt{1+X^2+Y^2}$ [-]; $\psi$ the angle between the $\xi$ and $\eta$ coordinate lines on the sphere [rad],
 whose cosine is the named panel metric `cosine_cell_kj` at cell centres (`cosine_face2_kj`, `cosine_face3_kj` at
 $x_2$, $x_3$ faces) and whose sine is `sine_cell_kj` (`sine_face2_kj`, `sine_face3_kj`); $\cos\psi$ is a
-geometric quantity only, unrelated to any temperature; $\hat{\mathbf u}$ the unit position vector on the sphere [-].
+geometric quantity only, unrelated to any temperature; $\hat{\mathbf u}$ the unit position vector on the sphere [-];
+$\hat{\mathbf t}_\xi, \hat{\mathbf t}_\eta$ the unit tangent vectors along the $\xi$ and $\eta$ coordinate lines [-];
+$\mathbf v_h = v_2\hat{\mathbf t}_\xi + v_3\hat{\mathbf t}_\eta$ the horizontal velocity [$\mathrm{m\,s^{-1}}$], with
+$\lvert\mathbf v_h\rvert^2 = v_2v_{\underline 2} + v_3v_{\underline 3}$.
 
 ### Summary
 
@@ -67,18 +70,38 @@ $$ {#eq-ch03-gnomonic-angle}
 as `cosine_face2_kj`, `sine_face2_kj`, `cosine_face3_kj` and `sine_face3_kj` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}). $\cos\psi$ vanishes on the centre lines $X = 0$ or
 $Y = 0$ and is $-\tfrac12$ at the panel corners, where $X^2 = Y^2 = 1$.
 
-**Solid angle.** The area element of the unit sphere is
-$\lvert\partial_\xi\hat{\mathbf u}\times\partial_\eta\hat{\mathbf u}\rvert\,\mathrm{d}\xi\,\mathrm{d}\eta
-= \sin\psi\,C^2\tfrac{D}{Q^2}\,D^2\tfrac{C}{Q^2}\,\mathrm{d}\xi\,\mathrm{d}\eta
-= \mathrm{d}X\,\mathrm{d}Y/Q^3$. The function $\arctan(XY/Q)$ has mixed derivative $Q^{-3}$, so the solid
-angle of the cell $[X_{j-1/2}, X_{j+1/2}]\times[Y_{k-1/2}, Y_{k+1/2}]$ is the corner sum
+**Solid angle.** With $\partial_\xi = C^2\partial_X$, $\partial_\eta = D^2\partial_Y$ and the lengths and angle above,
+the area element of the unit sphere is
+
+$$
+\begin{aligned}
+\lvert\partial_\xi\hat{\mathbf u}\times\partial_\eta\hat{\mathbf u}\rvert
+&= C^2D^2\,\lvert\partial_X\hat{\mathbf u}\rvert\,\lvert\partial_Y\hat{\mathbf u}\rvert\sin\psi
+ = C^2D^2\,\frac{D}{Q^2}\,\frac{C}{Q^2}\,\frac{Q}{CD} = \frac{C^2D^2}{Q^3}, \\
+\mathrm{d}\Omega &= \frac{C^2D^2}{Q^3}\,\mathrm{d}\xi\,\mathrm{d}\eta = \frac{\mathrm{d}X\,\mathrm{d}Y}{Q^3}.
+\end{aligned}
+$$
+
+The integrand has the antiderivative $\arctan(XY/Q)$ in both variables. Using $1 + X^2Y^2/Q^2 = C^2D^2/Q^2$ and
+$Q^2 - X^2 = D^2$,
+
+$$
+\begin{aligned}
+\partial_X\arctan\frac{XY}{Q} &= \frac{YD^2/Q^3}{C^2D^2/Q^2} = \frac{Y}{C^2Q}, \\
+\partial_Y\frac{Y}{C^2Q} &= \frac{Q^2 - Y^2}{C^2Q^3} = \frac{C^2}{C^2Q^3} = \frac{1}{Q^3}.
+\end{aligned}
+$$
+
+So the solid angle of the cell $[X_{j-1/2}, X_{j+1/2}]\times[Y_{k-1/2}, Y_{k+1/2}]$ is the corner sum
 
 $$
 \varpi_{jk} = \sum_{a,b\in\{\pm\}} ab\,\arctan\!\frac{X_{j+a/2}\,Y_{k+b/2}}{\sqrt{1 + X_{j+a/2}^2 + Y_{k+b/2}^2}}.
 $$ {#eq-ch03-gnomonic-solidangle}
 
 @eq-ch03-gnomonic-solidangle is `solid_angle_kj` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}); over a panel the
-corner sums telescope to $4\arctan(1/\sqrt3) = 2\pi/3$, and six panels give $4\pi$.
+corner sums telescope to the four panel corners, where $X^2 = Y^2 = 1$ and $\lvert XY\rvert/Q = 1/\sqrt3$. The signs
+$ab$ and the sign of $XY$ agree at every corner, so each adds $\arctan(1/\sqrt3) = \pi/6$, and the panel has
+$4\cdot\pi/6 = 2\pi/3$. Six panels give $4\pi$.
 
 **Measures.** With $\varpi_{jk}$ the volume and the $x_1$ face area are exact:
 
@@ -114,15 +137,108 @@ v_3\sin\psi)$, which keeps $\lvert\mathbf v\rvert^2$; the $x_2$ and $x_3$ faces 
 of $\psi$ and the normal along the face normal.
 
 **Pressure balance.** Take a uniform pressure $p$ at rest. In the $x_2$ face frame the flux is $p$ in the normal slot
-and zero in the tangential slot; transforming back gives the covariant $m_2$ flux $p\sin\psi_{j\pm1/2}$ and a zero
-$m_3$ flux, and the $x_3$ faces give a zero $m_2$ flux. The $m_2$ divergence is therefore
+$t_n$ and zero in the tangential slot $t_t$. `flux2global2_` takes the face-frame pair to contravariant and then to
+covariant components ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::flux2global2_ >}}):
+
+$$
+\begin{aligned}
+(t^2, t^3) &= \left(\frac{t_n}{\sin\psi},\ t_t - \frac{\cos\psi}{\sin\psi}\,t_n\right), \\
+F_{\underline 2} &= t^2 + t^3\cos\psi = t_n\sin\psi + t_t\cos\psi, \qquad
+F_{\underline 3} = t^3 + t^2\cos\psi = t_t,
+\end{aligned}
+$$
+
+with $\psi$ the face value. For $(t_n, t_t) = (p, 0)$ this gives the covariant $m_2$ flux $p\sin\psi_{j\pm1/2}$ and a zero
+$m_3$ flux; by the same steps the $x_3$ faces give a zero $m_2$ flux. The $m_2$ divergence is therefore
 $\Delta_j[A\,p\sin\psi]/V_i$, and the code subtracts exactly that through the coefficient
 $\Delta_j[A\sin\psi]/V_i$, `x_ov_rD_kji` ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}). A uniform pressure at rest
-therefore produces no $m_2$ or $m_3$ tendency, to round-off. The velocity terms of the sources,
-$\rho v_3^2\sin^2\psi$ beside $p$ and $-\rho v_1 v_{\underline 2}/r$, and the centripetal radial term
-$\rho(v_2v_{\underline 2} + v_3v_{\underline 3})/r = \rho\lvert\mathbf v_h\rvert^2/r$, follow the notebook's flux-form
-metric terms; they are stated from the code and are not re-derived in this draft (marked re-derive). In the $m_1$
-equation the face-pressure form of @sec-ch03-sphpolar is used whenever face pressures exist.
+therefore produces no $m_2$ or $m_3$ tendency, to round-off.
+
+**Velocity sources.** The stored $m_2 = \rho v_{\underline 2} = \rho\mathbf v\cdot\hat{\mathbf t}_\xi$ is the momentum
+projected on a unit vector that turns in space. Dotting $\partial_t(\rho\mathbf v) + \nabla\cdot\mathsf T = 0$ with
+$\hat{\mathbf t}_\xi$ and using $\nabla\cdot(\mathsf T\cdot\hat{\mathbf t}) = (\nabla\cdot\mathsf T)\cdot\hat{\mathbf t} +
+\mathsf T : \nabla\hat{\mathbf t}$ for a symmetric $\mathsf T$ gives
+
+$$
+\begin{aligned}
+\partial_t m_2 + \nabla\cdot\left(\mathsf T\cdot\hat{\mathbf t}_\xi\right) &= \mathsf T : \nabla\hat{\mathbf t}_\xi \\
+&= p\,\nabla\cdot\hat{\mathbf t}_\xi + \rho\,\mathbf v\cdot\left(\nabla\hat{\mathbf t}_\xi\right)\cdot\mathbf v .
+\end{aligned}
+$$
+
+The left side is the code's flux form: the flux of $m_2$ through a face with unit normal $\mathbf n$ is
+$\mathbf n\cdot\mathsf T\cdot\hat{\mathbf t}_\xi$, as in the pressure balance. The right side is the source. Three facts
+about $\hat{\mathbf t}_\xi$ evaluate it.
+
+1. $\hat{\mathbf t}_\xi$ does not depend on $r$, and on the sphere of radius $r$ every tangential derivative carries $1/r$.
+2. A $\xi$ line ($\eta$ fixed) is the cut of the sphere by the plane through the centre that contains the points
+   $(1, X, Y)$, $X$ varying, so it is a great circle. Along it $\hat{\mathbf t}_\xi$ turns only towards
+   $-\hat{\mathbf u}$, with no tangential part.
+3. Since $\hat{\mathbf t}_\xi\cdot\hat{\mathbf u} = 0$, a step $\mathbf d$ along the sphere changes
+   $\hat{\mathbf t}_\xi\cdot\hat{\mathbf u}$ by zero, so
+   $\left(\mathbf d\cdot\nabla\hat{\mathbf t}_\xi\right)\cdot\hat{\mathbf u} = -\hat{\mathbf t}_\xi\cdot\mathbf d/r$.
+
+The divergence is the flux of $\hat{\mathbf t}_\xi$ through the faces of a cell. It is nonzero only through the $x_2$
+faces, where $\mathbf n\cdot\hat{\mathbf t}_\xi = \sin\psi$; the area of an $x_2$ face per unit $\eta$ and $r$ is
+$r\lvert\partial_\eta\hat{\mathbf u}\rvert = rCD^2/Q^2$. With the area element above,
+
+$$
+\begin{aligned}
+\nabla\cdot\hat{\mathbf t}_\xi
+&= \frac{1}{r\,C^2D^2/Q^3}\,\partial_\xi\!\left(\frac{CD^2}{Q^2}\,\frac{Q}{CD}\right)
+ = \frac{Q^3}{rC^2D^2}\,C^2\,\partial_X\frac{D}{Q} \\
+&= \frac{Q^3}{rD^2}\left(-\frac{XD}{Q^3}\right) = -\frac{X}{rD}.
+\end{aligned}
+$$
+
+For the velocity term write $\mathbf v = v_1\hat{\mathbf u} + \mathbf v_h$. By fact 1 the radial part of the step does
+not turn $\hat{\mathbf t}_\xi$, so only $\mathbf v_h\cdot\nabla\hat{\mathbf t}_\xi$ remains. Its radial component is, by
+fact 3, $-\hat{\mathbf t}_\xi\cdot\mathbf v_h/r = -v_{\underline 2}/r$, which contributes $-\rho v_1v_{\underline 2}/r$. Its
+tangential component, by fact 2, comes only from the $\eta$ part of $\mathbf v_h$. It is perpendicular to
+$\hat{\mathbf t}_\xi$, so it meets only the part of $\mathbf v_h$ across the $\xi$ line, $v_3\sin\psi$. To find the
+turning rate, take the unit vector $\hat{\mathbf n} = (\hat{\mathbf t}_\eta - \cos\psi\,\hat{\mathbf t}_\xi)/\sin\psi$
+across the $\xi$ line. In the orthonormal pair $(\hat{\mathbf t}_\xi, \hat{\mathbf n})$ the surface divergence is
+$(\partial_{\hat{\mathbf t}_\xi}\hat{\mathbf t}_\xi)\cdot\hat{\mathbf t}_\xi + (\partial_{\hat{\mathbf n}}\hat{\mathbf t}_\xi)\cdot\hat{\mathbf n}$;
+the first term is zero for a unit field, and by fact 2 so is the tangential part of
+$\partial_{\hat{\mathbf t}_\xi}\hat{\mathbf t}_\xi$. Hence
+
+$$
+\begin{aligned}
+\nabla\cdot\hat{\mathbf t}_\xi &= \left(\partial_{\hat{\mathbf n}}\hat{\mathbf t}_\xi\right)\cdot\hat{\mathbf n}
+ = \frac{\left(\partial_{\hat{\mathbf t}_\eta}\hat{\mathbf t}_\xi - \cos\psi\,\partial_{\hat{\mathbf t}_\xi}\hat{\mathbf t}_\xi\right)\cdot\hat{\mathbf n}}{\sin\psi}
+ = \frac{\left(\partial_{\hat{\mathbf t}_\eta}\hat{\mathbf t}_\xi\right)\cdot\hat{\mathbf n}}{\sin\psi}, \\
+\rho\,\mathbf v_h\cdot\left(\nabla\hat{\mathbf t}_\xi\right)\cdot\mathbf v_h
+ &= \rho\,v_3\left(\partial_{\hat{\mathbf t}_\eta}\hat{\mathbf t}_\xi\right)\cdot\hat{\mathbf n}\;v_3\sin\psi
+ = \rho\,v_3^2\sin^2\psi\;\nabla\cdot\hat{\mathbf t}_\xi ,
+\end{aligned}
+$$
+
+which with the divergence above gives
+
+$$
+\rho\,\mathbf v_h\cdot\left(\nabla\hat{\mathbf t}_\xi\right)\cdot\mathbf v_h = -\frac{X}{rD}\,\rho v_3^2\sin^2\psi .
+$$
+
+Adding the three parts,
+
+$$
+\partial_t m_2 + \nabla\cdot\left(\mathsf T\cdot\hat{\mathbf t}_\xi\right)
+= -\frac{X}{rD}\left(p + \rho v_3^2\sin^2\psi\right) - \frac{\rho v_1v_{\underline 2}}{r}.
+$$ {#eq-ch03-gnomonic-src2}
+
+The $m_3$ source is the same with $\xi\leftrightarrow\eta$, $X\leftrightarrow Y$, $C\leftrightarrow D$ and
+$2\leftrightarrow 3$. The radial source follows from the same steps with $\hat{\mathbf u}$ in place of
+$\hat{\mathbf t}_\xi$: $\nabla\cdot\hat{\mathbf u} = 2/r$ and $\mathbf v\cdot(\nabla\hat{\mathbf u})\cdot\mathbf v =
+\lvert\mathbf v_h\rvert^2/r$, so the $m_1$ source is $(\rho\lvert\mathbf v_h\rvert^2 + 2p)/r$.
+
+The code evaluates @eq-ch03-gnomonic-src2 with cell values
+({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}). The factor $-X/(rD)$ is the discrete divergence
+$\Delta_j[A\sin\psi]/V_i$ of $\hat{\mathbf t}_\xi$, `x_ov_rD_kji`, so the pressure part is the balance above. The velocity
+part is `x_ov_rD_kji * rho * v3 * v3 * sine2` and `- rho * v1 * v_2 / radius`, with `radius` the midpoint `x1v`.
+The radial source is `rho * (v2 * v_2 + v3 * v_3) / radius` plus the pressure term. In the $m_1$ equation the
+face-pressure form of @sec-ch03-sphpolar replaces $2p/r$ whenever face pressures exist. The two velocity identities
+were checked numerically at three panel points to twelve digits (`-(X/D) v3^2 sin^2 psi` for the tangential part,
+`-v_2` for the radial part).
 
 What is exact: @eq-ch03-gnomonic-angle to @eq-ch03-gnomonic-lower and the uniform-pressure balance. What is
 truncated: the products of cell values in the velocity source terms, at $O(\Delta x_a^2)$ in each direction $a$.

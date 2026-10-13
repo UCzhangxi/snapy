@@ -52,7 +52,18 @@ test keeps the flag equal to the shift for every coordinate type.
 The derivation is in {{< code docs/derivations/289-covariance-x3-curved.md >}}
 §2.7 (the moment) and §2A.1 (the two centroids); it is rewritten here in the report's notation. The angular factor
 of an $x_2$/$x_3$ face does not vary along $x_1$ on one face, so it cancels in every average and the face weight is
-$w(r) = r$. With $\Delta x_1 = \Delta x_{1,i}$ and $x^{\mathrm{m}} = x^{\mathrm{m}}_{1,i} = \tfrac12(r_- + r_+)$,
+$w(r) = r$. With $\Delta x_1 = \Delta x_{1,i}$ and $x^{\mathrm{m}} = x^{\mathrm{m}}_{1,i} = \tfrac12(r_- + r_+)$, so that
+$r_\pm = x^{\mathrm m} \pm \Delta x_1/2$, the three integrals are
+
+$$
+\begin{aligned}
+I_1 &= \tfrac12\left(r_+^2 - r_-^2\right) = x^{\mathrm m}\Delta x_1, \\
+I_2 &= \tfrac13\left(r_+^3 - r_-^3\right) = \Delta x_1\left((x^{\mathrm m})^2 + \frac{\Delta x_1^2}{12}\right), \\
+I_3 &= \tfrac14\left(r_+^4 - r_-^4\right) = \Delta x_1\,x^{\mathrm m}\left((x^{\mathrm m})^2 + \frac{\Delta x_1^2}{4}\right),
+\end{aligned}
+$$
+
+and the two centroids are their ratios:
 
 $$
 \begin{aligned}
@@ -62,14 +73,39 @@ x_{1,i} &= \frac{I_3}{I_2} = \frac{3x^{\mathrm{m}}\left(4(x^{\mathrm{m}})^2 + \D
 $$
 
 the second being the spherical-polar volume centroid of @eq-ch03-sphpolar-centroids. The second central moment on the
-face measure is $(I_3 - 2x^{\mathrm{A}}I_2 + (x^{\mathrm{A}})^2I_1)/I_1$, which simplifies to
+face measure is $(I_3 - 2x^{\mathrm{A}}I_2 + (x^{\mathrm{A}})^2I_1)/I_1 = I_3/I_1 - (x^{\mathrm A}_{1,i})^2$, since
+$x^{\mathrm A}_{1,i}I_1 = I_2$. With the integrals above,
+
+$$
+\begin{aligned}
+\frac{I_3}{I_1} - \left(x^{\mathrm A}_{1,i}\right)^2
+&= (x^{\mathrm m})^2 + \frac{\Delta x_1^2}{4} - \frac{\left((x^{\mathrm m})^2 + \Delta x_1^2/12\right)^2}{(x^{\mathrm m})^2} \\
+&= (x^{\mathrm m})^2 + \frac{\Delta x_1^2}{4} - (x^{\mathrm m})^2 - \frac{\Delta x_1^2}{6} - \frac{\Delta x_1^4}{144(x^{\mathrm m})^2}
+ = \frac{\Delta x_1^2}{12} - \frac{\Delta x_1^4}{144(x^{\mathrm m})^2},
+\end{aligned}
+$$
+
+that is,
 
 $$
 \mathtt{face\_moment2\_x1}_i = \frac{\Delta x_1^2}{12}\left(1 - \frac{\Delta x_1^2}{12(x^{\mathrm{m}})^2}\right).
 $$ {#eq-ch03-facemoments-moment}
 
 @eq-ch03-facemoments-moment is `radial_face_moment2_` ({{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_moment2_ >}}). Subtracting the two
-centroids directly would cancel, because both are close to $x^{\mathrm{m}}$; doing the algebra first gives the exact
+centroids directly would cancel, because both are close to $x^{\mathrm{m}}$. Doing the algebra first, over the common
+denominator $12x^{\mathrm m}\left(12(x^{\mathrm m})^2 + \Delta x_1^2\right)$,
+
+$$
+\begin{aligned}
+x_{1,i} - x^{\mathrm A}_{1,i}
+&= \frac{36(x^{\mathrm m})^2\left(4(x^{\mathrm m})^2 + \Delta x_1^2\right) - \left(12(x^{\mathrm m})^2 + \Delta x_1^2\right)^2}
+        {12x^{\mathrm m}\left(12(x^{\mathrm m})^2 + \Delta x_1^2\right)} \\
+&= \frac{144(x^{\mathrm m})^4 + 36(x^{\mathrm m})^2\Delta x_1^2 - 144(x^{\mathrm m})^4 - 24(x^{\mathrm m})^2\Delta x_1^2 - \Delta x_1^4}
+        {12x^{\mathrm m}\left(12(x^{\mathrm m})^2 + \Delta x_1^2\right)},
+\end{aligned}
+$$
+
+which gives the exact
 
 $$
 \mathtt{face\_centroid\_shift\_x1}_i = \frac{\Delta x_1^2\left(12(x^{\mathrm{m}})^2 - \Delta x_1^2\right)}{12\,x^{\mathrm{m}}\left(12(x^{\mathrm{m}})^2 + \Delta x_1^2\right)}

@@ -18,7 +18,8 @@ frame after interpolation.
 Local symbols (flagged to the editor): $\ell = 1..n_g$ the ghost layer counted from the panel edge (count);
 $N_{\mathrm{p}}$ the cells along a panel edge, $n_2 p_x$ (count); $\Delta\xi = \pi/(2N_{\mathrm{p}})$ the angular cell
 width [rad]; $u$ the fractional source abscissa along the edge, in cells of the source panel [-]; $\eta'$ the
-along-edge angle of a ghost centre on the source panel [rad].
+along-edge angle of a ghost centre on the source panel [rad]; $a_\ell = (\ell - \tfrac12)\Delta\xi$ the angular distance
+of a layer-$\ell$ ghost centre past the edge [rad].
 
 ### Summary
 
@@ -46,18 +47,34 @@ check `[C11]`; the ctest entries were not run for this chapter at the pin (missi
 
 The slide follows from the gnomonic map, as in `sources/canoe__cubedsphere_decomposition_TECH_REPORT.md` §1. Take the
 right edge of a panel, $\xi = \pi/4$. A ghost of layer $\ell$ sits at $\xi = \pi/4 + (\ell - \tfrac12)\Delta\xi$ and
-along-edge angle $\eta$; its direction is $(1, \tan\xi, \tan\eta)$ in the panel's frame. The neighbouring panel's
-frame is the same frame turned by $\pi/2$ about the edge, in which the same direction reads $(\tan\xi, -1, \tan\eta)$
-up to sign, so its along-edge angle there is
+along-edge angle $\eta$; its direction is $(1, \tan\xi, \tan\eta)$ in the panel's frame. Take the panel to be +X,
+whose points are $(1, a, b)$ in global Cartesian components; its right neighbour is +Y, whose points are $(-a', 1, b')$
+({{< code src/layout/cubed_sphere_constants.h cs_face_xyz_from_tan >}}). The +Y frame is the +X frame turned by $\pi/2$
+about the $z$ axis, which the four equatorial panels share; the edge itself is the line $x = y$. In three steps:
+
+1. The ghost direction is $(1, \tan\xi, \tan\eta)$ in global components.
+2. In the +Y frame (normal $y$, along-$a'$ direction $-x$, along-$b'$ direction $z$) it reads $(\tan\xi, -1, \tan\eta)$.
+3. Dividing by the normal component gives $(1, -1/\tan\xi, \tan\eta/\tan\xi)$, so $\tan\xi' = -1/\tan\xi$ and the
+   along-edge angle is
 
 $$
 \tan\eta' = \frac{\tan\eta}{\tan\xi}.
 $$ {#eq-ch03-csinterp-slide}
 
-On the edge itself $\tan\xi = 1$ and $\eta' = \eta$. Outside it, with $\varepsilon = (\ell - \tfrac12)\Delta\xi$ and
-$\tan\xi = 1 + 2\varepsilon + O(\varepsilon^2)$, expanding gives $\eta' - \eta = -\varepsilon\sin 2\eta +
-O(\varepsilon^2)$: a slide of $(\ell - \tfrac12)\sin 2\eta$ cells toward $\eta = 0$, at most $n_g - \tfrac12$ cells,
-at the corners. The code does not use the expansion: `cs_build_ghost_usrc` maps each ghost centre through Cartesian
+On the edge itself $\tan\xi = 1$ and $\eta' = \eta$. Outside it the ghost sits at $\xi = \pi/4 + a_\ell$, and to first
+order in $a_\ell$
+
+$$
+\begin{aligned}
+\tan\xi &= \frac{1 + \tan a_\ell}{1 - \tan a_\ell} = 1 + 2a_\ell + O(a_\ell^2), \\
+\tan\eta' &= \frac{\tan\eta}{\tan\xi} = \tan\eta\,(1 - 2a_\ell) + O(a_\ell^2), \\
+\eta' - \eta &= \frac{\tan\eta' - \tan\eta}{1 + \tan^2\eta} + O(a_\ell^2)
+ = -2a_\ell\sin\eta\cos\eta + O(a_\ell^2) = -a_\ell\sin 2\eta + O(a_\ell^2),
+\end{aligned}
+$$
+
+the third line using $\mathrm{d}\eta/\mathrm{d}\tan\eta = \cos^2\eta = 1/(1 + \tan^2\eta)$. This is a slide of
+$(\ell - \tfrac12)\sin 2\eta$ cells toward $\eta = 0$, at most $n_g - \tfrac12$ cells, at the corners. The code does not use the expansion: `cs_build_ghost_usrc` maps each ghost centre through Cartesian
 coordinates onto the source panel and converts the angle to a cell abscissa $u = (\eta' + \pi/4)/\Delta\xi - \tfrac12$,
 reversed when the edge table says so ({{< code src/coord/cubed_sphere_utils.cpp cs_build_ghost_usrc >}}). The ghost value is then
 

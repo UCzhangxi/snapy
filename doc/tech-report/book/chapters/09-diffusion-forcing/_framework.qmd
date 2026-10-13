@@ -16,10 +16,10 @@ temperature, and none of them reads the others' contributions, so the order does
 also records how much dry-air density the modules added, so that passive tracers can be carried with it.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Turns each key of the YAML block `forcing:` into one module that adds $\Delta t\,\mathbf S$ to the stage
-increment $\Delta\mathbf U$; @eq-ch09-framework-stage.
+**Purpose.** Turns each key of the YAML block `forcing:` into one module that adds $\Delta t\,\mathbf S$, with $\mathbf S$ the module's source per unit volume
+[conserved units per $\mathrm{s}$], to the stage increment $\Delta\mathbf U$; @eq-ch09-framework-stage.
 
-**Data.** In: the stage primitives $\mathbf W$ and the temperature $T$ = `W->T` of the same $\mathbf W$, cell
+**Data.** In: the stage primitives $\mathbf W$ and the temperature $T$ [$\mathrm{K}$] = `W->T` of the same $\mathbf W$, cell
 averages on the block including ghosts, and $\Delta t$ [$\mathrm{s}$]. Out: the conserved stage increment $\Delta\mathbf U$
 (per unit volume, total-mass basis, interior and ghost cells) and, when the block carries passive scalars, the
 modules' dry-density increment `_forcing_dry` [$\mathrm{kg\,m^{-3}}$]. Check case: three toy modules on a 12-cell
@@ -50,20 +50,36 @@ would release the precipitation potential energy twice. Twelve keys are accepted
 
 ### Derivation
 
-The semi-discrete update of cell $i$ is $\mathrm{d}\mathbf U_i/\mathrm{d}t = \mathcal L_i(\mathbf U)$, with the
-right-hand side the flux divergence plus the sum of the source terms $\mathbf S^{m}$ of the registered modules
-$m = 1..M$. One stage forms the increment
+Let $\mathbf U$ be the conserved variables per unit volume, $\mathbf F$ the numerical flux vector through the cell
+faces (NOTATION.md $\mathbf F_a$), and $\mathbf S^m$ the source per unit volume of module $m = 1..M$. The continuous
+balance, its integral over cell $i$ divided by $V_i$, and the semi-discrete form are
+
+$$
+\begin{aligned}
+\partial_t\mathbf U + \nabla\cdot\mathbf F &= \sum_{m=1}^{M}\mathbf S^m, \\
+\frac{\mathrm{d}\overline{\mathbf U}_i}{\mathrm{d}t}
+ &= -\frac{1}{V_i}\sum_{f\in\partial i}A_f\,\mathbf F_f\cdot\mathbf n_f + \sum_{m=1}^{M}\overline{\mathbf S}^m_i, \\
+\frac{\mathrm{d}\overline{\mathbf U}_i}{\mathrm{d}t} &= \mathcal L_i(\mathbf U)
+ \equiv -(\nabla\cdot\mathbf F)_i + \sum_{m=1}^{M}\mathbf S^m_i(\mathbf W, T),
+\end{aligned}
+$$
+
+where the second line uses the divergence theorem with $A_f$ and $\mathbf n_f$ the area and outward normal of face $f$,
+and the third writes the face sum as the discrete divergence $(\nabla\cdot\mathbf F)_i$ of @sec-ch03. The
+third line is also where the scheme truncates: each module evaluates its source on the cell values $\mathbf W_i$ and
+$T_i$, not as the cell average of the pointwise source, which is exact for a source linear in the state and
+second-order accurate otherwise. One stage forms the increment
 
 $$
 \Delta\mathbf U_i = -\Delta t\,(\nabla\cdot\mathbf F)_i + \Delta t\sum_{m=1}^{M}\mathbf S^{m}_i(\mathbf W, T)
 $$ {#eq-ch09-framework-stage}
 
-and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U + w_2^{(s)}\Delta\mathbf U$ (@sec-ch07-rk).
+and hands it to the integrator, which forms $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U + w_2^{(s)}\Delta\mathbf U$,
+where $w_0^{(s)}, w_1^{(s)}, w_2^{(s)}$ are the dimensionless weights of RK stage $s$ (@sec-ch07-rk).
 @eq-ch09-framework-stage is built in `HydroImpl::forward`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}): the divergence term on interior cells, then the
 module loop. Each $\mathbf S^m$ is evaluated on the same $\mathbf W$ and on $T$ computed once from it with
-`W->T`, so the sum does not depend on the order of the loop; only round-off does. The loop is a sum and needs no
-derivation beyond this sentence. A port of the assembly with three toy modules that read only $\mathbf W$ and $T$
+`W->T`, so the sum does not depend on the order of the loop; only round-off does. Beyond the three lines above, the loop is a sum. A port of the assembly with three toy modules that read only $\mathbf W$ and $T$
 checks its properties: the six loop orders give the same increment to $4.4\times10^{-16}$ of its size, and the
 increment is linear in $\Delta t$.[^fw-c1] The tests below check linearity and registration on the real modules.
 

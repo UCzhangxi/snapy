@@ -17,7 +17,8 @@ physical face, so they never act at a seam; column-wide EOS repairs gather the w
 
 Local symbols (flagged to the editor): $s$ an $x_1$ seam face shared by the block below ($\mathrm{B}$) and above
 ($\mathrm{T}$); $\mathbf F^{\mathrm{B}}_s$, $\mathbf F^{\mathrm{T}}_s$ the $x_1$ fluxes the two blocks compute there;
-$p^{\mathrm{top}}$ the reference face pressure a block receives at its upper face.
+$p^{\mathrm{top}}$ the reference face pressure a block receives at its upper face; $A_s$ the area of the seam face
+[$\mathrm{m^2}$].
 
 ### Summary
 
@@ -43,9 +44,19 @@ on the $x_1$ flux slab, face pressure and `bflux1`, across process seams only.
 
 ### Derivation
 
-**Single-valued seam flux.** Block B updates its top cell with $-A_s\mathbf F^{\mathrm{B}}_s/V$ and block T its bottom
-cell with $+A_s\mathbf F^{\mathrm{T}}_s/V$. The column total changes at the seam by
-$A_s(\mathbf F^{\mathrm{T}}_s - \mathbf F^{\mathrm{B}}_s)\Delta t$ per stage, zero only if the two agree. Both blocks
+**Single-valued seam flux.** Let $V_{\mathrm B}$ and $V_{\mathrm T}$ be the volumes of the two cells that share the
+seam, the top cell of block B and the bottom cell of block T [$\mathrm{m^3}$]. Block B updates its top cell with
+$-A_s\mathbf F^{\mathrm{B}}_s/V_{\mathrm B}$ and block T its bottom cell with $+A_s\mathbf F^{\mathrm{T}}_s/V_{\mathrm T}$, per
+unit time. Multiplying each update by its own volume and by $\Delta t$ gives the change of the column total at the
+seam per stage:
+
+$$
+V_{\mathrm B}\left(-\frac{A_s\mathbf F^{\mathrm B}_s}{V_{\mathrm B}}\right)\Delta t
++ V_{\mathrm T}\left(\frac{A_s\mathbf F^{\mathrm T}_s}{V_{\mathrm T}}\right)\Delta t
+= A_s\left(\mathbf F^{\mathrm T}_s - \mathbf F^{\mathrm B}_s\right)\Delta t ,
+$$
+
+zero only if the two agree. Both blocks
 replace their value by
 
 $$
@@ -87,7 +98,7 @@ All four mechanisms run in every stage of a split column. The relay and the ghos
 `_hydro_ref_x1`, when the well-balanced reconstruction builds its reference; the plain-mean ghost rows before it; the
 seam average after the $x_1$ fluxes are computed and before the positivity limiter; the face-pressure ghost rows after
 the average. A same-process neighbour is reached through an in-memory board, a remote one through the process group
-(the parallelism, GPU and I/O chapter); `_x1_ghost_rows` packs $m$ rows from below the top face (up) and from above the bottom face (down) and
+(@sec-ch14); `_x1_ghost_rows` packs $n_{\mathrm{rows}}$ rows ($n_{\mathrm{rows}}$, its argument `m`, is 1 or $n_g$ = `il` depending on the caller) from below the top face (up) and from above the bottom face (down) and
 copies the neighbour's rows into its ghosts. The message tags are 0x7715 (relay), 0x7717 and 0x7718 (reference ghost
 rows), 0x7720 and 0x7721 (seam flux), 0x7722 to 0x7725 (face-pressure and plain-mean ghost rows). EOS column repairs
 call `gather_x1`, which joins the column's pieces bottom first. @fig-ch03-x1seams-relay shows a column of three blocks.
