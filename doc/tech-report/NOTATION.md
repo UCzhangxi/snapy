@@ -1,7 +1,6 @@
 # Notation for the snapy Technical Report
 
-One symbol, one meaning, across all chapters. A chapter that needs a symbol not listed here defines it at first use
-and flags it to the editor, who adds it here or picks another. Where a source note uses a different letter, the
+One symbol, one meaning, across all chapters. A symbol used only within one scheme is defined at its first use there. Where a source note uses a different letter, the
 chapter translates to this table; the source notes record the common translations (the "source letter" column in this source table).
 
 Units are SI and every dimensional symbol carries them in its row; a dimensionless symbol is marked [-] and a
@@ -225,7 +224,7 @@ reference to pyharp or pydisort.
 | $\varepsilon_{\mathrm{esc}}$ | escape probability of the time-step limiter; never bare $\varepsilon$, which is the onset error (§9) | |
 | $\tau_{\mathrm{rad}}$ | radiative relaxation time, $c_v/(16\kappa_{\mathrm{R}}\sigma_{\mathrm{SB}}T^3\varepsilon_{\mathrm{esc}})$; never bare $\tau$ (§8) | |
 | $q_{\mathrm{bg}}$ | the saved background value of a primitive $q$ at a radiating boundary | `boundary_reference_w`, `_r` |
-| $d_q = q_i - q_{\mathrm{bg},i}$ | the interior perturbation the characteristic split acts on; $d$ always carries the quantity it belongs to, because bare $d$ is not used (STYLE.md §5) | |
+| $d_q = q_i - q_{\mathrm{bg},i}$ | the interior perturbation the characteristic split acts on; $d$ always carries the quantity it belongs to, because bare $d$ is not used | |
 | $Z = \rho_{\mathrm{bg}}c_{s,\mathrm{bg}}$ | the background acoustic impedance | |
 | $\alpha_{\mathrm{adm}}$ | the admissibility factor in $[0,1]$ that scales a radiating ghost toward the background; never bare $\alpha$ | |
 

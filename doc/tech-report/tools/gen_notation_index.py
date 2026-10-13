@@ -241,8 +241,8 @@ def outputs(notation: str, book: Path) -> tuple[str, dict[str, str]]:
         "     refresh: python3 tools/gen_notation_index.py. The counts and the \"first used\" column are filled in at",
         "     render from book/_generated/appa.json (written by the same script from the chapters, not committed). -->",
         "",
-        f"The report's notation, rendered from `NOTATION.md`: {sc('symbols')} symbols in {sc('sections')} sections. "
-        "\"units/shape\" is the unit `NOTATION.md` gives in the meaning, moved to its own column; \"first used\" is "
+        f"The report's notation: {sc('symbols')} symbols in {sc('sections')} sections. "
+        "\"units/shape\" is the unit given in the meaning, moved to its own column; \"first used\" is "
         "the first scheme, in book order, whose maths contains the symbol (an exact match after spaces and one-character "
         "braces are dropped; \"—\" where none does, which a different spelling also gives); \"code\" is the name the "
         "code uses, at "
