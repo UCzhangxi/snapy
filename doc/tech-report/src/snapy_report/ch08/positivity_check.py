@@ -3,7 +3,8 @@ _carry.qmd, _roundoff.qmd).
 
 The explicit flux helpers below are numpy ports of src/hydro/flux_positivity.cpp at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5: flux_positivity_theta (:22-72),
-flux_positivity_scale_ (:74-104) and flux_positivity_carry_ (:106-149), C8 is a synthetic counterexample, not a port of VIC. The two
+flux_positivity_scale_ (:74-104) and flux_positivity_carry_ (:106-149); C10 and C11 the stage-entry
+precondition of the bound and the convex split. C8 is a synthetic counterexample, not a port of VIC. The two
 round-off constants from src/hydro/flux_positivity.hpp:18-23.
 
 The claims test PROPERTIES of the ported operator against an independently computed
@@ -325,7 +326,61 @@ def check_C9():
            f"sink {negative} of {n} cells end with a negative scalar, worst {worst:.1e}")
 
 
-for fn in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8, check_C9):
+# --- C10: the per-stage bound needs a non-negative cell at stage entry ----------
+def check_C10():
+    """V u_new = u V - dt Theta out + dt in, and Theta out dt <= (1 - margin) max(u, 0) V
+    (flux_positivity.cpp:66), so u_new >= margin u + dt in / V >= 0 only where u >= 0 at entry.
+    An entry-negative cell has avail = 0, so Theta = 0 wherever it drains, and stays negative."""
+    rng = np.random.default_rng(10)
+    eps = np.finfo(np.float64).eps
+    worst_pos, worst_ident, n_neg_entry, n_stay_neg, worst_neg = 0., 0., 0, 0, 0.
+    for _ in range(4000):
+        u, flux, area, vol, dt = _case(rng)
+        bad = rng.integers(0, len(u), 2)
+        u[bad] = -rng.uniform(1e-3, 1e-1, 2)          # entry-negative cells
+        th, _ = theta_of(u, flux, area, vol, dt, eps)
+        f = scale(th, flux)
+        new = u + dt * divergence(f, area, vol)
+        af = area * f
+        out = np.maximum(af[1:], 0.) + np.maximum(-af[:-1], 0.)   # limited outflow
+        inn = np.maximum(-af[1:], 0.) + np.maximum(af[:-1], 0.)   # limited inflow
+        ident = (u * vol - dt * out + dt * inn) - new * vol
+        worst_ident = max(worst_ident, float(np.abs(ident).max() / np.abs(u * vol).max()))
+        ok = u >= 0.
+        worst_pos = min(worst_pos, float(new[ok].min()))
+        n_neg_entry += int((~ok).sum())
+        n_stay_neg += int((new[~ok] < 0.).sum())
+        worst_neg = min(worst_neg, float(new[~ok].min()))
+    report("C10", worst_pos >= 0. and n_stay_neg > 0 and worst_ident < 1e-14,
+           "the per-stage bound u + dt du >= 0 holds where the cell is non-negative at stage entry, "
+           "and not unconditionally",
+           f"V u_new = u V - dt out + dt in to {worst_ident:.1e} relative; over 4000 fields the cells "
+           f"with u >= 0 at entry end at worst {worst_pos:.3e}; of {n_neg_entry} entry-negative "
+           f"cells {n_stay_neg} are still negative after the limited step, worst {worst_neg:.3e}, so "
+           f"the unconditional statement fails")
+
+
+# --- C11: the stage is a convex combination of two non-negative states ---------
+def check_C11():
+    """U + a dU = (1 - a) U + a (U + dU), exactly, so with 0 <= a <= 1 a stage built from a
+    non-negative U and a non-negative full-step update U + dU is non-negative."""
+    from fractions import Fraction
+    rng = np.random.default_rng(111)
+    exact, neg = True, 0
+    for _ in range(2000):
+        U, dU, a = (Fraction(float(x)) for x in (rng.uniform(0, 1), rng.uniform(-1, 1), rng.uniform(0, 1)))
+        exact &= (U + a * dU) == (1 - a) * U + a * (U + dU)
+        if U >= 0 and U + dU >= 0 and U + a * dU < 0:
+            neg += 1
+    report("C11", exact and neg == 0,
+           "a damped full-step update is the convex split (1 - alpha) U + alpha (U + dU)",
+           f"identity exact in rational arithmetic on 2000 random triples: {exact}; cases with "
+           f"U >= 0 and U + dU >= 0 but U + alpha dU < 0: {neg}")
+
+
+CHECKS = (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8, check_C9,
+          check_C10, check_C11)
+for fn in CHECKS:
     fn()
-print(f"{9 - len(FAIL)}/9 claims pass")
+print(f"{len(CHECKS) - len(FAIL)}/{len(CHECKS)} claims pass")
 sys.exit(len(FAIL))
