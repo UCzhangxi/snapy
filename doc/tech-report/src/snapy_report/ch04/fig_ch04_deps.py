@@ -11,10 +11,10 @@ NODES = {
     "divergence": (0.5, 2.6, "flux\ndivergence"),
     "recon": (0.5, 1.3, "reconstruction\nframework"),
     "weno": (2.0, 1.9, "weno3\nweno5"),
-    "cp": (3.5, 1.3, "cp3\ncp5"),
+    "cp": (3.5, 1.45, "cp3\ncp5"),
     "riemann": (0.5, 0.0, "Riemann\nframework"),
     "facep": (2.0, 0.0, "face\npressure"),
-    "sources": (3.5, 0.6, "geometric\nsources"),
+    "sources": (3.5, 0.05, "geometric\nsources"),
     "seam": (2.0, 2.9, "seam\naveraging"),
     "fluxcov": (5.0, 1.9, "flux\ncovariance"),
     "x1cov": (5.0, 0.5, "$x_1$ mass\ncovariance"),
@@ -43,7 +43,7 @@ def make_fig():
                     arrowprops=dict(arrowstyle="->", color=col, ls=ls, lw=1.1,
                                     shrinkA=22, shrinkB=22, alpha=0.9))
     for key, (x, y, lab) in NODES.items():
-        ax.text(x, y, lab, ha="center", va="center", fontsize=7,
+        ax.text(x, y, lab, ha="center", va="center", fontsize=fs.SMALL_PT,
                 bbox=dict(boxstyle="round,pad=0.32", fc="white", ec=fs.BLACK, lw=0.8))
     for i, (kind, (col, ls)) in enumerate(STYLE.items()):
         ax.plot([], [], color=col, ls=ls, lw=1.1, label=kind)
