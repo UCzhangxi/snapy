@@ -42,7 +42,9 @@
    KKT multipliers $\boldsymbol\lambda$, and flux-only increment $\Delta\mathbf U^{\mathrm{flux}}$; the round-off
    derivations add the face product $[A\mathbf F_1]_{i+1/2}$, the kinetic energy density $K$, the Mach number
    $\mathrm{Ma}$, the thermal energy $\rho e_{\mathrm{th}}$, the magnitude sum $\Xi$, the volumetric heat capacity
-   $C(T)$ with $\Lambda=\max\lvert C'\rvert/\min C$ and contraction factor $\beta$, the compressibility $Z_n$, the
+   $\Psi(T)$ with $\Upsilon=\max\lvert\mathrm d\Psi/\mathrm dT\rvert/\Psi_{\min}$, contraction factor $\varsigma$, Newton error
+   $\psi$, intermediate temperature $T_{\mathrm{mid}}$, residual magnitude sum $\Xi_U$ and rounding count $N_{\mathrm{rnd}}$, the
+   compressibility $Z_n$, the
    isothermal speed $c_T$ and the shallow-water depth $D_{\mathrm{sw}}$. Owners: Chapter 2 / editor. Remove local
    notes when settled.
 11. NOTATION section 2a's sentence describes the API tensor `V` as molar concentration, but at the pinned

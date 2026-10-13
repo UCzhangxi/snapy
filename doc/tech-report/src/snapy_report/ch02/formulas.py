@@ -369,42 +369,71 @@ def check_C4_moist_mixture():
     newton = t0 - (u(t0) - energy) / sp.diff(u(t0), t0)
     update = t0 + (energy - u(t0)) / sp.diff(u(t0), t0)
     second = sp.simplify(newton - update) == 0
-    ok = first and second
-    print(f'[C4] {"PASS" if ok else "FAIL"} symbolic isothermal sound speed and Newton update exact={ok}')
+    # (c) for a quadratic U (capacities linear in T) the Newton error is exactly
+    # psi_new = U'' psi_old^2 / (2 Psi(T_old)), the step-1 identity of the stopping rule.
+    tr, psi, q0, q1, q2 = sp.symbols('T_r psi q0 q1 q2')
+    uq = lambda t: q0 + q1 * t + q2 * t**2
+    t_old = tr + psi
+    t_new = t_old + (uq(tr) - uq(t_old)) / sp.diff(uq(t0), t0).subs(t0, t_old)
+    third = sp.simplify((t_new - tr) - sp.diff(uq(t0), t0, 2) * psi**2 / (2 * sp.diff(uq(t0), t0).subs(t0, t_old))) == 0
+    ok = first and second and third
+    print(f'[C4] {"PASS" if ok else "FAIL"} symbolic isothermal sound speed, Newton update and Newton error exact={ok}')
     return ok
 
 
 def check_C5_moist_mixture():
-    # Stopping rule of _intEng_to_temp (ftol 1e-6, 10 iterations) on a volumetric
-    # capacity C(T) = C0 (1 + b (T - 300)). Derived bound on the error left when
-    # the relative step falls below ftol: (Lambda/2) (ftol T / (1 - beta))^2 plus an
-    # allowance 4 EPS_M T, Lambda = max|C'| / min C, beta = (Lambda/2) |first error| < 1/2. Seed 5.
-    rng = np.random.default_rng(5)
-    ftol, worst = 1e-6, 0.
-    for _ in range(200):
-        c0 = float(rng.uniform(5e2, 5e3))
-        b = float(rng.uniform(1e-4, 2e-3))
-        u0 = float(rng.uniform(-1e6, 1e6))
-        target = float(rng.uniform(150., 1500.))
-        cap = lambda t: c0 * (1. + b * (t - 300.))
-        energy_of = lambda t: u0 + c0 * (t + b * (t - 300.)**2 / 2 - b * 300.**2 / 2)
-        energy = energy_of(target)
-        temp = (energy - u0) / c0
-        first_error = abs(temp - target)
-        lo, hi = min(temp, target), max(temp, target)
-        m = c0 * b / cap(lo)
-        q = m / 2 * first_error
-        for _it in range(10):
-            prev = temp
-            temp = temp + (energy - energy_of(temp)) / cap(temp)
-            if abs(1. - prev / temp) < ftol:
-                break
-        bound = m / 2 * (ftol * hi / (1 - q))**2 + 4 * EPS_M * hi
-        if not q < .5:
-            return print('[C5] FAIL contraction q >= 1/2') or False
-        worst = max(worst, abs(temp - target) / bound)
-    ok = worst <= 1.
-    print(f'[C5] {"PASS" if ok else "FAIL"} Newton stop error / derived bound max={worst:.3f} (200 random capacities)')
+    # Stopping rule of kintera's _intEng_to_temp (thermo_y.cpp:495-517 at the kintera pin;
+    # ftol 1e-6, 10 iterations), ported in its order for N species with molar energy
+    # u_n(T) = u0_n + a_n T + (b_n/2) T^2, so the volumetric capacity is
+    # Psi(T) = sum_n c_n (a_n + b_n T). The error left at the stop is bounded by
+    #   (Upsilon/2) (ftol T / (1 - varsigma))^2                       Newton truncation
+    #   + 7 N (EPS_M/2) Xi_U / Psi_min + (EPS_M/2) T + (N+2) (EPS_M/2) ftol T   rounding
+    # with Upsilon = max|Psi'| / min Psi, varsigma = (Upsilon/2) |start error| < 1/2 and
+    # Xi_U = |rho e| + sum_n c_n (|u0_n| + |a_n T| + |b_n T^2/2|) the magnitudes entering
+    # the residual (5 roundings per u_n, 1 per product, N-1 in the sum, 1 in the
+    # subtraction). The exact root solves the quadratic in mpmath at 60 digits.
+    # Two decks, seed 5: energy zeros up to 1e5 and up to 1e10 J/mol.
+    import mpmath as mp
+    mp.mp.dps = 60
+    ftol, out = 1e-6, []
+    for scale in (1e5, 1e10):
+        rng = np.random.default_rng(5)
+        worst = 0.
+        for _ in range(200):
+            n = int(rng.integers(2, 7))
+            conc = rng.uniform(.1, 40., n)
+            a = rng.uniform(15., 60., n)
+            b = rng.uniform(1e-4, 4e-2, n)
+            u0 = rng.uniform(-scale, scale, n)
+            target = float(rng.uniform(150., 1500.))
+            energy = float(np.sum(conc * (u0 + a * target + b / 2 * target * target)))
+            temp = (energy - np.sum(u0 * conc)) / np.sum(a * conc)
+            start = temp
+            for _it in range(10):
+                prev = temp
+                u = u0 + a * temp + (b * 0.5) * (temp * temp)
+                temp += (energy - np.sum(u * conc)) / np.sum((a + b * temp) * conc)
+                if abs(1. - prev / temp) < ftol:
+                    break
+            cm = [mp.mpf(float(x)) for x in conc]
+            qa = sum(c * mp.mpf(float(x)) / 2 for c, x in zip(cm, b))
+            qb = sum(c * mp.mpf(float(x)) for c, x in zip(cm, a))
+            qc = sum(c * mp.mpf(float(x)) for c, x in zip(cm, u0)) - mp.mpf(energy)
+            root = (-qb + mp.sqrt(qb * qb - 4 * qa * qc)) / (2 * qa)
+            lo, hi = min(start, float(root)), max(start, float(root))
+            psi_min = float(np.sum(conc * (a + b * lo)))
+            upsilon = float(np.sum(conc * b)) / psi_min
+            varsigma = upsilon / 2 * abs(start - float(root))
+            if not varsigma < .5:
+                return print('[C5] FAIL contraction varsigma >= 1/2') or False
+            xi_u = abs(energy) + float(np.sum(conc * (np.abs(u0) + a * hi + b / 2 * hi * hi)))
+            bound = (upsilon / 2 * (ftol * hi / (1 - varsigma))**2
+                     + 7 * n * EPS_M / 2 * xi_u / psi_min + EPS_M / 2 * hi + (n + 2) * EPS_M / 2 * ftol * hi)
+            worst = max(worst, float(abs(mp.mpf(float(temp)) - root)) / bound)
+        out.append(worst)
+    ok = max(out) <= 1.
+    print(f'[C5] {"PASS" if ok else "FAIL"} Newton stop error / derived bound max={out[0]:.3f} '
+          f'(energy zeros to 1e5), {out[1]:.3f} (to 1e10); 200 random mixtures each')
     return ok
 
 

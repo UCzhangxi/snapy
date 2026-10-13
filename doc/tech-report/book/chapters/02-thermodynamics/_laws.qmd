@@ -30,8 +30,8 @@ the last stage the phase adjustment sits, because that decides what the wall gho
 :::
 
 Local symbols (flagged to the editor, ISSUES.md): $\Delta\mathbf U^{\mathrm{flux}}_i$ the flux-only increment of
-cell $i$; $A_{i+1/2}$ the area of face $i+1/2$ [m$^2$]; $[A\mathbf F_1]_{i+1/2}=A_{i+1/2}\mathbf F_{1,i+1/2}$ the face product
-the code stores once per face [units of $\mathbf U$ times m$^3$ s$^{-1}$]; $\eta_j$ the relative error of one rounding.
+cell $i$; $A_{i+1/2}$ the area of face $i+1/2$ [m$^2$]; $[A\mathbf F_1]_{i+1/2}=A_{i+1/2}\mathbf F_{1,i+1/2}$ the face product,
+area times flux [units of $\mathbf U$ times m$^3$ s$^{-1}$]; $\eta_j$ the relative error of one rounding.
 
 ### Derivation
 
@@ -73,8 +73,12 @@ with $\Delta_i[A\mathbf F_1]=[A\mathbf F_1]_{i+1/2}-[A\mathbf F_1]_{i-1/2}$. @eq
 
 #### Why the sum over cells telescopes
 
-1. *One number per face.* `CoordinateImpl::divergence` forms each face product once, as an element of the same
-   tensor, and both neighbours read that element: cell $i$ subtracts $[A\mathbf F_1]_{i+1/2}$, cell $i+1$ adds it.
+1. *The same number on both sides of a face.* `CoordinateImpl::divergence` forms the face products twice, once
+   for the right faces of all cells and once for the left faces (the excerpt in the Code layer). For face $i+1/2$
+   the two products, in cell $i$ and in cell $i+1$, multiply the same area element by the same flux element: both
+   `face_area1` calls slice one element-wise formula on the same grid tensors
+   ({{< code src/coord/coordinate.hpp CoordinateImpl::face_area1 >}}), and both flux slices read one tensor. IEEE multiplication is correctly rounded, so identical operands give identical products, bit for bit.
+   Cell $i$ subtracts that number and cell $i+1$ adds it.
 2. *Weight by volume and sum.* $\sum_iV_i\Delta\mathbf U^{\mathrm{flux}}_i=-\Delta t\sum_i\Delta_i[A\mathbf F_1]$.
 3. *Interior faces cancel.* Every interior face product appears once with each sign, so the sum is
    $-\Delta t([A\mathbf F_1]_{N+1/2}-[A\mathbf F_1]_{1/2})$: only the outer faces remain.
@@ -91,7 +95,8 @@ $$
 =-\frac{\Delta t}{V_i}\,\Delta_i[A\mathbf F_1]\,(1+\eta_1)(1+\eta_2)(1+\eta_3).
 $$
 
-The face products themselves carry no error into the sum, because both neighbours read the same stored number.
+The rounding of each face product carries no error into the sum: by step 1 both neighbours hold the same
+rounded number, so it cancels exactly.
 Subtract the exact increment, drop the products of two rounding errors, multiply by $V_i$ and sum:
 
 $$
@@ -163,6 +168,7 @@ integration: {type: rk3, cfl: 0.9}   # three stages; the phase solve runs after 
 | what | code link | symbol | switch |
 |---|---|---|---|
 | face products and divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `dflx` | |
+| face-area slice | {{< code src/coord/coordinate.hpp CoordinateImpl::face_area1 >}} | `face_area1` | |
 | flux-only increment | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `du` | |
 | implicit correction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dt_corr` | `implicit-scheme` |
 | stage order and last stage | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_boundaries` | |
@@ -185,7 +191,8 @@ auto interior = pmb->part({0, 0, 0}, PartOptions().exterior(false));
 du.index(interior) = -dt * _div.index(interior);
 ```
 
-The two products are $[A\mathbf F_1]_{i+1/2}$ and $[A\mathbf F_1]_{i-1/2}$, read from one face tensor; `dflx / vol` is the division by
+The two products are $[A\mathbf F_1]_{i+1/2}$ and $[A\mathbf F_1]_{i-1/2}$, formed separately from the same
+area and flux tensors, so a face's product in its two cells is the same number (step 1); `dflx / vol` is the division by
 $V_i$; the last line is @eq-ch02-laws-increment on interior cells, with ghosts left at zero.
 
 ### Tests
