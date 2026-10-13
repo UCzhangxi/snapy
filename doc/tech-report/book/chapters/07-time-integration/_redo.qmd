@@ -41,27 +41,27 @@ the saturation cause alone, {{< code tests/test_check_redo_saturation.py main >}
 
 ### Derivation
 
-There is nothing to derive; the section states the policy and the invariants it keeps. Let $r$ be the redo count
-of the current step. The driver computes the step from @eq-ch07-cfl-dt, whose factor $2^{-r}$ is the only place
-$r$ enters. For $r = 0, 1, \ldots, r_{\max}$,
+There is nothing to derive; the section states the policy and the invariants it keeps. Let $n_{\mathrm{redo}}$ be the redo count
+of the current step. The driver computes the step from @eq-ch07-cfl-dt, whose factor $2^{-n_{\mathrm{redo}}}$ is the only place
+$n_{\mathrm{redo}}$ enters. For $n_{\mathrm{redo}} = 0, 1, \ldots, n_{\mathrm{redo}}^{\max}$,
 
 $$
-\Delta t_r = 2^{-r}\,\Delta t_0 ,
+\Delta t_{n_{\mathrm{redo}}} = 2^{-n_{\mathrm{redo}}}\,\Delta t_0 ,
 $$ {#eq-ch07-redo-dt}
 
-with $\Delta t_0$ the bound of the step and $r_{\max}$ = `max_redo` = 5. A step that never passes is therefore tried
-$r_{\max}+1=6$ times, the last at $\Delta t_0/32$ [check `src/snapy_report/ch07/redo_check.py`, output
-`redo_check.out`, `[C2]`], and an acceptance sets $r=0$ again (`[C3]`). Three invariants hold:
+with $\Delta t_0$ the bound of the step and $n_{\mathrm{redo}}^{\max}$ = `max_redo` = 5. A step that never passes is therefore tried
+$n_{\mathrm{redo}}^{\max}+1=6$ times, the last at $\Delta t_0/32$ [check `src/snapy_report/ch07/redo_check.py`, output
+`redo_check.out`, `[C2]`], and an acceptance sets $n_{\mathrm{redo}}=0$ again (`[C3]`). Three invariants hold:
 
 1. **One decision.** Each rank forms six flags on the device, reads them back once, `MAX`-reduces them, and encodes the result as a bit mask with bits
    1, 2, 4, 8, 16, 32 for floor, clamp, limiter, NaN, saturation and VIC solve; every rank sees the same mask and
    takes the same branch (`[C1]`).
 2. **Full restore.** A redo copies the step-start state back into `hydro_u`, recomputes `hydro_w` from it, restores
    the passive scalars, decrements the cycle and drops the gravity-work fix booked during the step.
-3. **Global halving.** $\Delta t_r$ is formed after the `MIN` reduction of @eq-ch07-cfl-dt, so every rank takes the
+3. **Global halving.** $\Delta t_{n_{\mathrm{redo}}}$ is formed after the `MIN` reduction of @eq-ch07-cfl-dt, so every rank takes the
    same smaller step.
 
-Past $r_{\max}$ a VIC solve failure (bit 32) still restores the step before the run stops; any other cause stops
+Past $n_{\mathrm{redo}}^{\max}$ a VIC solve failure (bit 32) still restores the step before the run stops; any other cause stops
 without restoring (`[C4]`).
 
 In the code, @eq-ch07-redo-dt is the factor `current_redo` of the step bound ({{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}).
@@ -72,7 +72,7 @@ See @fig-ch07-redo-flow for the loop.
 
 ```{python}
 #| label: fig-ch07-redo-flow
-#| fig-cap: "The step loop of the example driver. The step $\\Delta t=2^{-r}C\\min\\tau$ (sky blue) is advanced through the stages and the step-end sources; check_redo (orange) then accepts the step and resets $r$ (green), redoes it from the restored state $\\mathbf U^n$ with $r$ increased by one (yellow; grey arc), or stops the run once $r$ exceeds max_redo = 5 (vermillion)."
+#| fig-cap: "The step loop of the example driver. The step $\\Delta t=2^{-n_{\\mathrm{redo}}}C\\min\\tau$ (sky blue) is advanced through the stages and the step-end sources; check_redo (orange) then accepts the step and resets $n_{\\mathrm{redo}}$ (green), redoes it from the restored state $\\mathbf U^n$ with $n_{\\mathrm{redo}}$ increased by one (yellow; grey arc), or stops the run once $n_{\\mathrm{redo}}$ exceeds max_redo = 5 (vermillion)."
 #| fig-alt: "A row of four boxes for the step, the stages, the step-end sources and check_redo, branching into accept, redo and stop boxes, with a grey arc from redo back to the first box."
 #| echo: false
 from snapy_report.ch07.fig_redo_flow import make_fig
@@ -150,7 +150,7 @@ state.
    cure.[^ch07-redo-start]
 4. **Signals.** Only the Mesh path checks signals, with `CheckSignalFlags`; the single-block path does not
    ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}).
-5. **No gradual recovery.** An accepted step resets $r$ to 0, so the step after a redo goes straight back to the
+5. **No gradual recovery.** An accepted step resets $n_{\mathrm{redo}}$ to 0, so the step after a redo goes straight back to the
    full bound.
 
 [^ch07-redo-pos]: `sources/canoe__POSITIVITY_TECH_REPORT.md` §9.

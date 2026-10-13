@@ -45,7 +45,7 @@ advection only.
 
 ### Derivation
 
-Let $C$ be `cfl`, $C_{\mathrm{adv}}$ `implicit-advection-cfl`, $C_{\mathrm{sh}}$ `shear-cfl`, $r$ the redo count
+Let $C$ be `cfl`, $C_{\mathrm{adv}}$ `implicit-advection-cfl`, $C_{\mathrm{sh}}$ `shear-cfl`, $n_{\mathrm{redo}}$ the redo count
 of the step, $\Delta x_a$ the width of a cell in direction $a$ and $c_s$ the sound speed. `HydroImpl::max_time_step`
 returns, over interior cells,
 
@@ -63,7 +63,7 @@ only, $c_f$ is the mean sound speed of the two cells of the face and $b$ a horiz
 ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}). The block and the mesh then form
 
 $$
-\Delta t = 2^{-r}\,C\,\min_{\mathrm{ranks,\ blocks}}\min(\tau_a, \tau_1, \tau_{\mathrm{sh}}, \tau_\nu)
+\Delta t = 2^{-n_{\mathrm{redo}}}\,C\,\min_{\mathrm{ranks,\ blocks}}\min(\tau_a, \tau_1, \tau_{\mathrm{sh}}, \tau_\nu)
 $$ {#eq-ch07-cfl-dt}
 
 in `MeshBlockImpl::max_time_step` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}) and `MeshImpl::max_time_step`
@@ -89,7 +89,7 @@ See @fig-ch07-cfl-bounds for the bounds on one face of a 2-D column.
 
 ```{python}
 #| label: fig-ch07-cfl-bounds
-#| fig-cap: "The bounds that set the step on a 2-D column with an implicit $x_1$ direction. Green: the advective bound in $x_1$, with Courant number $C_{\\mathrm{adv}}$; orange: the acoustic bound in $x_2$, $(|v_2|+c_s)\\,\\Delta t/\\Delta x_2 \\leq C$; vermillion: an $x_1$ face where the horizontal wind jumps by at least the face sound speed $c_f$ (in $\\mathrm{m\\,s^{-1}}$), which adds the shear bound. The step is the smallest, halved per redo $r$, over all ranks."
+#| fig-cap: "The bounds that set the step on a 2-D column with an implicit $x_1$ direction. Green: the advective bound in $x_1$, with Courant number $C_{\\mathrm{adv}}$; orange: the acoustic bound in $x_2$, $(|v_2|+c_s)\\,\\Delta t/\\Delta x_2 \\leq C$; vermillion: an $x_1$ face where the horizontal wind jumps by at least the face sound speed $c_f$ (in $\\mathrm{m\\,s^{-1}}$), which adds the shear bound. The step is the smallest, halved per redo $n_{\\mathrm{redo}}$, over all ranks."
 #| fig-alt: "Six cells with a green double arrow along x1, an orange double arrow along x2 and one vertical face highlighted in vermillion, next to the four formulas of the bounds."
 #| echo: false
 from snapy_report.ch07.fig_cfl_bounds import make_fig
