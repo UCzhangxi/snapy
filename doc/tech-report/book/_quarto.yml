@@ -3,8 +3,12 @@
 project:
   type: book
   # Appendices B (from the chapters' Derivation layers) and A (from NOTATION.md) are generated before every
-  # render, local or CI (the lead's decision). The fragments stay committed because Quarto reads every chapter's
-  # includes before pre-render runs; tools/tests fails when a committed copy differs from a fresh generation.
+  # render, local or CI (the lead's decision). Quarto 1.10 expands every chapter's includes once before pre-render
+  # runs (to find each file's engine) and stops if an included file is missing, so the fragments stay committed;
+  # it reads them again for the render, after pre-render, so the render shows what pre-render wrote. A committed
+  # fragment holds only what one chapter (or NOTATION.md) decides; totals and first uses are render-time values
+  # ({{< generated >}}, tools/generated_values.py). tools/tests fails when a committed copy differs from a fresh
+  # generation.
   pre-render:
     - ../tools/gen_derivation_index.py
     - ../tools/gen_notation_index.py
@@ -45,6 +49,7 @@ book:
 
 shortcodes:
   - _shortcodes/code.lua          # {{< code <path> <symbol> >}}: a code citation by symbol (README, "Citing code")
+  - _shortcodes/generated.lua     # {{< generated <name> <key> >}}: a render-time value of appendix A or B
 
 filters:
   - _filters/codemap-widths.lua   # column widths of the Code-layer tables (STYLE 10.10)
