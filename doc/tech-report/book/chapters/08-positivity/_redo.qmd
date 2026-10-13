@@ -13,38 +13,54 @@ mechanism that decides the step was bad enough to take again, and it is the clos
 positivity failure path.
 
 ::: {.callout-note title="At a glance"}
-- Detection, not repair: it decides whether the step just taken should be redone.
-- A primitive at or below $1.001$ times a floor counts as a hit.
-- The marks set by the limiter passes are read alongside it.
-- The detector's own restore must not mark a repair, so the marks are reset around it.
+**Purpose.** Decide whether the step just taken must be redone: a floor test on the primitives plus the limiter marks.
+
+**Data.** In: `hydro_u`, the floors, the two marks, the implicit clamp flag. Out: one boolean per block.
+
+**Placement.** In `check_redo`, after the stages of a step and before the clock advances (@sec-ch01-driver).
+
+**Activation.** Always; a hit is a primitive at or below $1.001$ times a floor, a NaN, a mark, or the clamp flag.
+
+**Guarantee / limits.** Detection only: a redo repeats the step and the redo budget of @sec-ch07 ends the loop.
+
+**Evidence.** `[C7]` of `floors_check`; the redo cases of `test_forcing.<b>`.
 :::
 
 ### Derivation
 
-The test is a margin above the floor rather than equality with it, at
-`hit` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}): a minimum density at or below $1.001$ times the density floor
-counts as a hit, and the same for pressure where there is a pressure row. Testing equality with the
-floor would miss a cell that was floored and then nudged by a later operation; the margin catches the
-neighbourhood of the floor instead. `[C7]` nudges a just-floored cell by fifteen relative amounts from
-$10^{-16}$ up to $10^{-3}$: the margin counts all fifteen as hits, equality counts only two, the unnudged
-cell and the single nudge below machine epsilon, so thirteen are hits the margin keeps and equality loses;
-a density $1.002$ times the floor is a hit under neither. `[C4]` covers the marking itself, including that
-it happens only from the interior [check `src/snapy_report/ch08/floors_check.py`, output
-`src/snapy_report/ch08/floors_check.out`].
+The test is a margin above the floor rather than equality with it, at `hit`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}). A minimum density at or below $1.001$ times the
+density floor counts as a hit. The same holds for pressure where there is a pressure row. Testing equality with the
+floor would miss a cell that was floored and then nudged by a later operation; the margin catches the neighbourhood of
+the floor instead. `[C7]` nudges a just-floored cell by fifteen relative amounts from $10^{-16}$ up to $10^{-3}$. The
+margin counts all fifteen as hits. Equality counts only two, the unnudged cell and the single nudge below machine
+epsilon, so thirteen are hits the margin keeps and equality loses. A density $1.002$ times the floor is a hit under
+neither. `[C4]` covers the marking itself, including that it happens only from the interior [check
+`src/snapy_report/ch08/floors_check.py`, output `src/snapy_report/ch08/floors_check.out`].
 
-The ordering around it carries a subtlety the code calls out at
-`reset_limiter_marks` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}): the detector restores primitives in order to look at them, and
-that restore itself runs a conversion which can trip the limiter and set a mark. The marks are therefore
-reset so that the detector's own work is not mistaken for a repair of the step being judged.
+The ordering around it carries a subtlety the code calls out at `reset_limiter_marks`
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}): the detector restores primitives in order to look at
+them. That restore itself runs a conversion which can trip the limiter and set a mark. The marks are therefore reset
+so that the detector's own work is not mistaken for a repair of the step being judged.
 
 ### Numerical method
 
 The detector is `hydro_u` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}). The marks are read through
-`limiter_hits` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::limiter_hits >}}), which returns the pair set by the limiter passes of
-@sec-ch08-eoslimiter, and the implicit clamp of @sec-ch08-vic is read through its own accessor at
-`vic_dry_clamp_hit` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::vic_dry_clamp_hit >}}). The redo decision combines them at
-{{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}, where the floor test is run first and the marks are read
-afterwards, in that order, for the reason above.
+`limiter_hits` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::limiter_hits >}}), which returns the pair set by the
+limiter passes of @sec-ch08-eoslimiter. The implicit clamp of @sec-ch08-vic is read through its own accessor at
+`vic_dry_clamp_hit` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::vic_dry_clamp_hit >}}). The redo decision combines
+them at {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}, where the floor test is run first
+and the marks are read afterwards, in that order, for the reason above.
+
+**Why a margin, and why the marks are reset.** Three facts of the code.
+
+1. The test is `!(min > 1.001 * floor)`, a margin above the floor rather than equality
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}). So a floored cell nudged by a later operation is
+   still a hit. `[C7]` counts 15 of 15 nudges up to $10^{-3}$ relative, against 2 for equality.
+2. The comparison is negated, so a NaN, which fails every comparison, counts as a hit.
+3. The restore inside the detector runs a conversion that can trip the limiter, so the marks are reset around it
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}). The detector's own work is not read as a repair of
+   the step being judged.
 
 ### Code
 
@@ -59,13 +75,37 @@ afterwards, in that order, for the reason above.
 
 : Code map of the floor detector. {#tbl-ch08-redo-code}
 
+**How to use it.** Nothing is set; the detector reads the floors of @sec-ch08-eoslimiter. The floor test is
+these lines ({{< code src/mesh/meshblock.cpp MeshBlockImpl::floor_hit >}}):
+
+```cpp
+  // negated so a NaN, which fails every comparison, counts as a hit
+  bool hit = !(w[IDN].min().item<double>() > 1.001 * eos->density_floor());
+  if (w.size(0) > IPR) {  // shallow water carries no pressure row
+    hit = hit || !(w[IPR].min().item<double>() > 1.001 * eos->pressure_floor());
+  }
+  return hit;
+```
+
+`w` is the primitive state restored from `hydro_u` on the interior, and `eos` the equation-of-state options. A
+driver sees the result as the positive return of `check_redo` and repeats the cycle (@sec-ch01-driver).
+
 ### Tests
 
-`test_forcing.<b>` ({{< code tests/CMakeLists.txt >}}) exercises the detector through
-`limiter_patch_at_stage_entry_redoes_the_step`, the velocity/vapour/primitive NaN cases,
-`limiter_clean_step_is_not_redone`, and the species repair and round-off cases
-({{< code tests/test_forcing.cpp >}}). These assert redo causes and acceptance of clean or
-round-off-only states; they do not isolate the exact $1.001$ floor boundary.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_forcing.cpp` (`test_forcing.<b>`) | `limiter_patch_at_stage_entry_redoes_the_step`, the velocity, vapour and primitive NaN cases, `limiter_clean_step_is_not_redone`, the species repair and round-off cases | exact (a redo flag) | the contract ({{< code tests/test_forcing.cpp >}}); none isolates the $1.001$ boundary |
+| this chapter's check | `[C7]`: the margin keeps the nudged hits that equality loses | exact counts | `floors_check.py` `check_C7` |
+
+: Tests of the floor detector. {#tbl-ch08-redo-tests}
+
+The chapter's check ports the floor test on a just-floored cell.[^ch08-redo-run] `[C7]`: of 15 nudges from $10^{-16}$
+to $10^{-3}$ relative, the margin counts all 15 as hits and equality counts 2, so 13 are hits the margin keeps. A
+density $1.002$ times the floor is a hit under neither. The ctest has not been run for this report at the pin:
+**pending a pinned ctest run**.
+
+[^ch08-redo-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/floors_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `floors_check.out`, line `[C7]`.
 
 ### Limits
 

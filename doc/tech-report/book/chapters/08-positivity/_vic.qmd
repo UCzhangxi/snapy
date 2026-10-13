@@ -8,15 +8,21 @@ status: draft
 
 ### Summary
 
-The implicit correction of the time-integration chapter solves a
-column and hands back a mass change that no face limiter has seen, and that change can exceed what a
-cell holds. This section is the guard on that path.
+The implicit correction of the time-integration chapter solves a column and hands back a mass change that no face
+limiter has seen. That change can exceed what a cell holds. This section is the guard on that path.
 
 ::: {.callout-note title="At a glance"}
-- The vertical implicit solve can return a mass change that would take a cell dry-negative.
-- Switch: none of its own; active with the implicit scheme of the time-integration chapter.
-- The clamp is recorded in a per-step buffer, which the redo detector reads.
-- The limiter of @sec-ch08-theta does not cover this: it acts on explicit transport only.
+**Purpose.** Clip each implicit dry-gas face transfer to what its donor still holds, and record that a donor was emptied.
+
+**Data.** In: the column state, the explicit increment, the requested transfers. Out: clipped transfers, paired cell increments, a flag.
+
+**Placement.** Pass 3a of the implicit redistribution, inside the vertical implicit solve of every stage.
+
+**Activation.** With `integration/implicit-scheme`; no switch of its own.
+
+**Guarantee / limits.** No additional overdraw and exact column mass; a state already negative before the transfer is not repaired.
+
+**Evidence.** `test_backward_substitution.<b>` ($10^{-12}$); `[C8]` of this chapter's check is a counter-example only.
 :::
 
 ### Derivation
@@ -45,6 +51,16 @@ positive ({{< code src/mesh/meshblock.cpp MeshBlockImpl::vic_dry_clamp_hit >}}).
 The accessor and reset are {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::dry_clamp_step >}}
 and {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::reset_dry_clamp_step >}}.
 
+**Why a clamp on the transfer.** Three facts of the code.
+
+1. The transfer through a face is clipped to the interval from minus the upper donor's availability to the lower
+   donor's running availability ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}). So neither
+   donor is drawn below zero by this face.
+2. The clipped transfer is subtracted from one cell and added to its neighbour, so the column mass is unchanged by the
+   clamp. The requested transfer changes, not the final density.
+3. A clip sets `MASS(IPR, donor)` to 1, and the step buffer keeps the maximum, so the record is a flag and not a mass
+   ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
+
 ### Code
 
 | what | code link | symbol | switch |
@@ -57,13 +73,50 @@ and {{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::reset_dry_clamp_
 
 : Code map of the implicit dry-channel clamp. {#tbl-ch08-vic-code}
 
+**How to use it.** The clamp is part of the implicit scheme and has no key of its own; it runs whenever the
+scheme is selected ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}):
+
+```yaml
+integration:
+  implicit-scheme:
+    type: vic
+```
+
+The clip is these lines of pass 3a ({{< code src/implicit/vic_redistribute_impl.h vic_constituent_column >}}):
+
+```cpp
+    T Mf = MASS(IVX + dir, i + 1);
+    T q = Mf > 0 ? Mf * dryfrac : Mf * dryfrac_up;
+    if (q > avail) {
+      q = avail;
+      MASS(IPR, i) = 1;
+    }
+    if (q < -avail_up) {
+      q = -avail_up;
+      MASS(IPR, i + 1) = 1;
+    }
+```
+
+`q` is the dry transfer through the face above cell `i`, `avail` and `avail_up` the two donors' availabilities,
+and `MASS(IPR, ...)` the flag the redo detector reads.
+
 ### Tests
 
-`test_backward_substitution.<b>` ({{< code tests/CMakeLists.txt >}}) contains
-`dry_only_transport_is_conservative_and_clamped`: it checks the limited transfer,
-donor flag, empty donor and conserved column integral to $10^{-12}$.
-`a_negative_dry_fraction_still_marks_the_clamped_donor` checks the flag when total and
-dry transfers disagree in sign ({{< code tests/test_backward_substitution.cpp >}}).
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_backward_substitution.cpp` (`test_backward_substitution.<b>`) | `dry_only_transport_is_conservative_and_clamped`: the limited transfer, the donor flag, an empty donor and the conserved column integral | $10^{-12}$ | set inline in the test ({{< code tests/test_backward_substitution.cpp >}}); the file gives no reason |
+| the same | `a_negative_dry_fraction_still_marks_the_clamped_donor`: the flag when the total and dry transfers disagree in sign | exact (a flag) | the contract |
+| this chapter's check | `[C8]`: a synthetic redistribution can undo the explicit guarantee, and a pointwise floor would invent mass | measured | `positivity_check.py` `check_C8`; not a port of the solver |
+
+: Tests of the implicit dry clamp. {#tbl-ch08-vic-tests}
+
+The registration is in {{< code tests/CMakeLists.txt >}}. The chapter's check is a counter-example and not a port of
+the solver.[^ch08-vic-run] `[C8]`: over 2000 columns the limited explicit update never goes negative. A synthetic
+redistribution on the same state drives a cell dry in 1999 of them, worst $-1.4$. A pointwise floor would invent up to
+$2.2$ of mass. The ctest has not been run for this report at the pin: **pending a pinned ctest run**.
+
+[^ch08-vic-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `positivity_check.out`, line `[C8]`.
 
 ### Limits
 

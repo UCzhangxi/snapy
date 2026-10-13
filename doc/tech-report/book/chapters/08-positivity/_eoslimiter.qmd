@@ -8,17 +8,23 @@ status: draft
 
 ### Summary
 
-The outline carries this material three times: as the conserved pass, as the primitive pass, and as a
-second inventory's account of both together with the floors and the marks. All three are merged here,
-because the single switch, the shared floors and the shared marks are one story and splitting them
-puts the reader in two places at once.
+The equation of state floors the state in two passes. The conserved pass zeroes NaNs, floors the dry density
+and floors the total energy at the kinetic energy plus the internal energy of a temperature floor. The
+primitive pass floors density and pressure and clamps the species fractions at zero. A repair in the interior
+sets a mark that the redo detector of @sec-ch08-redo reads.
 
 ::: {.callout-note title="At a glance"}
-- Two passes: one on the conserved state, one on the primitive state. They are not the same operation.
-- Switch: `equation-of-state/limiter`, default false. Floors default to $10^{-6}$, $10^{-3}$ and $20$ K.
-- Every floor is a clamp, so every floor invents mass or energy. Nothing removes it again.
-- The order of the two conserved floors is load-bearing: the energy floor reads the floored density.
-- A repair in the interior sets a mark that the redo detector reads.
+**Purpose.** Clamp the state back into the admissible set: two floor passes and a NaN repair, each setting a mark.
+
+**Data.** In: `hydro_u` (conserved pass) or `hydro_w` (primitive pass). Out: the same tensor floored in place; two marks.
+
+**Placement.** Inside the equation-of-state conversions of every stage; the marks are read by `check_redo`.
+
+**Activation.** `equation-of-state/limiter: true` (default false); the card's floors default to $10^{-6}$, $10^{-3}$ and 20 K.
+
+**Guarantee / limits.** None: a clamp invents mass or energy and nothing removes it; the two conserved floors do not commute.
+
+**Evidence.** `[C1]`, `[C2]`, `[C4]`, `[C5]` of `floors_check`; the repair cases of `test_forcing.<b>`.
 :::
 
 ### Derivation
@@ -26,11 +32,11 @@ puts the reader in two places at once.
 There is no derivation for a floor. What there is instead are three facts about the operator that a
 reader needs and that are easy to get wrong, and the check establishes each separately.
 
-*The passes do not commute.* The conserved pass floors the dry density first and then floors the total
-energy at the kinetic energy plus the internal energy of a temperature floor, and that internal energy
-is computed from the density the previous statement has already clamped. `[C1]` reorders the two
-statements and measures the result: on three thousand random states straddling the floors, the energy
-differs in $2862$ of them, by up to $1.33\times10^{4}$. The order is not incidental.
+*The passes do not commute.* The conserved pass floors the dry density first. It then floors the total energy at the
+kinetic energy plus the internal energy of a temperature floor. That internal energy is computed from the density the
+previous statement has already clamped. `[C1]` reorders the two statements and measures the result: on three thousand
+random states straddling the floors, the energy differs in $2862$ of them, by up to $1.33\times10^{4}$. The order is
+not incidental.
 
 *The floors are repairs, not conservative operations.* A clamp can only add. `[C2]` measures how much:
 on four thousand cells straddling the floors the passes add $4.736\times10^{-4}$ of dry mass and
@@ -43,19 +49,20 @@ pressure and clamps species mass fractions at zero; it has no energy row and app
 floor. The conserved pass has no pressure row and floors energy through the temperature floor instead.
 Reading either as the other applied to different variables is wrong.
 
-The marks are the link to the redo machinery. `[C4]` checks the three cases that matter: an untouched
-state marks nothing; a density below the floor sets the patch mark; a NaN sets the NaN mark; and the
-same repair outside the interior marks nothing at all, because a repair in a ghost cell must not force
-a block to redo its step.
+The marks are the link to the redo machinery. `[C4]` checks the cases that matter. An untouched state marks nothing, a
+density below the floor sets the patch mark, and a NaN sets the NaN mark. The same repair outside the interior marks
+nothing at all, because a repair in a ghost cell must not force a block to redo its step.
 
 ### Numerical method
 
-The conserved pass is `cons` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) and runs in a fixed order: NaNs are
-zeroed and marked at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, the dry density is clamped at
-{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, and the energy is clamped at
-{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} to the kinetic energy plus the internal energy of the
-temperature floor. The kinetic energy there is built from the momentum raised with the cell's own
-metric, so the floor is correct on a curved grid and not only in Cartesian.
+The conserved pass is `cons`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) and runs in a fixed order.
+NaNs are zeroed and marked at
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}, the dry density is clamped
+at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}. The energy is clamped at
+{{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} to the kinetic energy plus
+the internal energy of the temperature floor. The kinetic energy there is built from the momentum raised with the
+cell's own metric, so the floor is correct on a curved grid and not only in Cartesian.
 
 The primitive pass is `prim` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}): NaNs, the density floor at
 {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}, the species clamp at {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} and
@@ -66,10 +73,21 @@ floor of $10^{-6}$, a pressure floor of $10^{-3}$ and a temperature floor of $20
 numbers in the deck's own units, not fractions of anything, so whether they are conservative or
 catastrophic depends on the scaling of the problem.
 
-The marks are a two-element device-side boolean buffer, reset at
-`reset_limiter_marks` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::reset_limiter_marks >}}) and read by the redo detector of @sec-ch08-redo. Entry one
-is the NaN mark and entry zero the patch mark, set at `limiter_marks_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) by
-comparing the density and energy rows against a copy taken before the floors.
+The marks are a two-element device-side boolean buffer, reset at `reset_limiter_marks`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::reset_limiter_marks >}}) and read by the redo detector of
+@sec-ch08-redo. Entry one is the NaN mark and entry zero the patch mark, set at `limiter_marks_`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). They are set by comparing
+the density and energy rows against a copy taken before the floors.
+
+**Why this order, and what a floor costs.** Three facts of the code.
+
+1. The energy floor is $E \ge K + I(T_{\min})$ with $I$ computed from the density the previous statement has already
+   clamped ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), so the two
+   floors do not commute; `[C1]` measures the difference.
+2. A clamp can only add: the invented mass is $\sum_i \max(\rho_{\min} - \rho_i, 0)\,V_i \ge 0$ and likewise for the
+   energy; `[C2]` measures both strictly positive and nothing removes them.
+3. The marks compare the interior rows against a copy taken before the floors. A repair in a ghost cell marks nothing
+   and cannot force a block to redo its step.
 
 ### Code
 
@@ -89,6 +107,35 @@ comparing the density and energy rows against a copy taken before the floors.
 
 : Code map of the equation-of-state limiter. {#tbl-ch08-eoslimiter-code}
 
+**How to use it.** All four keys live in the equation-of-state block
+({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}):
+
+```yaml
+dynamics:
+  equation-of-state:
+    limiter: true
+    density-floor: 1.e-6       # the reader's default
+    pressure-floor: 1.e-3
+    temperature-floor: 20.
+```
+
+An options struct built in C++ without the reader starts at $10^{-10}$ for the density and pressure floors
+({{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}}). Refused: any key other than `type`,
+`gammad`, `weight`, `density-floor`, `pressure-floor`, `temperature-floor`, `limiter`, `eos-file` and `verbose`.
+The conserved floors are these lines
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}):
+
+```cpp
+  cons[IDN].clamp_min_(options->density_floor());
+  ...
+    auto min_temp = options->temperature_floor() * torch::ones_like(ke);
+    auto min_ie = compute("UT->I", {cons, min_temp});
+    cons[IPR].clamp_min_(ke + min_ie);
+```
+
+`ke` is the kinetic energy from the momentum raised with the cell's metric, and `compute("UT->I", ...)` reads
+the already-floored density.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -97,13 +144,20 @@ comparing the density and energy rows against a copy taken before the floors.
 
 : Tests of the equation-of-state limiter. {#tbl-ch08-eoslimiter-tests}
 
-::: {.callout-important title="Check"}
-The check is `src/snapy_report/ch08/floors_check.py`, output
-`src/snapy_report/ch08/floors_check.out`, 5 of 5 claims passing. The `test_forcing.<b>` limiter patch, NaN and species repair cases
-exercise the real passes and their marks ({{< code tests/test_forcing.cpp >}}).
-`limiter_patch_is_reported_below_the_temperature_floor` compares a cold state against a warm control;
-it tests floor reporting, not the non-commutation measured by `[C1]`.
-:::
+The chapter's check ports the two passes on synthetic states; it imports no snapy.[^ch08-floors-run] `[C1]`: reversing
+the two conserved floors changes the energy in 2862 of 3000 random states, by up to $1.33\times10^{4}$. `[C2]`: on
+4000 cells straddling the floors the passes add $4.736\times10^{-4}$ of dry mass and $1.294\times10^{2}$ of total
+energy. `[C4]`: an untouched state marks nothing, a density below the floor sets the patch mark, and a NaN sets the
+NaN mark. The same repair outside the interior marks nothing. `[C5]`: the primitive pass floors density
+$10^{-9} \to 10^{-6}$ and pressure $10^{-9} \to 10^{-3}$ and clamps a negative fraction to 0, with no temperature
+floor.
+
+The repair cases of `test_forcing.<b>` exercise the real passes and their marks ({{< code tests/test_forcing.cpp >}});
+`limiter_patch_is_reported_below_the_temperature_floor` tests floor reporting, not the non-commutation of
+`[C1]`. They have not been run for this report at the pin: **pending a pinned ctest run**.
+
+[^ch08-floors-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/floors_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `floors_check.out`, lines `[C1]`, `[C2]`, `[C4]` and `[C5]`.
 
 ### Limits
 

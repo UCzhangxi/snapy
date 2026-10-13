@@ -14,42 +14,58 @@ perturbation can take the sum below zero. This fallback catches that, and the ch
 back to is the interesting part.
 
 ::: {.callout-note title="At a glance"}
-- In the well-balanced $x_1$ path the face state is a reference plus a perturbation, and the sum can go negative.
-- Switch: active with the well-balanced reference; the ordinary face floors are switched off there.
-- A non-positive face pressure falls back to the reference pressure.
-- A non-positive face density falls back to the *adjacent cell's* density, not to the reference.
-- At rest the perturbation vanishes, so the fallback never fires and well-balancing is preserved.
+**Purpose.** Keep the well-balanced $x_1$ face states positive after the reference is added back.
+
+**Data.** In: the reconstructed perturbations, the reference pressure and density at the faces, the cell density. Out: face states patched in place.
+
+**Placement.** In `HydroImpl::forward`, right after the $x_1$ reconstruction of the well-balanced path.
+
+**Activation.** With gravity along $x_1$, a pressure row and a non-shallow-water equation of state; the ordinary face floors are off there.
+
+**Guarantee / limits.** A no-op at rest, so well-balancing survives; the density fallback is a neighbour's value, not the reconstruction's.
+
+**Evidence.** `[C6]` of `floors_check`; the well-balanced tests of @sec-ch05 indirectly.
 :::
 
 ### Derivation
 
-The pressure case is the simple one: a face pressure that comes out non-positive is replaced by the
-reference pressure at that face, at `psf_lo` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The reference is positive by
-construction, and at rest the perturbation is zero, so the condition is never met and the well-balanced
-property survives untouched. `[C6]` checks both halves of that: at rest the face pressure is the reference
-bit for bit at all $2\times10^5$ faces and never non-positive, so the fallback cannot fire; and once a
-perturbation is allowed the fallback fires at $23\,949$ of them and the result is strictly positive at every
-face [check `src/snapy_report/ch08/floors_check.py`, output `src/snapy_report/ch08/floors_check.out`].
+The pressure case is the simple one: a face pressure that comes out non-positive is replaced by the reference pressure
+at that face, at `psf_lo` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The reference is positive by
+construction, and at rest the perturbation is zero, so the condition is never met and the well-balanced property
+survives untouched. `[C6]` checks both halves of that. At rest the face pressure is the reference bit for bit at all
+$2\times10^5$ faces and never non-positive, so the fallback cannot fire. Once a perturbation is allowed the fallback
+fires at $23\,949$ of them and the result is strictly positive at every face [check
+`src/snapy_report/ch08/floors_check.py`, output `src/snapy_report/ch08/floors_check.out`].
 
-The density case is where a reasonable-looking choice is wrong, and the code comment at
-`dsf` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) records why from experience rather than from theory. Falling
-back to the reference density fails when the reference overestimates the density aloft: a
-bottom-anchored isentrope did so by orders of magnitude, and every floor event at a reflecting top wall
-then became a large spurious wall impedance. The fallback is therefore the adjacent cell's density,
-which is a real local value rather than an extrapolated reference.
+The density case is where a reasonable-looking choice is wrong, and the code comment at `dsf`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) records why from experience rather than from theory.
+Falling back to the reference density fails when the reference overestimates the density aloft. A bottom-anchored
+isentrope did so by orders of magnitude, and every floor event at a reflecting top wall then became a large spurious
+wall impedance. The fallback is therefore the adjacent cell's density, which is a real local value rather than an
+extrapolated reference.
 
-A second detail in the same block is a latent-bug note worth carrying into the report. The shift along
-$x_1$ uses edge replication rather than a circular roll, and the comment at
-`density` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) says plainly that the circular word is not consumed today, but
-would become live the moment a caller changed the face range. That is a hazard recorded in the code and
-not a current defect.
+A second detail in the same block is a latent-bug note worth carrying into the report. The shift along $x_1$ uses edge
+replication rather than a circular roll. The comment at `density`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}) says plainly that the circular word is not consumed
+today, but would become live the moment a caller changed the face range. That is a hazard recorded in the code and not
+a current defect.
 
 ### Numerical method
 
-The block is `copy_` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The reconstruction that feeds it is called with
-floors switched off at `wtmp` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), precisely because the ordinary
-reconstruction floors would clamp a legitimate negative perturbation; this fallback replaces them for
-this path.
+The block is `copy_` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The reconstruction that feeds it
+is called with floors switched off at `wtmp` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), precisely
+because the ordinary reconstruction floors would clamp a legitimate negative perturbation. This fallback replaces them
+for this path.
+
+**Why these fallbacks.** Three facts of the code.
+
+1. A non-positive face pressure is replaced by the reference pressure at that face, which is positive by construction
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+2. A non-positive face density is replaced by the adjacent cell's density, not the reference. A reference that
+   overestimates the density aloft turned every floor event at a reflecting top wall into a spurious impedance, as the
+   code comment records from a run.
+3. At rest the perturbation is zero, so neither condition is met and the balanced state is untouched. `[C6]` finds the
+   face pressure equal to the reference bit for bit at all $2\times10^5$ faces.
 
 ### Code
 
@@ -63,10 +79,42 @@ this path.
 
 : Code map of the well-balanced face fallback. {#tbl-ch08-wbface-code}
 
+**How to use it.** There is no switch of its own. The block runs when `wb_x1` is true, that is with gravity along
+$x_1$, a pressure row and an equation of state other than `shallow-water`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The pressure fallback is these lines:
+
+```cpp
+      auto pl = wtmp[ILT][IPR] + psf_lo;
+      auto pr = wtmp[IRT][IPR] + psf_lo;
+      wtmp[ILT][IPR].copy_(torch::where(pl > 0., pl, psf_lo));
+      wtmp[IRT][IPR].copy_(torch::where(pr > 0., pr, psf_lo));
+```
+
+and the density fallback these:
+
+```cpp
+      wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
+      wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+```
+
+`psf_lo` is the reference pressure at the lower face, `dl` and `dr` the reconstructed face densities with the
+reference added. `density` is the cell density and `rho_below` the same shifted one cell down with edge replication.
+
 ### Tests
 
-No test isolates the fallback. Its no-op-at-rest property is covered indirectly by the well-balanced
-tests of @sec-ch05, which would fail if it fired on a resting column.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| the well-balanced tests of @sec-ch05 | a resting column stays at rest, which fails if the fallback fires there | theirs | @sec-ch05; none isolates the fallback |
+
+: Tests of the well-balanced face fallback. {#tbl-ch08-wbface-tests}
+
+The chapter's check ports the pressure fallback on a synthetic column.[^ch08-wbface-run] `[C6]`: at rest the face
+pressure equals the reference bit for bit at $200\,000$ of $200\,000$ faces and is never non-positive. With a
+perturbation the fallback fires at $23\,949$ faces and the result is strictly positive at every face. The density
+fallback is not checked: **missing evidence**.
+
+[^ch08-wbface-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/floors_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `floors_check.out`, line `[C6]`.
 
 ### Limits
 
