@@ -15,7 +15,7 @@ syncs. On the cubed sphere the same steps run with interpolation across panel ed
 
 Local symbols (flagged to the editor): $q^{\mathrm{c}}_{k,j}$ a synthesised corner ghost value; $q^{\mathrm{L}}$ and
 $q^{\mathrm{B}}$ the ghost strips left ($x_2$ side) and below ($x_3$ side) of a corner, with $j_0$, $k_0$ their
-first interior column and row next to the corner.
+first interior column and row next to the corner; $\iota_a\in\{-1,0,1\}$ the direction of a neighbour along $x_a$, in cells (the code's `offset`).
 
 ### Summary
 
@@ -40,9 +40,8 @@ check `[C15]`; the ctest entries were not run for this chapter at the pin (missi
 
 ### Derivation
 
-The face exchange is a copy and needs no derivation. The corner is a convention, stated here. Write $e_a\in\{-1,0,1\}$
-for the direction of a neighbour along $x_a$, in cells. With the left ghost
-strip $q^{\mathrm{L}}$ (offset $e_2 = -1$) and the bottom strip $q^{\mathrm{B}}$ (offset $e_3 = -1$), the
+The face exchange is a copy and needs no derivation. The corner is a convention, stated here. With $\iota_a$ the direction of a neighbour along $x_a$, and with the left ghost
+strip $q^{\mathrm{L}}$ (offset $\iota_2 = -1$) and the bottom strip $q^{\mathrm{B}}$ (offset $\iota_3 = -1$), the
 lower-left corner ghost at $(k, j)$ is
 
 $$
@@ -63,7 +62,7 @@ $n_g(\Delta x_2|\beta| + \Delta x_3|\gamma|)/2$, with $\Delta x_2 = \Delta x_3$ 
 
 ### Numerical method
 
-Slabs are addressed by the offset $(e_3, e_2, e_1) \in \{-1,0,1\}^3$, the direction of the neighbour in cells along
+Slabs are addressed by the offset $(\iota_3, \iota_2, \iota_1)$, the direction of the neighbour in cells along
 each axis (count); `get_buffer_id` maps an
 offset to one of 9 buffers (27 on `cubed`). The sent slab is the $n_g$-wide interior next to the face; the received
 slab is the ghost zone across it. With `skip_corner` only offsets with one non-zero component are exchanged. The
@@ -110,6 +109,42 @@ In step order (@tbl-ch03-exchange-code):
 3. `serialize` copies each interior slab into the cached send buffer of its `get_buffer_id`
    ({{< code src/layout/layout.cpp LayoutImpl::serialize >}}).
 4. `finalize` waits on the messages, calls `deserialize` and then `fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::finalize >}}).
+
+**How to use it.** There is no YAML key. The exchange follows from the layout and the boundary names
+(@sec-ch03-layouts, @sec-ch03-physfaces), and each caller sets `SyncOptions` in C++. The per-stage sync is
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}):
+
+```cpp
+  SyncOptions sync_opts;
+  sync_opts.interpolate(true).type(kConserved);
+
+  Variables sync_vars;
+  sync_vars["hydro_u"] = hydro_u;
+  exchange(sync_vars, sync_opts);
+
+  if (pscalar->nvar() > 0) {
+    sync_opts.type(kScalar);
+    sync_vars.clear();
+    sync_vars["scalar_s"] = scalar_s;
+    exchange(sync_vars, sync_opts);
+  }
+```
+
+Corners are skipped by default (`skip_corner`) and synthesised by @eq-ch03-exchange-corner in `fill_corners`
+({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}):
+
+```cpp
+  // Fill-in left-bot inter-panel corners
+  std::tuple<int, int, int> corner(/*dy=*/-1, /*dx=*/-1, 0);
+  auto sub = pmb->part(corner, PartOptions().exterior(true));
+  for (auto& [name, var] : vars) {
+    auto var_left = var.index(sub_left).select(-3, 0).unsqueeze(-3);
+    auto var_bot = var.index(sub_bot).select(-2, 0).unsqueeze(-2);
+    var.index_put_(sub, 0.5 * (var_left + var_bot));
+  }
+```
+
+Nothing is refused: a face without a neighbour keeps its boundary function.
 
 ### Tests
 

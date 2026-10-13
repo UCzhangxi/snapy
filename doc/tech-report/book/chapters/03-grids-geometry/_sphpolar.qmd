@@ -269,6 +269,43 @@ In step order (@tbl-ch03-sphpolar-code):
    angular-momentum term of $m_3$ or, with one $x_2$ cell, its point form, as `use_x2_fluxes` selects
    ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}).
 
+**How to use it.** A spherical-polar shell between two radii, with the colatitude given in units of $\pi$:
+
+```yaml
+geometry:
+  type: spherical-polar
+  bounds: {x1min: 6.4e6, x1max: 6.5e6, x2min_pi: 0.25, x2max_pi: 0.75, x3min: 0., x3max: 0.1}   # r [m], theta, phi [rad]
+  cells: {nx1: 8, nx2: 8, nx3: 1, nghost: 2}
+```
+
+Refused: with more than one $x_2$ cell, an $x_2$ range outside $[0,\pi]$ stops `reset` with "Spherical-polar
+coordinates require x2 in [0, pi], got [-0.1, 1]"; with `nx2: 1` the same range is accepted. The face-pressure form
+@eq-ch03-sphpolar-facep needs no key: it runs whenever the block has more than one $x_1$ cell. The check and the
+coefficients $\langle r^{-1}\rangle_{V_i}$ and $\langle\cot\theta\rangle$ of @eq-ch03-sphpolar-src1 and the
+angular-momentum coefficient $c_i$ of @eq-ch03-sphpolar-angmom are
+({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::reset >}}):
+
+```cpp
+  TORCH_CHECK(op->nx2() <= 1 || (op->x2min() >= 0.0 && op->x2max() <= M_PI),
+              "Spherical-polar coordinates require x2 in [0, pi], got [",
+              op->x2min(), ", ", op->x2max(), "]");
+    ...
+  auto radial_volume = (rp.pow(3) - rm.pow(3)) / 3.0;
+  auto radial_area23 = 0.5 * (rp.pow(2) - rm.pow(2));
+    ...
+  auto polar_volume = torch::abs(theta_m.cos() - theta_p.cos());
+
+  coord_src1_i = register_buffer(
+      "coord_src1_i",
+      (radial_area23 / radial_volume).unsqueeze(0).unsqueeze(0));
+  coord_src2_i = register_buffer(
+      "coord_src2_i",
+      (dx1f / ((rm + rp) * radial_volume)).unsqueeze(0).unsqueeze(0));
+  coord_src1_j = register_buffer(
+      "coord_src1_j",
+      ((sin_p - sin_m) / polar_volume).unsqueeze(0).unsqueeze(-1));
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |

@@ -16,7 +16,7 @@ sender's panel frame to the global spherical $(r, \theta, \varphi)$ frame before
 frame after interpolation.
 
 Local symbols (flagged to the editor): $\ell = 1..n_g$ the ghost layer counted from the panel edge (count);
-$N_{\mathrm{p}}$ the cells along a panel edge, $n_2 p_x$ (count); $\Delta\xi = \pi/(2N_{\mathrm{p}})$ the angular cell
+$N_{\mathrm{p}}$ the cells along a panel edge, $n_2 n_{\mathrm b,2}$ (count); $\Delta\xi = \pi/(2N_{\mathrm{p}})$ the angular cell
 width [rad]; $u$ the fractional source abscissa along the edge, in cells of the source panel [-]; $\eta'$ the
 along-edge angle of a ghost centre on the source panel [rad]; $a_\ell = (\ell - \tfrac12)\Delta\xi$ the angular distance
 of a layer-$\ell$ ghost centre past the edge [rad].
@@ -35,7 +35,7 @@ edge ghost cells, in the units of the synced variables.
 
 **Activation.** `SyncOptions.interpolate(true)`, set by the per-stage conserved sync, the initial primitive sync and
 the scalar syncs; off for face states and the donor factor. Requires `interp_order: 2`; a subdivided panel
-($p_x > 1$) runs the sync in two phases.
+($n_{\mathrm b,2} > 1$) runs the sync in two phases.
 
 **Guarantee / limits.** Second order (linear interpolation) in the along-edge abscissa.
 
@@ -102,7 +102,7 @@ of the same sync. One round cannot satisfy that, so the intra-panel round comple
 The abscissae are built once in `reset` for the whole edge (face 0, left side, reused for every edge by symmetry) and
 kept as a double per ghost; the block's offset into the edge is kept as a separate integer and added to the index after
 `floor`, so the stored weight does not depend on the decomposition. A sync with interpolation on a cubed sphere with
-$p_x > 1$ or $p_y > 1$ runs as intra-panel (no interpolation), then cross-panel, then `fill_corners`. In the
+$n_{\mathrm b,2} > 1$ or $n_{\mathrm b,3} > 1$ runs as intra-panel (no interpolation), then cross-panel, then `fill_corners`. In the
 cross-panel pack the strip is widened by the margin, its velocities are rotated to the spherical frame (conserved
 momenta are raised to contravariant first), and the strip is relabelled for the neighbour's orientation by the
 reverse, flip and transpose flags. In the unpack the wide strip lands in the ghost zone and its margin, the ghost is
@@ -149,6 +149,25 @@ In step order (@tbl-ch03-csinterp-code):
 4. `deserialize` lands the wide strip with `sub_w`, calls `interp_ghost`, then rotates the narrow ghost zone back
    with `cs_apply_velocity_transform_` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}).
 
+**How to use it.** The interpolation is on for a cubed-sphere card (@sec-ch03-gnomonic); the only key is
+`geometry.cells.interp_order`, which must be 2 (its default). The margin $\lceil n_g - \tfrac12\rceil = n_g$ needs
+no key. Refused: `interp_order` other than 2, with "Only 2nd order ghost interpolation is supported". The linear
+branch of @eq-ch03-csinterp-weights and the margin are
+({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::_interp_ghost_LR >}},
+{{< code src/coord/cubed_sphere_utils.hpp cs_interp_margin >}}):
+
+```cpp
+  auto buf0 = buf.gather(-3, u0.expand(vec));
+  auto buf1 = buf.gather(-3, u1.expand(vec));
+
+  if (options->interp_order() == 2) {
+    return x * buf1 + (1.0 - x) * buf0;
+```
+
+```cpp
+inline int cs_interp_margin(int nghost) { return nghost; }
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -161,7 +180,7 @@ In step order (@tbl-ch03-csinterp-code):
 : Tests of the cross-panel interpolation. C++ entries carry the build suffix (`.release`). {#tbl-ch03-csinterp-tests}
 
 The bitwise case is `subdivided_panel_exchange_matches_one_block` ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}});
-the deck is the card written by `write_card`, $8\times8$ cells per panel, `nb2` = 1, 2 and 4, all $6p_x^2$ blocks in one
+the deck is the card written by `write_card`, $8\times8$ cells per panel, `nb2` = 1, 2 and 4, all $6n_{\mathrm b,2}^2$ blocks in one
 process ({{< code tests/test_cubed_sphere_exchange.cpp write_card >}}). Its CUDA twin
 `subdivided_panel_exchange_matches_one_block_cuda` is in the same binary and skips without a GPU
 ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block_cuda >}}). The tag case is `rejects_tags_that_collide_with_the_variable_offset`

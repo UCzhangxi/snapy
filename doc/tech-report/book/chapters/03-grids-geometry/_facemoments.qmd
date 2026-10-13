@@ -193,6 +193,37 @@ In step order (@tbl-ch03-facemoments-code):
 4. The covariance reads `face_centroid_shift_zero` and skips its `centroid` parts when it is true
    ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
+**How to use it.** There is no YAML key: the helpers exist on every grid and are read by the face-flux covariance,
+which is on by default and off with an environment switch read once per run:
+
+```bash
+SNAP_FLUX_COVARIANCE=0 python run.py   # off; also false, off, no or the empty string (any case); anything else is on
+```
+
+Nothing is refused; on Cartesian the zero-shift flag skips the centroid parts. The cancellation-free shift
+@eq-ch03-facemoments-shift and its degenerate-face mask are
+({{< code src/coord/coordinate.cpp CoordinateImpl::radial_face_centroid_shift_ >}}):
+
+```cpp
+  auto h2 = h.square();
+  auto twelve_r2 = 12. * rbar.square();
+  auto shift = h2 * (twelve_r2 - h2) /
+               (12. * rbar * (twelve_r2 + h2)).clamp_min(1.e-300);
+  // degenerate face (an x1 ghost reaching r <= 0): no meaningful centroid
+  return torch::where(rbar > 0.5 * h, shift, torch::zeros_like(h));
+```
+
+and the switch is ({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}):
+
+```cpp
+  static const bool on = [] {
+    auto v = get_env("SNAP_FLUX_COVARIANCE", "1");
+    std::transform(v.begin(), v.end(), v.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    return !(v.empty() || v == "0" || v == "false" || v == "off" || v == "no");
+  }();
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |

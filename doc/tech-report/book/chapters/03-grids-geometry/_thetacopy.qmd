@@ -14,7 +14,7 @@ factors, not the donor's; the exchange therefore uses `interpolate(false)`. The 
 mass carries is recomputed from the ghost state instead of being exchanged.
 
 Local symbols (flagged to the editor): $\mathcal F_f$ the requested species flux through face $f$ before limiting
-[kg m$^{-2}$ s$^{-1}$]; $d(f)$ the donor cell of face $f$, the upwind cell the flux drains.
+[kg m$^{-2}$ s$^{-1}$]; $i_{\mathrm{dn}}(f)$ the index of the donor cell of face $f$, the upwind cell the flux drains.
 
 ### Summary
 
@@ -44,10 +44,10 @@ See @sec-ch08-theta for donor scaling and its conservation requirement. This sec
 in `sources/canoe__theta_seam_TECH_REPORT.md` §1 and §6: the limited flux of face $f$ is
 
 $$
-\mathcal F^{\Theta}_f = \Theta_{d(f)}\,\mathcal F_f,
+\mathcal F^{\Theta}_f = \Theta_{i_{\mathrm{dn}}(f)}\,\mathcal F_f,
 $$ {#eq-ch03-thetacopy-face}
 
-and the two blocks sharing $f$ each evaluate $\Theta_{d(f)}$, one from its interior and one from its ghost, so the
+and the two blocks sharing $f$ each evaluate $\Theta_{i_{\mathrm{dn}}(f)}$, one from its interior and one from its ghost, so the
 ghost must hold the donor's value bit for bit. A raw copy delivers exactly the neighbour's interior cell that occupies
 the ghost position, after the same reverse, flip and transpose relabelling as every cubed-sphere strip; within a panel
 and across $x_1$ seams the ghost is the same cell anyway. The scaling @eq-ch03-thetacopy-face is
@@ -88,6 +88,41 @@ In step order (@tbl-ch03-thetacopy-code):
 3. The withheld mass keeps its energy and momentum with `flux_positivity_carry_`, and the fluxes are scaled with
    `flux_positivity_scale_` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. The scalar does the same in `sync_theta` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+
+**How to use it.** The copy runs whenever $\Theta$ is computed: with species (`ny` > 0) and either the limiter on or a
+face-flux covariance row added on $x_2$ or $x_3$. The covariance is on by default (@sec-ch03-facemoments), so a run
+with species can take this path without `limiter: true`:
+
+```yaml
+dynamics:
+  equation-of-state: {type: ideal-moist, limiter: true}   # or keep the default false and the covariance rows
+```
+
+Nothing is refused. The gate, the raw copy and the fill are
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+  if ((options->eos()->limiter() || cov2 || cov3) && ny > 0) {
+    ...
+    // Raw copy, never interpolated: the donor of a panel-seam face is the
+    // neighbour's edge cell, and an interpolated ghost is not its factor.
+    Variables tvars;
+    tvars["hydro_theta"] = theta;
+    // the energy each species carries, from w, ghosts included: exchanging it
+    // with theta changed no bit, so it is not exchanged (#238)
+    auto hspec = peos->species_enthalpy(w);
+    SyncOptions topts;
+    topts.interpolate(false).type(kScalar);
+    pmb->exchange(tvars, topts);
+
+    BoundaryFuncOptions bops;
+    bops.nghost(pmb->pcoord->options->nghost());
+    bops.type(kScalar);
+    for (int i = 0; i < pmb->options->bfuncs().size(); ++i) {
+      if (pmb->options->bfuncs()[i] == nullptr) continue;
+      pmb->options->bfuncs()[i](theta, 3 - i / 2, bops);
+    }
+```
 
 ### Tests
 

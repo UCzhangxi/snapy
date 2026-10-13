@@ -32,6 +32,9 @@ so both panels solve the same Riemann problem at a shared face; a rule, the suff
 `test_flux_positivity_cubedsphere_python` ($10^{-13}$ drift); both were not run for this chapter at the pin (missing evidence).
 :::
 
+Local symbols: none beyond NOTATION §3, where $q^{\mathrm L}_f, q^{\mathrm R}_f$ are the reconstructed left and right
+states of face $f$; the keys `*_wl:+` and `*_wr:-` carry them.
+
 ### Derivation
 
 The argument is in `sources/canoe__tracer_seam_TECH_REPORT.md` §4 to §6; it is stated here against the code. In a
@@ -93,22 +96,51 @@ In step order (@tbl-ch03-cslrsync-code):
    follow.
 3. The scalar does the same with `scalar_wl:+` and `scalar_wr:-` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
+**How to use it.** No key: the sync runs whenever `distribute.layout` is `cubed-sphere` and the axis has more than
+one cell. It cannot be turned off and refuses nothing. The send and the roles are
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+  SyncOptions sync_opts;
+  sync_opts.cross_panel_only(true).interpolate(false).type(kPrimitive);
+    ...
+  if (u.size(DIM2) > 1) {
+    wtmp2 = precon23->forward(w, DIM2);
+
+    // sync left/right states across faces for cubed sphere layout
+    if (playout->options->type() == "cubed-sphere") {
+      send_vars2["hydro_wl:+"] = wtmp2[ILT];
+      send_vars2["hydro_wr:-"] = wtmp2[IRT];
+      pmb->begin_exchange(send_vars2, sync_opts.dim(DIM2));
+    }
+  }
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_flux_covariance_seams_python` | six panels with the face-flux covariance on conserve mass, vapour and the integrated total energy plus potential energy, $E_{\mathrm{tot}}+\mathrm{PE}$ with $E_{\mathrm{tot}}=\sum_iE_iV_i$, over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
+| `test_flux_covariance_seams_python` | six panels with the face-flux covariance on conserve mass, vapour and $\sum_iV_iE_i+\mathrm{PE}_d$ (NOTATION §5; the invariant of cell work with the fixer, as the script states), over the run | $10^{-12}$ relative drift | `DRIFT_TOL` in the script |
 | `test_flux_positivity_cubedsphere_python` | tracer mass is conserved across seams and the hat stays in $[0,1]$ | $10^{-13}$ drift | `DRIFT_TOL`, @sec-ch03-thetacopy |
 
 : Tests that exercise the face-state sync. C++ entries carry the build suffix (`.release`). {#tbl-ch03-cslrsync-tests}
 
 The conservation arm is `arm_conservation` ({{< code tests/test_flux_covariance_seams.py arm_conservation >}}) and
 its threshold `DRIFT_TOL` ({{< code tests/test_flux_covariance_seams.py DRIFT_TOL >}}); a shared face whose two panels
-solved different problems would leak and fail it. There is no dedicated test of the suffix rule itself. The tests run
+solved different problems would leak and fail it. There is no dedicated C++ unit test of the suffix rule itself. The tests run
 on CPU in one process. They were not run for this chapter at the pin (missing evidence).
+
+
+The suffix rule itself is checked by enumeration: for the four pairings of the face's side in the sender and in the
+receiver, including the two same-orientation edges, the pack and unpack tests move exactly one state, the sender's
+interior-side one, into the receiver's ghost-side slot (`[C20]`).[^cslr-c20]
+
+[^cslr-c20]: `python3 src/snapy_report/ch03/geometry_check.py`, line `[C20]`; a Python port of the suffix tests of
+    `CubedSphereLayoutImpl::serialize` and `CubedSphereLayoutImpl::deserialize` with their positional payload at the
+    pin; CPU; Python and sympy as in the other footnotes of this chapter.
 
 ### Limits
 
 No known limits. The transpose and flip flags are computed for these strips but have no effect on a strip one face
-deep (read from the code). The suffix rule has no direct unit test (not measured). The switch combinations that are
+deep (read from the code). The suffix rule has the Python enumeration above but no direct C++ unit test (not measured). The switch combinations that are
 tested are listed in the switch coverage matrix, @sec-ch12-matrix.
