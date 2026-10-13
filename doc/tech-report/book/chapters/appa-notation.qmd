@@ -1,11 +1,72 @@
 # Notation {#sec-appa}
 
-<!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: NOTATION.md; the chapter sources (first use of each symbol)
-status: draft
-The included fragment is written by tools/gen_notation_index.py, which _quarto.yml runs as a pre-render step;
-the committed copy must match a fresh generation (tools/tests).
--->
+The notation index connects the symbols in an equation to their meanings and their first matching use. Read the meaning before following the code name: a familiar letter need not represent the same physical quantity in another model.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Find definitions and their supporting chapter evidence.
+
+**Data.** NOTATION.md; generated navigation tables.
+
+**Placement.** Report preparation, outside the solver.
+
+**Activation.** Run `gen_notation_index.py`; no solver switch.
+
+**Limits.** Index membership does not establish correctness.
+
+**Evidence.** The checks below verify generation against its inputs.
+:::
+
+Local symbols: this guide introduces no mathematical variables. Symbols in the tables retain the definitions in their source chapters.
+
+## Why the index is structured this way
+
+1. Read the symbol and its meaning together. The generator copies these cells from `NOTATION.md`; it does not infer physical dimensions from code.
+2. Read the units column. `split_units` extracts a bracketed unit or a count; an empty cell is not evidence of a dimensionless quantity.
+3. Follow “first used” to the chapter. `first_use` searches normalized mathematics in book order, so another spelling can give no match even when the concept is present.
+4. Follow the chapter's code citation at the code pin before changing an implementation. The index's code column is a copied name, not a fresh source audit.
+
+These operations parse strings and count rows with Python integers. They perform no floating-point reduction;
+there is no accumulated round-off term to bound. Exact regeneration tests the rendering contract, not a physical tolerance.
+
+## How to use and refresh the index
+
+There is no simulation YAML for this appendix: neither generator configures snapy. From the report directory, run:
+
+```bash
+python tools/gen_notation_index.py
+python tools/gen_notation_index.py --check
+```
+
+The first command regenerates the included table from its sources. The second refuses a stale committed fragment
+with a nonzero exit status. Edit the inputs and regenerate; do not repair individual generated cells.
+`--check` and `--stats` are mutually exclusive command-line modes. This is a report-tool refusal, not a solver guard.
+
+The selection step in `gen_notation_index.py` is:
+
+```python
+first = first_use(symbol_key(r.get("symbol", "")), parts)
+```
+
+This excerpt implements step 3 above. It maps text to an index entry; there is no solver equation or timestep attached to it.
+The generator implementation is part of the report revision, separate from the solver code pin.[^appa-source]
+
+## Verification and limits
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `gen_notation_index.py --check` (report only) | Generated fragment agrees with current inputs | Exact text equality | Generator contract |
+| `tools/tests/test_gen_notation_index.py` (pytest, not CTest) | Parsing and index selection fixtures | Exact fixture assertions | Report-tool tests |
+
+: Checks of the notation generator. {#tbl-appa-reader-checks}
+
+[C1] A successful `--check` establishes that the table is current against its inputs.
+It does not validate those inputs. [C2] The generator tests exercise the parsing and selection rules;
+they do not execute a snapy simulation.[^appa-run]
+
+The generated introduction retains the notation source’s historical revision. Its code-name cells do not certify current-pin implementation behavior. A missing first-use match is a text-search result, not proof that a symbol is unused.
+
+[^appa-source]: Report implementation: `tools/gen_notation_index.py` at report base `08b332ff6b1b9abf3e1957df0d20c7110fd2c8f9`. Solver claims must be checked separately at `6fbb39750f62b83df096058a4746e77d0a634bc5`.
+
+[^appa-run]: Run from the report directory with `python tools/gen_notation_index.py --check` and `PYTHONPATH=src python -m pytest -q tools/tests`. The PR evidence records base/head results and Python/pytest versions. These are report checks, with no CPU, CUDA or MPI solver execution claimed.
 
 {{< include 17-appendices/_appa-notation.qmd >}}
