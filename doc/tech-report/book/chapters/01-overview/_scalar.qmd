@@ -1,37 +1,55 @@
 ## Transport passive scalars with dry mass (`scalar:`) {#sec-ch01-scalar}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
-sources: OUTLINE.md entry 1.8; pinned Code table
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md entry 1.8; src/scalar/scalar.cpp; src/scalar/scalar_options.cpp; src/mesh/meshblock.cpp; tests/test_scalar.cpp
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
-Scalar transport reconstructs the ratio to conserved dry density and upwinds it with the hydro dry-mass flux. It
-therefore follows hydro in each stage. Names supplied in YAML set the scalar count; missing reconstruction inherits
-the horizontal hydro choice.
+A passive scalar is a quantity the flow carries without acting on it. snapy stores each scalar as a density and
+transports it as a ratio to the dry-air density. The ratio rides exactly on the dry-mass flux the hydro operator has
+just computed. This section follows that call, which runs after the hydro call in every stage.
 
 ::: {.callout-note title="At a glance"}
-Scalar transport reconstructs the ratio to conserved dry density and upwinds it with the hydro dry-mass flux.
-YAML nvar default 0; upper-bound default -1 (disabled).
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A, a code map: reconstruct the ratio to dry density, upwind it with the hydro dry-mass flux.
+
+**Data.** In: `scalar_s` [$\mathrm{kg\,m^{-3}}$], `hydro_u` and the hydro fluxes. Out: the scalar stage increment.
+
+**Placement.** After the hydro call in every stage; the parent block combines the result.
+
+**Activation.** `scalar/names` or `scalar/nvar` (default 0); `upper-bound` default $-1$ (off).
+
+**Guarantee / limits.** A map; the ratio divides by the conserved dry density, so that density must be positive.
+
+**Evidence.** `test_scalar.<b>`: shape, finiteness and the bound ($10^{-5}$ float32, $10^{-12}$ float64); see Tests.
 :::
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
-their owning chapters.
+No separate derivation: this section describes an interface or control-flow path, and the operators are derived
+in their owning chapters.
 
 ### Numerical method
 
-Horizontal panel exchange uses directional left/right keys with interpolation disabled. The donor factor also uses a
-raw exchange, followed by physical boundary functions, before flux scaling. The scalar stage result is combined by the
-parent MeshBlock. Implicit dry transfer and dry-source carry are described in @sec-ch01-stage. Reconstruction,
-boundary and limiter choices determine accuracy; no scalar convergence rate is measured in this code map.
+`ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}) requires `hydro_u` and forms the ratio
+of the scalar density to the conserved dry density. It reconstructs the ratio in $x_1$ and feeds the face pair to the
+Riemann solver together with the hydro's $x_1$ dry-mass flux. The lateral directions reconstruct the ratio and
+exchange the cross-panel face states with interpolation off. They take the hydro's lateral mass fluxes, with the
+scalar's own covariance row when the face-flux covariance is on (@sec-ch12-flux-covariance). The donor factor of the
+positivity limiter is exchanged raw and passed through the physical boundary functions in the `sync_theta` closure
+before the fluxes are scaled (@sec-ch08). The parent block combines the stage and carries the implicit dry transfer
+and the dry sources (@sec-ch01-stage). `ScalarOptionsImpl::from_yaml`
+({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}) reads `nvar` (default 0), lets a `names`
+list set the count, reads `upper-bound` (default $-1$), and reads an optional `reconstruct` block. When that block is
+absent the block options take the horizontal hydro reconstruction (`MeshBlockOptionsImpl::from_yaml`,
+{{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}). Reconstruction, boundary and limiter
+choices set the accuracy; no scalar convergence rate is measured here.
 
-@fig-ch01-scalar-flow shows the data or call sequence.
+@fig-ch01-scalar-flow shows the call sequence.
 
 ```{python}
 #| label: fig-ch01-scalar-flow
@@ -42,44 +60,83 @@ from snapy_report.ch01.fig_scalar_flow import make_fig
 make_fig()
 ```
 
+**Why the ratio, and what it costs.** Two facts of the code and one bound.
+
+1. The scalar is advected as a ratio so that it rides on the hydro's dry-mass flux exactly. The Riemann call for the
+   scalar receives the hydro's $x_1$ flux of `IDN` as the mass flux
+   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). A uniform ratio is thus transported as a uniform ratio.
+2. The ratio is formed by one division per cell, $r = s/\rho_{\mathrm{d}}$, rounded once. The relative error is at
+   most $\delta_{\mathrm{mach}} = 2^{-53}$, and the product that forms the flux from it adds one more.
+3. The donor factor is exchanged raw, because the donor of a seam face is the neighbour's edge cell and an
+   interpolated ghost is not its factor (@sec-ch11-exchange).
+
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| scalar | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `forward` | API / see Summary |
-| scalarlimit | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | API / see Summary |
-| scalaropts | {{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}} | `from_yaml` | API / see Summary |
-| yaml | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `from_yaml` | API / see Summary |
-| transfer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `mass_corr` | API / see Summary |
+| scalar | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `forward` | `scalar:` |
+| limiter sync | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | EOS limiter or covariance on |
+| options | {{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}} | `from_yaml` | `scalar/*` |
+| inherit | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `recon23` | `scalar/reconstruct` |
+| transfer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `mass_corr` | `implicit-scheme` |
 
-: Implementation anchors for transport passive scalars with dry mass. {#tbl-ch01-scalar-code}
+: Implementation anchors for the scalar transport. {#tbl-ch01-scalar-code}
 
-1. Read `forward` for the scalar part of this path ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
-2. Read `sync_theta` for the scalarlimit part of this path ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
-3. Read `from_yaml` for the scalaropts part of this path ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}).
-4. Read `from_yaml` for the yaml part of this path ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}).
-5. Read `mass_corr` for the transfer part of this path ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+1. Form the ratio, reconstruct, upwind with the dry-mass fluxes: `forward`
+   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+2. Exchange and bound the donor factor: `sync_theta` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+3. Read the count, bound and reconstruction: `from_yaml`
+   ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}); the inherited reconstruction is
+   set in {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}.
+4. Carry the implicit dry transfer in the parent: `mass_corr`
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
+
+**How to use it.** Name the scalars, or give their count; the bound is off unless set
+({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}):
+
+```yaml
+scalar:
+  names: [dye, tracer2]   # sets nvar = 2
+  upper-bound: 1.0        # default -1: no bound
+  reconstruct: {type: plm}  # omitted: the horizontal hydro reconstruction
+```
+
+Refused: a key other than `verbose`, `nvar`, `upper-bound`, `names`, `reconstruct` and `riemann-solver`; inside
+`reconstruct` anything but `shock`, `type` and `scale`. Also refused: a Riemann solver other than `upwind`, and
+`upper-bound: 0` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}). The ratio and the $x_1$ flux are these lines
+of `ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
+
+```cpp
+auto rho = other.at("hydro_u")[IDN].unsqueeze(0);
+auto r = u / rho;
+if (_flux1.defined()) {
+  auto rlr = precon->forward(r, DIM1);
+  _flux1.set_(
+      priemann->forward(rlr[ILT], rlr[IRT], DIM1, pmb->phydro->flux1()[IDN]));
+```
+
+`rho` is the conserved dry density, `r` the ratio, and the last call upwinds the reconstructed pair with the
+hydro's dry-mass flux.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_scalar.release` | Initialization, shape, finite increment | allclose defaults; exact shape | API contract; numeric rationale absent |
-| `test_scalar.release` | Positive density, bounded ratio | 1e-5 float32; 1e-12 float64 | Test constants; rationale not documented |
+| `test_scalar.<b>` | the scalar density is seeded with the right shape and the increment is finite | `allclose` defaults; exact shape | the API contract |
+| `test_scalar.<b>` | the ratio stays within its upper bound and the density nonnegative | $10^{-5}$ float32; $10^{-12}$ float64 | test constants |
 
-: Source assertions for scalar. {#tbl-ch01-scalar-tests}
+: Source assertions for the scalar transport. {#tbl-ch01-scalar-tests}
 
-The assertion anchor `scalar_s` is in {{< code tests/test_scalar.cpp DeviceTest.initialize_and_transport_scalar >}}.
+The assertions are {{< code tests/test_scalar.cpp DeviceTest.initialize_and_transport_scalar >}} and
+{{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}}.
 
-The assertion anchor `tol` is in {{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}}.
-
-No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
-the missing runs and the distinction between assertions and observations.
+The ctest runs on CPU and, through the shared device list, on CUDA when the build has it. It has not been run
+for this report at the pin: **pending a pinned ctest run**. No report check exists for this section.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The forward routine divides directly by conserved dry density. Its behavior for a zero dry-density field is not
-established by the positive-density scalar tests cited here. The upper-bound and positivity mechanisms are documented
-by @sec-ch10 and @sec-ch08; combinations remain in @sec-ch12-matrix.
+The forward routine divides by the conserved dry density; its behaviour for a zero dry-density field is not
+established by the cited tests. The upper-bound and positivity mechanisms are documented by @sec-ch10 and
+@sec-ch08; combinations remain in @sec-ch12-matrix.
 :::

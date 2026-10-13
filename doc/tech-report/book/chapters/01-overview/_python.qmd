@@ -1,43 +1,57 @@
 ## Expose the C++ API to Python (`import snapy`) {#sec-ch01-python}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main pin)
-sources: OUTLINE.md entry 1.12; pinned Code table
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md entry 1.12; python/__init__.py; python/csrc/snapy.cpp; python/csrc/pymesh.cpp; python/csrc/pylayout.cpp;
+         pyproject.toml; tests/CMakeLists.txt; tests/test_python_import_path.py; tests/test_jit_user_forcing.py
 status: draft
+author: Jiheng Hu
+reviewer:
 -->
 
 ### Summary
 
-The Python initializer imports torch and the external packages, then the extension. The extension exposes row
-constants, restart loading and component bindings, while the distribution submodule accepts an external process group.
+The same blocks, meshes and options are reachable from Python through a pybind11 extension. Importing the package
+first imports torch and the three external packages, sets torch's defaults, and then loads the extension. The
+extension exposes the row constants, the restart loader and every component. A Python driver can therefore run the
+loop of @sec-ch01-driver with the same calls as the C++ examples.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A (a code map): the Python initializer imports torch and the external packages, then the extension, which exposes the row constants, restart loading and the component bindings.
+**Purpose.** N/A, a code map: the initializer, the extension module and the two bindings a driver needs.
 
-**Data.** No physical quantity. In: the installed package and its dependencies. Out: the `snapy` module, which exposes the row constants (`IDN`, `IVX`, `IVY`, `IVZ`, `IPR`, `ICY`), restart loading and the component bindings; the distribution submodule accepts an external process group.
+**Data.** In: the installed package. Out: the `snapy` module with `kIDN` ... `kICY`, `load_restart`, the bindings.
 
 **Placement.** At `import snapy`.
 
-**Activation.** Import sets float64, one intra-op thread and one inter-op thread.
+**Activation.** Import sets float64 and one intra-op and one inter-op thread.
 
-**Guarantee / limits.** A map; no convergence order.
+**Guarantee / limits.** A map; `MeshBlock.forward` releases the GIL around the C++ stage.
 
-**Evidence.** `test_python_import_path_python` asserts the import origin and the PYTHONPATH ordering (exact path comparisons); `test_jit_user_forcing_python` asserts that a nested scripted module adds its increment (`assert_close` defaults); no run of these ctest entries is recorded for this chapter at the pin (missing evidence).
+**Evidence.** `test_python_import_path_python` (exact paths), `test_jit_user_forcing_python`; see the Tests layer.
 :::
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path. Numerical operators are derived in
-their owning chapters.
+No separate derivation: this section describes an interface or control-flow path, and the operators are derived
+in their owning chapters.
 
 ### Numerical method
 
-`MeshBlock.forward` releases the Python GIL around the C++ stage call. The Python API therefore reaches the same stage
-and exchange ordering described above. Packaging declares build requirements separately from runtime requirements; the
-command entry points include combine and inspect tools. Import and binding introduce no independent spatial order or
-ghost treatment.
+The initializer {{< code python/__init__.py >}} imports torch, pydisort, pyharp and kintera, imports the extension,
+sets the default dtype to float64 and the thread counts to one, and reads the package version. The extension
+`PYBIND11_MODULE` ({{< code python/csrc/snapy.cpp PYBIND11_MODULE >}}) exposes the row constants as `kIDN`, `kIV1`,
+`kIV2`, `kIV3`, `kIPR` and `kICY`, the representation constants `kPrimitive` and `kConserved`, the function
+`load_restart`. It then calls one binding function per component. `bind_mesh`
+({{< code python/csrc/pymesh.cpp bind_mesh >}}) binds `MeshBlock.forward` with the GIL released around the C++ call,
+so a Python driver reaches the stage and exchange order of @sec-ch01-block-forward unchanged. `bind_layout`
+({{< code python/csrc/pylayout.cpp bind_layout >}}) binds `set_process_group`, which the launch helper uses to hand
+torch's default process group to the layout. {{< code pyproject.toml >}} declares the build requirements (torch pinned
+to one version, kintera, and on Linux commux and pinc) apart from the run-time requirements. It also declares the two
+console scripts `pd-combine` and `pd-inspect`. The Python ctests import the package under `SNAPY_TEST_PYTHONPATH` when
+that cache path is set ({{< code tests/CMakeLists.txt >}}; @sec-ch12-build). Import and binding introduce no spatial
+order or ghost treatment.
 
-@fig-ch01-python-flow shows the data or call sequence.
+@fig-ch01-python-flow shows the call sequence.
 
 ```{python}
 #| label: fig-ch01-python-flow
@@ -48,48 +62,81 @@ from snapy_report.ch01.fig_python_flow import make_fig
 make_fig()
 ```
 
+**Why the initializer sets torch's defaults.** Three facts of the code.
+
+1. The default dtype is set to float64 because the solver's buffers are float64
+   ({{< code python/__init__.py >}}; {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}).
+2. The thread counts are set to one so that a Python driver does not oversubscribe the cores that a `Mesh`
+   worker pool uses (@sec-ch01-mesh).
+3. `MeshBlock.forward` releases the GIL so that a C++ stage can run while Python waits
+   ({{< code python/csrc/pymesh.cpp bind_mesh >}}).
+
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| pyinit | [`__init__.py:1-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L16) | `torch` | API / see Summary |
-| pybind | {{< code python/csrc/snapy.cpp PYBIND11_MODULE >}} | `load_restart` | API / see Summary |
-| pymesh | {{< code python/csrc/pymesh.cpp bind_mesh >}} | `forward` | API / see Summary |
-| pydist | {{< code python/csrc/pylayout.cpp bind_layout >}} | `set_process_group` | API / see Summary |
-| pyproject | [`pyproject.toml:1-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L31) | `dependencies` | API / see Summary |
-| scripts | [`pyproject.toml:52-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L60) | `pd-combine` | API / see Summary |
-| testpath | [`CMakeLists.txt:350-362`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L350-L362) | `SNAPY_TEST_PYTHONPATH` | API / see Summary |
+| initializer | {{< code python/__init__.py >}} | `set_default_dtype` | none |
+| module | {{< code python/csrc/snapy.cpp PYBIND11_MODULE >}} | `load_restart` | none |
+| mesh | {{< code python/csrc/pymesh.cpp bind_mesh >}} | `forward` | none |
+| layout | {{< code python/csrc/pylayout.cpp bind_layout >}} | `set_process_group` | none |
+| packaging | {{< code pyproject.toml >}} | `dependencies` | none |
+| scripts | {{< code pyproject.toml >}} | `pd-combine` | none |
+| test path | {{< code tests/CMakeLists.txt >}} | `SNAPY_TEST_PYTHONPATH` | `SNAPY_TEST_PYTHONPATH` |
 
-: Implementation anchors for expose the c++ api to python. {#tbl-ch01-python-code}
+: Implementation anchors for the Python interface. {#tbl-ch01-python-code}
 
-1. Read `torch` for the pyinit part of this path ([`__init__.py:1-16`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L16)).
-2. Read `load_restart` for the pybind part of this path ({{< code python/csrc/snapy.cpp PYBIND11_MODULE >}}).
-3. Read `forward` for the pymesh part of this path ({{< code python/csrc/pymesh.cpp bind_mesh >}}).
-4. Read `set_process_group` for the pydist part of this path ({{< code python/csrc/pylayout.cpp bind_layout >}}).
-5. Read `dependencies` for the pyproject part of this path ([`pyproject.toml:1-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L31)).
-6. Read `pd-combine` for the scripts part of this path ([`pyproject.toml:52-60`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L60)).
-7. Read `SNAPY_TEST_PYTHONPATH` for the testpath part of this path ([`CMakeLists.txt:350-362`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L350-L362)).
+1. Import and set the torch defaults: {{< code python/__init__.py >}}.
+2. Load the extension and its constants: `PYBIND11_MODULE` ({{< code python/csrc/snapy.cpp PYBIND11_MODULE >}}).
+3. Drive a block or a mesh: `bind_mesh` ({{< code python/csrc/pymesh.cpp bind_mesh >}}); attach a process
+   group: `bind_layout` ({{< code python/csrc/pylayout.cpp bind_layout >}}).
+
+**How to use it.** The initializer runs on import; the first lines are these ({{< code python/__init__.py >}}):
+
+```python
+import torch
+import pydisort
+import pyharp
+import kintera
+from .snapy import *
+torch.set_default_dtype(torch.float64)
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
+```
+
+A driver then builds options, a block and the loop of @sec-ch01-driver:
+
+```python
+import snapy
+opts = snapy.MeshBlockOptions.from_yaml("case.yaml")
+block = snapy.MeshBlock(opts)
+vars, t = block.initialize({"hydro_w": w})
+```
+
+A restart goes through `block.initialize_from_restart(path)`, which returns the saved time. Refused: an import without
+the three external packages installed (an `ImportError` from the initializer). Also refused: a restart path that does
+not end in `.part` (an `invalid_argument` from the loader, {{< code src/input/read_restart_file.cpp load_restart >}}).
+The row constants a driver indexes `hydro_u` with are `snapy.kIDN`, `kIV1`, `kIV2`, `kIV3`, `kIPR` and `kICY`.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_python_import_path_python` | Import origin and PYTHONPATH ordering | exact path comparisons | Package-under-test contract |
-| `test_jit_user_forcing_python` | Nested scripted module adds increment | assert_close defaults | Library defaults, not specified by test |
+| `test_python_import_path_python` | the package is imported from under the cache path and the caller's `PYTHONPATH` entry survives | exact paths; skip 125 when unset | the script's `assert` statements |
+| `test_jit_user_forcing_python` | a nested scripted module adds its increment through the Python driver | `assert_close` defaults | library defaults |
 
-: Source assertions for python. {#tbl-ch01-python-tests}
+: Source assertions for the Python interface. {#tbl-ch01-python-tests}
 
-The assertion anchor `where` is in {{< code tests/test_python_import_path.py where >}}.
+The assertions are the top-level `assert` statements of {{< code tests/test_python_import_path.py >}} and the
+`assert_close` in `main` of {{< code tests/test_jit_user_forcing.py main >}}.
 
-The assertion anchor `expected` is in {{< code tests/test_jit_user_forcing.py main >}}.
-
-No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
-the missing runs and the distinction between assertions and observations.
+Both tests run on CPU, one process; `test_python_import_path_python` exits 125 when the cache path is unset.
+Neither has been run for this report at the pin: **pending a pinned ctest run**. No report check exists for this
+section.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Python ctests need `SNAPY_TEST_PYTHONPATH` pointing to the package built from the pin; otherwise CMake warns that they
-exercise an installed package instead. The import-path check skips with status 125 when no target path is supplied.
-Legacy convenience scripts are not taken as evidence for the current binding signature.
+The Python ctests need `SNAPY_TEST_PYTHONPATH` pointing at the package built from the pin; otherwise the
+configure step warns that they exercise an installed package, and the import-path check skips with status 125.
+The legacy convenience scripts in the `python` directory are not evidence for the current binding signatures.
 :::
