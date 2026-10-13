@@ -29,6 +29,8 @@ defining equation.
 (missing evidence).
 :::
 
+Local symbols: none.
+
 ### Derivation
 
 Not applicable: there is no implemented metric. The disabled file holds an unfinished vector transform, starting with
@@ -61,6 +63,19 @@ make_fig()
 In step order (@tbl-ch03-cylindrical-code): `create` returns a `Cylindrical` module for the name
 ({{< code src/coord/coordinate.cpp CoordinateImpl::create >}}), whose `reset` is the empty override ({{< code src/coord/coordinate.hpp CylindricalImpl >}}).
 
+**How to use it.** `geometry.type: cylindrical` is accepted and builds a block, but its coordinate registers no
+buffers: no widths, centres, areas or volumes. Do not select it. Nothing refuses it.
+({{< code src/coord/coordinate.hpp CylindricalImpl >}}):
+
+```cpp
+  explicit CylindricalImpl(const CoordinateOptions& options_,
+                           torch::nn::Module* p = nullptr)
+      : CoordinateImpl(options_, p) {
+    reset();
+  }
+  void reset() override {}
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -72,6 +87,13 @@ In step order (@tbl-ch03-cylindrical-code): `create` returns a `Cylindrical` mod
 The case is the `Coordinate` test `face_centroid_shift_zero_matches_the_shift` of
 {{< code tests/test_coordinate.cpp >}}; it builds the block
 and reads the flag, and steps nothing. No test runs a solver step on this type (missing evidence).
+
+
+Constructing a block with this type on a source build of the pin succeeds, and its coordinate module lists no
+buffers.[^cyl-build]
+
+[^cyl-build]: construction only, `MeshBlock(MeshBlockOptions.from_yaml(...))` with `geometry.type: cylindrical` on
+    a source build of snapy at the pin, CPU; no step was run.
 
 ### Limits
 

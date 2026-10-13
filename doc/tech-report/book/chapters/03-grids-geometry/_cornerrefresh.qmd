@@ -31,18 +31,21 @@ $n_g$-wide slab.
 **Evidence.** `test_wb_wall_corner`; check `[C19]`; the ctest entry was not run for this chapter at the pin (missing evidence).
 :::
 
+Local symbols (flagged to the editor): $n_{\mathrm t}$ the array length along a tangential direction, ghosts
+included (count); $n_{\mathrm{slab}} = \min(n_g, \lfloor n_{\mathrm t}/2\rfloor)$ the width of each end slab the
+refresh rewrites (count).
+
 ### Derivation
 
 There is nothing to derive; it is a consistency rule. For each installed $x_1$ bfunc that is not outflow, and each
-tangential direction with more than one cell, the bfunc is called on the first and last $w_{\mathrm s} = \min(n_g, \lfloor n_{\mathrm t}/2\rfloor)$ cells of
-that direction, with $n_{\mathrm t}$ the array length along the tangential direction, ghosts included, and $w_{\mathrm s}$ the slab width in
-cells (`int g = ng < n / 2 ? ng : n / 2` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}), unless that tangential face is itself physical and not periodic, in which case its own bfunc already
+tangential direction with more than one cell, the bfunc is called on the first and last $n_{\mathrm{slab}}$ cells of
+that direction, with $n_{\mathrm t}$ and $n_{\mathrm{slab}}$ as above (`int g = ng < n / 2 ? ng : n / 2` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}), unless that tangential face is itself physical and not periodic, in which case its own bfunc already
 wrote the corner. The rule relies on the contract stated with the `BC_FUNCTION` macro: a face function called again on
 a tangential slab must not depend on the slab's size and must give the same ghosts ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}).
 Outflow is excluded because its background must match the whole block and it needs primitives.
 
 The check enumerates the rule (`[C19]`).[^cr-c19] Over 35 $(n_g, n_{\mathrm t})$ pairs the two end slabs of width
-$w_{\mathrm s}$ never meet, which is what the minimum is for; and over the 140 combinations of
+$n_{\mathrm{slab}}$ never meet, which is what the minimum is for; and over the 140 combinations of
 $(n_g, n_{\mathrm t}, \text{tangential face physical}, \text{periodic})$ the number of writers of a corner cell is never more
 than one, so the exclusion is exactly what keeps the result independent of the order the bfuncs run in.
 
@@ -80,6 +83,28 @@ In step order (@tbl-ch03-cornerrefresh-code):
 2. `refresh` loops over the two $x_1$ faces, skips a missing or `is_outflow` function and an $x_1$ axis of one cell,
    and calls the function on each tangential slab whose face is not `physical` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
 3. It runs for `hydro_u` and `scalar_s` with their types ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} for `refresh`).
+
+**How to use it.** No key: the refresh runs in every per-stage block sync for each installed $x_1$ function except
+`outflow`. A user boundary function must honour the `BC_FUNCTION` contract (same ghosts on any slab size). The slab
+rule is ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}):
+
+```cpp
+      for (int f = 0; f < nface; ++f) {
+        if (!fns[f] || is_outflow(fns[f])) continue;
+        int spatial = 3 - f / 2;
+        if (field.size(spatial) == 1) continue;
+        for (int orth = 1; orth <= 3; ++orth) {
+          if (orth == spatial || field.size(orth) <= 1) continue;
+          int n = static_cast<int>(field.size(orth));
+          int g = ng < n / 2 ? ng : n / 2;
+          if (g <= 0) continue;
+          int inner = (3 - orth) * 2;
+          if (!physical(inner)) fns[f](field.narrow(orth, 0, g), spatial, op);
+          if (!physical(inner + 1))
+            fns[f](field.narrow(orth, n - g, g), spatial, op);
+        }
+      }
+```
 
 ### Tests
 

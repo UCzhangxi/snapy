@@ -426,12 +426,34 @@ def check_C19_corner_refresh():
                   "number of writers per corner is always in %s" % (cases, sorted(writes)))
 
 
+def check_C20_face_state_suffix():
+    """Port the pinned serialize/deserialize suffix tests; payloads are positional.
+
+    cubed_sphere_layout.cpp:609-612, 724-727, 846-849, 941-944 at
+    6fbb39750f62b83df096058a4746e77d0a634bc5.
+    """
+    keys = [("wl", "+"), ("wr", "-")]
+    interior = {1: "wl", -1: "wr"}
+    ghost = {1: "wr", -1: "wl"}
+    rows, ok = [], True
+    for sender in (1, -1):
+        for receiver in (1, -1):
+            packed = [k for k, suffix in keys
+                      if not ((suffix == "+" and sender < 0) or (suffix == "-" and sender > 0))]
+            accepted = [k for k, suffix in keys
+                        if not ((suffix == "+" and receiver > 0) or (suffix == "-" and receiver < 0))]
+            ok = ok and packed == [interior[sender]] and accepted == [ghost[receiver]]
+            rows.append(f"({sender:+d},{receiver:+d}): {packed} -> {accepted}")
+    return report("C20", ok, "face-state suffixes move the interior state into the ghost-side slot",
+                  "4 sender/receiver pairings, including same-orientation edges; " + "; ".join(rows))
+
+
 def main():
     checks = [check_C1_centroids, check_C2_rationals, check_C3_code_forms, check_C4_spherical_coefficients,
               check_C5_sources, check_C6_angle, check_C7_solid_angle, check_C8_lower_raise,
               check_C9_uniform_pressure, check_C10_morton, check_C11_slide, check_C12_theta_seam,
               check_C13_x1_seam_average, check_C14_sync_matrices, check_C15_corner, check_C16_global_grid,
-              check_C17_cartesian, check_C18_physical_faces, check_C19_corner_refresh]
+              check_C17_cartesian, check_C18_physical_faces, check_C19_corner_refresh, check_C20_face_state_suffix]
     return sum(not c() for c in checks)
 
 

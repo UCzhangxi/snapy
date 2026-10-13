@@ -154,6 +154,60 @@ In step order (@tbl-ch03-globalgrid-code):
 7. Each coordinate type's `reset` then builds widths and centres from these faces (the metric schemes of this
    chapter).
 
+**How to use it.** The global grid is the `geometry` block; the block grid that cuts it is `distribute`
+(@sec-ch03-layouts). A two-block slab of 8 by 8 cells:
+
+```yaml
+geometry:
+  type: cartesian                      # the default; spherical-polar, gnomonic-equiangle; cylindrical is a stub
+  bounds: {x1min: 0., x1max: 1000., x2min: 0., x2max: 1000., x3min: 0., x3max: 1000.}   # x2min_pi etc. times pi
+  cells: {nx1: 8, nx2: 8, nx3: 1, nghost: 2}   # interp_order defaults to 2
+distribute: {layout: slab, nb2: 2, blocks_per_process: 2}   # nx2 must divide by nb2
+```
+
+Two or more blocks in one process are built through `Mesh` (`MeshOptions.from_yaml`); a single `MeshBlock` of a
+multi-block layout stops with "MeshBlockImpl: world_size (1) does not match layout partitioning (2)." Refused, each
+with its message:
+
+- a key outside `geometry: {type, bounds, cells}`, `bounds` (the six bounds and the four `_pi` forms) or `cells`
+  (`nx1`, `nx2`, `nx3`, `nghost`, `interp_order`): "unknown key 'geometry/cells/nx4'. Valid keys: nx1, nx2, nx3,
+  nghost, interp_order.";
+- a count that does not divide by its blocks: "Number of total x2 grids must be divisible by the number of mesh
+  blocks in x2 direction" (the $x_3$ message reads "Number of totla x3 grids …");
+- block options that do not sit on the declared grid (programmatic options only; the YAML path computes the block
+  bounds itself): "… lies outside the declared global x2 grid" or "… is not exactly n cells of the declared global
+  x2 grid".
+
+The keys, the divisibility test and the defaults are these lines of `from_yaml`
+({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}); `repartition` then gives the block
+$n_a = n^{\mathrm{glob}}_a/n_b$ cells and its offset $o_a$ of @eq-ch03-globalgrid-offset:
+
+```cpp
+  check_keys(node, "geometry", {"type", "bounds", "cells"});
+  op->type(node["type"].as<std::string>("cartesian"));
+    ...
+  check_keys(node["cells"], "geometry/cells",
+             {"nx1", "nx2", "nx3", "nghost", "interp_order"});
+  op->global_nx1() = node["cells"]["nx1"].as<int>(1);
+  op->global_nx2() = node["cells"]["nx2"].as<int>(1);
+  op->global_nx3() = node["cells"]["nx3"].as<int>(1);
+    ...
+  int nb1 = playout->options->pz();
+  int nb2 = playout->options->px();
+  int nb3 = playout->options->py();
+
+  if (op->global_nx1() % nb1 != 0) {
+    TORCH_CHECK(
+        false,
+        "Number of total x1 grids must be divisible by the number of mesh "
+        "blocks in x1 direction");
+    ...
+  op->nghost() = node["cells"]["nghost"].as<int>(1);
+    ...
+  op->interp_order() = node["cells"]["interp_order"].as<int>(2);
+  op->repartition(layout);
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |

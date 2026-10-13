@@ -30,6 +30,10 @@ centres [m] at cells and faces, ghosts included.
 **Evidence.** `test_coordinate`, exact; check `[C17]`; the ctest entries were not run for this chapter at the pin (missing evidence).
 :::
 
+Local symbols (flagged to the editor): $A_{a,\pm}$ the areas of the two faces of cell $i$ normal to $x_a$
+[m$^2$]; $\overline q_i$ the cell average of the generic field $q$ of NOTATION §3; $\overline F_{a,\pm}$ the
+face-average flux through those faces, in the units of $q$ times m s$^{-1}$.
+
 ### Derivation
 
 For a cell $[x_{1,i-1/2}, x_{1,i+1/2}]\times[x_{2,j-1/2}, x_{2,j+1/2}]\times[x_{3,k-1/2}, x_{3,k+1/2}]$ with widths
@@ -119,6 +123,35 @@ In step order (@tbl-ch03-cartesian-code):
 3. In each stage, `forward` returns the `divergence` of the three fluxes and ignores the face pressure
    ({{< code src/coord/coordinate.cpp CoordinateImpl::forward >}}); `divergence` forms the area-weighted differences over the interior cells
    and divides by `cell_volume` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).
+
+**How to use it.** Cartesian is the type when `geometry.type` is absent or `cartesian`; the grid keys are those of
+@sec-ch03-globalgrid:
+
+```yaml
+geometry:
+  type: cartesian
+  bounds: {x1min: 0., x1max: 1000., x2min: 0., x2max: 1000.}
+  cells: {nx1: 8, nx2: 8, nghost: 2}
+```
+
+Refused: any other type name stops setup in `create` with "Unknown coordinate type: <name>". The type selection is
+({{< code src/coord/coordinate.cpp CoordinateImpl::create >}}):
+
+```cpp
+  if (opts->type() == "cartesian") {
+    return p->register_module(name, Cartesian(opts, p));
+  } else if (opts->type() == "cylindrical") {
+    return p->register_module(name, Cylindrical(opts, p));
+  } else if (opts->type() == "spherical-polar") {
+    return p->register_module(name, SphericalPolar(opts, p));
+  } else if (opts->type() == "gnomonic-equiangle") {
+    return p->register_module(name, GnomonicEquiangle(opts, p));
+  } else {
+    TORCH_CHECK(false, "Unknown coordinate type: ", opts->type());
+  }
+```
+
+`cylindrical` is accepted here but builds no metric (@sec-ch03-cylindrical).
 
 ### Tests
 

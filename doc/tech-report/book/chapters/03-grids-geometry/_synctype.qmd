@@ -137,6 +137,23 @@ In step order (@tbl-ch03-synctype-code):
    ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::serialize >}}); `deserialize` applies the inverse matrix with
    `cs_apply_velocity_transform_` ({{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::deserialize >}}).
 
+**How to use it.** No YAML key: each caller sets `SyncOptions.type` in C++ (@tbl-ch03-synctype-calls); a
+`Mesh`-level sync from Python takes the caller's type. The stage sync sets conserved, then scalar
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}):
+
+```cpp
+  SyncOptions sync_opts;
+  sync_opts.interpolate(true).type(kConserved);
+    ...
+  if (pscalar->nvar() > 0) {
+    sync_opts.type(kScalar);
+    sync_vars.clear();
+    sync_vars["scalar_s"] = scalar_s;
+    exchange(sync_vars, sync_opts);
+```
+
+Nothing is refused; a primitive strip simply skips $\mathsf G$ in @eq-ch03-synctype-matrix.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |

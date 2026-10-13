@@ -306,6 +306,52 @@ In step order (@tbl-ch03-gnomonic-code):
    components ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::flux2global2_ >}}); likewise for $x_1$ and $x_3$.
 5. `forward` adds the radial, $m_2$ and $m_3$ sources ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}).
 
+**How to use it.** Six panels, one block each, in one process; the tangential faces must be named `custom`
+(@sec-ch03-physfaces), because the default `reflecting` would act on the panel edges:
+
+```yaml
+geometry:
+  type: gnomonic-equiangle
+  bounds: {x1min: 6.4e6, x1max: 6.5e6, x2min_pi: -0.25, x2max_pi: 0.25, x3min_pi: -0.25, x3max_pi: 0.25}
+  cells: {nx1: 4, nx2: 8, nx3: 8, nghost: 2, interp_order: 2}   # per panel; nx2 == nx3
+distribute: {layout: cubed-sphere, blocks_per_process: 6}       # nb2 == nb3 blocks per panel edge, nb1 = 1
+boundary-condition:
+  external: {x1-inner: reflecting, x1-outer: reflecting,
+             x2-inner: custom, x2-outer: custom, x3-inner: custom, x3-outer: custom}
+```
+
+Build it through `Mesh`; a single `MeshBlock` stops with "MeshBlockImpl: world_size (1) does not match layout
+partitioning (6)." Refused, each with its message:
+
+- `nx2` unequal to `nx3`: "GnomonicEquiangleImpl::reset(): nx2 must equal nx3";
+- `interp_order` other than 2: "Only 2nd order ghost interpolation is supported";
+- `nb1` > 1: "CubedSphereLayoutImpl: pz must be 1 for cubed-sphere layout";
+- `nb2` unequal to `nb3`: "CubedSphereLayoutImpl: px must equal py for cubed-sphere layout".
+
+The checks and the exact solid angle @eq-ch03-gnomonic-solidangle are
+({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}):
+
+```cpp
+  TORCH_CHECK(op->nx2() == op->nx3(),
+              "GnomonicEquiangleImpl::reset(): nx2 must equal nx3");
+
+  TORCH_CHECK(op->interp_order() == 2,
+              "Only 2nd order ghost interpolation is supported");
+  TORCH_CHECK(
+      op->interp_order() <= 2 * op->nghost(),
+    ...
+  auto xc = x2f.tan().unsqueeze(0);
+  auto yc = x3f.tan().unsqueeze(-1);
+  auto corner = (xc * yc / (1. + xc * xc + yc * yc).sqrt()).atan();
+  int nc2 = op->nc2(), nc3 = op->nc3();
+  solid_angle_kj = (corner.slice(0, 1, nc3 + 1).slice(1, 1, nc2 + 1) -
+                    corner.slice(0, 1, nc3 + 1).slice(1, 0, nc2) -
+                    corner.slice(0, 0, nc3).slice(1, 1, nc2 + 1) +
+                    corner.slice(0, 0, nc3).slice(1, 0, nc2))
+                       .unsqueeze(-1);
+  register_buffer("solid_angle_kj", solid_angle_kj);
+```
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
