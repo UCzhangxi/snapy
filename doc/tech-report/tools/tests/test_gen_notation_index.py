@@ -83,6 +83,19 @@ def test_rows_first_use_and_references(tmp_path):
     assert "{#tbl-appa-1}" in frag and "{#sec-appa-2 .unnumbered}" in frag and "Reserved: never reuse." in frag
 
 
+def test_the_committed_fragment_depends_on_notation_only(tmp_path):
+    """First uses and counts are render-time values: a chapter edit changes no committed line of Appendix A."""
+    book = make_book(tmp_path)
+    text, values = g.outputs(NOTATION, book)
+    assert "@sec-ch02-gas" not in text and "{{< generated appa symbols >}} symbols" in text
+    rho = next(l for l in text.splitlines() if l.startswith(r"| $\rho$"))
+    assert rho == r"| $\rho$ | total density | [kg m$^{-3}$] | {{< generated appa %s >}} | `w[IDN]` |" % g.first_key(r"\rho")
+    assert values[g.first_key(r"\rho")] == "@sec-ch02-gas" and values["symbols"] == "7"
+    scheme = next(book.rglob("_*.qmd"))
+    scheme.write_text(scheme.read_text().replace("\\rho", "\\varrho"))   # the chapter stops using rho
+    assert g.outputs(NOTATION, book)[0] == text
+
+
 def test_check_mode_flags_a_stale_fragment(tmp_path):
     book = make_book(tmp_path)
     (tmp_path / "N.md").write_text(NOTATION)

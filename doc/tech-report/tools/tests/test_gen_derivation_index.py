@@ -111,8 +111,28 @@ def test_check_mode_flags_a_stale_fragment(tmp_path, capsys):
     assert g.main(args + ["--check"]) == 1
     assert g.main(args) == 0
     assert g.main(args + ["--check"]) == 0
-    frag.write_text(frag.read_text().replace("Eliminating", "Removing"))
+    chapter = tmp_path / "_appb-ch02.qmd"                     # the chapter's rows are in its own file
+    assert "Eliminating" in chapter.read_text() and "Eliminating" not in frag.read_text()
+    chapter.write_text(chapter.read_text().replace("Eliminating", "Removing"))
     assert g.main(args + ["--check"]) == 1
+    assert g.main(args) == 0 and g.main(args + ["--check"]) == 0
+    (tmp_path / "_appb-ch09.qmd").write_text("rows of a chapter that has none\n")   # left behind: stale
+    assert g.main(args + ["--check"]) == 1
+    assert g.main(args) == 0 and not (tmp_path / "_appb-ch09.qmd").exists()
+
+
+def test_committed_fragments_hold_no_cross_chapter_value(tmp_path):
+    """The parent holds no count and no row, and a chapter's file only its own rows: an edit to one chapter changes
+    no committed line that an edit to another chapter changes. The counts are render-time values."""
+    book = make_book(tmp_path)
+    files, values = g.outputs(g.collect(book, {}, tmp_path / "src" / "snapy_report"))
+    assert set(files) == {g.PARENT, "_appb-ch02.qmd"}
+    parent = files[g.PARENT]
+    assert "{{< generated appb equations >}} labelled equations" in parent
+    assert "| @sec-ch02 | {{< generated appb ch02.schemes >}} |" in parent
+    assert "{{< include 17-appendices/_appb-ch02.qmd >}}" in parent and "@sec-ch02-gas" not in parent
+    assert values["equations"] == values["ch02.equations"] == "2" and values["schemes"] == "2"
+    assert "{#tbl-appb-ch02}" in files["_appb-ch02.qmd"] and "generated appb" not in files["_appb-ch02.qmd"]
 
 
 def test_every_render_regenerates_the_fragment():
@@ -125,6 +145,8 @@ def test_every_render_regenerates_the_fragment():
     assert any((book / p).resolve() == Path(g.__file__).resolve() for p in pre)
     include = f"{{{{< include {g.FRAGMENT.relative_to(book / 'chapters').as_posix()} >}}}}"
     assert include in (book / "chapters" / "appb-derivations.qmd").read_text()
+    assert "_shortcodes/generated.lua" in cfg["shortcodes"]     # the render-time values
+    assert "/_generated/" in (book / ".gitignore").read_text().split("\n")
 
 
 def test_the_committed_fragment_matches_a_fresh_generation():
