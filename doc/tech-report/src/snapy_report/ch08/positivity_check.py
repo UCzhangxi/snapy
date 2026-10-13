@@ -4,7 +4,8 @@ _carry.qmd, _roundoff.qmd).
 The explicit flux helpers below are numpy ports of src/hydro/flux_positivity.cpp at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5: flux_positivity_theta (:22-72),
 flux_positivity_scale_ (:74-104) and flux_positivity_carry_ (:106-149); C10 and C11 the stage-entry
-precondition of the bound and the convex split. C8 is a synthetic counterexample, not a port of VIC. The two
+precondition of the bound and the convex split; C12 the round-off of the carry's energy correction.
+C8 is a synthetic counterexample, not a port of VIC. The two
 round-off constants from src/hydro/flux_positivity.hpp:18-23.
 
 The claims test PROPERTIES of the ported operator against an independently computed
@@ -378,8 +379,48 @@ def check_C11():
            f"U >= 0 and U + dU >= 0 but U + alpha dU < 0: {neg}")
 
 
+# --- C12: the round-off of the energy correction of the carry -------------------
+def check_C12():
+    """flux[IPR] -= (share * part * h).sum(0) with share = 1 - Theta (flux_positivity.cpp:125-131):
+    per species one rounding each for share, share*part and *h, n_y - 1 for the species sum and one
+    for the subtraction, n_y + 3 to first order. The subtraction may cancel, so the error is bounded
+    against |F_IPR| + sum |dm h|, not against the result."""
+    from fractions import Fraction as Fr
+    rng = np.random.default_rng(12)
+    u = np.finfo(np.float64).eps / 2
+    rows, ok, worst_old = [], True, 0.
+    for ny in (1, 2, 4, 8):
+        worst = 0.
+        for _ in range(3000):
+            th = rng.uniform(0., 1., ny)
+            part = rng.normal(0., 1., ny) * 10.0 ** rng.integers(-3, 3, ny)
+            h = rng.uniform(1e5, 3e6, ny)
+            exact_s = sum((1 - Fr(t)) * Fr(p_) * Fr(h_) for t, p_, h_ in zip(th, part, h))
+            # an energy flux of either size, including one the correction nearly cancels
+            fipr = float(exact_s) * (1. + rng.normal(0., 1e-6)) if rng.uniform() < 0.5 \
+                else rng.normal(0., 1.) * float(abs(exact_s) + 1.)
+            acc = 0.
+            for k in range(ny):                       # the float64 path, in the code's order
+                acc = acc + ((1. - th[k]) * part[k]) * h[k] if k else ((1. - th[k]) * part[k]) * h[k]
+            got = fipr - acc
+            exact = Fr(fipr) - exact_s
+            err = abs(Fr(got) - exact)
+            scale = abs(Fr(fipr)) + sum(abs((1 - Fr(t)) * Fr(p_) * Fr(h_)) for t, p_, h_ in zip(th, part, h))
+            worst = max(worst, float(err / scale) / u)
+            if exact != 0:
+                worst_old = max(worst_old, float(err / abs(exact)) / u)
+        ok &= worst <= ny + 3
+        rows.append(f"n_y = {ny}: {worst:.2f} (bound {ny + 3})")
+    report("C12", ok and worst_old > 2.,
+           "the energy correction of the carry is within (n_y + 3) eps_m/2 of |F_IPR| + sum |dm h|; "
+           "a bound of 2 roundings relative to the result fails",
+           "max error / (eps_m/2 (|F_IPR| + sum |dm h|)) over 3000 face sets: " + "; ".join(rows) +
+           f". Relative to the corrected flux itself the error reaches {worst_old:.2e} eps_m/2 where "
+           "the subtraction cancels")
+
+
 CHECKS = (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8, check_C9,
-          check_C10, check_C11)
+          check_C10, check_C11, check_C12)
 for fn in CHECKS:
     fn()
 print(f"{len(CHECKS) - len(FAIL)}/{len(CHECKS)} claims pass")
