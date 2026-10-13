@@ -17,7 +17,7 @@ velocity and pressure take that centred partner (@sec-ch04-framework). Every shi
 default is off. The key `scale` makes the weights independent of the units of the data.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Face value $\sum_\ell\omega_\ell p_\ell$ with the nonlinear weights of @eq-ch04-weno-weights.
+**Purpose.** Face value $\sum_\ell\omega_\ell \mathcal W_\ell$ with the nonlinear weights of @eq-ch04-weno-weights.
 
 **Data.** Reads 3 or 5 cell values per face; writes the two face states of density and tracer rows.
 
@@ -30,10 +30,10 @@ default is off. The key `scale` makes the weights independent of the units of th
 **Evidence.** @tbl-ch04-weno-tests; `test_weno.release`, `derivation_check.py` `[C5]`–`[C7]`, `[C17]`, `recon_check.py` `[C4]`.
 :::
 
-Local symbols (flagged to the editor): $p_\ell$ candidate $k$'s value at the face; $\beta_\ell$ its smoothness indicator
+Local symbols (flagged to the editor): $\mathcal W_\ell$ candidate $\ell$'s value at the face and $Q_\ell$ its polynomial (a candidate of the reconstruction operator $\mathcal W$, NOTATION §4); $\beta_\ell$ its smoothness indicator
 [units of $q^2$, or dimensionless with `scale`]; $d_\ell$ the linear weights and $\omega_\ell$ the nonlinear ones [-];
 $\alpha_\ell$ the unnormalised weights; $\epsilon_{\mathrm W} = 10^{-6}$ the indicator floor [units of $q^2$ without
-`scale`]; $s_q = \tfrac1{n_{\mathrm s}}\sum_l\lvert\bar q_{i+l}\rvert$ the stencil scale of `scale: true`; $\zeta_{\mathrm{ex}}$ the
+`scale`]; $\mathcal A_q = \tfrac1{n_{\mathrm s}}\sum_l\lvert\bar q_{i+l}\rvert$ the stencil scale of `scale: true`; $\zeta_{\mathrm{ex}}$ the
 offset of a critical point from the cell centre in units of $h$ [-]; $a_0, a_1, \dots$ the Taylor coefficients of @sec-ch04-dc.
 
 ### Derivation
@@ -45,10 +45,10 @@ The kernels compute, for the lower face of cell $i$,
 $$
 \alpha_\ell = \frac{d_\ell}{(\beta_\ell + \epsilon_{\mathrm W})^2},\qquad
 \omega_\ell = \frac{\alpha_\ell}{\sum_{\ell'}\alpha_{\ell'}},\qquad
-q^{\mathrm R}_i = s_q\sum_\ell\omega_\ell\,p_\ell(\bar q/s_q),
+q^{\mathrm R}_i = \mathcal A_q\sum_\ell\omega_\ell\,\mathcal W_\ell(\bar q/\mathcal A_q),
 $$ {#eq-ch04-weno-weights}
 
-with $s_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alpha0` to `OUT(j)` ({{< code src/recon/interp_impl.h interp_weno5_impl >}}).
+with $\mathcal A_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alpha0` to `OUT(j)` ({{< code src/recon/interp_impl.h interp_weno5_impl >}}).
 
 #### Why the scheme has the centred order where the field is smooth
 
@@ -56,11 +56,11 @@ with $s_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alp
    evaluated at $x_{i-1/2}$; WENO3 uses the two linear fits through cells $(i-1, i)$ and $(i, i+1)$. Solving
    those conditions as in @sec-ch04-cp gives exactly rows 0–2 of the `weno5.cpp` buffer and rows 0–1 of the
    `weno3.cpp` buffer (`derivation_check.py` `[C5]`).
-2. *The linear weights rebuild the wide stencil.* The only $d$ for which $\sum_\ell d_\ell p_\ell$ equals the cp5 value for every stencil is
+2. *The linear weights rebuild the wide stencil.* The only $d$ for which $\sum_\ell d_\ell \mathcal W_\ell$ equals the cp5 value for every stencil is
    $(\tfrac3{10}, \tfrac35, \tfrac1{10})$, and $(\tfrac23, \tfrac13)$ gives cp3 (`[C5]`); these are the constants of
    `interp_weno5_impl` and `interp_weno3_impl`.
-3. *The indicators.* $\beta_\ell = \sum_{l=1}^{2}h^{2l-1}\int_{\text{cell }i}(\partial_1^lP_\ell)^2\,\mathrm dx$ for WENO5 and
-   $h\int(\partial_1P_\ell)^2$ for WENO3, with $P_\ell$ the candidate polynomial. Integrated with sympy they are the
+3. *The indicators.* $\beta_\ell = \sum_{l=1}^{2}h^{2l-1}\int_{\text{cell }i}(\partial_1^lQ_\ell)^2\,\mathrm dx$ for WENO5 and
+   $h\int(\partial_1Q_\ell)^2$ for WENO3, with $Q_\ell$ the candidate polynomial. Integrated with sympy they are the
    $\tfrac{13}{12}(\cdot)^2 + \tfrac14(\cdot)^2$ and $(\cdot)^2$ forms built from rows 3–8 and 2–3 of the buffers
    (`[C5]`).
 4. *Smooth data.* There all $\beta_\ell$ agree to leading order, $\omega_\ell\to d_\ell$, and by step 2 the face value is
@@ -72,7 +72,7 @@ with $s_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alp
 1. *Place an extremum $\zeta_{\mathrm{ex}} h$ from the centre of cell $i$*, $u = a_0 + a_2(x-\zeta_{\mathrm{ex}} h)^2 + \ldots$
 2. *The two indicators no longer agree.* $\beta_1/\beta_0\to(2\zeta_{\mathrm{ex}}-1)^2/(2\zeta_{\mathrm{ex}}+1)^2$ as $h\to0$: an $O(1)$
    ratio, so $\omega_\ell - d_\ell = O(1)$ while the indicators are far above $\epsilon_{\mathrm W}$.
-3. *The candidates differ by $O(h^2)$* at an extremum, so $(\omega_\ell - d_\ell)(p_0 - p_1) = O(h^2)$.
+3. *The candidates differ by $O(h^2)$* at an extremum, so $(\omega_\ell - d_\ell)(\mathcal W_0 - \mathcal W_1) = O(h^2)$.
 4. *Hence the face error is* $-\tfrac{32}{3}a_2\zeta_{\mathrm{ex}}(4\zeta_{\mathrm{ex}}^2+1)/(48\zeta_{\mathrm{ex}}^4 - 32\zeta_{\mathrm{ex}}^3 + 72\zeta_{\mathrm{ex}}^2 - 8\zeta_{\mathrm{ex}} + 3)\,h^2$,
    zero only when the extremum sits at a cell centre (`derivation_check.py` `[C17]`). `recon_check.py` `[C4]`
    measures 2.09 through two critical points over $n_1 = 32\to256$, while cp3 on the same profile keeps 2.99. On
@@ -88,12 +88,12 @@ with $s_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alp
    and $\omega_\ell\to d_\ell$: the scheme is the linear cp5 or cp3 even across a jump. For a step of height $10^{-6}$
    the weight of the candidate that straddles it is $0.1$, its linear value; at height $1$ it is
    $3.3\times10^{-13}$ (`derivation_check.py` `[C7]`).
-3. *`scale` divides the stencil by $s_q$.* The kernel replaces $\bar q$ by $\bar q/s_q$ before computing $p_\ell$ and
-   $\beta_\ell$ and multiplies the result by $s_q$. Since $s_q(\lambda\bar q) = \lambda s_q(\bar q)$ for $\lambda>0$, the
+3. *`scale` divides the stencil by $\mathcal A_q$.* The kernel replaces $\bar q$ by $\bar q/\mathcal A_q$ before computing $\mathcal W_\ell$ and
+   $\beta_\ell$ and multiplies the result by $\mathcal A_q$. Since $\mathcal A_q(\lambda\bar q) = \lambda \mathcal A_q(\bar q)$ for $\lambda>0$, the
    scaled stencil is unchanged by $\lambda$ and the output scales with $\lambda$: the scheme is homogeneous of
    degree one, and $\epsilon_{\mathrm W}$ becomes a relative floor (`[C7]`, exact). The straddling weight is then
    $2.2\times10^{-12}$ at every magnitude.
-4. *A zero stencil.* If $s_q = 0$ every value is zero and the kernel returns zero exactly, with no division.
+4. *A zero stencil.* If $\mathcal A_q = 0$ every value is zero and the kernel returns zero exactly, with no division.
 5. *Hence a deck's results depend on `scale` exactly when its data are small in their units*, or are differences
    about a reference: the well-balanced $x_1$ path reconstructs $p - p_{\mathrm{ref}}$ and $\rho - \rho_{\mathrm{ref}}$
    (@sec-ch05-wbx1), whose stencil means are near zero. That this is the mechanism behind the effect reported in
@@ -105,11 +105,11 @@ with $s_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alp
 1. *Each candidate* is a dot product of 3 or 5 terms with row sums $\sum\lvert c\rvert$ at most $\tfrac{10}{3}$
    (the extrapolating row of WENO5), so its error is at most $\eta_6\tfrac{10}{3}\max\lvert\bar q\rvert \approx
    2.2\times10^{-15}\max\lvert\bar q\rvert$, with $\eta_n$ of @sec-ch04-cp.
-2. *The weights* are non-negative and sum to one up to a few roundings, so their error $\delta\omega_\ell$ adds
-   $\sum_\ell\delta\omega_\ell p_\ell = \sum_\ell\delta\omega_\ell(p_\ell - p_0) + p_0\sum_\ell\delta\omega_\ell$, at most a few
-   $\epsilon_{\mathrm m}\max_\ell\lvert p_\ell\rvert$ plus a term proportional to the spread of the candidates, which is
+2. *The weights* are non-negative and sum to one up to a few roundings, so their error $\hat\omega_\ell-\omega_\ell$ adds
+   $\sum_\ell(\hat\omega_\ell-\omega_\ell)\mathcal W_\ell = \sum_\ell(\hat\omega_\ell-\omega_\ell)(\mathcal W_\ell - \mathcal W_0) + \mathcal W_0\sum_\ell(\hat\omega_\ell-\omega_\ell)$, at most a few
+   $\epsilon_{\mathrm m}\max_\ell\lvert \mathcal W_\ell\rvert$ plus a term proportional to the spread of the candidates, which is
    $O(h)$ where they agree and is suppressed by $\omega_\ell$ where they do not.
-3. *`scale`* adds the division and the multiplication by $s_q$; a rounding error in $s_q$ itself cancels between
+3. *`scale`* adds the division and the multiplication by $\mathcal A_q$; a rounding error in $\mathcal A_q$ itself cancels between
    them to first order and only moves the floor by a relative $O(\epsilon_{\mathrm m})$.
 
 ### Numerical method
@@ -167,7 +167,7 @@ rows take cp3 or cp5.
              (alpha0 + alpha1 + alpha2);
 ```
 
-`vscale` is $s_q$; `phi` is $\bar q/s_q$; `p0` is $p_0$ from row `c1` of the buffer; `beta0` is $\beta_0$ from rows
+`vscale` is $\mathcal A_q$; `phi` is $\bar q/\mathcal A_q$; `p0` is $\mathcal W_0$ from row `c1` of the buffer; `beta0` is $\beta_0$ from rows
 `c4`, `c5`; `alpha0` is $\alpha_0$ with $d_0 = 0.3$ and $\epsilon_{\mathrm W} = 10^{-6}$; the last line is @eq-ch04-weno-weights.
 
 | what | code link | symbol | switch |

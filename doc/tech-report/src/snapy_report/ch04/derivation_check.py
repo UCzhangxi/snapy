@@ -28,7 +28,9 @@ snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (the code pin):
        (src/hydro/hydro_forward.cpp:54-206);
   C15  the x1 stored-velocity gap, the centred and the one-sided slopes (src/hydro/hydro_forward.cpp:35-52, 397-427);
   C16  the compositional-to-thermal buoyancy ratio of the tracer and energy rows;
-  C17  WENO3 at a critical point: why the measured order falls to two (src/recon/interp_impl.h:33-70).
+  C17  WENO3 at a critical point: why the measured order falls to two (src/recon/interp_impl.h:33-70);
+  C18  the round-off bound of the divergence: the rounding count, eps_m and the bound the text quotes
+       (src/coord/coordinate.cpp:509-552).
 
 Run: python3 derivation_check.py   (sympy only; prints one line per claim, exits with the number of failures)
 """
@@ -561,11 +563,36 @@ def check_C17():
            "beta_1/beta_0 -> %s; face error = %s h^2 + O(h^3) (exact series, sympy)" % (ratio, c2))
 
 
+# The values the Derivation layer of _divergence.qmd states (step 3 and step 4 of its round-off argument).
+TEXT_K = 7                     # roundings along one path
+TEXT_EPS_M = 2.0**-52          # machine epsilon as the text defines it
+TEXT_BOUND = 2.73e-14          # bound quoted for operator_check.py [C2]
+
+
+def check_C18():
+    """the divergence round-off bound: count the roundings, take eps_m from the hardware, compare with the text"""
+    import numpy as np
+    path = {"area A (r^2 times the solid angle)": 2, "product A F": 1, "difference a - b": 1,
+            "volume V ((r+^3 - r-^3)/3)": 2, "quotient / V": 1}
+    k = sum(path.values())
+    eps_m = float(np.finfo(np.float64).eps)          # 2^-52; one rounding is at most eps_m / 2
+    rf = np.linspace(2.0, 3.0, 7)                    # the r in [2, 3], h = 1/6 grid of operator_check.py [C2]
+    rm, rp = rf[:-1], rf[1:]
+    a, b, V = rp**2 * rp, rm**2 * rm, (rp**3 - rm**3) / 3.0
+    bound = k * (eps_m / 2) * (np.abs(a) + np.abs(b)) / V
+    resid = np.abs((a - b) / V - 3.0)
+    ok = (k == TEXT_K and eps_m == TEXT_EPS_M and abs(bound.max() - TEXT_BOUND) <= 0.01 * TEXT_BOUND
+          and bool((resid <= bound).all()))
+    report("C18", ok, "divergence round-off: k roundings along a path, each at most eps_m/2, bound k (eps_m/2)(|a|+|b|)/V",
+           "counted k = %d (text %d); eps_m = 2^%d (text 2^%d); max bound %.3g (text %.3g); max residual %.2g"
+           % (k, TEXT_K, int(np.log2(eps_m)), int(np.log2(TEXT_EPS_M)), bound.max(), TEXT_BOUND, resid.max()))
+
+
 def main():
     for fn in (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8, check_C9, check_C10,
-               check_C11, check_C12, check_C13, check_C14, check_C15, check_C16, check_C17):
+               check_C11, check_C12, check_C13, check_C14, check_C15, check_C16, check_C17, check_C18):
         fn()
-    print(f"{17 - len(FAIL)}/17 claims pass")
+    print(f"{18 - len(FAIL)}/18 claims pass")
     return len(FAIL)
 
 

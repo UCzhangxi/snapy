@@ -30,7 +30,7 @@ The operator is always on; a direction can only be switched off as a whole.
 
 Local symbols (flagged to the editor): $\mathbf F_a$ the numerical flux through faces normal to $x_a$ (NOTATION
 §4); $A_{a,f}$ the area of face $f$ normal to $x_a$ [m$^2$]; $\mathcal Q$ a set of cells and $\partial\mathcal Q$
-its outer faces; $\epsilon_{\mathrm m}$ machine epsilon (NOTATION §7).
+its outer faces; $\epsilon_{\mathrm m}=2^{-52}$ machine epsilon (NOTATION §7), so one rounding errs by at most $\epsilon_{\mathrm m}/2$.
 
 ### Derivation
 
@@ -87,14 +87,15 @@ $\int_{x_-}^{x_+}\partial_xF\,\mathrm{d}x = F(x_+) - F(x_-)$, with sympy. In the
    $\mathbf F(A_{i+1/2}-A_{i-1/2})/V_i$, which the coordinate's own source cancels (@sec-ch04-sphsrc).
 3. *The residual is round-off, bounded.* Write the $x_1$ term as $(a-b)/V$ with $a = A_{i+1/2}F_{i+1/2}$ and
    $b = A_{i-1/2}F_{i-1/2}$. Every floating-point operation returns its exact result times $(1+\eta)$ with
-   $\lvert\eta\rvert\le\epsilon_{\mathrm m} = 2^{-53}$. Count the roundings: at most two in each area and in
-   the volume as the coordinate computes them, one in each product, one in the difference and one in the
-   quotient, so at most $k = 5$ along any path. To first order in $\epsilon_{\mathrm m}$ the computed term
-   differs from the exact one by at most $k\,\epsilon_{\mathrm m}(\lvert a\rvert+\lvert b\rvert)/V$.
+   $\lvert\eta\rvert\le\epsilon_{\mathrm m}/2$, $\epsilon_{\mathrm m} = 2^{-52}$. Count the roundings along the longest path: two in the
+   area as the coordinate computes it, one in the product $AF$, one in the difference, two in the volume and one in
+   the quotient, so $k = 2+1+1+2+1 = 7$. To first order in $\epsilon_{\mathrm m}$ the computed term differs from the exact one
+   by at most $k\,(\epsilon_{\mathrm m}/2)(\lvert a\rvert+\lvert b\rvert)/V$.
 4. *The bound for the check's field.* For $\mathbf F = r\hat r$ per unit solid angle, $a = r_+^3$, $b = r_-^3$
-   and $V = (r_+^3 - r_-^3)/3$, so the bound is $3k\,\epsilon_{\mathrm m}(r_+^3 + r_-^3)/(r_+^3 - r_-^3)
-   \approx 2k\,\epsilon_{\mathrm m}\,r/h$ for a thin cell. On the $r\in[2,3]$, $h = 1/6$ grid of
-   `operator_check.py` `[C2]` that is $2\cdot5\cdot1.1\times10^{-16}\cdot3/(1/6) \approx 2.0\times10^{-14}$. The
+   and $V = (r_+^3 - r_-^3)/3$, so the bound is $3k\,(\epsilon_{\mathrm m}/2)(r_+^3 + r_-^3)/(r_+^3 - r_-^3)
+   \approx k\,\epsilon_{\mathrm m}\,r/h$ for a thin cell. On the $r\in[2,3]$, $h = 1/6$ grid of
+   `operator_check.py` `[C2]` its largest value, in the outermost cell, is $2.73\times10^{-14}$
+   (`derivation_check.py` `[C18]`). The
    tangential fluxes of $r\hat r$ are zero, so the $x_2$ and $x_3$ terms add nothing, and the measured
    $\max\lvert\nabla\cdot(r\hat r) - 3\rvert = 3.6\times10^{-15}$ is inside the bound. The bound grows as
    $r/h$: a thin shell far from the centre loses the most digits.
@@ -195,14 +196,14 @@ $-\Delta t$ on interior cells.
 |---|---|---|---|
 | `test_cubed_sphere_cell_volume_python` | six panel volumes sum to $\tfrac43\pi(r_o^3-r_i^3)$; $\nabla\cdot(r\hat r) = 3$ per cell | $10^{-12}$; $10^{-6}$ | the test's own constants |
 | `test_coordinate.release` | gnomonic areas, volumes and frame projections | `allclose` defaults | `torch::allclose` |
-| `derivation_check.py` `[C1]` (this report) | the cell integral is the face difference; six cells telescope | exact | sympy |
+| `derivation_check.py` `[C1]`, `[C18]` (this report) | the cell integral is the face difference; six cells telescope; the round-off count $k = 7$ and the bound $2.73\times10^{-14}$ | exact; the bound | sympy; the rounding count |
 | `operator_check.py` `[C1]`–`[C4]` (this report) | bitwise zero on Cartesian; $\nabla\cdot(r\hat r)=3$; exact radial volume; telescoping | bitwise; the round-off bound of step 4 | stated in the check |
 
 : Tests of the finite-volume update. {#tbl-ch04-divergence-tests}
 
 `[C1]` of `derivation_check.py` holds symbolically.[^div-run] `operator_check.py` `[C1]` gives a tendency of
 exactly $0$ on a uniform Cartesian flux, `[C2]` gives $\lvert\nabla\cdot(r\hat r)-3\rvert = 3.6\times10^{-15}$,
-inside the derived bound of $2.0\times10^{-14}$, `[C3]` shows the midpoint volume $r^2h$ would be short by $h^3/12$ per unit solid angle,
+inside the derived bound of $2.73\times10^{-14}$, `[C3]` shows the midpoint volume $r^2h$ would be short by $h^3/12$ per unit solid angle,
 and `[C4]` gives a telescoping residual of $1.9\times10^{-16}$ relative. The two ctest entries pass at the pin on
 CPU, one rank (@tbl-ch04-ctest-run in @sec-ch04-fluxcov).
 

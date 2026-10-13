@@ -112,12 +112,13 @@ symbol enters NOTATION.md.
 Owners: chapter 4 / editor. Each scheme file lists its symbols in a "Local symbols" line after its At-a-glance box;
 remove that line when the symbol enters NOTATION.md.
 - Reconstruction: $D_-, D_+, D_i$ (PLM differences and slope); $c_l$, $n_{\mathrm s}$, $\eta_n$ (stencil weights, width,
-  rounding factor); $p_\ell, \beta_\ell, d_\ell, \omega_\ell, \alpha_\ell$, $\epsilon_{\mathrm W}$, $s_q$, $\zeta_{\mathrm{ex}}$ (WENO
+  rounding factor); $\mathcal W_\ell, Q_\ell, \beta_\ell, d_\ell, \omega_\ell, \alpha_\ell$, $\epsilon_{\mathrm W}$, $\mathcal A_q$, $\zeta_{\mathrm{ex}}$ (WENO
   candidates, indicators, weights, floor, stencil scale, critical-point offset; $\ell$ indexes candidates because $k$
   is the $x_3$ index); $a_0, a_1, \dots$ (Taylor coefficients).
 - Riemann solvers: $v_\perp, v_{\parallel,1}, v_{\parallel,2}$ (face-frame velocities); $p_f$, $v_f$ (face pressure and
   velocity); $\rho_{\mathrm{av}}, \gamma_{\mathrm{av}}, c_{\mathrm{av}}$; $\hat H$ (specific total enthalpy);
-  $\lambda^{\mathrm L}, \lambda^{\mathrm R}, \lambda_{\mathrm c}, p_{\mathrm c}, p_{\mathrm{pv}}, \zeta^{\mathrm K}, \lambda_{\mathrm{tiny}}, \mathbf D, \mathcal J^{\mathrm K}, \Pi^{\mathrm K}$ (HLLC);
+  $\lambda^{\mathrm L}, \lambda^{\mathrm R}, \lambda_{\mathrm c}, p_{\mathrm c}, p_{\mathrm{pv}}, \zeta^{\mathrm K}, \lambda_{\mathrm{tiny}}, \mathbf D, \mathcal J^{\mathrm K}, \Pi^{\mathrm K}, \alpha_{\mathrm c}$ (HLLC); $f$ for the $x_1$ seam
+  face (chapter 3 writes $s$, which NOTATION reserves for the centroid slope); $\mathcal Q$ a set of cells (divergence);
   $\varrho_{\mathrm K}$, superscript $\mathrm{Roe}$, $\lambda_\mp, \lambda_0, \alpha_\mp, \alpha_0, \alpha_\parallel, \mathbf r_\ell$, $a_{\mathrm{LF}}$ (Roe);
   $\boldsymbol\psi$, $\mathbf f$, $a$ (plume-roe). $d_{\mathrm{sw}}$ is chapter 2's local symbol, reused.
 - Sources and 4B: $p^{\mathrm{sh}}$ (shifted pressure; the code's `p*`, renamed because the star is the thermodynamic
