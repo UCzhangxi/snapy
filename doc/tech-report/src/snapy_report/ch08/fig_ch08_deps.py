@@ -7,6 +7,7 @@ from snapy_report import figstyle as fs
 
 NODES = {
     "switch": (0.4, 2.9, "`limiter`\nswitch"),
+    "cov": (0.4, 4.1, "covariance rows\n(on in 2-D, 3-D)"),
     "theta": (2.1, 3.3, "tracer\nlimiter"),
     "carry": (3.9, 3.3, "energy and\nmomentum carry"),
     "scalar": (2.1, 2.2, "passive\nscalars"),
@@ -18,7 +19,8 @@ NODES = {
     "redo": (5.6, 0.2, "redo\ndetector"),
     "vic": (5.6, 2.4, "implicit\ndry clamp"),
 }
-EDGES = [("switch", "theta", "turns on"), ("switch", "scalar", "turns on"),
+EDGES = [("cov", "theta", "turns on"), ("cov", "scalar", "turns on"),
+         ("switch", "theta", "turns on"), ("switch", "scalar", "turns on"),
          ("switch", "eos", "turns on"), ("switch", "recon", "turns on"),
          ("theta", "carry", "requires"), ("eos", "borrow", "requires"),
          ("borrow", "fixvap", "falls back to"), ("eos", "marks", "sets"),
@@ -29,7 +31,7 @@ STYLE = {"turns on": (fs.GREEN, "--"), "requires": (fs.BLACK, "-"),
 
 
 def make_fig():
-    fig, ax = fs.new_figure(fs.DOUBLE, 3.1)
+    fig, ax = fs.new_figure(fs.DOUBLE, 3.5)
     ax.set_axis_off()
     for a, b, kind in EDGES:
         col, ls = STYLE[kind]
@@ -49,5 +51,5 @@ def make_fig():
         ax.plot([], [], color=col, ls=ls, lw=1.1, label=kind)
     ax.legend(frameon=False, ncol=5, loc="lower center", bbox_to_anchor=(0.5, -0.1))
     ax.set_xlim(-0.6, 6.5)
-    ax.set_ylim(-0.6, 3.9)
+    ax.set_ylim(-0.6, 4.6)
     return fig
