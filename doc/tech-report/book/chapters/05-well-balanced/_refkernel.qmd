@@ -19,23 +19,24 @@ smoothed $\chi$: smoothed, because an unsmoothed ratio makes the density perturb
 perturbation and the entropy mode would bypass the reconstruction.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Builds, per column and per call, the face pressures $p_{\mathrm{sf}}$ by a top-down hydrostatic scan
-(@eq-ch05-refkernel-scan), the cell pressure $p_{\mathrm{ref}}$ from them, and the density references
-$\rho_{\mathrm{ref}}$ and $\rho_{\mathrm{sf}}$ from a smoothed $\chi=\rho/p$.
+**Purpose.** Builds the face pressures by a top-down scan, @eq-ch05-refkernel-scan, and the cell and density references.
 
-**Data.** In: $\overline p$, $\overline\rho$ of the column and the $x_1$ face positions; out: $p_{\mathrm{sf}}$ at faces,
-$p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ in cells and $\rho_{\mathrm{sf}}$ at faces, all per unit volume.
+**Data.** Reads $\overline p$, $\overline\rho$ and the $x_1$ faces; writes $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$.
 
-**Placement.** Inside `HydroImpl::_hydro_ref_x1`, called by the well-balanced $x_1$ sweep in every stage.
+**Placement.** In `HydroImpl::_hydro_ref_x1`, called by the well-balanced $x_1$ sweep in every RK stage.
 
-**Activation.** No switch: always with the well-balanced path (@sec-ch05-wbx1).
+**Activation.** No key of its own: always with the well-balanced path (@sec-ch05-wbx1).
 
-**Guarantee / limits.** $p_{\mathrm{sf}}$ exact up to one column constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ on
-uniform grids, the log-mean (exact only for isothermal cells) otherwise; $\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
+**Guarantee / limits.** $p_{\mathrm{sf}}$ exact up to one constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ if uniform; $\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
 
-**Evidence.** `test_hydro_ref_x1`, `test_hydro_options` pass at the pin (CPU); check claims `[C1]`–`[C3]`, `[C9]`,
-`[C10]`, `[C13]`, `[C14]`, `[C20]` of `wbref_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-refkernel-tests.
 :::
+
+Local symbols: $g=-g_1>0$ [$\mathrm{m\,s^{-2}}$] the downward magnitude of gravity; $c$ [Pa] the column constant of the
+face pressures; $\alpha_H=\Delta x_1/(2H)$ the half-cell height in scale heights, with NOTATION's $H$; $\varsigma$ the
+cell-unit coordinate and $w^{\mathrm c}_m$ the six cell-average weights (the superscript keeps them apart from the RK
+weights $w^{(s)}_k$); $\eta_{\rho,f}$ [$\mathrm{kg\,m^{-3}}$] the face-density offset; $\psi$ a function sampled at cell
+centres. $\chi$, $\chi^s$, $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $h$ and $\epsilon_{\mathrm m}$ are NOTATION's.
 
 The kernel has a C++ implementation shared by the CPU and CUDA paths and a tensor implementation for MPS. The wall
 closure of the smoothed ratio and of the six-face rows is @sec-ch05-wallclamp; the anchor relay across $x_1$ seams
@@ -74,8 +75,15 @@ $$ {#eq-ch05-refkernel-anchor}
 the branch that sets `top_anchor`
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}}).
 It uses the cell averages, so even on an isothermal column it is off by the factor
-$\sinh a/a=1+a^2/6+O(a^4)$, $a=\Delta x_1/2H$ with $H=p/(\rho g)$ (`[C10]`). That offset is a column constant and drops
+$\sinh\alpha_H/\alpha_H=1+\alpha_H^2/6+O(\alpha_H^4)$, $\alpha_H=\Delta x_1/2H$ with $H=p/(\rho g)$ (`[C10]`). That offset is a column constant and drops
 out of the rest balance (@eq-ch05-wbx1-rest holds for any $c$).
+
+*Round-off of the scan.* "Each step is exact" holds in exact arithmetic. The code computes one step as
+`dp = grav * rho * dx1f`, two roundings, then `lo = face + dp`, one more. The computed difference of two neighbouring face
+pressures is therefore $g\,\overline\rho_i\Delta x_{1,i}$ to within
+$(2g\,\overline\rho_i\Delta x_{1,i}+p_{\mathrm{sf},i-1/2})\,\epsilon_{\mathrm m}$, and the dominant part is
+$\epsilon_{\mathrm m}\,p_{\mathrm{sf},i-1/2}$. That is the scan's share of the rest-balance bound of @sec-ch05-wbx1. `[C13]`
+measures the spread of $p_{\mathrm{sf}}-p(x_{1,f})$ on an isothermal column as $2.2\times10^{-16}$ of $p$, inside it.
 
 #### Cell pressure
 
@@ -90,11 +98,11 @@ p_{\mathrm{ref},i} = \tfrac{1}{1440}\big(&11\,p_{\mathrm{sf},i-5/2} - 93\,p_{\ma
 $$ {#eq-ch05-refkernel-pref}
 
 In cell units $\varsigma=(x_1-x_{1,i})/\Delta x_1$ (local symbol), the faces sit at $\varsigma_m=m-\tfrac52$, $m=0..5$. The cell
-average of the quintic through them is $\sum_m w_m\,p_{\mathrm{sf},m}$ with weights that reproduce the cell means of the
+average of the quintic through them is $\sum_m w^{\mathrm c}_m\,p_{\mathrm{sf},m}$ with weights that reproduce the cell means of the
 monomials,
 
 $$
-\sum_{m=0}^{5}w_m\,\varsigma_m^{\,n}=\int_{-1/2}^{1/2}\varsigma^{\,n}\,\mathrm d\varsigma=\Big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80},\ 0\Big)_n,\qquad n=0..5,
+\sum_{m=0}^{5}w^{\mathrm c}_m\,\varsigma_m^{\,n}=\int_{-1/2}^{1/2}\varsigma^{\,n}\,\mathrm d\varsigma=\Big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80},\ 0\Big)_n,\qquad n=0..5,
 $$
 
 whose solution is $(11,-93,802,802,-93,11)/1440$ (`[C1]`), coded as `w6` $=\{11/1440,\,-31/480,\,401/720,\dots\}$
@@ -134,13 +142,20 @@ with the binomial in `hydro_ref_x1_rop_smooth`
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}).
 At array index 0 the face density uses $\chi^s_0$ alone.
 
-*Why smoothed.* Take the unsmoothed ratio instead, $\rho_{\mathrm{ref},i}=p_{\mathrm{ref},i}\overline\rho_i/\overline p_i$.
-Then $\rho'_i=\overline\rho_i-p_{\mathrm{ref},i}\overline\rho_i/\overline p_i=\overline\rho_i\,p'_i/\overline p_i$, so
-$\rho'/\overline\rho=p'/\overline p$ in every cell: the density perturbation carries no information the pressure
-perturbation does not, and an entropy (buoyancy) anomaly is not reconstructed as a density perturbation at all. The
-binomial keeps the reference on the large scales of the column only. It has unit sum, zero first moment and second
-moment 1 in cells, and zero response at the grid scale (`[C3]`), so $\chi^{s}_i=\chi_i+\tfrac{\Delta x_1^2}{2}\partial_1^2\chi+O(\Delta
-x_1^4)$. This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smooth`.[^ch05-ref-degen]
+*Why smoothed.* Four steps.
+
+1. *Take the unsmoothed ratio.* Suppose $\rho_{\mathrm{ref},i}=p_{\mathrm{ref},i}\overline\rho_i/\overline p_i$.
+2. *Then the density perturbation copies the pressure perturbation.*
+   $\rho'_i=\overline\rho_i-p_{\mathrm{ref},i}\overline\rho_i/\overline p_i=\overline\rho_i\,p'_i/\overline p_i$, so
+   $\rho'/\overline\rho=p'/\overline p$ in every cell.
+3. *So an entropy anomaly is invisible.* A buoyancy anomaly at fixed pressure has $p'=0$, hence $\rho'=0$: the
+   reconstruction never sees it as a density perturbation.
+4. *The binomial removes only the small scales.* `hydro_ref_x1_rop_smooth` applies $(1,4,6,4,1)/16$, which has unit
+   sum, zero first moment, second moment 1 in cells and zero response at the grid scale (`[C3]`), so
+   $\chi^{s}_i=\chi_i+\tfrac{\Delta x_1^2}{2}\partial_1^2\chi+O(\Delta x_1^4)$. The reference keeps the column's large
+   scales, and a cell-scale anomaly stays in $\rho'$.
+
+This re-derives the degeneracy stated in the comment above `hydro_ref_x1_rop_smooth`.[^ch05-ref-degen]
 
 [^ch05-ref-degen]: The measurements behind it are in `sources/canoe__tall_column_instability_TECH_REPORT.md` §§3d, 4-5.
 
@@ -166,14 +181,14 @@ $$
 \end{aligned}
 $$
 
-the last line because cell values that are point samples of a function $R$ are the cell averages of
-$R-\tfrac{h^2}{24}\partial_1^2R$. Subtracting, and using $\partial_1^2\rho=\chi\,\partial_1^2p+2\,\partial_1p\,\partial_1\chi+p\,\partial_1^2\chi$,
+the last line because cell values that are point samples of a function $\psi$ are the cell averages of
+$\psi-\tfrac{h^2}{24}\partial_1^2\psi$. Subtracting, and using $\partial_1^2\rho=\chi\,\partial_1^2p+2\,\partial_1p\,\partial_1\chi+p\,\partial_1^2\chi$,
 
 $$
 \eta_{\rho,f} = \frac{h^2}{12}\big(\partial_1p\,\partial_1\chi+2p\,\partial_1^2\chi\big) + \frac{h^2}{6}\,c\,\partial_1^2\chi + O(h^4).
 $$ {#eq-ch05-refkernel-offset}
 
-The anchor makes $c$ itself $O(h^2p)$ (the factor $\sinh a/a$ of @eq-ch05-refkernel-anchor), so the last term is
+The anchor makes $c$ itself $O(h^2p)$ (the factor $\sinh\alpha_H/\alpha_H$ of @eq-ch05-refkernel-anchor), so the last term is
 $O(h^4)$ and the offset is the first term, with $\chi=\rho/p$ the point ratio. `[C14]` measures $\eta_{\rho,f}$ at the
 middle face of a polytrope against fifth-order linear reconstruction and finds the ratio to the first term 1.0022,
 1.0005, 1.0001, 1.0000 at $n_1$ = 32 to 256, order 2.00.
@@ -207,6 +222,58 @@ operations (cumulative sums, a padded binomial), and `test_hydro_ref_x1` compare
 neighbour's (@sec-ch05-seam).
 
 ### Code
+
+**A minimal input.** The kernel has no key of its own. What changes it is the grid, which decides between the
+six-face rows and the log-mean, and the wall clamp of @sec-ch05-wallclamp:
+
+```yaml
+geometry:
+  type: cartesian
+  bounds: {x1min: 0., x1max: 1.e4}
+  cells: {nx1: 64, nghost: 3}   # a uniform x1 grid: six-face cell pressure
+dynamics:
+  wb-wall-clamp: true           # the default; keeps the wall rows off the ghosts
+forcing:
+  const-gravity: {grav1: -9.8}
+```
+
+**What the parser accepts and refuses.** `wb-wall-clamp` is read as a boolean under `dynamics:` with default `true`,
+and an unknown key there is refused ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}). The
+choice of operator is not a key: `HydroImpl::_hydro_ref_x1` classifies the block from its own `dx1f` once, as uniform
+when the relative spread of the widths is below $10^{-10}$ ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
+
+**The lines that implement @eq-ch05-refkernel-scan and @eq-ch05-refkernel-pref.** The scan, from
+`hydro_ref_x1_scan_impl` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}}):
+
+```cpp
+T face = top_anchor;
+for (int i = iu; i >= 0; --i) {
+  T dp = grav * w[IDN * ncells + flat + i] * dx1f[i];
+  T lo = face + dp;
+  T hi = face;
+  psf_lo[flat + i] = lo > min_positive ? lo : min_positive;
+  psf_hi[flat + i] = hi > min_positive ? hi : min_positive;
+  face = lo;
+}
+```
+
+`top_anchor` is @eq-ch05-refkernel-anchor; `lo = face + dp` is @eq-ch05-refkernel-scan, with `psf_lo` and `psf_hi`
+the lower and upper face of cell `i`; the comparisons are the clip at the smallest positive normal number. The cell
+pressure, from `hydro_ref_x1_cell_impl` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}):
+
+```cpp
+constexpr double w6[6] = {11. / 1440., -31. / 480., 401. / 720.,
+                          401. / 720., -31. / 480., 11. / 1440.};
+...
+for (int m = 0; m < 6; ++m) {
+  value += T(weights[reverse ? 5 - m : m]) *
+           hydro_ref_x1_face(psf_lo, psf_hi, flat, start + m, nc1);
+}
+if (value >= lower && value <= upper) cell_pref = value;
+```
+
+`w6` are the weights $w^{\mathrm c}_m$ of @eq-ch05-refkernel-pref; the loop is the sum over the six faces; the last
+line keeps the result only inside the cell's own two face pressures, otherwise `cell_pref` stays their mean.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
@@ -253,6 +320,13 @@ the one-sided rows unusable (`fits` false), and the face mean is kept.
 
 : Tests of the reference kernel. {#tbl-ch05-refkernel-tests}
 
+The check rebuilds the kernel from this section's equations.[^ch05-ref-chk] `[C1]` and `[C2]` derive the six-face rows in
+exact rationals and find them equal to `w6` and `w6e`. `[C3]` gives the binomial's moments $1, 0, 1$ and zero response at
+the grid scale. `[C9]`: the log-mean is exact to $1.5\times10^{-15}$ on an isothermal column and second order, 2.02, on a
+polytrope. `[C10]`: the anchor offset is $\alpha_H^2/6$ to four digits. `[C13]`: $p_{\mathrm{ref}}$ is order 5.87 on an
+isothermal column. `[C14]`: the face-density offset matches @eq-ch05-refkernel-offset, order 2.00. `[C20]`: round-off
+spacing counts as uniform and a $10^{-6}$ stretching does not.
+
 ::: {.callout-important title="Test"}
 **Evidence.** Check numbers come from `wbref_check.py`, which rebuilds the reference from this section's equations,
 the kernels being the same at the pin; deck: the check itself.[^ch05-ref-chk] At the pin
@@ -262,8 +336,9 @@ the kernels being the same at the pin; deck: the check itself.[^ch05-ref-chk] At
 path itself is compared only through its CPU execution; multi-rank through @sec-ch05-seam.
 :::
 
-[^ch05-ref-chk]: Run: `python3 src/snapy_report/ch05/wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double; output
-    `src/snapy_report/ch05/wbref_check.out`.
+[^ch05-ref-chk]: [sha: the formulas the check ports, as its header records them from the earlier book pin; deck: the
+    check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6,
+    sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`.
 
 [^ch05-ref-run]: `ctest -V -R 'test_hydro_ref_x1|test_hydro_options'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
 

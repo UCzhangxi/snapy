@@ -21,7 +21,7 @@ def make_fig():
     for k, txt in ((-1, "$E_1$"), (-2, "$E_2$")):
         ax.plot([k + 0.5], [2.3], ls="none", marker="D", ms=5, mfc=fs.GREEN, mec=fs.BLACK, zorder=4)
         d.text(ax, k + 0.5, 2.85, txt)
-    fs.bracket(ax, (-2, 1.5), (3, 1.5), label="$F$ on cells $i_s-2 \\ldots i_s+2$")
+    fs.bracket(ax, (-2, 1.5), (3, 1.5), label="$\\mathsf{F}$ on cells $i_s-2 \\ldots i_s+2$")
     d.row(ax, 0, 6, y=0.0, ghosts_lo=2)
     d.wall_at(ax, 0.0, y=0.0)
     for f in range(0, 5):
