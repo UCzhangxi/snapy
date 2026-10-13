@@ -81,12 +81,19 @@ ctest checks `mass0=` over a full example run.
 
 ### Code
 
-**A minimal input.** The script runs an example and checks its log; it is not registered with ctest:
+**A minimal input.** The script runs an example and checks its log; it is not registered with ctest. From the
+source root of a build at the pin ([Install and run](#sec-preface-install)), with the two-block Straka deck on two
+processes:
 
 ```bash
-python3 tests/run_example_mass_check.py --build-dir build --build-type Release \
-    --example run_hydro --input examples/straka.yaml --backend gloo --mass-rtol 1e-8
+python3 tests/run_example_mass_check.py --build-dir build --build-type release \
+    --example straka --input straka_proc2.yaml --nproc 2 --backend gloo --mass-rtol 1e-8
 ```
+
+`--build-type` is the lower-case suffix of the executable (`straka.release`), and `--input` is resolved in
+`build/bin`, where the build links the decks of `examples/`. `straka.yaml` would do as well, but it writes a
+`pnetcdf` output, which needs a build configured with `-DPNETCDF=ON`; without it the run stops with
+"Output type 'pnetcdf' requires PNETCDF=ON".
 
 **What is refused, and why.** The script raises when the executable or the input deck is missing, when `torchrun`
 is missing for more than one process, when the log holds fewer than two `mass0=` samples (no drift can be formed),
