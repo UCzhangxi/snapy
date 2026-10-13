@@ -1,10 +1,9 @@
 ## Reproducibility: what is shown bit for bit and what is not {#sec-ch14-repro}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: tests/test_coordinate.cpp, tests/test_cubed_sphere_exchange.cpp, tests/run_seam_backends.py, tests/run_restart_*.py, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp, tests/run_shallow_xy_decomp.py, src/hydro/hydro_forward.cpp, src/bc/bc_dispatch.cpp, src/eos/eos_dispatch.cpp, examples/run_hydro.cpp, examples/straka.cpp, python/__init__.py
-status: draft; the gravity-work fixer item describes snapy@9ad0936779ae001dba65c9eafccaa7c058686c97 (main on
-chengcli/snapy, the #303 squash-merge)
+status: draft
 -->
 
 ### Summary
@@ -14,14 +13,28 @@ that the test asserts. "Untested" means no registered test covers the configurat
 marked as such.
 
 ::: {.callout-note title="At a glance"}
-**What**: an inventory of every reproducibility claim snapy's tests support at the pin, with the configuration each
-covers, and of the known sources of run-to-run or decomposition-to-decomposition differences. **Switch**: none.
-**Default**: n/a. **Requires**: nothing. **Order**: n/a. **Defining equation**: none.
+**Purpose.** Lists every reproducibility claim the tests support at the pin, and the known sources of difference.
+
+**Data.** The registered tests and the code lines that decide each claim.
+
+**Placement.** Across the chapter: exchange, collectives, restart, output and the gravity-work fixer.
+
+**Activation.** No option; an evidence inventory.
+
+**Guarantee / limits.** Bitwise where listed; the fixer SUM can move every cell's energy by the bound below.
+
+**Evidence.** @tbl-ch14-repro-claims and @tbl-ch14-repro-matrix.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $N$ the global number of interior cells [count]; $d_i$ the cell term
+of the defect $\mathcal D$ [J]; $M$ the fluid mass the fixer divides by [kg]; $\rho_i$ a cell's density;
+$\varepsilon_{\mathcal D}$, $\varepsilon_M$ [-] the relative round-off of $\mathcal D$ and $M$ (subscripted, as NOTATION.md
+requires). $\mathcal D$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
 
 ### Derivation
 
-None: this section is an evidence table.
+None for the inventory: it is an evidence table. The one derived item is the round-off bound of the gravity-work
+fixer SUM, under Sources of difference below.
 
 ### Numerical method
 
@@ -83,13 +96,38 @@ The rows, with the line that decides each:
   SUMs of the cycle line are only printed), and its result is written into the state: every cell's energy gets $-\mathcal D\rho_i/M$ (`efix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
   The terms of $\mathcal D$ and $M$ are grouped by block (a torch sum over the block's cells on its device), then
   by process (block index order), then across processes (the backend's order). A different decomposition, device or
-  backend regroups them, so $\mathcal D$ and $M$ can differ in the last bits and so can every cell's energy. No test
+  backend regroups them. How far that can move the result, in three steps:
+
+  1. *Each of $\mathcal D$ and $M$ is a floating-point sum of $N$ cell terms*, combined over a tree that depends on
+     the decomposition. Any such tree differs from the exact sum by at most
+     $(N-1)\,\tfrac12\epsilon_{\mathrm m}\sum\lvert\text{terms}\rvert$ (@sec-ch14-collectives, step 4), so two
+     decompositions differ by at most twice that.
+  2. *Relative to the sums,* this is
+     $\varepsilon_{\mathcal D}\le(N-1)\,\epsilon_{\mathrm m}\sum\lvert d_i\rvert/\lvert\mathcal D\rvert$ for the defect,
+     whose cell terms can cancel, and $\varepsilon_M\le(N-1)\,\epsilon_{\mathrm m}$ for the mass, whose terms are all
+     positive.
+  3. *Every cell's energy change is $-\mathcal D\rho_i/M$.* To first order its relative change is
+     $\varepsilon_{\mathcal D}-\varepsilon_M$, so it is bounded by $\varepsilon_{\mathcal D}+\varepsilon_M$. Once
+     $\mathcal D$ is computed, the bound is computable from its cell terms. No test
   measures this: `test_gravity_work_fixer_python` runs one block in one process on CPU, the six-panel arm of
   `test_flux_covariance_seams_python` runs six local blocks in one process and asserts conservation of
-  $E+\mathrm{PE}_d$ to $10^{-12}$, not agreement with another decomposition, and no test runs the fixer on more
+  $E_{\mathrm{tot}}+\mathrm{PE}_d$ to $10^{-12}$, not agreement with another decomposition, and no test runs the fixer on more
   than one process or compares two decompositions or backends with it on.
 
 ### Code
+
+**A minimal input.** No option belongs to this section. To exercise the decomposition claims, configure with
+`FULL_TESTS=ON` and run the tests of @tbl-ch14-repro-claims, for example `ctest -R 'shallow_xy_decomp|restart'`; the
+fixer bound applies only to a card with `gravity-work: cell` (@sec-ch13-fixgrav).
+
+**What is refused, and why.** Nothing is refused here; the refusals of each mechanism are in its own section.
+
+**The excerpt.** Step 3 of the fixer bound, in `MeshBlockImpl::apply_gravity_work_fixer`:
+
+```cpp
+double efix = -D / mass;                            // -D/M, J/kg
+hydro_u[IPR].index(in3) += m.index(in3) * efix;     // rho_i times -D/M per cell
+```
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -104,7 +142,15 @@ The rows, with the line that decides each:
 
 ### Tests
 
-The evidence tests are listed in @tbl-ch14-repro-claims. None of them was run at the pin for this chapter.
+The evidence tests are listed in @tbl-ch14-repro-claims. None of them was run at the pin for this
+chapter.[^ch14-repro-run] `[C15]` of `derivation_check.py` checks the any-order bound of step 1 on 300 random
+summation trees, and `[C16]` the first-order quotient rule of step 3.[^ch14-repro-chk]
+
+[^ch14-repro-run]: [sha: the code pin; deck: the registrations of `tests/CMakeLists.txt` at the pin; run: none,
+    the entries were read, not run, for this chapter].
+
+[^ch14-repro-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch14/derivation_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C15]`–`[C16]`.
 
 | configuration | bitwise | tolerance | untested |
 |---|---|---|---|
@@ -126,6 +172,8 @@ The evidence tests are listed in @tbl-ch14-repro-claims. None of them was run at
 - The cubed-sphere decomposition evidence is one stage, in one process.
 - Restart continuation is checked on a printed cycle line, not on the fields.
 - Determinism case batteries in downstream repositories are not snapy evidence and are not listed.
-- Bit identity with older builds is not claimed. The cubed-sphere NetCDF axis variables changed by one float ulp
-  when a double rounding was removed (PR #213).
+- Bit identity with other builds is not claimed: the cubed-sphere NetCDF axis variables differ by one float ulp from
+  builds that rounded them twice.[^ch14-repro-ulp]
 :::
+
+[^ch14-repro-ulp]: The double rounding was removed in chengcli/snapy#213.

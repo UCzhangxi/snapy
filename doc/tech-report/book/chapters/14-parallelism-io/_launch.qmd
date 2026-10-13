@@ -1,7 +1,7 @@
 ## Launch environment and rendezvous (`MASTER_PORT`, `BACKEND`) {#sec-ch14-launch}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: src/layout/layout.cpp, src/layout/layout.hpp, src/mesh/mesh.cpp, src/mesh/meshblock_options.cpp, api/pd-run, tests/test_process_group.cpp
 status: draft
 -->
@@ -15,28 +15,48 @@ opens a store. A run that implies more than one process and has no `MASTER_PORT`
 the ranks could not find one another.
 
 ::: {.callout-note title="At a glance"}
-**What**: one operating-system process per rank, started by `torchrun` or `api/pd-run`; the processes meet at a
-c10d `TCPStore` on `MASTER_ADDR:MASTER_PORT`, and each holds `blocks_per_process` blocks. **Switch**: environment
-`RANK`, `WORLD_SIZE`, `PROCESS_RANK`, `PROCESS_WORLD_SIZE`, `LOCAL_RANK`, `MASTER_ADDR`, `MASTER_PORT`, `DEVICE`,
-`DEVICE_ID`, `BACKEND`. **Default**: one process, `MASTER_ADDR=127.0.0.1`, `DEVICE=cpu`, a random port in
-$[29500, 29600]$. **Requires**: `MASTER_PORT` whenever more than one process is implied. **Order**: n/a.
-**Defining equation**: @eq-ch14-launch-rank.
+**Purpose.** Starts one process per rank and gives every block one global rank, @eq-ch14-launch-rank.
+
+**Data.** Reads `RANK`, `WORLD_SIZE`, `MASTER_ADDR`, `MASTER_PORT`, `DEVICE` and kin; `distribute: blocks_per_process`.
+
+**Placement.** Once per process, in the `LayoutOptionsImpl` constructor and `MeshImpl::reset`.
+
+**Activation.** Always; `torchrun` or `api/pd-run` sets the environment. Default: one process on the CPU.
+
+**Guarantee / limits.** Ranks are one to one; more than one process without `MASTER_PORT` is refused.
+
+**Evidence.** The Tests layer below, @tbl-ch14-launch-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $b$ the blocks per process, `blocks_per_process` [count];
+$n_{\mathrm{proc}}$ the process count [count]; and, written upright as in @sec-ch03-layouts, $\mathrm{proc}$ a
+process rank, $\mathrm{loc}\in[0,b)$ a local block index and $\mathrm{rank}$ a global block rank [count].
 
 ### Derivation
 
-None: this scheme is bookkeeping. The one relation it fixes is the global block rank. A process of rank $p$ holding
-$b$ blocks gives its local block $\ell \in [0, b)$ the rank
+None: this scheme is bookkeeping. The one relation it fixes is the global block rank,
 
 $$
-r = p\,b + \ell, \qquad p = \lfloor r/b \rfloor, \qquad \ell = r \bmod b ,
+\mathrm{rank} = b\,\mathrm{proc} + \mathrm{loc}, \qquad
+\mathrm{proc} = \lfloor \mathrm{rank}/b \rfloor, \qquad \mathrm{loc} = \mathrm{rank} \bmod b ,
 $$ {#eq-ch14-launch-rank}
 
-and the global block count is the process count times $b$. @eq-ch14-launch-rank is `global_block_rank`,
-`owner_process_rank` and `local_block_index` ({{< code src/layout/layout.hpp LayoutOptionsImpl >}}).
-A port of the three functions confirms the round trip $r \to (p, \ell) \to r$ for $b = 1, \dots, 16$ [check
-`src/snapy_report/ch14/launch_check.py`, output `launch_check.out`, `[C1]`], that the $P\,b$ pairs fill
-$0, \dots, P\,b - 1$ with no gap or repeat (`[C2]`), and that $b < 1$ acts as $b = 1$ (`[C3]`).
+the relation of @eq-ch03-layouts-rank. Why it is a one-to-one numbering of the blocks, in four steps:
+
+1. *The code.* `global_block_rank` returns `proc_rank * max(1, blocks_per_process) + local_block`;
+   `owner_process_rank` returns `block_rank / max(1, blocks_per_process)` and `local_block_index` returns
+   `block_rank % max(1, blocks_per_process)` (`LayoutOptionsImpl`,
+   {{< code src/layout/layout.hpp LayoutOptionsImpl >}}). So $b<1$ acts as $b=1$ in these functions.
+2. *Division with remainder.* For $0\le\mathrm{loc}<b$, the integer $b\,\mathrm{proc}+\mathrm{loc}$ has quotient
+   $\mathrm{proc}$ and remainder $\mathrm{loc}$ on division by $b$. So the second and third relations undo the first.
+3. *Coverage.* As $\mathrm{proc}$ runs over $0..n_{\mathrm{proc}}-1$ and $\mathrm{loc}$ over $0..b-1$, the ranks are
+   the $n_{\mathrm{proc}}\,b$ integers $0..n_{\mathrm{proc}}b-1$, each once.
+4. *Hence* the global block count is $n_{\mathrm{proc}}\,b$, and every block has one owner process.
+
+The arithmetic is on integers, so there is no round-off. A port of the three functions confirms the round trip
+$\mathrm{rank}\to(\mathrm{proc},\mathrm{loc})\to\mathrm{rank}$ for $b=1,\dots,16$ [check
+`src/snapy_report/ch14/launch_check.py`, output `launch_check.out`, `[C1]`], the coverage (`[C2]`), and that $b<1$
+acts as $b=1$ (`[C3]`).
 
 ### Numerical method
 
@@ -77,6 +97,35 @@ tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` do
 
 ### Code
 
+**A minimal input.** Two processes with two blocks each, on one node. The card sets the block count:
+
+```yaml
+distribute:
+  layout: slab
+  blocks_per_process: 2
+```
+
+and the launcher sets the environment, for example `torchrun --no-python --nproc-per-node=2 ./run_hydro -i card.yaml`
+with `MASTER_PORT` exported, or `api/pd-run 2 ./run_hydro -i card.yaml`.
+
+**What is refused, and why.**
+
+1. *More than one process without `MASTER_PORT`*: "MASTER_PORT must be set for multi-process runs … so all ranks
+   rendezvous on the same TCPStore". Each process would otherwise pick its own random port and never meet the others
+   ({{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}).
+2. *`blocks_per_process` not positive*: "blocks_per_process must be positive" in `MeshImpl::reset`
+   ({{< code src/mesh/mesh.cpp MeshImpl::reset >}}). The rank functions would treat it as 1, but the mesh would
+   build no block.
+
+**The excerpt.** The port check of refusal 1 and the rank of step 1:
+
+```cpp
+TORCH_CHECK(process_world_size_value == 1 && world_size_value == 1,
+            "MASTER_PORT must be set for multi-process runs ...");
+...
+return proc_rank * std::max(1, blocks_per_process()) + local_block;   // rank = b proc + loc
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | random single-process port | {{< code src/layout/layout.cpp random_master_port >}} | `random_master_port` | `MASTER_PORT` unset |
@@ -104,6 +153,12 @@ tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` do
 
 : Tests of the launch settings, all in `test_process_group.release`; the numbered cases are listed below the
 table. {#tbl-ch14-launch-tests}
+
+`[C1]` and `[C2]` of `launch_check.py` show the round trip and the coverage of @eq-ch14-launch-rank for every
+$b\le16$ on 1 to 24 processes, 4896 ranks with no mismatch; `[C3]` that $b<1$ acts as $b=1$.[^ch14-launch-chk]
+
+[^ch14-launch-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch14/launch_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `launch_check.out`, lines `[C1]`–`[C3]`.
 
 The cases are gtest cases of `LayoutOptions` and `ProcessGroupContext`
 ([`test_process_group.cpp:74-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L192)):

@@ -1,7 +1,7 @@
 ## PnetCDF output (`outputs: type: pnetcdf`) {#sec-ch14-pnetcdf}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: src/output/pnetcdf.cpp, src/mesh/meshblock.cpp, cmake/parameters.cmake, CMakeLists.txt
 status: draft
 -->
@@ -12,15 +12,30 @@ The PnetCDF writer takes the same output options as NetCDF (@sec-ch14-netcdf), w
 NC_FLOAT only, and it requires `blocks_per_process: 1`.
 
 ::: {.callout-note title="At a glance"}
-**What**: all ranks write one shared file per frame collectively, through the `pinc` wrapper of PnetCDF; there is
-no combine step. **Switch**: YAML `outputs: - type: pnetcdf`; CMake `PNETCDF`. **Default**: CMake `PNETCDF=ON` on
-Linux, OFF on macOS. **Requires**: the Python package `pinc` at configure time; one block per process. **Order**:
-exact copy rounded to float. **Defining equation**: none.
+**Purpose.** Writes one shared file per frame from all ranks collectively through PnetCDF; no combine step.
+
+**Data.** Reads the selected variables of each block; writes each block's slab of the shared file.
+
+**Placement.** `make_outputs` after an accepted step, on every rank.
+
+**Activation.** `outputs: - type: pnetcdf`; CMake `PNETCDF` (ON on Linux, OFF on macOS) with `pinc`.
+
+**Guarantee / limits.** Exact copy rounded to float32, at most $2^{-24}$ relative; one block per process.
+
+**Evidence.** The Tests layer below, @tbl-ch14-pnetcdf-tests.
 :::
+
+Local symbols: those of @sec-ch14-netcdf; this section adds none.
 
 ### Derivation
 
-None.
+The PnetCDF writer always writes float32 (`ncmpix_iput_vara_float`), so every value carries the rounding derived in
+@sec-ch14-netcdf: at most $2^{-24}$ relative in the normal range. There is no double-precision path, which is why
+`double_precision: true` is refused. Why the refusal comes at setup, in two steps:
+
+1. *The constructor checks it.* `PNetcdfOutput`'s constructor refuses `double_precision: true`, so the error is raised
+   when the block builds its outputs.
+2. *The write checks it again.* `write_output_file` repeats the check, for an option changed after construction.
 
 ### Numerical method
 
@@ -37,6 +52,32 @@ PNETCDF=ON" (`PNETCDFOUTPUT`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::res
 
 ### Code
 
+**A minimal input**, from `examples/straka.yaml`:
+
+```yaml
+outputs:
+  - type: pnetcdf
+    variables: [prim, uov, scalar_prim]
+    dt: 300.
+```
+
+**What is refused, and why:**
+
+1. *A build without `PNETCDF=ON`*: "Output type 'pnetcdf' requires PNETCDF=ON." The writer is not compiled in.
+2. *`double_precision: true`*, at construction: "double_precision is not implemented for the parallel-netcdf writer;
+   it would silently write NC_FLOAT". The check runs at setup, not at the first output.
+3. *More than one block per process*: "PNetcdfOutput currently requires blocks_per_process=1".
+
+The output-entry refusals of @sec-ch14-netcdf apply first.
+
+**The excerpt.** Refusal 2, in the constructor:
+
+```cpp
+TORCH_CHECK(!options->double_precision(),
+            "PNetcdfOutput: double_precision is not implemented for the "
+            "parallel-netcdf writer; it would silently write NC_FLOAT. ...");
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | float only, at setup | {{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}} | `PNetcdfOutput` | `double_precision` |
@@ -48,8 +89,19 @@ PNETCDF=ON" (`PNETCDFOUTPUT`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::res
 
 ### Tests
 
-No ctest exercises PnetCDF output at the pin. According to the text of PR #213, the refusal of `double_precision` was checked
-by hand on one rank when it was added; that is not a registered test.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| none | no ctest exercises PnetCDF output at the pin | — | — |
+| this chapter's check, `derivation_check.py` | `[C17]`, `[C18]` the float32 rounding the writer applies | $2^{-24}$ relative | the cast |
+
+: Tests of PnetCDF output. {#tbl-ch14-pnetcdf-tests}
+
+The float32 bound is the one `[C17]` and `[C18]` check for @sec-ch14-netcdf; the refusals are read from the code, and
+no registered test exercises them.[^ch14-pnetcdf-run]
+
+[^ch14-pnetcdf-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch14/derivation_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C17]`–`[C18]`. The
+    `double_precision` refusal was checked by hand on one rank, per the text of chengcli/snapy#213.
 
 ### Limits
 

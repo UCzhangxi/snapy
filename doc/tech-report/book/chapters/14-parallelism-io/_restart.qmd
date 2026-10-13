@@ -1,27 +1,32 @@
-## Restart files: write, bundle, read (`outputs: type: restart`, `--restart`) {#sec-ch14-restart}
+## Restart files: write, bundle, read (`outputs: type: restart`, `-r`) {#sec-ch14-restart}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: src/output/restart.cpp, src/output/combine_restart.cpp, src/input/read_restart_file.cpp, src/mesh/meshblock.cpp, src/output/output_type.cpp, src/hydro/hydro.hpp, tests/run_restart_*.py, tests/test_user_output.cpp, tests/test_output_barrier.cpp
 status: draft
 -->
 
+### Summary
+
 The state is saved, not the history. Run-to-date meters (the gravity-work fix total, the positivity meters) start
 again from zero after a resume (`gravity_work_fix`, {{< code src/hydro/hydro.hpp HydroImpl >}}).
 
-Local symbols (flagged to the editor): $t_r$ the time stored in a restart file; $t_\text{next}$ an output's saved next
-time; $\Delta t_o$ an output's interval.
-
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**What**: every block saves its whole variable map, the time, the cycle and the schedule of every output to a
-`.part` file. The root bundles the parts into one `.restart` file. On resume, each block takes its own entry,
-restores the time and cycle, and matches the output schedules by key. **Switch**: YAML `outputs: - type: restart`
-(`dt`); driver argument `-r`/`--restart <file>`. **Default**: no restart output. **Requires**: the same block
-decomposition on resume. **Order**: exact (the state is saved in its own dtype). **Defining
-equation**: @eq-ch14-restart-next.
+**Purpose.** Saves each block's whole state and output schedule, bundles the parts, and resumes from the bundle.
+
+**Data.** Writes `<basename>.<kkkkk>.restart`; on resume each block reads its own entry and the schedules.
+
+**Placement.** `make_outputs` (write, also on the final call); `_init_from_restart` at initialisation (read).
+
+**Activation.** `outputs: - type: restart` (`dt`); driver argument `-r <file>`. Default: no restart output.
+
+**Guarantee / limits.** Exact state in its own dtype; resume needs the same decomposition; meters restart at 0.
+
+**Evidence.** The Tests layer below, @tbl-ch14-restart-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $t_r$ the time stored in a restart file [s]; $t_\text{next}$ an
+output's saved next time [s]; $\Delta t_o$ an output's interval `dt` [s]; $N$ the number of outputs [count].
 
 ### Derivation
 
@@ -38,14 +43,24 @@ t_\text{next}, & \text{otherwise},
 t_\text{next}^\text{new} = t_r - (t_r \bmod \Delta t_o) \quad (\Delta t_o > 0).
 $$ {#eq-ch14-restart-next}
 
-The first case catches an interval that shrank between the runs (issue #272): a saved time more than one new
-interval ahead would delay the output, or, for an output disabled with a far-future time, keep it from ever firing.
-An output that is new in the resumed card joins the grid of multiples of its interval at or below $t_r$, so it fires at
-the first output check. Both are in `_init_from_restart` (`next_time`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}).
-A port of the rule confirms the clamp of a shrunk interval and of a far-future time, and that a time within one
-interval or an interval $\Delta t_o \le 0$ keeps the saved time [check `src/snapy_report/ch14/restart_check.py`,
-output `restart_check.out`, `[C1]`]. A new output starts on the grid of multiples of $\Delta t_o$ at or below $t_r$
-and fires at the first check (`[C2]`), and a clamped output writes every $\Delta t_o$ from $t_r + \Delta t_o$ (`[C3]`).
+Why the rule has these two cases, in four steps (`_init_from_restart`,
+{{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}}):
+
+1. *A matched output keeps its saved time if that time is within one interval.* Then it fires on schedule, as it
+   would have without the restart.
+2. *A saved time more than one interval ahead is clamped to $t_r+\Delta t_o$.* That happens when the interval shrank
+   between the runs, or when the output was disabled by a far-future time. Kept, it would delay the output or keep it
+   from ever firing.
+3. *An interval $\Delta t_o\le0$ keeps the saved time.* There is no grid to clamp to.
+4. *An output new in the resumed card joins the grid of multiples of $\Delta t_o$ at or below $t_r$*, so it fires at
+   the first output check, and the grid of the new run is the grid of an uninterrupted one. With $\Delta t_o\le0$ it
+   starts at $t_r$.
+
+Round-off: the clamp adds two doubles, $t_r+\Delta t_o$, one rounding of at most $\tfrac12\epsilon_{\mathrm m}$
+relative; the grid point $t_r-\operatorname{fmod}(t_r,\Delta t_o)$ is exact in `fmod` and rounds once in the
+subtraction, so it lies within $\tfrac12\epsilon_{\mathrm m}t_r$ of the multiple of $\Delta t_o$. A port of the rule
+confirms steps 1 to 3 [check `src/snapy_report/ch14/restart_check.py`, output `restart_check.out`, `[C1]`]. Step 4 is
+`[C2]`, and a clamped output writes every $\Delta t_o$ from $t_r+\Delta t_o$ (`[C3]`).
 
 ### Numerical method
 
@@ -91,6 +106,36 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 
 ### Code
 
+**A minimal input and resume.** A restart file every 300 s, as in `examples/straka.yaml`:
+
+```yaml
+outputs:
+  - type: restart
+    dt: 300.
+```
+
+Resume with `run_hydro -i <card> -r <file>.restart`, or `straka <card> --restart <file>.restart`. `run_hydro` and
+`jupiter_evap_precip_1d` read their arguments with `CommandLine::ParseArguments`, which looks only at two-character
+options such as `-r` and skips a longer argument without a message
+({{< code src/input/command_line.cpp CommandLine::ParseArguments >}}); so `run_hydro … --restart file` starts a fresh
+run. `straka`, `bryan`, `shallow_splash` and `shallow_xy` parse `--restart` themselves and accept both. The
+output-entry refusals are those of @sec-ch14-netcdf; `combine` is forced on for this type
+({{< code src/output/restart.cpp RestartOutput::RestartOutput >}}). A resume refuses a block entry without
+`hydro_u`, `last_time`, `last_cycle`, `file_number` or `next_time` ("missing required variable"), since the block
+could not restore its state or schedule.
+
+**The excerpt.** The rule of @eq-ch14-restart-next in `_init_from_restart`:
+
+```cpp
+if (dt > 0.0 && saved > current_time + dt) {   // step 2
+  output_types[n]->next_time = current_time + dt;
+} else {                                        // steps 1 and 3
+  output_types[n]->next_time = saved;
+}
+...                                             // step 4, a new output
+next_time = dt > 0.0 ? current_time - std::fmod(current_time, dt) : current_time;
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | always combined | {{< code src/output/restart.cpp RestartOutput::RestartOutput >}} | `RestartOutput` | `type: restart` |
@@ -98,7 +143,7 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 | legacy and precise keys | {{< code src/output/output_type.cpp OutputType::schedule_key_v2 >}} | `schedule_key_v2` | none |
 | bundle magic | {{< code src/output/combine_restart.cpp kRestartBundleMagic >}} | `kRestartBundleMagic` | none |
 | bundle and barriers | {{< code src/output/combine_restart.cpp make_restart_bundle >}} | `make_restart_bundle` | none |
-| read one block's entry | {{< code src/input/read_restart_file.cpp load_restart >}} | `load_restart` | `--restart` |
+| read one block's entry | {{< code src/input/read_restart_file.cpp load_restart >}} | `load_restart` | `-r` |
 | required fields, cycle, time | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `_init_from_restart` | none |
 | schedule matching | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `claimed` | none |
 | next-time rule | {{< code src/mesh/meshblock.cpp MeshBlockImpl::_init_from_restart >}} | `next_time` | `dt` |
@@ -114,7 +159,7 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 | `test_restart_cycle_limit` | two ranks, straka, restart every 30 s, `nlim: 120`: the run resumed from the first restart file starts at the same cycle as the uninterrupted run at that time, with the same time, $\Delta t$, mass and energy; both end at cycle 120 and at the same time | $10^{-12}$ abs. (first cycle line); $10^{-9}$ abs. (end time) | printed cycle lines |
 | `test_restart_multiblock` | straka with 2, shallow-xy with 4 and shallow-splash with 6 blocks in one process: reloading the restart file gives the same NetCDF frame | exact (`max_abs == 0`) | float NetCDF output |
 | this chapter's check, `restart_check.py` | `[C1]`-`[C3]` the resumed next time | exact; grid to round-off | float compare |
-| `test_restart_dt_change` | an output whose interval shrank fires on the new grid after a resume (#272) | frame-time window | `run_restart_dt_change.py` |
+| `test_restart_dt_change` | an output whose interval shrank fires on the new grid after a resume | frame-time window | `run_restart_dt_change.py` |
 | `test_restart_output_schedule` | appended and inserted output streams keep their schedules and file counters | exact | integer and time compare |
 | `test_restart_key_collision` | an interval edited to equal another output's does not renumber that output; legacy and keyless files | exact | integer compare |
 | `test_restart_inplace_reorder` | an in-place resume never rewrites a frame the base run completed | exact (md5) | file hashes |
@@ -124,6 +169,17 @@ then @eq-ch14-restart-next. Finally the tensors move to the block's device, and 
 : Tests of restart files; the six runners are registered only on non-Apple builds, and the five single-purpose
 ones skip with exit 125 when a tool is missing. `test_user_output` and
 `test_output_barrier` carry the build suffix (`.release`). {#tbl-ch14-restart-tests}
+
+`[C1]` of `restart_check.py`: a saved time 600 s or $10^{300}$ ahead is clamped to $t_r+60$ s, one 30 s ahead is
+kept, and $\Delta t_o=0$ keeps $10^{300}$. `[C2]`: over 20000 pairs $(t_r,\Delta t_o)$ a new output starts at or below
+$t_r$, less than one interval before it, on the grid to $1.8\times10^{-12}$ in units of $\Delta t_o$. `[C3]`: the
+clamped output's later writes. `[C20]`–`[C24]` of `derivation_check.py` repeat the cases of steps 1 to 4. The
+registered test runs `straka` with `--restart`, which that driver accepts, so the tests do not see the
+`run_hydro` difference.[^ch14-restart-chk]
+
+[^ch14-restart-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch14/restart_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `restart_check.out`, lines `[C1]`–`[C3]`. The same for
+    `derivation_check.py`, output `derivation_check.out`, lines `[C20]`–`[C24]`.
 
 The cycle-limit comparison is `assert_close` with `atol` $10^{-12}$
 ({{< code tests/run_restart_cycle_limit.py assert_close >}}). The multiblock runner sets
@@ -146,10 +202,14 @@ reaches a non-negative `nlim` ([`pyharp integrator.cpp:89-99`](https://github.co
 - A restart must be read with the decomposition that wrote it. In a bundle, a block whose rank has no entry gets
   an empty map and stops with "missing required variable: hydro_u". A single-part file is loaded whole by every
   block, whatever its rank, with no check. That case is read from the code and has not been run.
-- Issue #138 asked for restarts across decompositions and is closed. The multiblock test varies the blocks per
+- Restarts across decompositions are not supported.[^ch14-restart-decomp] The multiblock test varies the blocks per
   process in one process; it does not change the global block count.
-- Issue #277 (open): a resumed run rewrites its last outputs, including its source restart file, and the restart
-  index does not advance.
+- A resumed run rewrites its last outputs, including its source restart file, and the restart index does not
+  advance.[^ch14-restart-rewrite]
 - Run-to-date meters are not carried across a restart.
 - The restart runners launch one or two processes; larger runs are not tested.
 :::
+
+[^ch14-restart-decomp]: Requested in chengcli/snapy#138, which is closed.
+
+[^ch14-restart-rewrite]: chengcli/snapy#277, open.

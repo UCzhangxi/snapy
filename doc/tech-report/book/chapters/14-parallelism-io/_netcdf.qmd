@@ -1,30 +1,52 @@
 ## NetCDF output: per-block files and the combine (`outputs: type: netcdf`) {#sec-ch14-netcdf}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: src/output/output_type.hpp, src/output/output_type.cpp, src/output/netcdf.cpp, src/output/combine_netcdf.cpp, src/output/mppnccombine.cpp, tests/test_user_output.cpp, tests/test_output_barrier.cpp, tests/test_netcdf_utils.cpp
 status: draft
 -->
 
 ### Summary
 
-Output block $n$ of the card (counting from 0) is stream `out<n>`. Block $r$ writes frame $k$ of that stream to
-`<basename>.block<r>.out<n>.<kkkkk>.nc`. The combined file is `<basename>.out<n>.<kkkkk>.nc`. Every rank returns
+Output block `<n>` of the card (counting from 0) is stream `out<n>`. Block `<r>` writes frame `<kkkkk>` of that
+stream to `<basename>.block<r>.out<n>.<kkkkk>.nc`. The combined file is `<basename>.out<n>.<kkkkk>.nc`. Every rank returns
 from the write only after the combined file exists.
 
 ::: {.callout-note title="At a glance"}
-**What**: each block writes its part of an output frame to its own NetCDF-4 file. After the last block of a process
-has written, the root process joins all parts into one file with the in-tree `mppnccombine`. **Switch**: YAML
-`outputs: - type: netcdf` with `dt`, `variables`, `combine`, `double_precision`, `include_ghost_zones`,
-`x1_slice`/`x2_slice`/`x3_slice`, `output_sumx1`/`2`/`3`, `cartesian_vector`, `super-resolution`; CMake `NETCDF`.
-**Default**: `combine: true`, `double_precision: false` (NC_FLOAT), interior cells only; CMake `NETCDF=ON`.
-**Requires**: a NetCDF library at build time. **Order**: exact copy, then rounding to float unless
-`double_precision`. **Defining equation**: none.
+**Purpose.** Writes each block's part of an output frame to its own NetCDF-4 file, then joins them into one.
+
+**Data.** Reads the selected variables of the block; writes `<basename>.out<n>.<kkkkk>.nc`.
+
+**Placement.** `make_outputs` after an accepted step; the root joins the parts with the in-tree `mppnccombine`.
+
+**Activation.** `outputs: - type: netcdf` with `dt`, `variables` and options; CMake `NETCDF` (default ON).
+
+**Guarantee / limits.** Exact copy, then float32 unless `double_precision`: at most $2^{-24}$ relative.
+
+**Evidence.** The Tests layer below, @tbl-ch14-netcdf-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $f$ a cubed-sphere panel, $0..5$ [count]; $n_{b2}$, $n_{b3}$ the
+blocks per panel along $x_2$, $x_3$ [count]; $\mathrm{fl}_{32}(x)$ the float32 value nearest a double $x$; $t$ the
+written time [s].
 
 ### Derivation
 
-None: the output copies values and, by default, rounds them to single precision.
+The output copies values and, by default, rounds them to float32. What that rounding costs, in four steps:
+
+1. *The conversion.* Each value is converted with `static_cast<float>` into an `NC_FLOAT` buffer unless
+   `double_precision: true` ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}). The cast rounds to
+   nearest.
+2. *Relative error.* For $\lvert x\rvert$ in the float32 normal range $[2^{-126},\,(2-2^{-23})\,2^{127}]$, rounding to the
+   nearest of 24 significant bits gives $\lvert\mathrm{fl}_{32}(x)-x\rvert\le 2^{-24}\lvert x\rvert\approx5.96\times10^{-8}\lvert x\rvert$.
+3. *Outside that range.* A value above $\approx3.40\times10^{38}$ becomes infinite. One below $2^{-126}$ goes
+   subnormal, with absolute error at most $2^{-150}$.
+4. *The time.* The time is written in the same type. Near $t$ the float32 spacing lies between $2^{-24}t$ and
+   $2^{-23}t$, so a step shorter than $2^{-25}t$ always vanishes from the written time and one longer than
+   $2^{-23}t$ always shows. This is the "time step below about $10^{-7}t$" of the code comment.
+
+With `double_precision: true` the file holds the doubles exactly. `[C17]`–`[C19]` of `derivation_check.py` check
+steps 2 to 4.
 
 ### Numerical method
 
@@ -57,6 +79,39 @@ With `combine: false` the per-block files stay. Joining them later needs an exte
 
 ### Code
 
+**A minimal input.** One NetCDF stream of the primitives and two diagnostics every 100 s, in double precision:
+
+```yaml
+outputs:
+  - type: netcdf
+    variables: [prim, uov]
+    dt: 100.            # s; 0 writes every cycle
+    double_precision: true
+```
+
+**What is refused, and why.** `MeshBlockOptionsImpl::from_yaml` reads the `outputs` list one entry at a time
+({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}), and `OutputOptionsImpl::from_yaml`
+parses each entry ({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}). In order:
+
+1. *An unknown key* in the entry is an error (`check_keys` with the accepted keys), so a misspelt option is not
+   silently dropped.
+2. *A slice and a sum along the same axis* ("Cannot request both slice and sum along x1") is an error. One axis
+   cannot be both cut and summed.
+3. *A missing `type`* is an error ("output file type must be specified"). There is no default writer.
+4. *A slice outside the mesh* is an error ("Slice at x1=… is out of range of Mesh"), checked against the global
+   bounds.
+5. *An unknown `type`* is an error when the block builds its outputs ("Output type '…' is not implemented"); `pnetcdf`
+   without `PNETCDF=ON` is refused there too.
+
+**The excerpt.** The precision switch of step 1, in `NetcdfOutput::write_output_file`:
+
+```cpp
+const bool nc_dbl = options->double_precision();
+const nc_type nctype = nc_dbl ? NC_DOUBLE : NC_FLOAT;
+...
+f[i] = static_cast<float>(v);      // fl32(x) of step 2 when nc_dbl is false
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | option defaults | {{< code src/output/output_type.hpp OutputOptionsImpl >}} | `ADD_ARG` | none |
@@ -83,6 +138,13 @@ With `combine: false` the per-block files stay. Joining them later needs an exte
 | `test_netcdf_utils` | variable names are sanitised to NetCDF rules | exact | string compare |
 
 : Tests of NetCDF output. C++ entries carry the build suffix (`.release`). {#tbl-ch14-netcdf-tests}
+
+`[C17]` of `derivation_check.py`: on $2\times10^5$ random normal-range doubles the largest relative error of the cast is
+$5.948\times10^{-8}\le2^{-24}$. `[C18]`: a value above the float32 maximum becomes infinite. `[C19]`: on
+$2\times10^4$ float32-exact times, a step below $2^{-25}t$ vanishes and one above $2^{-23}t$ shows.[^ch14-netcdf-chk]
+
+[^ch14-netcdf-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch14/derivation_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C17]`–`[C19]`.
 
 The precision cases are the `OutputPrecision` tests in [`test_user_output.cpp:380-574`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L380-L574) (`yaml_double_precision_defaults_off_and_is_reported`,
 `netcdf_float_output_keeps_nonfinite`, `netcdf_double_precision_reads_back_exactly`); the barrier case is
