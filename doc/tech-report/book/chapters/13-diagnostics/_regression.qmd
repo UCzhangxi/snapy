@@ -10,21 +10,24 @@ status: draft
 
 ::: {.callout-note title="At a glance"}
 **What it does.** Collects the registered tests that assert a conserved total (mass, a species, energy,
-momentum, $E+\mathrm{PE}$ or a tracer) to round-off, with their tolerances. It also describes the one script that
+momentum, energy plus potential energy, or a tracer) to round-off, with their tolerances. It also describes the one script that
 checks `mass0=` on the cycle line of a whole example run, which is not registered.
 **Switch.** None; these are tests.
 **Order.** Not a discretisation.
 **Defining equation.** @eq-ch13-mass-drift.
 :::
 
-Each identity a test asserts is derived in the chapter that owns the operator. The positivity limiter
+snapy is meant to conserve mass and, with the right options, energy to round-off. This section lists the tests
+that check this, so a user can see which totals are protected and how tightly. Each identity a test asserts is
+derived in the chapter that owns the operator. The positivity limiter
 is @sec-ch08, the moist repairs and the saturation adjustment @sec-ch10, the seams @sec-ch03. This section is the
 index: what is held, by which test, and how tightly.
 
 ### Derivation
 
 There is nothing new to derive for the registered tests. The log-based script `run_example_mass_check.py` reads
-every `mass0=` token of a run's log and compares the first sample, $m_0$, with the last, $m_N$:
+every `mass0=` token of a run's log and compares the first sample, $m_0$ [kg], with the last, $m_N$ [kg]. The
+relative drift $\delta$ [-] must satisfy
 
 $$
 \delta = \frac{|m_N - m_0|}{\max(|m_0|, 1)} \le 10^{-8} .
@@ -81,7 +84,7 @@ ctest checks `mass0=` over a full example run.
 | `tests/test_flux_positivity_cubedsphere.py` (`test_flux_positivity_cubedsphere_python`) | every tracer across a cubed-sphere seam | `DRIFT_TOL` $10^{-13}$ | round-off |
 | `tests/test_flux_positivity_cubedsphere_moist.py` (`test_flux_positivity_cubedsphere_moist_python`) | the species across the same seam | `DRIFT_TOL` $10^{-13}$ | round-off |
 | `tests/test_flux_positivity_carry.cpp` (`test_flux_positivity_carry.release`) | the energy and momentum carried by withheld mass, face by face | $10^{-12}$ relative | round-off |
-| `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`) | total mass, vapor mass and $E+\mathrm{PE}$ over ten steps across seams, with `gravity-work: cell`, whose invariant $E+\mathrm{PE}$ is | `DRIFT_TOL` $10^{-12}$ | round-off |
+| `tests/test_flux_covariance_seams.py` (`test_flux_covariance_seams_python`) | total mass, vapor mass and $E_{\mathrm{tot}}+\mathrm{PE}_d$ over ten steps across seams, with `gravity-work: cell`, whose invariant $E_{\mathrm{tot}}+\mathrm{PE}_d$ is | `DRIFT_TOL` $10^{-12}$ | round-off |
 | `tests/test_tracer_dry_convention.py` (`test_tracer_dry_convention_python`) | a uniform tracer stays uniform under initialisation, the VIC and relaxation | `TOL` $10^{-12}$ | round-off |
 | this section's check, `regression_check.py` | `[C1]`–`[C3]` | per claim | stated in the check |
 
@@ -104,5 +107,6 @@ calls, and it compares only the first and last samples.
 1. **Unit tests, not runs.** The registered tests hold their totals on small decks over a few steps. Long-run
    conservation of a production deck is not tested.
 2. **Absolute below 1.** The script's floor of 1 makes it absolute for small total masses (`[C3]`).
-3. **Gravity budget.** The $E+\mathrm{PE}$ budget of the gravity-work fixer and its test are part of
-   @sec-ch13-fixgrav.
+3. **Gravity budget.** The $E_{\mathrm{tot}}+\mathrm{PE}_d$ budget of the gravity-work fixer and its test are part
+   of @sec-ch13-fixgrav.
+4. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.

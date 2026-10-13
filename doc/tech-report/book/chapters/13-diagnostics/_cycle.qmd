@@ -17,16 +17,21 @@ local blocks, reduces the sums to the root rank, and prints them on one line wit
 **Defining equation.** @eq-ch13-cycle-ke.
 :::
 
-The line is the run's own conservation record. `mass0=` is the dry mass, and `masst=` adds every species. `ke=`
-is the kinetic energy and `ie=` (block line) or `energy=` (Mesh line) the total energy $E$. `pe=` is the
-potential energy in a constant $x_1$ gravity. All are read from the conserved state `hydro_u`, never from the
-primitives, which can be one stage stale when the line is printed.
+Every few cycles a run prints one line that records how much mass and energy the domain holds. Comparing two
+lines of the same run shows whether a total drifted. The line also carries a few run-long meters of the limiters and
+the implicit solver, so a user can see whether they acted.
+
+`mass0=` is the dry mass, and `masst=` adds every species. `ke=` is the kinetic energy, and `ie=` (block line) or
+`energy=` (Mesh line) is the integrated total energy $E_{\mathrm{tot}}=\sum_iV_iE_i$, with $E$ the total energy
+density. `pe=` is the potential energy in a constant $x_1$ gravity. All are read from the conserved state
+`hydro_u`, never from the primitives, which can be one stage stale when the line is printed.
 
 ### Derivation
 
-Each token is a volume integral over interior cells. With $\rho_i = \rho_{d,i} + \sum_n \rho_{n,i}$ the total
-density of cell $i$, $m_j$ the covariant momentum components and $V_i$ the cell volume, the two energy integrals
-are
+Each token is a volume integral over interior cells. Let $\rho_i = \rho_{d,i} + \sum_n \rho_{n,i}$ [kg m$^{-3}$] be
+the total density of cell $i$, dry gas plus every species. Let $m_j$ [kg m$^{-2}$ s$^{-1}$] be the covariant
+momentum components, $V_i$ [m$^3$] the cell volume, $g_1$ [m s$^{-2}$] the constant $x_1$ gravity and $x_{1,i}$
+[m] the cell centroid. The two energy integrals, both in J, are
 
 $$
 \mathrm{ke} = \sum_i \frac{m_j m^j}{2\rho_i}\,V_i , \quad
@@ -128,3 +133,4 @@ reader or a test that parses the log.
    ({{< code src/output/restart.cpp RestartOutput::write_output_file >}}).
 3. **Start of step.** The line is printed before the step, so the last line of a run does not show the final
    state.
+4. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.
