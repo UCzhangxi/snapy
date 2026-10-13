@@ -18,6 +18,11 @@
    `relax-bot-temp` (code `a`). For the editor to add to NOTATION.md §8.
 10. Local symbol, chapter 9 (`_sponge.qmd`): $\zeta$ for the depth fraction of a cell inside a sponge layer (code
     `eta`); $\eta$ is taken (NOTATION.md §1, §10). For the editor to add to NOTATION.md §8.
+11. Local symbols, chapter 9 (`_framework.qmd`): $M$ (number of installed forcing modules), $\mathbf S^{m}$ (source
+    of module $m$), $(\nabla\cdot\mathbf F)_i$ (discrete flux divergence, code `_div`), $\Delta\mathbf U^{[m]}_i$
+    (increment after module $m$), $\Delta\rho_{\mathrm{d}}^{\mathrm{forc}}$ (`_forcing_dry`), and $b_k$, $B_k$,
+    $\delta_k$, $\delta_{\mathrm{mach}}$ for the round-off bound of a floating-point sum. NOTATION.md has $\mathcal L$
+    but no source vector or divergence symbol. For the editor to add the first five to NOTATION.md §7.
 
 ## Chapter 1 local transfer notation (draft)
 
