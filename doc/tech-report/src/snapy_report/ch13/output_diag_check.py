@@ -3,11 +3,15 @@
 What is checked: interp_to_face and the divergence fields of OutputType::loadDiagOutputData
 (src/output/load_diag_output_data.cpp:22-45, 166-205), the virtual potential temperature (:101-104) and the
 column path (:262-282) at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy on a Cartesian grid.
-Claims C1-C4.
+C5 ports the round-off path of the div field at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5: the face mean
+(load_diag_output_data.cpp:42), face_area1 (src/coord/coordinate.cpp:425-427), the face products and their difference
+in CoordinateImpl::divergence (:535-537), cell_volume (:437-440) and the division (:552), against exact rationals.
+Claims C1-C5.
 
 Run: python3 output_diag_check.py   (numpy only; exits with the number of failed claims)
 """
 import sys
+from fractions import Fraction
 
 import numpy as np
 
@@ -74,8 +78,35 @@ def check_C4_column_path():
                   "unit area on a Cartesian column", "path %.6g kg m^-2, sum rho_y dz %.6g" % (path, want))
 
 
+def check_C5_divergence_roundoff(trials=4000, n=8, seed=5):
+    """Float64 div on a Cartesian block with non-dyadic spacings, against the exact value of the same inputs."""
+    rng = np.random.default_rng(seed)
+    eps = np.finfo(float).eps
+    worst = 0.
+    for _ in range(trials):
+        v = rng.uniform(-1, 1, n) * 10.0 ** rng.integers(-3, 3)
+        dx1, dx2, dx3 = rng.uniform(0.1, 2.0, 3)
+        face = interp_to_face(v)
+        area = dx3 * dx2                       # face_area1
+        vol = dx3 * (dx2 * dx1)                # cell_volume, einsum(dx3, dx2 outer dx1)
+        fv = [Fraction(x) for x in v]
+        ff = [fv[0]] + [(fv[k - 1] + fv[k]) / 2 for k in range(1, n)]
+        ax = Fraction(dx3) * Fraction(dx2)
+        vx = ax * Fraction(dx1)
+        for i in range(1, n - 1):
+            q = (area * face[i + 1] - area * face[i]) / vol
+            exact = (ax * ff[i + 1] - ax * ff[i]) / vx
+            scale = Fraction(max(abs(v[i - 1]), abs(v[i]), abs(v[i + 1]))) / Fraction(dx1)
+            worst = max(worst, float(abs(Fraction(q) - exact) / scale) / eps)
+    ok = 2. < worst <= 7.
+    return report("C5", ok, "div round-off is within 7 eps_m max|v1|/dx1 (14 roundings of eps_m/2); "
+                  "the 2 eps_m bound that omits the face area and the volume is exceeded",
+                  "max |error| / (eps_m max|v1|/dx1) over %d x %d cells: %.3f" % (trials, n - 2, worst))
+
+
 def main():
-    checks = [check_C1_face_values, check_C2_divergence, check_C3_virtual_potential_temperature, check_C4_column_path]
+    checks = [check_C1_face_values, check_C2_divergence, check_C3_virtual_potential_temperature, check_C4_column_path,
+              check_C5_divergence_roundoff]
     sys.exit(sum(not c() for c in checks))
 
 
