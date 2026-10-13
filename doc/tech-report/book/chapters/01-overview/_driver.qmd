@@ -30,6 +30,9 @@ driver of their own or follow an existing one.
 **Evidence.** `test_check_redo_parallel.<b>` (exact) and the restart-cycle script; see the Tests layer.
 :::
 
+Local symbols: $n_{\mathrm{redo}}$ is the number of redos of the current step (`current_redo`);
+$\Delta t_{\mathrm{bound}}$ is the block's local step bound before the Courant number $C$ (`cfl`, @sec-ch07) is applied.
+
 ### Derivation
 
 No separate derivation: this section describes an interface or control-flow path, and the operators are derived in
@@ -43,8 +46,8 @@ clock and the cycle count where they were, and outputs follow only accepted step
 The driver keeps the clock unchanged when a step is rejected. A positive return from `check_redo` repeats the cycle
 and a negative return ends it. Only after a zero return does the clock advance and `make_outputs` run.
 `MeshBlockImpl::max_time_step` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}) takes the block's
-local bound, reduces it with MIN across the process group. It returns that times the Courant factor and $2^{-r}$, with
-$r$ the number of redos of the current step. `make_outputs`
+local bound, reduces it with MIN across the process group. It returns that times the Courant number $C$ and $2^{-n_{\mathrm{redo}}}$, with
+$n_{\mathrm{redo}}$ the number of redos of the current step. `make_outputs`
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}}) accumulates statistics on every call and writes a
 file when the clock has reached the output's next time; `finalize`
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}) forces a last write. The single-block example `main` of
@@ -71,9 +74,9 @@ round-off that enters is bounded in step 3.
    ({{< code examples/run_hydro.cpp main >}}), so a repeated or an ended step never advances the clock.
 2. *A redo restores the saved state.* `apply_redo` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}})
    copies the step-start buffers back and increments `current_redo`, and the next `max_time_step` reads it.
-3. *The halving is exact.* `max_time_step` returns $2^{-r}\,c\,\Delta t_{\mathrm{bound}}$, with $c$ the Courant
-   factor and $r$ the redo count. Multiplying a double by $2^{-r}$ changes only its exponent, so it is exact
-   until underflow; the one product $c\,\Delta t_{\mathrm{bound}}$ is rounded once, with relative error at most
+3. *The halving is exact.* `max_time_step` returns $2^{-n_{\mathrm{redo}}}\,C\,\Delta t_{\mathrm{bound}}$. Multiplying
+   a double by $2^{-n_{\mathrm{redo}}}$ changes only its exponent, so it is exact until underflow; the one product
+   $C\,\Delta t_{\mathrm{bound}}$ is rounded once, with relative error at most
    $\delta_{\mathrm{mach}} = 2^{-53}$. The MIN reduction across ranks selects one of the operands and adds no error.
 4. *Outputs follow accepted steps only.* `make_outputs` runs after the clock increment and writes when the
    clock has reached the output's next time ({{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}}).
@@ -106,7 +109,7 @@ keys pyharp reads are the only ones accepted ({{< code src/implicit/implicit_hyd
 
 ```yaml
 integration:
-  cfl: 0.9            # Courant factor c of the time step
+  cfl: 0.9            # Courant number C of the time step
   tlim: 3600.0        # s; stop predicate of the integrator
   nlim: 100000        # cycle limit
   implicit-scheme: 0  # 0 explicit; 1 and 9 select the vertical implicit solves (@sec-ch07)
@@ -117,22 +120,52 @@ without `implicit-scheme`, because they bound an implicit direction that does no
 driver of your own repeats the loop of `main` ({{< code examples/run_hydro.cpp main >}}):
 
 ```cpp
-while (!block->pintg->stop(block->cycle, current_time)) {
-  ++block->cycle;
-  auto dt = block->max_time_step(vars);
-  for (int stage = 0; stage < block->pintg->stages.size(); ++stage) {
-    block->forward(vars, dt, stage);
+  while (!block->pintg->stop(block->cycle, current_time)) {
+    ++block->cycle;
+    auto dt = block->max_time_step(vars);
+    block->print_cycle_info(vars, current_time, dt);
+
+    // evolve dynamics
+    for (int stage = 0; stage < block->pintg->stages.size(); ++stage) {
+      block->forward(vars, dt, stage);
+    }
+
+    // evolve kinetics
+    auto &hydro_u = vars["hydro_u"];
+    auto &hydro_w = vars["hydro_w"];
+
+    // Kinetics needs the final dynamics state, including saturation adjustment.
+    peos->forward(hydro_u, hydro_w);
+    auto temp = peos->compute("W->T", {hydro_w});
+    auto pres = hydro_w[IPR];
+    auto xfrac = thermo_y->compute("Y->X", {hydro_w.narrow(0, ICY, ny)});
+    auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
+    auto cp_vol = thermo_x->compute("TV->cp", {temp, conc});
+
+    // auto conc_kinet = kinet->options.narrow_copy(conc, thermo_y->options);
+    auto conc_kinet = conc.slice(-1, 1, conc.size(-1));
+    auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
+    auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
+    auto del_conc = kintera::evolve_implicit(rate, kinet->stoich, jac, dt);
+    std::vector<int64_t> vec(del_conc.dim(), 1);
+    vec[del_conc.dim() - 1] = -1;
+    auto del_rho = del_conc / thermo_y->inv_mu.narrow(0, 1, ny).view(vec);
+    hydro_u.narrow(0, ICY, ny) += del_rho.permute({3, 0, 1, 2});
+
+    int err = block->check_redo(vars);
+    if (err > 0) continue;  // redo this step with smaller dt
+    if (err < 0) break;     // terminate simulation
+
+    // make outputs
+    current_time += dt;
+    block->make_outputs(vars, current_time);
   }
-  int err = block->check_redo(vars);
-  if (err > 0) continue;  // redo this step with smaller dt
-  if (err < 0) break;     // terminate simulation
-  current_time += dt;
-  block->make_outputs(vars, current_time);
-}
 ```
 
-The first two lines inside the loop are step 1 of the walk-through and the `for` loop is step 2. The `check_redo`
-lines are step 3 and the last two lines step 4.
+The first two lines inside the loop are step 1 of the walk-through; `print_cycle_info` writes the cycle log of
+@sec-ch13 and changes no state. The `for` loop is step 2. The kinetics block is the example's own chemistry update,
+with kintera's implicit solver ({{< code examples/run_hydro.cpp main >}}). It is not part of the block API. It runs on
+the state the stages left, before `check_redo`. The `check_redo` lines are step 3 and the last two lines step 4.
 
 ### Tests
 
