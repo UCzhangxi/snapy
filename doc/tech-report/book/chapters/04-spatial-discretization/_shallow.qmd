@@ -1,84 +1,182 @@
 ## Shallow-water Roe and plume-roe (`type: shallow-roe`, `plume-roe`) {#sec-ch04-shallow}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.12
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.12; src/riemann/shallow_roe_impl.h, src/riemann/shallow_roe.cpp, src/eos/shallow_water_impl.h,
+         src/riemann/plume_roe.cpp, src/eos/equation_of_state.cpp, src/hydro/hydro_options.cpp,
+         tests/CMakeLists.txt, examples/shallow_*.yaml at the pin
 status: draft
 -->
 
 ### Summary
 
-Both of these exist for equation sets outside the main compressible path, and both are registered through the
-same factory as the others. They are grouped here because neither can be selected for a compressible deck and
-neither carries the face pressure the curved-grid path needs.
+These two solvers serve equation sets other than the compressible one. `shallow-roe` is a Roe solver for the
+shallow-water system, whose density row holds the layer's geopotential thickness; the nine shallow-water decks
+use it. `plume-roe` is registered for a plume system but computes a Lax–Friedrichs flux, and the plume equation
+of state it would need is not a registered type at the pin. Neither writes a face pressure. Both are off by
+default.
 
 ::: {.callout-note title="At a glance"}
-- Two special-purpose solvers for equation sets that are not the compressible one.
-- Switches: `type: shallow-roe` for the shallow-water system, `type: plume-roe` for the plume system.
-- Shallow-roe carries a height and two momenta, with no energy row and no face pressure.
-- Plume-roe is not a Roe solver: it falls back to a Lax-Friedrichs flux.
+**Purpose.** Shallow water: Roe flux with @eq-ch04-shallow-avg; plume: $\tfrac12(\mathbf f^{\mathrm L}+\mathbf f^{\mathrm R}) - \tfrac12a\Delta\boldsymbol\psi$.
+
+**Data.** Reads $d_{\mathrm{sw}}$ and two velocities (shallow) or four plume rows; writes $\mathbf F_a$, no face pressure.
+
+**Placement.** The Riemann step of each direction (@sec-ch04-riemann), every stage.
+
+**Activation.** `type: shallow-roe` with `dir: xy` or `yz`; `type: plume-roe` on $x_3$ faces only.
+
+**Guarantee / limits.** Shallow: exact Roe property; plume: consistent, primitive-jump dissipation, no usable equation of state.
+
+**Evidence.** @tbl-ch04-shallow-tests; `derivation_check.py` `[C11]`, `[C12]`, `solvers_check.py` `[C6]`.
 :::
+
+Local symbols (flagged to the editor): $d_{\mathrm{sw}}$ the shallow-water state held in the density row, gravity times depth (the
+geopotential thickness) [m$^2$ s$^{-2}$], named as in @sec-ch02; $v_\perp$, $v_\parallel$ as in @sec-ch04-riemann; a superscript $\mathrm{Roe}$ marks a Roe average;
+$\alpha_1, \alpha_2, \alpha_3$ the shallow-water wave strengths; $\boldsymbol\psi = (\psi_1..\psi_4)$ the four plume rows and
+$\mathbf f(\boldsymbol\psi)$ their physical flux; $a$ the larger of the two sides' plume signal speeds [m s$^{-1}$].
 
 ### Derivation
 
-The shallow-water system has no internal energy, so the wave structure reduces to two gravity waves around a
-height-weighted average. The body at {{< code src/riemann/shallow_roe_impl.h shallow_roe_impl >}} uses the same square-root
-weighting as @sec-ch04-roe, with the height taking the place of the density at
-`sqrtdl` ({{< code src/riemann/shallow_roe_impl.h shallow_roe_impl >}}).
+#### Shallow water: the system and its Roe average
 
-That the flux covariance of @sec-ch04-fluxcov excludes the shallow-water equation of state follows directly:
-the correction acts on an enthalpy flux, and this system has no row to correct.
+1. *The system.* With $d_{\mathrm{sw}}$ in the density row, $\mathbf U = (d_{\mathrm{sw}}, d_{\mathrm{sw}}v_\perp, d_{\mathrm{sw}}v_\parallel)$ and
+   $\mathbf F = (d_{\mathrm{sw}}v_\perp, d_{\mathrm{sw}}v_\perp^2 + \tfrac12 d_{\mathrm{sw}}^2, d_{\mathrm{sw}}v_\perp v_\parallel)$; the wave speed is $\sqrt{d_{\mathrm{sw}}}$
+   (`shallow_water_side_quantities`).
+2. *The averages.* The code uses
 
-Plume-roe is named for Roe and is not one. `forward` at {{< code src/riemann/plume_roe.cpp PlumeRoeSolverImpl::forward >}} builds the two
-physical fluxes at `calculate_flux` ({{< code src/riemann/plume_roe.cpp calculate_flux >}}) and combines them with a Lax-Friedrichs average at
-{{< code src/riemann/plume_roe.cpp lax_friedrichs_flux >}}: the centred flux minus half the maximum signal speed times the jump. That
-is the most dissipative of the usual choices and makes no use of the characteristic structure. The name is
-misleading and is recorded as such.
+   $$
+   v^{\mathrm{Roe}} = \frac{\sqrt{d_{\mathrm{sw}}^{\mathrm L}}v^{\mathrm L} + \sqrt{d_{\mathrm{sw}}^{\mathrm R}}v^{\mathrm R}}{\sqrt{d_{\mathrm{sw}}^{\mathrm L}} + \sqrt{d_{\mathrm{sw}}^{\mathrm R}}},\qquad
+   (c^{\mathrm{Roe}})^2 = \tfrac12\left(d_{\mathrm{sw}}^{\mathrm L} + d_{\mathrm{sw}}^{\mathrm R}\right),
+   $$ {#eq-ch04-shallow-avg}
 
-A port of `shallow-roe` checks that it is consistent, and that with every wave moving right it returns the left
-flux, so its decomposition reproduces the jump [check `src/snapy_report/ch04/solvers_check.py`, output
-`solvers_check.out`, `[C6]`]. `plume-roe` is not ported.
+   for both velocity components (`shallow_water_roe_sound_speed`).
+3. *The Roe property.* The Jacobian $\bigl[(0,1,0), (c^2 - v_\perp^2, 2v_\perp, 0), (-v_\perp v_\parallel, v_\parallel, v_\perp)\bigr]$ at
+   @eq-ch04-shallow-avg maps $\Delta\mathbf U$ to $\Delta\mathbf F$ exactly (`derivation_check.py` `[C11]`).
+4. *The strengths.* With $d_{\mathrm{sw}}^{\mathrm{Roe}} = \sqrt{d_{\mathrm{sw}}^{\mathrm L}}\sqrt{d_{\mathrm{sw}}^{\mathrm R}}$,
+   $\alpha_{1,3} = \bigl(c^{\mathrm{Roe}}\Delta d_{\mathrm{sw}} \mp d_{\mathrm{sw}}^{\mathrm{Roe}}\Delta v_\perp\bigr)/(2c^{\mathrm{Roe}})$ and
+   $\alpha_2 = d_{\mathrm{sw}}^{\mathrm{Roe}}\Delta v_\parallel$ on the eigenvectors $(1, v_\perp \mp c, v_\parallel)$ and $(0, 0, 1)$; these
+   are `a1`, `a2`, `a3`, and `[C11]` shows they rebuild $\Delta\mathbf U$.
+5. *The flux* is $\tfrac12(\mathbf F^{\mathrm L} + \mathbf F^{\mathrm R}) - \tfrac12\sum_\ell\lvert\lambda_\ell\rvert\alpha_\ell\mathbf r_\ell$ with
+   $\lambda = v^{\mathrm{Roe}}_\perp \mp c^{\mathrm{Roe}}, v^{\mathrm{Roe}}_\perp$. There is no supersonic branch and no fallback: with
+   $\lvert\lambda\rvert$ the formula already returns $\mathbf F^{\mathrm L}$ when every wave moves right (`solvers_check.py` `[C6]`). In the code, @eq-ch04-shallow-avg is `ubar`, `vbar` and `cbar` ({{< code src/riemann/shallow_roe_impl.h shallow_roe_impl >}}).
+
+#### Plume-roe: what it computes
+
+1. *Roe quantities are computed and unused.* `PlumeRoeSolverImpl::forward` forms square-root averages of the four
+   rows, three Jacobian entries per row and the coefficients of a characteristic polynomial; none of them enters
+   the returned flux.
+2. *The flux is Lax–Friedrichs on the primitive rows.* It returns
+   $\tfrac12(\mathbf f(\boldsymbol\psi^{\mathrm L}) + \mathbf f(\boldsymbol\psi^{\mathrm R})) - \tfrac12a(\boldsymbol\psi^{\mathrm R} - \boldsymbol\psi^{\mathrm L})$
+   with $a = \max(c^{\mathrm L}, c^{\mathrm R})$ from the equation of state's `W->L`.
+3. *Consistent.* For $\boldsymbol\psi^{\mathrm L} = \boldsymbol\psi^{\mathrm R}$ it is $\mathbf f(\boldsymbol\psi)$ for any $a$ (`[C12]`).
+4. *Not the Rusanov flux of the conserved rows.* The dissipation acts on the jump of $\boldsymbol\psi$, the stored
+   primitive rows, not on the jump of the conserved quantities whose flux $\mathbf f$ is.
+5. *It cannot be set up.* The plume forcing is parsed only when the equation of state is `plume-eos`
+   (@sec-ch09-plume), and
+   `EquationOfStateImpl::create` has no such type ("EquationOfState: Unknown type"). With any registered equation
+   of state the solver refuses every direction but $x_3$, and refuses the $x_1$ face-pressure request of a
+   compressible deck (@sec-ch04-riemann).
+
+#### Round-off
+
+1. *Shallow-water consistency* is exact in the jumps: every $\Delta$ is an exact zero for equal states, so the
+   dissipation vanishes and the flux is the mean of two equal physical fluxes, to the rounding of its products;
+   `solvers_check.py` `[C6]` measures $0$.
+2. *Plume consistency* likewise: $\boldsymbol\psi^{\mathrm R} - \boldsymbol\psi^{\mathrm L}$ is an exact zero.
 
 ### Numerical method
 
-Neither solver writes a face pressure, so neither inherits the pressure-force path of @sec-ch04-sphsrc. On a
-curved grid that is not a restriction for shallow water, which is solved on the sphere through its own
-geometry, but it does mean that the `prim` and face-pressure arguments of the coordinate `forward` are unused
-whenever these solvers run.
+```{python}
+#| label: fig-ch04-shallow-fan
+#| fig-cap: "The wave model of the shallow-water Roe solver in the $x$–$t$ plane of one face (thick orange line): two gravity waves $v\\mp c$ (black) with $c^2$ the mean geopotential thickness, and the shear wave $v$ (green, dashed) carrying the tangential momentum."
+#| fig-alt: "A space-time diagram with three straight lines from the bottom of a vertical orange face line, the middle one dashed green and labelled shear."
+#| echo: false
+from snapy_report.ch04.fig_ch04_schemes import make_wavefan
+make_wavefan("shallow")
+```
+
+**Rows and directions.** `dir` decides which momentum rows are normal and tangential: with `dir: xy` the
+normal row is `IVX` on $x_1$ faces and `IVY` otherwise; with `dir: yz` it is `IVY` on $x_2$ faces and `IVZ`
+otherwise. `ShallowRoeSolverImpl::forward` refuses any other `dir`, `omni` included, and on the gnomonic grid
+`reset` requires `yz`. The states are projected with `prim2local{1,2,3}_` and the flux returned with
+`flux2global{1,2,3}_`.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input**, as in the shallow-water decks:
+
+```yaml
+dynamics:
+  equation-of-state: {type: shallow-water}
+  riemann-solver:
+    type: shallow-roe
+    dir: yz            # xy or yz; omni is refused; yz is required on the gnomonic grid
+```
+
+**What the parser accepts and refuses.**
+
+1. *`dir` must be `xy` or `yz`* for `shallow-roe` ("ShallowRoeSolver takes options->dir() = 'xy' or 'yz'"), checked
+   on the first call, so the default `omni` fails.
+2. *On the gnomonic grid `dir` must be `yz`*, checked at construction.
+3. *`shallow-roe` and `plume-roe` refuse a face-pressure request*; the shallow-water equation of state turns the
+   request off, any other one does not (@sec-ch04-riemann).
+4. *`plume-roe` refuses every direction but $x_3$* ("PlumeRoeSolver only supports dim = 1").
+5. *`plume-eos` is refused* by the equation-of-state factory, so the plume system has no deck.
+
+**The excerpt.** `shallow_roe_impl` ({{< code src/riemann/shallow_roe_impl.h shallow_roe_impl >}}):
+
+```cpp
+  T ubar = (SWL(ivx) * sqrtdl + SWR(ivx) * sqrtdr) * isdlpdr;
+  T vbar = (SWL(ivy) * sqrtdl + SWR(ivy) * sqrtdr) * isdlpdr;
+  T cbar = shallow_water_roe_sound_speed(SWL(IDN), SWR(IDN));
+  ...
+  T hbar = sqrt(SWL(IDN) * SWR(IDN));
+
+  T a1 = T(0.5) * (cbar * del0 - hbar * delx) / cbar;
+  T a2 = hbar * dely;
+  T a3 = T(0.5) * (cbar * del0 + hbar * delx) / cbar;
+```
+
+`ubar`, `vbar`, `cbar` are @eq-ch04-shallow-avg; `hbar` is $d_{\mathrm{sw}}^{\mathrm{Roe}}$; `a1`, `a2`, `a3` are the strengths of
+step 4.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
 | shallow-water body | {{< code src/riemann/shallow_roe_impl.h shallow_roe_impl >}} | `shallow_roe_impl` | `type: shallow-roe` |
-| height-weighted averaging | {{< code src/riemann/shallow_roe_impl.h shallow_roe_impl >}} | `sqrtdl` | |
-| plume forward | {{< code src/riemann/plume_roe.cpp PlumeRoeSolverImpl::forward >}} | `forward` | `type: plume-roe` |
-| its physical flux | {{< code src/riemann/plume_roe.cpp calculate_flux >}} | `calculate_flux` | |
-| its Lax-Friedrichs average | {{< code src/riemann/plume_roe.cpp lax_friedrichs_flux >}} | `lax_friedrichs_flux` | |
-| registration | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}} | `ShallowRoeSolver` | |
+| the averaged wave speed | {{< code src/eos/shallow_water_impl.h shallow_water_roe_sound_speed >}} | `shallow_water_roe_sound_speed` | |
+| `dir` checks and the frame | {{< code src/riemann/shallow_roe.cpp ShallowRoeSolverImpl::forward >}} | `dir` | `xy` or `yz` |
+| `yz` on the gnomonic grid | {{< code src/riemann/shallow_roe.cpp ShallowRoeSolverImpl::reset >}} | `gnomonic_equiangle` | |
+| plume flux | {{< code src/riemann/plume_roe.cpp lax_friedrichs_flux >}} | `lax_friedrichs_flux` | `type: plume-roe` |
+| plume forward, unused Roe terms | {{< code src/riemann/plume_roe.cpp PlumeRoeSolverImpl::forward >}} | `J21` | |
+| no `plume-eos` | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}} | `create` | |
 
 : Code map of the two special-purpose solvers. {#tbl-ch04-shallow-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/run_shallow_xy.cmake` | a shallow-water deck end to end | reference |
-| `tests/test_shallow_splash.py` | a shallow-water splash case | per test |
-| this chapter's check, `solvers_check.py` | `[C6]` shallow-roe consistency and the Roe property, on a port | round-off |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_shallow_xy`, `test_shallow_splash` | the decks against reference files | reference file | registered only with `FULL_TESTS` |
+| `test_shallow_splash_decomp`, `test_shallow_xy_decomp` | decomposed runs agree with one block | per test | the test's constants |
+| `derivation_check.py` `[C11]`, `[C12]` (this report) | the shallow Roe property and strengths; plume consistency | exact | sympy |
+| `solvers_check.py` `[C6]` (this report) | shallow-roe consistency and the supercritical left flux | round-off | stated in the check |
 
 : Tests of the two special-purpose solvers. {#tbl-ch04-shallow-tests}
 
-No test selects `plume-roe`.
+`[C11]` and `[C12]` hold symbolically; `solvers_check.py` `[C6]` gives $0$ for equal states and
+$4.8\times10^{-16}$ for the supercritical case.[^sw-run] None of the shallow-water ctests is registered in the
+pin build used for this report, which was configured without `FULL_TESTS`: **missing evidence**. No test selects
+`plume-roe`.
+
+[^sw-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/solvers_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files].
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- `plume-roe` is a Lax-Friedrichs flux under a name that promises a characteristic solver. A reader choosing it
-  for its dissipation properties will get the opposite of what the name suggests.
-:::
-
-1. **Untested.** Nothing in the repository runs the plume solver, so its behaviour is recorded from reading
-   alone.
-2. **No face pressure.** Neither solver can drive the curved-grid pressure force or the well-balanced path of
-   @sec-ch05.
+1. **`plume-roe` has no deck.** Its equation of state is not registered, and with any other one it runs only on
+   $x_3$ faces of a block with no resolved $x_1$ axis.
+2. **`plume-roe` damps primitive jumps** and computes Roe quantities it does not use; the name promises a
+   characteristic solver.
+3. **No face pressure** from either solver; neither can drive the pressure force of @sec-ch04-sphsrc.
+4. **Shallow-water ctests need `FULL_TESTS`**; without it nothing in ctest runs `shallow-roe`.

@@ -1,111 +1,216 @@
 ## WENO3 and WENO5 (`type: weno3`, `weno5`) {#sec-ch04-weno}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.6
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.6; src/recon/weno3.cpp, src/recon/weno5.cpp, src/recon/interp_impl.h, src/recon/recon_dispatch.cpp,
+         src/recon/interpolation.cpp, tests/test_weno.cpp, examples/*.yaml at the pin
 status: draft
 -->
 
 ### Summary
 
-WENO is the scheme that makes a high order survive a discontinuity. Instead of one wide stencil it builds
-several narrow candidates, measures how rough each one looks, and takes a weighted average that all but
-discards any candidate straddling a jump. Away from a jump the weights settle to fixed values chosen so that
-the combination reproduces the wide centred polynomial.
+WENO keeps a high order away from jumps and avoids overshoot at them. It builds two (WENO3) or three (WENO5)
+small polynomials from different neighbouring cells, measures how rough each one is, and averages them with
+weights that all but drop a polynomial whose cells straddle a jump. Where the field is smooth the weights settle
+to fixed values and the result is the centred polynomial of @sec-ch04-cp. Only density and tracers use it;
+velocity and pressure take that centred partner (@sec-ch04-framework). Every shipped deck selects `weno5`; the
+default is off. The key `scale` makes the weights independent of the units of the data.
 
 ::: {.callout-note title="At a glance"}
-- A convex combination of candidate polynomials, weighted away from the rough ones by Jiang-Shu indicators.
-- Switches: `type: weno3`, `type: weno5`. Only density and tracers use them; velocity and pressure take the
-  matching linear polynomial (@sec-ch04-framework).
-- Where the field is smooth the nonlinear weights approach the linear ones and the scheme becomes `cp3` or `cp5`.
-- At a critical point WENO3 falls to second order. WENO5 does not, on the profile measured here.
-- The smoothness floor is a fixed $10^{-6}$, not scaled to the magnitude of the data.
+**Purpose.** Face value $\sum_\ell\omega_\ell p_\ell$ with the nonlinear weights of @eq-ch04-weno-weights.
+
+**Data.** Reads 3 or 5 cell values per face; writes the two face states of density and tracer rows.
+
+**Placement.** `interp1` of the reconstruction (@sec-ch04-framework), every stage.
+
+**Activation.** `type: weno3` or `weno5`, default off; `scale: true` divides each stencil by its mean $\lvert q\rvert$.
+
+**Guarantee / limits.** Design order where smooth; WENO3 second order at critical points; floor $10^{-6}$ in data units.
+
+**Evidence.** @tbl-ch04-weno-tests; `test_weno.release`, `derivation_check.py` `[C5]`–`[C7]`, `[C17]`, `recon_check.py` `[C4]`.
 :::
+
+Local symbols (flagged to the editor): $p_\ell$ candidate $k$'s value at the face; $\beta_\ell$ its smoothness indicator
+[units of $q^2$, or dimensionless with `scale`]; $d_\ell$ the linear weights and $\omega_\ell$ the nonlinear ones [-];
+$\alpha_\ell$ the unnormalised weights; $\epsilon_{\mathrm W} = 10^{-6}$ the indicator floor [units of $q^2$ without
+`scale`]; $s_q = \tfrac1{n_{\mathrm s}}\sum_l\lvert\bar q_{i+l}\rvert$ the stencil scale of `scale: true`; $\zeta_{\mathrm{ex}}$ the
+offset of a critical point from the cell centre in units of $h$ [-]; $a_0, a_1, \dots$ the Taylor coefficients of @sec-ch04-dc.
 
 ### Derivation
 
-Both forms share the same structure: candidates $p_k$, smoothness indicators $\beta_k$, linear weights $d_k$,
-and nonlinear weights
+#### The weights
+
+The kernels compute, for the lower face of cell $i$,
 
 $$
-\alpha_k = \frac{d_k}{(\beta_k + \varepsilon)^2},\qquad
-\phi_{\text{face}} = \frac{\sum_k \alpha_k p_k}{\sum_k \alpha_k},\qquad \varepsilon = 10^{-6}.
+\alpha_\ell = \frac{d_\ell}{(\beta_\ell + \epsilon_{\mathrm W})^2},\qquad
+\omega_\ell = \frac{\alpha_\ell}{\sum_{\ell'}\alpha_{\ell'}},\qquad
+q^{\mathrm R}_i = s_q\sum_\ell\omega_\ell\,p_\ell(\bar q/s_q),
 $$ {#eq-ch04-weno-weights}
 
-The claim that makes the scheme high order is that the *linear* weights rebuild the wide polynomial exactly.
-`[C2]` and `[C3]` check that symbolically, not numerically, and both differences are identically zero: with
-$d = (\tfrac23, \tfrac13)$ the two WENO3 candidates rebuild `cp3`, and with $d = (\tfrac3{10}, \tfrac6{10},
-\tfrac1{10})$ the three WENO5 candidates rebuild `cp5`. So wherever the indicators are equal, these schemes
-*are* the centred polynomials of @sec-ch04-cp.
+with $s_q = 1$ when `scale` is false. In the code, @eq-ch04-weno-weights is `alpha0` to `OUT(j)` ({{< code src/recon/interp_impl.h interp_weno5_impl >}}).
 
-What the smoothness indicators then do is break that equality near a jump. They are the Jiang-Shu forms, sums
-of squared undivided differences, at `beta0` ({{< code src/recon/interp_simple.hpp interp_weno3 >}}) and
-{{< code src/recon/interp_simple.hpp interp_weno5 >}}.
+#### Why the scheme has the centred order where the field is smooth
 
-The order a WENO scheme attains in practice is not the order of its linear weights, and the chapter measures
-both regimes rather than quoting the design figure. `[C4]` finds, over $n_1 = 16 \to 64$ on a monotone profile
-with no critical point, fitted orders of 2.98 for WENO3 and 5.00 for WENO5: the design orders. Through two
-critical points, over $n_1 = 32 \to 256$, WENO3 falls to a fitted 2.09 while the linear `cp3` on the same
-profile keeps 2.99. WENO5 keeps 5.62 there.
+1. *The candidates.* Candidate $\ell$ of WENO5 is the quadratic whose cell averages match cells $i-2+\ell..i+\ell$,
+   evaluated at $x_{i-1/2}$; WENO3 uses the two linear fits through cells $(i-1, i)$ and $(i, i+1)$. Solving
+   those conditions as in @sec-ch04-cp gives exactly rows 0–2 of the `weno5.cpp` buffer and rows 0–1 of the
+   `weno3.cpp` buffer (`derivation_check.py` `[C5]`).
+2. *The linear weights rebuild the wide stencil.* The only $d$ for which $\sum_\elld_kp_\ell$ equals the cp5 value for every stencil is
+   $(\tfrac3{10}, \tfrac35, \tfrac1{10})$, and $(\tfrac23, \tfrac13)$ gives cp3 (`[C5]`); these are the constants of
+   `interp_weno5_impl` and `interp_weno3_impl`.
+3. *The indicators.* $\beta_\ell = \sum_{l=1}^{2}h^{2l-1}\int_{\text{cell }i}(\partial_1^lP_\ell)^2\,\mathrm dx$ for WENO5 and
+   $h\int(\partial_1P_\ell)^2$ for WENO3, with $P_\ell$ the candidate polynomial. Integrated with sympy they are the
+   $\tfrac{13}{12}(\cdot)^2 + \tfrac14(\cdot)^2$ and $(\cdot)^2$ forms built from rows 3–8 and 2–3 of the buffers
+   (`[C5]`).
+4. *Smooth data.* There all $\beta_\ell$ agree to leading order, $\omega_\ell\to d_\ell$, and by step 2 the face value is
+   the cp5 or cp3 value of @eq-ch04-cp-weights. `recon_check.py` `[C4]` measures 2.98 and 5.00 on a monotone
+   profile over $n_1 = 16\to64$.
 
-The WENO3 result is the expected behaviour of the Jiang-Shu weights, not a defect: at a critical point the
-indicators of the two candidates become equal at leading order and the nonlinear weights fail to approach the
-linear ones fast enough to preserve third order. It is nonetheless a property a user should know about, because
-a smooth field full of extrema, which is what a resolved wave field is, is reconstructed at second order by a
-scheme named for its third.
+#### Why WENO3 is second order at a critical point
+
+1. *Place an extremum $\zeta_{\mathrm{ex}} h$ from the centre of cell $i$*, $u = a_0 + a_2(x-\zeta_{\mathrm{ex}} h)^2 + \ldots$
+2. *The two indicators no longer agree.* $\beta_1/\beta_0\to(2\zeta_{\mathrm{ex}}-1)^2/(2\zeta_{\mathrm{ex}}+1)^2$ as $h\to0$: an $O(1)$
+   ratio, so $\omega_\ell - d_\ell = O(1)$ while the indicators are far above $\epsilon_{\mathrm W}$.
+3. *The candidates differ by $O(h^2)$* at an extremum, so $(\omega_\ell - d_\ell)(p_0 - p_1) = O(h^2)$.
+4. *Hence the face error is* $-\tfrac{32}{3}a_2\zeta_{\mathrm{ex}}(4\zeta_{\mathrm{ex}}^2+1)/(48\zeta_{\mathrm{ex}}^4 - 32\zeta_{\mathrm{ex}}^3 + 72\zeta_{\mathrm{ex}}^2 - 8\zeta_{\mathrm{ex}} + 3)\,h^2$,
+   zero only when the extremum sits at a cell centre (`derivation_check.py` `[C17]`). `recon_check.py` `[C4]`
+   measures 2.09 through two critical points over $n_1 = 32\to256$, while cp3 on the same profile keeps 2.99. On
+   finer grids $\beta_\ell$ falls below $\epsilon_{\mathrm W}$ and step 2 stops holding; where that happens depends
+   on the units of $q$ (next derivation). WENO5 keeps a fitted 5.62 on the same profile; that is a measurement on
+   one profile, not a derived order.
+
+#### What `scale` does, and why it changes results
+
+1. *Without `scale` the floor has units.* $\beta_\ell$ is a sum of squared differences of $q$, so it carries the
+   units of $q^2$, and $\epsilon_{\mathrm W} = 10^{-6}$ is a fixed number in those units.
+2. *Small data are not limited.* If every $\beta_\ell\ll\epsilon_{\mathrm W}$, then $\alpha_\ell\approx d_\ell/\epsilon_{\mathrm W}^2$
+   and $\omega_\ell\to d_\ell$: the scheme is the linear cp5 or cp3 even across a jump. For a step of height $10^{-6}$
+   the weight of the candidate that straddles it is $0.1$, its linear value; at height $1$ it is
+   $3.3\times10^{-13}$ (`derivation_check.py` `[C7]`).
+3. *`scale` divides the stencil by $s_q$.* The kernel replaces $\bar q$ by $\bar q/s_q$ before computing $p_\ell$ and
+   $\beta_\ell$ and multiplies the result by $s_q$. Since $s_q(\lambda\bar q) = \lambda s_q(\bar q)$ for $\lambda>0$, the
+   scaled stencil is unchanged by $\lambda$ and the output scales with $\lambda$: the scheme is homogeneous of
+   degree one, and $\epsilon_{\mathrm W}$ becomes a relative floor (`[C7]`, exact). The straddling weight is then
+   $2.2\times10^{-12}$ at every magnitude.
+4. *A zero stencil.* If $s_q = 0$ every value is zero and the kernel returns zero exactly, with no division.
+5. *Hence a deck's results depend on `scale` exactly when its data are small in their units*, or are differences
+   about a reference: the well-balanced $x_1$ path reconstructs $p - p_{\mathrm{ref}}$ and $\rho - \rho_{\mathrm{ref}}$
+   (@sec-ch05-wbx1), whose stencil means are near zero. That this is the mechanism behind the effect reported in
+   moist-bubble decks[^weno-scale] is a **hypothesis**: it follows from steps 1 to 3, and no run in this report
+   isolates it.
+
+#### Round-off
+
+1. *Each candidate* is a dot product of 3 or 5 terms with row sums $\sum\lvert c\rvert$ at most $\tfrac{10}{3}$
+   (the extrapolating row of WENO5), so its error is at most $\eta_6\tfrac{10}{3}\max\lvert\bar q\rvert \approx
+   2.2\times10^{-15}\max\lvert\bar q\rvert$, with $\eta_n$ of @sec-ch04-cp.
+2. *The weights* are non-negative and sum to one up to a few roundings, so their error $\delta\omega_\ell$ adds
+   $\sum_\ell\delta\omega_\ell p_\ell = \sum_\ell\delta\omega_\ell(p_\ell - p_0) + p_0\sum_\ell\delta\omega_\ell$, at most a few
+   $\epsilon_{\mathrm m}\max_\ell\lvert p_\ell\rvert$ plus a term proportional to the spread of the candidates, which is
+   $O(h)$ where they agree and is suppressed by $\omega_\ell$ where they do not.
+3. *`scale`* adds the division and the multiplication by $s_q$; a rounding error in $s_q$ itself cancels between
+   them to first order and only moves the floor by a relative $O(\epsilon_{\mathrm m})$.
 
 ### Numerical method
 
-The two interpolants are `interp_weno3` ({{< code src/recon/interp_simple.hpp interp_weno3 >}}) and
-`interp_weno5` ({{< code src/recon/interp_simple.hpp interp_weno5 >}}), written out in full with the candidates, the indicators and the
-weights in the order of @eq-ch04-weno-weights. The measured orders are drawn in @fig-ch04-cp-order.
+```{python}
+#| label: fig-ch04-weno-scale
+#| fig-cap: "The three WENO5 nonlinear weights at the lower face of each cell across a step at $x_1 = 0.5$, with scale on (solid) and off (dashed). (a) Data of magnitude 1: the two settings agree, and the candidate that straddles the step gets almost no weight. (b) The same data times $10^{-4}$: with scale off every indicator falls below the floor $10^{-6}$, the weights stay at their linear values $(0.3, 0.6, 0.1)$, and nothing is limited; with scale on the weights are those of panel (a). Computed from a port of the production kernel."
+#| fig-alt: "Two panels of three weight curves against position; in the left panel solid and dashed curves coincide and dip at the step; in the right panel the dashed curves stay flat at 0.3, 0.6 and 0.1."
+#| echo: false
+from snapy_report.ch04.fig_ch04_schemes import make_weno
+make_weno()
+```
 
-The floor $\varepsilon$ is the literal `1e-6` inside both bodies. It is not scaled by the magnitude of the
-data, so for a field whose squared differences are far below $10^{-6}$ the floor dominates every indicator, all
-$\alpha_k$ collapse to the $d_k$, and the scheme silently becomes its linear partner. For a field far above it
-the floor is irrelevant. Neither regime is wrong, but the crossover depends on the units the deck is written
-in, and nothing warns at it.
+**Which path runs.** `Weno5InterpImpl::left` passes the `cm` buffer, and `right` the mirrored `cp`, to the
+dispatch `call_weno5` with `options->scale()`; the CPU kernel is `interp_weno5_impl` in `interp_impl.h`. WENO3
+is the same with `interp_weno3_impl`. The scalar templates `interp_weno3` and `interp_weno5` of
+`interp_simple.hpp` are used only by tests; `derivation_check.py` `[C6]` shows their rows are the production
+rows, so the orders `recon_check.py` measures on those ports are the orders of the scale-off kernels.
 
-Only `interp1` is a WENO interpolant. Under `weno5` the density and tracer rows are reconstructed by
-`interp_weno5` ({{< code src/recon/interp_simple.hpp interp_weno5 >}}) while velocity and pressure take `cp5`, selected at
-{{< code src/recon/interpolation.cpp InterpImpl::create >}}. A deck that chooses `weno5` to survive a shock therefore gets an
-unlimited fifth-order linear reconstruction of its velocity and pressure through that same shock.
+**Stencil and ghosts.** WENO3 reads three cells (two ghosts), WENO5 five (three ghosts).
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input.** The jupiter and uranus decks use the scaled form:
+
+```yaml
+dynamics:
+  reconstruct:
+    vertical:   {type: weno5, scale: true, shock: true}
+    horizontal: {type: weno5, scale: true, shock: true}
+```
+
+**What the parser accepts and refuses.** The framework's rules apply (@sec-ch04-framework). `scale` must be a
+boolean. With `shock: true` WENO acts on every row, velocity and pressure included; with `shock: false` those
+rows take cp3 or cp5.
+
+**The excerpt.** `interp_weno5_impl` ({{< code src/recon/interp_impl.h interp_weno5_impl >}}):
+
+```cpp
+    T vscale = scale ? (fabs(INP(j, 0)) + fabs(INP(j, 1)) + fabs(INP(j, 2)) +
+                        fabs(INP(j, 3)) + fabs(INP(j, 4))) /
+                           5.0
+                     : 1.0;
+    ...
+    T p0 = _vvdot<5>(phi, c1);
+    ...
+    T beta0 =
+        13. / 12. * SQR(_vvdot<5>(phi, c4)) + .25 * SQR(_vvdot<5>(phi, c5));
+    ...
+    T alpha0 = .3 / SQR(beta0 + 1e-6);
+    T alpha1 = .6 / SQR(beta1 + 1e-6);
+    T alpha2 = .1 / SQR(beta2 + 1e-6);
+
+    OUT(j) = vscale * (alpha0 * p0 + alpha1 * p1 + alpha2 * p2) /
+             (alpha0 + alpha1 + alpha2);
+```
+
+`vscale` is $s_q$; `phi` is $\bar q/s_q$; `p0` is $p_0$ from row `c1` of the buffer; `beta0` is $\beta_0$ from rows
+`c4`, `c5`; `alpha0` is $\alpha_0$ with $d_0 = 0.3$ and $\epsilon_{\mathrm W} = 10^{-6}$; the last line is @eq-ch04-weno-weights.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
-| WENO3 | {{< code src/recon/interp_simple.hpp interp_weno3 >}} | `interp_weno3` | `type: weno3`, `interp1` only |
-| WENO5 | {{< code src/recon/interp_simple.hpp interp_weno5 >}} | `interp_weno5` | `type: weno5`, `interp1` only |
-| WENO3 indicators | {{< code src/recon/interp_simple.hpp interp_weno3 >}} | `beta0` | |
-| WENO5 indicators | {{< code src/recon/interp_simple.hpp interp_weno5 >}} | `beta0` | |
+| WENO5 kernel | {{< code src/recon/interp_impl.h interp_weno5_impl >}} | `interp_weno5_impl` | `type: weno5`, `interp1` |
+| WENO3 kernel | {{< code src/recon/interp_impl.h interp_weno3_impl >}} | `interp_weno3_impl` | `type: weno3`, `interp1` |
+| WENO5 rows | {{< code src/recon/weno5.cpp Weno5InterpImpl::reset >}} | `cm` | |
+| WENO3 rows | {{< code src/recon/weno3.cpp Weno3InterpImpl::reset >}} | `cm` | |
+| `scale` passed to the kernel | {{< code src/recon/weno5.cpp Weno5InterpImpl::left >}} | `scale` | `scale: true` |
 | the `interp2` partner | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `Center5Interp` | `weno5` |
 
 : Code map of the WENO interpolants. {#tbl-ch04-weno-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/test_weno.cpp` | the WENO interpolants on reference data | per test |
-| `tests/test_weno5_cuda_line.cpp` | the CUDA path reproduces the CPU line | per test |
-| `tests/test_plm.cpp` | a constant field is reconstructed exactly, `weno5` arm | allclose defaults |
-| this chapter's check | `[C2]`, `[C3]` the linear weights rebuild `cp3` and `cp5` exactly; `[C4]` measured orders in both regimes | symbolic; fitted orders |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_weno.release`, `interp_weno3m_torch1`–`3`, `interp_weno5*` | the modules equal the scalar templates on random data | $10^{-6}$ | the test's constant, sized for single precision |
+| `test_weno.release`, `interp_weno3_smooth_limit` | on data with differences $\sim10^{-7}$ WENO3 equals cp3 | $10^{-6}$ | the test's constant |
+| `test_plm.release`, `reconstruct_preserves_a_constant_field` | the `weno5` arm reproduces a constant | `allclose` defaults | `torch::allclose` |
+| `derivation_check.py` `[C5]`–`[C7]`, `[C17]` (this report) | rows, weights, indicators; the scale homogeneity; the critical-point order | exact | sympy |
+| `recon_check.py` `[C2]`–`[C4]` (this report) | linear weights rebuild cp3, cp5; measured orders in both regimes | symbolic; fitted orders | stated in the check |
 
 : Tests of the WENO interpolants. {#tbl-ch04-weno-tests}
 
+`[C5]`, `[C6]` and `[C17]` hold symbolically; `[C7]` prints the straddling weight $3.3\times10^{-13}$,
+$5.7\times10^{-2}$, $0.1$ at magnitudes $1$, $10^{-3}$, $10^{-6}$ with `scale` off and $2.2\times10^{-12}$ at all
+three with it on.[^weno-run] `test_weno.release` passes at the pin on CPU, one rank (@tbl-ch04-ctest-run). Its
+`interp_weno3_smooth_limit` case is step 2 of the `scale` derivation seen from the other side: its differences
+are below the floor, so WENO3 must equal cp3.
+
+[^weno-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/recon_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files].
+
+[^weno-scale]: Source: chengcli/snapy#275, which reports that `scale: true` changes results in moist-bubble decks
+    through the well-balanced reference.
+
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- WENO3 is second order at a critical point, measured at 2.09 here. If third order through smooth extrema is
-  wanted, this interpolant does not provide it.
-- The smoothness floor is an absolute $10^{-6}$. Whether it dominates the indicators depends on the units of
-  the deck, and no warning is printed either way.
-:::
-
-1. **Only half the state is limited.** Velocity and pressure bypass WENO entirely. Whether that is the right
-   split is a design question no source in the repository answers.
-2. **Uniform-mesh weights.** As for the linear polynomials, the candidates and indicators assume equal cell
-   widths.
-3. **WENO5 through critical points.** The fitted 5.62 is above the design order and was measured on one
-   profile over one ladder; it should be read as "did not degrade here", not as a general order claim.
+1. **WENO3 is second order at a generic critical point** (step 4 above), measured at 2.09.
+2. **Units decide the limiting when `scale` is off.** Data whose squared differences are below $10^{-6}$ in the
+   deck's units are reconstructed by the linear polynomial, jumps included, and no warning is printed.
+3. **Only half the state is limited** with `shock: false`: velocity and pressure take cp3 or cp5 through a jump.
+4. **Uniform-grid rows.** Candidates and indicators assume equal cell widths.
+5. **WENO5 through critical points** is measured on one profile (5.62); no derivation covers it here.

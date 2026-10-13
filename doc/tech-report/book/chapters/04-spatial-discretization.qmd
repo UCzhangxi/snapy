@@ -1,29 +1,28 @@
 # Spatial discretization {#sec-ch04}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
 sources: OUTLINE.md 4
 status: draft
 -->
 
-This chapter is the semi-discrete operator of one Runge-Kutta stage: everything that turns a cell-averaged
+This chapter is the semi-discrete operator of one Runge–Kutta stage: everything that turns a cell-averaged
 state into a tendency, and nothing that advances it in time. A stage reconstructs the primitive variables to
-the faces, solves a Riemann problem on each face to get a single flux there, makes that flux single-valued
-across a process seam, takes its divergence, and adds the part of the curvature that is not a flux difference.
-Time integration belongs to the time-integration chapter, the well-balanced treatment of the vertical to
-@sec-ch05, and the positivity limiter that runs between the Riemann solve and the divergence to @sec-ch08.
+the faces, solves a Riemann problem on each face to get one flux there, makes that flux single-valued across a
+process seam, takes its divergence, and adds the part of the curvature that is not a flux difference. Time
+integration belongs to @sec-ch07, the well-balanced treatment of the vertical to @sec-ch05, and the positivity
+limiter that runs between the Riemann solve and the divergence to @sec-ch08.
 
-The chapter has two halves because the second has a derivation thread the first does not. Section 4A is the
-operator and its interchangeable parts: the divergence, the reconstruction framework with its six interpolants,
-the Riemann framework with its five solvers, seam averaging and the geometric sources. Almost none of that is
-written down anywhere in the repository, so it is re-derived here from the code. Section 4B is one idea applied
-twice: a finite-volume flux is an average over a face, a solver computes a flux from averages over cells, and
-the difference between those is second order in the direction that carries the stratification. That half has a
-committed derivation behind it and its own test family.
+Section 4A is the operator and its interchangeable parts: the divergence, the reconstruction framework with its
+interpolants, the Riemann framework with its six solvers, seam averaging and the placement of the geometric
+sources, whose derivation lives with the grids in @sec-ch03. Section 4B is one idea applied twice: a
+finite-volume flux is an average over a face, a solver computes a flux from averages over cells, and in a
+stratified column the two differ at second order in $x_1$. The algebra of every Derivation layer is checked with
+sympy in `src/snapy_report/ch04/derivation_check.py`, 17 of 17 claims passing.
 
 ```{python}
 #| label: fig-ch04-deps
-#| fig-cap: "The dependency map of this chapter. A solid black arrow reads requires, a dashed green arrow reads implies. The reconstruction framework implies a pair of interpolants, and selecting either WENO type implies the matching linear polynomial for the velocity and pressure rows. The geometric sources require a solver that returns a face pressure, which only three of the five provide. Both $O(\\Delta x_1^2)$ corrections require something of the rest of the chapter: the horizontal one needs the face pressure and the curved-grid moments, and the $x_1$ one acts on the reconstructed velocity. Every edge is stated and cited in the section it comes from."
+#| fig-cap: "The dependency map of this chapter. A solid black arrow reads requires, a dashed green arrow reads implies. The reconstruction framework implies a pair of interpolants, and selecting either WENO type implies the matching linear polynomial for the velocity and pressure rows. The geometric sources require a solver that returns a face pressure, which three of the six provide. The horizontal covariance requires the geometric source to read the same shifted pressure, and the $x_1$ correction acts on the reconstructed velocity. Every edge is stated and cited in the section it comes from."
 #| fig-alt: "Ten labelled boxes joined by arrows, with solid arrows for requires and dashed green arrows for implies, and a legend below."
 #| echo: false
 from snapy_report.ch04.fig_ch04_deps import make_fig
@@ -33,29 +32,55 @@ make_fig()
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
 | Finite-volume update (@sec-ch04-divergence) | `disable-flux-x1\|x2\|x3` | all on | exact in flux form | `test_cubed_sphere_cell_volume_python` |
-| Reconstruction framework (@sec-ch04-framework) | `reconstruct/{type,scale,shock}` | `dc`, false, false | set by the interpolant | `test_plm` |
-| Donor cell (@sec-ch04-dc) | `type: dc` | the default | 1 | `test_plm` |
+| Reconstruction framework (@sec-ch04-framework) | `reconstruct/{type,scale,shock}` | block present: `dc`, false, false; no block: `dc`, false, true | set by the interpolant | `test_plm` |
+| Donor cell (@sec-ch04-dc) | `type: dc` | the default type | 1 | `test_plm` |
 | PLM (@sec-ch04-plm) | `type: plm` | off | 2, 1 at an extremum | `test_plm` |
-| Centred cp3, cp5 (@sec-ch04-cp) | `type: cp3`, `cp5` | off | 3, 5 | this chapter's check |
-| WENO3, WENO5 (@sec-ch04-weno) | `type: weno3`, `weno5` | off | 3, 5; weno3 is 2 at a critical point | `test_weno` |
-| PPM (@sec-ch04-ppm) | `type: ppm` | off | 1: the interpolant is a stub | none |
-| Riemann framework (@sec-ch04-riemann) | `riemann-solver/{type,dir}` | `roe`, `omni` | — | `test_riemann` |
-| LMARS (@sec-ch04-lmars) | `type: lmars` | off; the decks select it | consistent, 1 in the upwind branch | `test_riemann` |
-| HLLC (@sec-ch04-hllc) | `type: hllc` | off | three-wave | `test_riemann` |
-| Roe (@sec-ch04-roe) | `type: roe` | the default | linearised, no entropy fix | `test_riemann` |
-| Shallow and plume Roe (@sec-ch04-shallow) | `type: shallow-roe`, `plume-roe` | off | plume-roe is Lax-Friedrichs | `test_shallow_splash` |
+| Centred cp3, cp5 (@sec-ch04-cp) | `type: cp3`, `cp5` | off | 3, 5 | `test_weno` |
+| WENO3, WENO5 (@sec-ch04-weno) | `type: weno3`, `weno5`; `scale` | off | 3, 5; weno3 is 2 at a critical point | `test_weno` |
+| PPM (@sec-ch04-ppm) | `type: ppm` | off | none: the first stage throws | none |
+| Riemann framework (@sec-ch04-riemann) | `riemann-solver/{type,dir}` | no block: `hllc`; block without type: `roe` | — | `test_riemann` |
+| LMARS (@sec-ch04-lmars) | `type: lmars` | off | acoustic face state, upwind transport | `test_riemann` |
+| HLLC (@sec-ch04-hllc) | `type: hllc` | the solver with no block | three waves, exact contact | `test_riemann` |
+| Roe (@sec-ch04-roe) | `type: roe` | the solver of a block without type | linearised, LLF fallback, no entropy fix | `test_riemann` |
+| Shallow-water and plume Roe (@sec-ch04-shallow) | `type: shallow-roe`, `plume-roe` | off | plume-roe is Lax–Friedrichs | none in the default build |
 | Seam averaging (@sec-ch04-seam) | none; split $x_1$ axis | automatic | restores telescoping | `test_x1_seam_split_mp` |
-| Spherical-polar sources (@sec-ch04-sphsrc) | none; coordinate type | automatic | exact areas and volume | `test_radial_face_moments` |
-| Gnomonic sources (@sec-ch04-gnomonic) | none; coordinate type | automatic | exact solid angle and volume | `test_hydrostatic` |
-| Horizontal flux covariance (@sec-ch04-fluxcov) | `SNAP_FLUX_COVARIANCE` | off | removes two $O(\Delta x_1^2)$ terms | `test_flux_covariance_rows` |
-| $x_1$ mass covariance (@sec-ch04-x1masscov) | `SNAP_X1_MASS_COVARIANCE` | off | 2 becomes 4 in the stored velocity | this chapter's check |
+| Spherical-polar source placement (@sec-ch04-sphsrc) | none; coordinate type | automatic | three pressure branches | `test_coordinate` |
+| Gnomonic source and frame placement (@sec-ch04-gnomonic) | none; coordinate type | automatic | rest to $10^{-14}$ | `test_hydrostatic` |
+| Horizontal flux covariance (@sec-ch04-fluxcov) | `SNAP_FLUX_COVARIANCE` | **on** | removes two $O(\Delta x_1^2)$ terms | `test_flux_covariance_rows_python` |
+| $x_1$ mass covariance (@sec-ch04-x1masscov) | `SNAP_X1_MASS_COVARIANCE` | off | stored velocity 2 becomes 4 | `test_x1_seam_split_x1_mass_covariance` |
 
 : The schemes of this chapter. "Order" is the spatial order of the discrete operator where that is meaningful;
 the Riemann solvers are characterised by their wave structure instead. {#tbl-ch04-schemes}
 
-Three of the entries above record code that does not do what its name says, and they are flagged where they
-appear rather than collected here: the PPM interpolant is a stub that returns the cell value, the `plume-roe`
-solver is a Lax-Friedrichs flux, and four limiter functions beside the PLM slope are never called.
+| ctest name | result at the pin | time [s] |
+|---|---|---|
+| `test_plm.release` | passed | 15.5 |
+| `test_weno.release` | passed | 0.5 |
+| `test_riemann.release` | passed | 1.1 |
+| `test_coordinate.release` | passed | 1.0 |
+| `test_radial_face_moments.release` | passed | 0.4 |
+| `test_hydrostatic.release` | passed | 15.5 |
+| `test_x1_seam_split.release` | passed | 15.5 |
+| `test_x1_seam_split_x1_centroid.release` | passed | 0.7 |
+| `test_x1_seam_split_wb_ref4_gravity_0.release` | passed | 0.4 |
+| `test_x1_seam_split_x1_mass_covariance.release` | passed | 0.4 |
+| `test_x1_seam_split_mp.release` | passed | 3.7 |
+| `test_pref_local_seam_flux_covariance.release` | passed | 2.5 |
+| `test_cubed_sphere_cell_volume_python` | passed | 3.6 |
+| `test_horizontal_flux_covariance_python` | passed | 24.1 |
+| `test_flux_covariance_rows_python` | passed | 22.7 |
+| `test_flux_covariance_seams_python` | passed | 11.0 |
+| `test_flux_positivity_cubedsphere_flux_covariance_python` | passed | 7.1 |
+| `test_scalar_flux_covariance_python` | passed | 10.0 |
+| `test_scalar_cov_x1_split_python` | passed | 2.6 |
+
+: The ctest entries this chapter cites, run at the pin with their registered environments.[^ch04-ctest]
+{#tbl-ch04-ctest-run}
+
+[^ch04-ctest]: [sha: the code pin; run: `ctest -R` on a Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5,
+    CPU only (`SNAPY_BUILD_CUDA=0`), double, Intel Xeon E-2236, 6 cores, `-j4` for the first seventeen entries;
+    torch 2.10.0, kintera 2.6.2.dev4+g914389b40, Python 3.12.10]. The build was configured without `FULL_TESTS`, so
+    the shallow-water reference decks are not registered; no CUDA arm and no `test_straka` run was made.
 
 ## 4A. Reconstruction, Riemann solvers, divergence and sources {.unnumbered .unlisted}
 

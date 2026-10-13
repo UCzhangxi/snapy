@@ -1,102 +1,183 @@
 ## LMARS (`type: lmars`) {#sec-ch04-lmars}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy)
-sources: OUTLINE.md 4.9
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md 4.9; src/riemann/lmars_impl.h, src/riemann/lmars.cpp, src/riemann/riemann_solver.cpp,
+         tests/test_riemann.cpp, examples/*.yaml at the pin
 status: draft
 -->
 
 ### Summary
 
-LMARS replaces the full wave structure of a Riemann problem with two numbers: an acoustically-corrected face
-velocity and an acoustically-corrected face pressure. The sign of the face velocity then decides which side the
-rest of the state is taken from. The result is cheap, robust at low Mach number, and the production choice in
-every shipped deck.
+LMARS keeps only the two sound waves of a Riemann problem. From the two face states it computes one face velocity
+and one face pressure, each a plain average plus a correction driven by the jump in the other quantity; the sign
+of the face velocity then picks the side from which density, momentum, energy and species are carried. The
+solver is cheap and behaves well at low Mach number. Seven shipped decks select it; it is not a default.
 
 ::: {.callout-note title="At a glance"}
-- A low-Mach approximate Riemann solver: one face velocity and one face pressure, then a pure upwind of the state.
-- Switch: `type: lmars`. It is what the shipped example decks select, though not the YAML default.
-- Consistent: equal left and right states give the exact physical flux.
-- Writes a face pressure, so it works with the curved-grid pressure force and the well-balanced path.
-- The species rows and a dry row split the mass flux exactly.
+**Purpose.** Face velocity and pressure from linear acoustics, @eq-ch04-lmars-face, then upwind transport.
+
+**Data.** Reads $\mathbf W^{\mathrm L}_f, \mathbf W^{\mathrm R}_f$, $e$ and $\gamma$ of each side; writes $\mathbf F_a$ and $p_f$.
+
+**Placement.** The Riemann step of each direction (@sec-ch04-riemann), every stage.
+
+**Activation.** `riemann-solver: {type: lmars}`; never a default.
+
+**Guarantee / limits.** Consistent; writes a face pressure; no contact or shock structure beyond the upwind side.
+
+**Evidence.** @tbl-ch04-lmars-tests; `test_riemann.release`, `derivation_check.py` `[C8]`, `operator_check.py` `[C5]`–`[C7]`.
 :::
+
+Local symbols (flagged to the editor): $v_\perp$, $v_{\parallel,1}$, $v_{\parallel,2}$, $p_f$ as in @sec-ch04-riemann;
+$v_f$ the face velocity [m s$^{-1}$]; $\rho_{\mathrm{av}}$, $\gamma_{\mathrm{av}}$, $c_{\mathrm{av}}$ the arithmetic
+means of density and $\gamma$ over the two sides and the sound speed built from them; $\hat H = e + p/\rho +
+\tfrac12\lvert\mathbf v\rvert^2$ the specific total enthalpy [J kg$^{-1}$]; $y_{\mathrm d} = 1 - \sum_ny_n$ the dry
+mass fraction [-].
 
 ### Derivation
 
-Let $\bar\rho$ be the arithmetic mean density and $\bar c$ the mean sound speed built from the mean pressure.
-The face velocity and pressure are
+#### The face velocity and pressure from linear acoustics
 
-$$
-\bar u = \tfrac12(u_L + u_R) + \frac{p_L - p_R}{2\bar\rho\bar c},\qquad
-\bar p = \tfrac12(p_L + p_R) + \tfrac12\bar\rho\bar c\,(u_L - u_R).
-$$ {#eq-ch04-lmars-face}
+1. *Linearise.* About a state of density $\rho$ and sound speed $c$, one-dimensional pressure and normal velocity
+   obey $\partial_tp + \rho c^2\partial_xv_\perp = 0$ and $\partial_tv_\perp + \rho^{-1}\partial_xp = 0$.
+2. *Characteristics.* The matrix of that system has eigenvalues $\pm c$ with left eigenvectors $(1, \pm\rho c)$, so
+   $p + \rho cv_\perp$ is carried unchanged along $x = ct$ and $p - \rho cv_\perp$ along $x = -ct$
+   (`derivation_check.py` `[C8]`).
+3. *The face state.* At the face, the right-going invariant comes from the left state and the left-going one from
+   the right state: $p_f + \rho cv_f = p^{\mathrm L} + \rho cv_\perp^{\mathrm L}$ and $p_f - \rho cv_f = p^{\mathrm R} - \rho cv_\perp^{\mathrm R}$.
+4. *Solve the two equations.*
 
-In the code, @eq-ch04-lmars-face is `pbar` and `ubar` ({{< code src/riemann/lmars_impl.h lmars_impl >}}).
+   $$
+   v_f = \tfrac12\left(v_\perp^{\mathrm L} + v_\perp^{\mathrm R}\right) + \frac{p^{\mathrm L} - p^{\mathrm R}}{2\rho_{\mathrm{av}}c_{\mathrm{av}}},\qquad
+   p_f = \tfrac12\left(p^{\mathrm L} + p^{\mathrm R}\right) + \tfrac12\rho_{\mathrm{av}}c_{\mathrm{av}}\left(v_\perp^{\mathrm L} - v_\perp^{\mathrm R}\right),
+   $$ {#eq-ch04-lmars-face}
 
-Each is a centred average plus an acoustic correction proportional to the jump in the *other* variable, with
-$\bar\rho\bar c$ the acoustic impedance. `[C6]` checks both halves separately: a pure pressure jump of $0.2$
-with no velocity jump drives $\bar u = -0.080582$, which is exactly the second term of @eq-ch04-lmars-face, and
-two states converging at $0.3$ raise $\bar p$ to $1.354965$ above the mean of $1.0$, which is exactly the
-impedance times the velocity jump.
+   with the linearisation state taken as the arithmetic means, $\rho_{\mathrm{av}} = \tfrac12(\rho^{\mathrm L} + \rho^{\mathrm R})$
+   and $c_{\mathrm{av}}^2 = \gamma_{\mathrm{av}}\tfrac12(p^{\mathrm L} + p^{\mathrm R})/\rho_{\mathrm{av}}$. These are `ubar`, `pbar`,
+   `rhobar` and `cbar` of `lmars_impl`; `[C8]` solves step 3 with sympy and gets the code's expressions. In the code, @eq-ch04-lmars-face is `ubar` and `pbar` ({{< code src/riemann/lmars_impl.h lmars_impl >}}).
 
-Consistency follows immediately and `[C5]` checks it: with $w_L = w_R$ both jump terms vanish, so $\bar u = u$
-and $\bar p = p$, and the returned flux agrees with the exact physical flux to $8.9\times10^{-16}$. That is the
-property that makes the scheme usable at all; a solver that fails it would generate flux from a uniform state.
+#### The fluxes
 
-The mass rows are the part most easily misread. The dry row does not carry the total mass flux: it carries
-$\bar u\rho\,r_d$ with $r_d = 1 - \sum_n y_n$, and each species row carries $\bar u\rho y_n$. `[C7]` confirms
-the split is exact, with the dry row and three species rows summing to $\bar u\rho$ to $1.1\times10^{-16}$.
-A reader who takes the first mass row for the total mass flux will be wrong by the species fraction.
+1. *Upwind by $v_f$.* If $v_f > 0$ every transported quantity comes from the left state, otherwise from the right.
+2. *Mass.* The total mass flux is $v_f\rho$; the code splits it into a dry row $v_f\rho\,y_{\mathrm d}$ and species rows
+   $v_f\rho\,y_n$, so the first mass row is the dry flux, not the total.
+3. *Momentum.* The normal row is $v_f\rho v_\perp + p_f$ with the upwind side's $v_\perp$; the tangential rows are
+   $v_f\rho v_{\parallel}$.
+4. *Energy.* The row is $v_f\rho\hat H$. The caller passes $e$ (`W->I` divided by $\rho$), and the body adds
+   $\tfrac12\lvert\mathbf v\rvert^2 + p/\rho$, so $\rho\hat H = E + p$ (`[C8]`): the energy flux $(E + p)v$ with $v_f$ in
+   place of $v$.
+5. *Consistency.* With $\mathbf W^{\mathrm L} = \mathbf W^{\mathrm R}$ both jump terms of @eq-ch04-lmars-face are exact
+   zeros, $v_f = v_\perp$ and $p_f = p$, and every row is the physical flux.
+
+#### Round-off
+
+1. *The consistency case is exact in the jumps.* $v^{\mathrm L}_\perp - v^{\mathrm R}_\perp$ and $p^{\mathrm L} - p^{\mathrm R}$
+   are exact zeros, and $\tfrac12(a + a) = a$ exactly in binary, so $v_f$ and $p_f$ are reproduced to the bit.
+2. *The fluxes* are products of at most four rounded factors and one sum, so each row is within about
+   $5\epsilon_{\mathrm m}$ of the physical flux in relative terms; `operator_check.py` `[C5]` measures
+   $8.9\times10^{-16}$ absolute on unit-sized states.
+3. *The mass split.* $y_{\mathrm d}$ is computed by $N_y$ subtractions from one, so the dry and species rows add up
+   to $v_f\rho$ within $(N_y + 3)\epsilon_{\mathrm m}\lvert v_f\rho\rvert$; `[C7]` measures $1.1\times10^{-16}$ with three
+   species.
 
 ### Numerical method
 
-The body is {{< code src/riemann/lmars_impl.h lmars_impl >}}. It computes the enthalpies of both sides first, at
-`wli` ({{< code src/riemann/lmars_impl.h lmars_impl >}}), adding the kinetic term and $p/\rho$ to the internal enthalpy the caller
-passed; then the means and @eq-ch04-lmars-face at {{< code src/riemann/lmars_impl.h lmars_impl >}}; then branches on the sign
-of $\bar u$ and fills every row from the upwind side at {{< code src/riemann/lmars_impl.h lmars_impl >}}.
+```{python}
+#| label: fig-ch04-lmars-fan
+#| fig-cap: "The wave model of LMARS in the $x$–$t$ plane of one face (thick orange line): only the two acoustic waves $v\\mp c$ (black) are represented, and the face state between them is one velocity $v_f$ and one pressure $p_f$. Everything else is taken from the side the sign of $v_f$ selects."
+#| fig-alt: "A space-time diagram with two black lines fanning out from the bottom of a vertical orange face line, labelled v minus c and v plus c, and the face values labelled between them."
+#| echo: false
+from snapy_report.ch04.fig_ch04_schemes import make_wavefan
+make_wavefan("lmars")
+```
 
-The face pressure is written out at `face_pressure` ({{< code src/riemann/lmars_impl.h lmars_impl >}}) when the caller asked for one, and it is
-the same $\bar p$ that enters the normal momentum row, so the pressure force the geometric source sees and the
-pressure in the flux are the same number by construction.
+**Frame and the equation of state.** `LmarsSolverImpl::forward` fills `elr` with $e$ and `glr` with $\gamma$ for
+both sides (for `aneos` it derives $\gamma$ from the sound speed), projects both states into the face frame with
+`prim2local{1,2,3}_`, calls the kernel, and turns the flux back with `flux2global{1,2,3}_`. The face pressure is
+the same $p_f$ that enters the normal momentum row, so the pressure force of @sec-ch04-sphsrc and the flux see the
+same number.
 
-The upwind branch is on $\bar u$, which already contains the acoustic correction. At low Mach number that
-correction is what decides the branch when the centred velocity is near zero, which is the mechanism behind the
-scheme's low-Mach behaviour: the pressure jump, not the velocity, selects the side.
+**Low Mach number.** The branch is on $v_f$, which already contains the pressure-jump term, so where
+$v_\perp^{\mathrm L} + v_\perp^{\mathrm R}$ is near zero the pressure jump decides the upwind side.
 
 ### Code
 
-| what | code link | symbol | switch / condition |
+**A minimal input**, as in the Straka deck:
+
+```yaml
+dynamics:
+  riemann-solver:
+    type: lmars
+```
+
+**What the parser accepts and refuses.** As in @sec-ch04-riemann: only `type` and `dir`, and `dir` is unused here.
+
+**The excerpt.** `lmars_impl` ({{< code src/riemann/lmars_impl.h lmars_impl >}}):
+
+```cpp
+  hl += 0.5 * (SQR(wli[IVX]) + SQR(wli[IVY]) + SQR(wli[IVZ])) +
+        wli[IPR] / wli[IDN];
+  ...
+  auto rhobar = 0.5 * (wli[IDN] + wri[IDN]);
+  auto gamma_bar = 0.5 * (gammal + gammar);
+  auto cbar = sqrt(0.5 * gamma_bar * (wli[IPR] + wri[IPR]) / rhobar);
+
+  auto pbar = 0.5 * (wli[IPR] + wri[IPR]) +
+              0.5 * (rhobar * cbar) * (wli[IVX] - wri[IVX]);
+  if (face_pressure != nullptr) *face_pressure = pbar;
+
+  auto ubar = 0.5 * (wli[IVX] + wri[IVX]) +
+              0.5 / (rhobar * cbar) * (wli[IPR] - wri[IPR]);
+  ...
+    FLX(IDN) = ubar * wli[IDN] * rd;
+    ...
+    FLX(ivx) = ubar * wli[IDN] * wli[IVX] + pbar;
+    ...
+    FLX(IPR) = ubar * wli[IDN] * hl;
+```
+
+`hl` becomes $\hat H^{\mathrm L}$ (step 4 of the fluxes); `rhobar`, `gamma_bar`, `cbar` are $\rho_{\mathrm{av}}$,
+$\gamma_{\mathrm{av}}$, $c_{\mathrm{av}}$; `pbar` and `ubar` are @eq-ch04-lmars-face; the three `FLX` lines are the dry
+mass, normal momentum and energy rows of the left branch. `wli` holds the face-frame state, so `wli[IVX]` is
+$v_\perp$.
+
+| what | code link | symbol | switch |
 |---|---|---|---|
 | the solver body | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `lmars_impl` | `type: lmars` |
-| face-local row map | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `ivx` | |
 | enthalpies | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `hl` | |
-| the face velocity and pressure | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `ubar` | |
+| face velocity and pressure | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `ubar` | |
 | face pressure written out | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `face_pressure` | caller asked |
-| upwind on the sign of the face velocity | {{< code src/riemann/lmars_impl.h lmars_impl >}} | `ubar` | |
+| $e$, $\gamma$ and the frame | {{< code src/riemann/lmars.cpp LmarsSolverImpl::forward >}} | `prim2local3_` | |
 | registration | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}} | `LmarsSolver` | |
 
 : Code map of LMARS. {#tbl-ch04-lmars-code}
 
 ### Tests
 
-| test | asserts | tolerance |
-|---|---|---|
-| `tests/test_riemann.cpp` | the solver against reference states | per test |
-| `tests/run_straka.cmake` | an end-to-end density-current deck against a reference file, WENO5 and LMARS | reference file |
-| this chapter's check | `[C5]` consistency; `[C6]` the acoustic structure; `[C7]` the exact mass-row split | round-off |
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_riemann.release` | the solvers on reference states | per case | the test's constants |
+| `test_straka` | the Straka density current (WENO5, LMARS) against a reference file | reference file | the test's comparison |
+| `derivation_check.py` `[C8]` (this report) | @eq-ch04-lmars-face from the Riemann invariants; $\rho\hat H = E + p$; consistency | exact | sympy |
+| `operator_check.py` `[C5]`–`[C7]` (this report) | consistency on a port; the acoustic terms; the exact mass split | the round-off bounds above | stated in the check |
 
 : Tests of LMARS. {#tbl-ch04-lmars-tests}
 
+`[C8]` holds symbolically. `operator_check.py` `[C5]` gives a consistent flux to $8.9\times10^{-16}$; `[C6]`
+shows a pressure jump of $0.2$ alone driving $v_f = -0.080582$, and two states converging at $0.3$ raising $p_f$
+to $1.354965$ above the mean $1.0$; `[C7]` gives the mass split to $1.1\times10^{-16}$.[^lmars-run]
+`test_riemann.release` passes at the pin on CPU, one rank (@tbl-ch04-ctest-run); `test_straka` was not run for
+this report.
+
+[^lmars-run]: [sha: the code pin; deck: the checks themselves; run: `python3 src/snapy_report/ch04/derivation_check.py`
+    and `python3 src/snapy_report/ch04/operator_check.py`, CPU, double, 1 process; Python 3.12.10, sympy 1.14.0,
+    numpy 2.5.3; output identical to the committed files].
+
 ### Limits
 
-::: {.callout-warning title="Limits"}
-- The mean sound speed is built from the arithmetic mean of the two pressures and densities. Across a strong
-  jump that mean is not a physical sound speed on either side, and no source in the repository bounds the error
-  that follows.
-:::
-
-1. **No entropy fix and no wave structure.** Everything that is not the acoustic correction is pure upwinding,
-   so a strong expansion is resolved by the flux limiter and the floors rather than by the solver.
-2. **Hypothesis, untested here.** That the acoustic correction is what gives the scheme its low-Mach behaviour
-   is an argument from @eq-ch04-lmars-face, not a measurement; no deck in the repository measures a Mach-number
-   scaling of the dissipation.
+1. **Arithmetic-mean linearisation.** $c_{\mathrm{av}}$ is built from mean pressure and density; across a strong jump it
+   is the sound speed of neither side, and no source bounds the error that follows.
+2. **No contact or shear structure.** Everything except $v_f$ and $p_f$ is pure upwinding, so a contact is smeared
+   at the rate donor cell would smear it.
+3. **Low-Mach behaviour is argued, not measured.** No deck in the repository measures how the dissipation scales
+   with the Mach number.
