@@ -14,17 +14,22 @@ reviewer:
 ::: {.callout-note title="At a glance"}
 **Purpose.** Selects the $x_2$ and $x_3$ face-flux correction of @sec-ch04-fluxcov: the $x_1$ covariance term
 of @eq-ch04-fluxcov-identity and, on a curved grid, the cell-to-face centroid term, @eq-ch04-fluxcov-dF.
+
 **Data.** In: the reconstructed left and right face states of each lateral direction and the grid's $x_1$ face
 moments; out: an additive correction to every active $x_2$ or $x_3$ flux, a tracer row for each passive scalar,
 and the shifted pressure of the matching geometric source.
+
 **Placement.** In `HydroImpl::forward`, per lateral direction, after the face states are built and before the
 Riemann flux is added; the scalar rows in `ScalarImpl::forward` of the same stage.
+
 **Activation.** `SNAP_FLUX_COVARIANCE`, read once per process. **The correction is on by default**: the lookup
 falls back to `"1"` when the variable is unset, and `0`, `false`, `off`, `no` or an empty value turn it off
 ({{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}}). A direction's geometric source is corrected only
 when that direction's flux is; the species donor limiter runs whenever the correction is on.
+
 **Guarantee / limits.** A leading $O(\Delta x_1^2)$ smooth-gradient correction that telescopes exactly on a
 shared face; no fourth-order claim. Fewer than three $x_1$ cells or a shallow-water state give no correction.
+
 **Evidence.** `test_horizontal_flux_covariance_python`: scaled onset error below `FIXED` = 0.04 with the term
 on, the unset arm equal to the `1` arm bit for bit, plain energy drift at most `EPE_TOL` = $10^{-12}$
 ({{< code tests/test_horizontal_flux_covariance.py FIXED >}}); `test_flux_covariance_rows_python`: rest to
