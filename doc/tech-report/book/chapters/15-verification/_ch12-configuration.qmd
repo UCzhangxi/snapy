@@ -25,16 +25,67 @@ status: draft
 **Evidence.** The Tests layer distinguishes report checks from solver tests.
 :::
 
+**Local symbols.** The YAML boolean `wb-wall-clamp` and integer scheme selectors are dimensionless configuration values.
+Exception messages and package paths are discrete contracts; no floating-point tolerance applies to them.
+
 ### Derivation
 
 The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
 these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+
+1. Check a default through the parser, not a direct solver call. `hydro_options.wb_wall_clamp_ships_enabled`
+   loads a minimal EOS card without an override and requires the clamp to be enabled
+   ({{< code tests/test_hydro_options.cpp hydro_options.wb_wall_clamp_ships_enabled >}}).
+2. Check the override through the same path. That test writes `wb-wall-clamp: false` and requires a false
+   parsed value, proving that the key is read as well as accepted.
+3. Require an informative refusal for unknown keys. `yaml_keys.geometry_cells_refuses_an_unknown_key`
+   passes `nx4` to `expect_refused`, which checks the key path in the exception message
+   ({{< code tests/test_yaml_keys.cpp yaml_keys.geometry_cells_refuses_an_unknown_key >}};
+   {{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}}).
+
+Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
+They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
+and equality contracts have no tolerance budget to enlarge.
 
 ### Numerical method
 
 Read the assertion and its registration, then run the selected test in a build of the code pin.
 Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
 formula check cannot establish that the compiled implementation ran.
+
+#### How to use this evidence
+
+From the repository root, replace `build` with the configured build of the code pin. First list the selection,
+then run it; require a nonempty list and inspect skips in the output:
+
+```bash
+ctest --test-dir build -C Release -N -R '^test_(hydro_options|yaml_keys)\.release$'
+ctest --test-dir build -C Release --output-on-failure -R '^test_(hydro_options|yaml_keys)\.release$'
+```
+
+The clamp test writes this minimal override card itself; it is a parser input, not a complete simulation deck:
+
+```yaml
+dynamics:
+  equation-of-state:
+    type: ideal-gas
+  wb-wall-clamp: false
+```
+
+Unknown geometry cell keys are refused because accepting an unused key could silently run the wrong grid.
+The unknown-key fixture loads `test_cycle_diagnostics.yaml`; preserve the build test working directory
+({{< code tests/test_yaml_keys.cpp expect_refused overload=2 >}}).
+
+The excerpt from `hydro_options.wb_wall_clamp_ships_enabled`
+({{< code tests/test_hydro_options.cpp hydro_options.wb_wall_clamp_ships_enabled >}}) shows the assertion's inputs and contract:
+
+```cpp
+write(f, "  wb-wall-clamp: false\n");
+  EXPECT_FALSE(snap::HydroOptionsImpl::from_yaml(f)->wb_wall_clamp());
+```
+
+`write` supplies the EOS card and override; `EXPECT_FALSE` checks the parsed boolean. No numerical
+equation is implemented here: this is a precondition for selecting the scheme whose errors @sec-ch15 defines.
 
 ### Code
 
@@ -75,6 +126,14 @@ The `seam_arm` registration requires the filtered test to report one passing tes
 satisfy its pass expression ({{< code tests/CMakeLists.txt >}}).
 `src/snapy_report/ch12/configuration_check.py` checks parser truth tables and rational/symbolic
 reference, covariance and energy identities. It does not execute static C++ option caches.
+
+[C1] The option test checks the default and explicit override through YAML parsing. [C2] The unknown-key
+test requires a diagnostic naming the bad key; neither result measures the numerical accuracy of a selected scheme.[^ch15-ch12-five-choice]
+
+[^ch15-ch12-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
+    the commands above are reproduction instructions, not a solver run record. No compiled test, device
+    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
+    ranks, switch environment and skips with any future result.
 
 ### Limits
 

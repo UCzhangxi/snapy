@@ -25,16 +25,53 @@ status: draft
 **Evidence.** The Tests layer distinguishes report checks from solver tests.
 :::
 
+**Local symbols.** Package paths and exit codes are exact discrete values; no physical symbol is introduced.
+
 ### Derivation
 
 The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
 these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+
+1. Establish which package ran before interpreting a stage result. The top-level assertions in
+   {{< code tests/test_python_import_path.py >}} resolve the imported file and require it below the supplied root.
+2. Check search-path ordering as well as membership. The same assertions require the supplied root first
+   and retain the caller's extra entry, so a passing import alone cannot hide a changed search path.
+3. Treat an unconfigured check as missing evidence. That file exits with code 125 when the root is absent;
+   the registration in {{< code tests/CMakeLists.txt >}} marks that return code as a skip.
+
+Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
+They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
+and equality contracts have no tolerance budget to enlarge.
 
 ### Numerical method
 
 Read the assertion and its registration, then run the selected test in a build of the code pin.
 Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
 formula check cannot establish that the compiled implementation ran.
+
+#### How to use this evidence
+
+From the repository root, replace `build` with the configured build of the code pin. First list the selection,
+then run it; require a nonempty list and inspect skips in the output:
+
+```bash
+ctest --test-dir build -C Release -N -R '^test_python_import_path_python$'
+ctest --test-dir build -C Release --output-on-failure -R '^test_python_import_path_python$'
+```
+
+No simulation YAML applies to this import check. Configure the build with `SNAPY_TEST_PYTHONPATH` pointing
+to the intended package root. An absent root skips the check; an imported file outside it fails the assertion.
+
+The excerpt from {{< code tests/test_python_import_path.py >}} shows the assertion's inputs and contract:
+
+```python
+root = Path(sys.argv[1]).resolve()
+where = Path(snapy.__file__).resolve()
+assert root in where.parents, f"snapy imported from {where}, expected under {root}"
+```
+
+`root` is the intended package directory and `where` is the imported file. This is a path-membership
+precondition for the error metrics in @sec-ch15, not a numerical error estimate.
 
 ### Code
 
@@ -76,6 +113,14 @@ The report-only `src/snapy_report/ch01/stage_check.py` checks the stage-weight, 
 identities of @sec-ch01-stage. Its symbolic checks exercise formulas rather than a compiled stage.
 `DeviceTest` skips unavailable devices; its parameter instantiation includes CPU and CUDA in float32 and
 float64, with MPS commented out ({{< code tests/device_testing.hpp >}}).
+
+[C1] The import-path test checks package origin and search-path preservation, subject to its configured-root
+precondition. [C2] Its skip code is not evidence that the compiled stage or any device kernel ran.[^ch15-ch01-five-choice]
+
+[^ch15-ch01-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
+    the commands above are reproduction instructions, not a solver run record. No compiled test, device
+    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
+    ranks, switch environment and skips with any future result.
 
 ### Limits
 

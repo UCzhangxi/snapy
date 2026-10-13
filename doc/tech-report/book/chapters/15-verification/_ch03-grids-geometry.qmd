@@ -25,16 +25,57 @@ status: draft
 **Evidence.** The Tests layer distinguishes report checks from solver tests.
 :::
 
+**Local symbols.** `got` and `want` below are face-coordinate arrays with the same length units. `ng` is a ghost-cell
+count and `ix2` is a dimensionless cell offset; neither is a physical distance.
+
 ### Derivation
 
 The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
 these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+
+1. Separate metric accuracy from decomposition consistency. `SphericalPolar.geometry_matches_athena_reference_formulas`
+   compares metric arrays with analytic reference formulas
+   ({{< code tests/test_coordinate.cpp SphericalPolar.geometry_matches_athena_reference_formulas >}}).
+2. Compare the same physical faces after repartitioning. `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise`
+   slices the whole-grid reference using the block's cell offset
+   ({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}).
+3. Require equality for this contract. That assertion uses `torch::equal`, so a small floating-point discrepancy
+   is a failure rather than an allowed metric error. This source test is not a multi-process exchange run.
+
+Floating-point reduction bounds, with their assumptions, are derived in @sec-ch15.
+They do not turn the inherited acceptance constants below into universal error bounds. Exact path, boolean
+and equality contracts have no tolerance budget to enlarge.
 
 ### Numerical method
 
 Read the assertion and its registration, then run the selected test in a build of the code pin.
 Record device, precision, process count and skipped cases separately. @fig-ch15-evidence shows why an independent
 formula check cannot establish that the compiled implementation ran.
+
+#### How to use this evidence
+
+From the repository root, replace `build` with the configured build of the code pin. First list the selection,
+then run it; require a nonempty list and inspect skips in the output:
+
+```bash
+ctest --test-dir build -C Release -N -R '^test_coordinate\.release$'
+ctest --test-dir build -C Release --output-on-failure -R '^test_coordinate\.release$'
+```
+
+The decomposition case constructs its options in C++; there is no user YAML switch for its equality
+contract. Run from the configured build so other cases in the executable can find their fixtures.
+An unavailable fixture or an empty test selection supplies no geometry evidence.
+
+The excerpt from `CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise`
+({{< code tests/test_coordinate.cpp CoordinateDecomposition.blocks_match_the_undecomposed_grid_bitwise >}}) shows the assertion's inputs and contract:
+
+```cpp
+auto got = blk->x2f.narrow(0, ng, op->nx2() + 1);
+      auto want = ref->x2f.narrow(0, ng + op->ix2(), op->nx2() + 1);
+```
+
+The first slice selects owned block faces; the second selects the matching reference faces.
+The following `torch::equal` assertion enforces zero discrepancy, a stronger condition than a tolerance on @sec-ch15.
 
 ### Code
 
@@ -79,6 +120,14 @@ bound of $10^{-13}$ rather than exact equality. It does not assert the corrected
 The seam threshold `DRIFT_TOL` is defined in {{< code tests/test_flux_covariance_seams.py DRIFT_TOL >}}.
 `src/snapy_report/ch03/geometry_check.py` checks radial moments, spherical-polar identities, gnomonic transforms,
 Morton order and the interpolation slide bound independently of snapy.
+
+[C1] The coordinate executable contains both analytic metric comparisons and exact decomposition checks.
+[C2] Exact face agreement does not establish conservation across communicating ranks; use the separate seam rows for that.[^ch15-ch03-five-choice]
+
+[^ch15-ch03-five-choice]: Source inspection at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5;
+    the commands above are reproduction instructions, not a solver run record. No compiled test, device
+    comparison or MPI run was performed for this addition. Record dependency versions, precision, device,
+    ranks, switch environment and skips with any future result.
 
 ### Limits
 
