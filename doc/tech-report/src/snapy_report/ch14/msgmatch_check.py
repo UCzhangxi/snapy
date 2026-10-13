@@ -32,7 +32,8 @@ def make_comm_tag(local_block_index, offset, phyid):  # layout.hpp:161-170
 
 
 OFFSETS = list(itertools.product((-1, 0, 1), repeat=3))
-RELAY = [0x7715, 0x7717, 0x7718, 0x7720, 0x7721, 0x7722, 0x7724]
+RELAY = [0x7715, 0x7717, 0x7718, 0x7720, 0x7721, 0x7722, 0x7724, 0x7726, 0x7730, 0x7732,
+         0x7734, 0x7736, 0x7740, 0x7742, 0x7744, 0x7746]  # hydro.cpp:533, 608-609; hydro_forward.cpp:240-241, 367, 530-531, 590, 695-696, 729-730, 953
 GATHER = 1 << 24
 
 
