@@ -119,11 +119,17 @@ integration:
   ncycle_out: 10   # 0 turns the line off
 ```
 
-**What is refused, and why.** Any key of the `integration` block other than snapy's `implicit-scheme`,
-`implicit-advection-cfl` and `shear-cfl` and the six pyharp reads, with the key path in the message (`check_keys`,
-{{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). snapy checks the block
-because pyharp's `IntegratorOptionsImpl::from_yaml` reads `type`, `cfl`, `tlim`, `nlim`, `ncycle_out` and `verbose`
-without a key check ([`pyharp integrator.cpp:24-29`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L24-L29)).
+**What is refused, and why.** A key of the `integration` block outside snapy's `implicit-scheme`,
+`implicit-advection-cfl` and `shear-cfl` and pyharp's `type`, `cfl`, `tlim`, `nlim`, `ncycle_out` and `verbose`
+(`check_keys`, {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). A misspelled
+`ncycle_ot` stops the run at construction with
+
+```text
+unknown key 'integration/ncycle_ot'. Valid keys: implicit-scheme, implicit-advection-cfl, shear-cfl; read by pyharp: type, cfl, tlim, nlim, ncycle_out, verbose.
+```
+
+snapy checks the block because pyharp's reader itself takes its six keys without a key check, one read per key such
+as `ncycle_out` ([`pyharp integrator.cpp:24-29`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L24-L29)).
 The line is skipped when `ncycle_out` is 0.
 
 **The code, mapped to @eq-ch13-cycle-ke** ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}):

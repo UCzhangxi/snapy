@@ -80,12 +80,15 @@ integration:
   nlim: 200      # or after this many cycles; -1 (the default) disables it
 ```
 
-`max_redo` is not read from YAML: pyharp's `from_yaml` reads only `type`, `cfl`, `tlim`, `nlim`, `ncycle_out` and
-`verbose`, so it keeps its default 5 unless set from code
-([`pyharp integrator.cpp:24-29`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L24-L29)).
+`max_redo` is not a key of the card: pyharp's `from_yaml` reads only `type`, `cfl`, `tlim`, `nlim`, `ncycle_out` and
+`verbose` ([`pyharp integrator.cpp:24-29`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L24-L29)).
+It keeps its default 5 unless set from code with `op.intg().max_redo(n)` before the block is built (@sec-ch10-redo).
 
-**What is refused, and why.** Nothing at input. At run time the run stops past `max_redo` redos with "Maximum number
-of redo attempts exceeded. Terminating." (`[C2]`).
+**What is refused, and why.** A `max_redo` key in `integration`, which stops the run at construction with
+"unknown key 'integration/max_redo'. Valid keys: implicit-scheme, implicit-advection-cfl, shear-cfl; read by pyharp:
+type, cfl, tlim, nlim, ncycle_out, verbose." (`check_keys`,
+{{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). At run time the run stops
+past `max_redo` redos with "Maximum number of redo attempts exceeded. Terminating." (`[C2]`).
 
 **The code, mapped to the log** ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}):
 
