@@ -178,6 +178,15 @@ def scheme_rows(s: Scheme, statements: dict[str, str], checks_dir: Path) -> list
     if not eq_lines:
         first = _sentences(_clean("\n".join(l for l in s.lines[s.start:s.end]
                                              if not l.lstrip().startswith(("#", ":::", "|", "```")))))
+        if not first:
+            # The opening paragraph may have moved above the glance box. Keep
+            # an otherwise empty derivation's index statement, scoped to this
+            # scheme (never borrow prose from another scheme in the same file).
+            from fix_glance_order import blocks
+            opening = next((b for b in blocks(s.lines[:s.start])
+                            if b.kind == "prose" and f"{{#{s.label}}}" in b.section), None)
+            if opening:
+                first = _sentences(_clean("\n".join(s.lines[opening.start:opening.end])))
         stmt = first[0] if first else "Empty layer."
         rows.append(Row(s.chapter, s.label, title, None, stmt, "", ", ".join(f"`{c}`" for c in scripts) or "none",
                         source if re.search(r"^\s*\$\$", body, re.M) else "n/a"))
