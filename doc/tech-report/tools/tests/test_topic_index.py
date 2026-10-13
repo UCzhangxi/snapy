@@ -111,3 +111,34 @@ def test_implicit_scheme_leads_to_the_vic_sections():
     data = g.load(g.DATA.read_text())
     labels = [lab for lab, ents in data["sections"].items() if "implicit scheme" in [t for t, _ in g.items(ents)]]
     assert labels and all(lab.startswith("sec-ch07-vic-") for lab in labels)
+
+
+# --- appendix F does not count as prose for the ratchet's uncited-section check ---------------------------------
+
+def _uncited(counts_detail):
+    _, detail = counts_detail
+    return [d for d in detail if d.endswith("is not cited from another chapter")]
+
+
+def test_appendix_f_citations_do_not_make_a_section_cited(tmp_path):
+    import ratchet_gate as rg
+    book = tmp_path / "book"
+    (book / "chapters" / "17-appendices").mkdir(parents=True)
+    (book / "chapters" / "01-a.qmd").write_text("# A {#sec-ch01}\n\n## One {#sec-ch01-one}\n\nSee @sec-ch02-two.\n")
+    (book / "chapters" / "02-b.qmd").write_text("# B {#sec-ch02}\n\n## Two {#sec-ch02-two}\n\nSee @sec-ch01.\n")
+    (book / "chapters" / "appf-topic-index.qmd").write_text(
+        "# Topic index\n\n{{< include 17-appendices/_appf-topic-index.qmd >}}\n")
+    (book / "chapters" / "17-appendices" / "_appf-topic-index.qmd").write_text(
+        "**one**: One, @sec-ch01-one.\n\n**two**: Two, @sec-ch02-two.\n")
+    uncited = _uncited(rg.xref_counts(book))
+    # sec-ch01-one is cited only from the topic index: still uncited; sec-ch02-two is cited from ch01 prose
+    assert "ch01: section sec-ch01-one is not cited from another chapter" in uncited
+    assert not any("sec-ch02-two" in d for d in uncited)
+
+
+def test_the_real_uncited_counts_ignore_the_topic_index():
+    import ratchet_gate as rg
+    counts, detail = rg.xref_counts(TOOLS.parent / "book")
+    uncited = _uncited((counts, detail))
+    assert sum(d.startswith("appe:") for d in uncited) == 1
+    assert sum(d.startswith("ch15:") for d in uncited) == 4
