@@ -21,7 +21,7 @@ the ranks could not find one another.
 
 **Placement.** Once per process, in the `LayoutOptionsImpl` constructor and `MeshImpl::reset`.
 
-**Activation.** Always; `torchrun` or `api/pd-run` sets the environment. Default: one process on the CPU.
+**Activation.** Always; `torchrun` or `pd-run` sets the environment. Default: one process on the CPU.
 
 **Guarantee / limits.** Ranks are one to one; more than one process without `MASTER_PORT` is refused.
 
@@ -87,13 +87,14 @@ The store is opened only when the process count is above 1 (`use_process_group`,
 The device string of a block is `cuda:<DEVICE_ID>`, or `cuda:<LOCAL_RANK>` when `DEVICE_ID` is negative, if `DEVICE`
 is `cuda`; otherwise it is the `DEVICE` value (`device_str`, {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::device_str >}}).
 
-`api/pd-run <n> <executable> [args]` is a single-node launcher. It starts $n$ processes and exports, for each, `RANK`
+`pd-run <n> <executable> [args]` is a single-node launcher (the repository's `api/pd-run`, which `pip install .`
+puts on the path). It starts $n$ processes and exports, for each, `RANK`
 and `PROCESS_RANK` equal to the loop index, `WORLD_SIZE` and `PROCESS_WORLD_SIZE` equal to $n$, `LOCAL_RANK` equal to
 the index modulo the number of entries of `CUDA_VISIBLE_DEVICES` (default `0,1,2,3`), and `DEVICE_ID` equal to that
-entry. Its own defaults are `BACKEND=ucx` and `DEVICE=cpu` (`launch_rank`, [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138)). With no `MASTER_PORT`, it
+entry. Its own defaults are `BACKEND=ucx` and `DEVICE=cpu` (`launch_rank`, {{< code api/pd-run >}}). With no `MASTER_PORT`, it
 tries up to 32 random ports in $[20000, 40000)$ and takes the first that `ss` does not show as listening; without
 `ss`, or after 32 busy ports, it takes $20000 + (\mathrm{pid} \bmod 20000)$ with the script's process id, unchecked
-(`choose_master_port`, [`pd-run:39-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L39-L51)).
+(`choose_master_port`, {{< code api/pd-run >}}).
 
 ### Code
 
@@ -114,7 +115,7 @@ torchrun --no-python --nproc-per-node=2 --master-port=29573 ./straka.release car
 BACKEND=gloo pd-run 2 ./straka.release card.yaml
 ```
 
-runs it; `pd-run` is on the path after `pip install .` in the source checkout. `pd-run` asks for UCX unless
+runs it; any free port will do for `--master-port`. `pd-run` is on the path after `pip install .` in the source checkout. `pd-run` asks for UCX unless
 `BACKEND` is set, and a build without UCX stops with "backend=ucx requested, but snapy was built without UCX
 support".
 
@@ -144,8 +145,8 @@ return proc_rank * std::max(1, blocks_per_process()) + local_block;   // rank = 
 | blocks per process from the card | {{< code src/mesh/mesh.cpp MeshOptionsImpl::from_yaml >}} | `blocks_per_process` | `distribute: blocks_per_process` |
 | per-block rank and global size | {{< code src/mesh/mesh.cpp MeshImpl::reset >}} | `global_block_rank` | none |
 | device string | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::device_str >}} | `device_str` | `DEVICE`, `DEVICE_ID` |
-| launcher | [`pd-run:113-138`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L113-L138) | `launch_rank` | `BACKEND`, `DEVICE` |
-| launcher port | [`pd-run:39-51`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/api/pd-run#L39-L51) | `choose_master_port` | `MASTER_PORT` unset |
+| launcher | {{< code api/pd-run >}} | `launch_rank` | `BACKEND`, `DEVICE` |
+| launcher port | {{< code api/pd-run >}} | `choose_master_port` | `MASTER_PORT` unset |
 
 : Code map of the launch. {#tbl-ch14-launch-code}
 
@@ -171,7 +172,7 @@ $b\le16$ on 1 to 24 processes, 4896 ranks with no mismatch; `[C3]` that $b<1$ ac
     Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `launch_check.out`, lines `[C1]`–`[C3]`.
 
 The cases are gtest cases of `LayoutOptions` and `ProcessGroupContext`
-([`test_process_group.cpp:74-192`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_process_group.cpp#L74-L192)):
+({{< code tests/test_process_group.cpp >}}):
 
 1. `DefaultsToPlatformCommunicationBackend` and `UsesBackendEnvironmentVariable`;
 2. `IgnoresYamlBackend` and `BackendEnvironmentOverridesYamlBackend`;
@@ -184,7 +185,7 @@ The cases are gtest cases of `LayoutOptions` and `ProcessGroupContext`
 
 These are unit tests of the option parsing in one process. They do not start a multi-process rendezvous; the
 two-rank tests of the following sections do, through `torchrun --no-python --nproc-per-node=2`
-(`add_test`, [`macro_setup_parallel_test.cmake:28-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/macros/macro_setup_parallel_test.cmake#L28-L32)). Their pass
+(`add_test`, {{< code cmake/macros/macro_setup_parallel_test.cmake >}}). Their pass
 status at the pin was not run for this chapter.
 
 ### Limits
