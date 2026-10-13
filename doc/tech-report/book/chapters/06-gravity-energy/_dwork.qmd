@@ -36,7 +36,9 @@ term is the work done by moving the mass of a cell whose density is not uniform 
 Local symbols (flagged to the editor, ISSUES.md): $\Delta_{+,0}=x_{1,1}-x_{1,0}$ and $\Delta_{+,1}=x_{1,2}-x_{1,1}$ [m] the
 first two centroid spacings at a column end (NOTATION.md's $\Delta_+$ at cells 0 and 1, used only in the end-cell
 slope); $r_{\mathrm c}$ [m] the volume centroid and $x_{1v}$ [m] the stored cell centre `x1v` on a `gnomonic-equiangle`
-block; $t_i$ the per-cell term of the conservation sum and $k$ its number of roundings. Every other symbol of this
+block; $o_i=r_{\mathrm c,i}-x_{1v,i}$ [m] the offset of the volume centroid from the stored centre, which is
+NOTATION.md's $\delta_i$ where `x1v` is the face midpoint and zero where it is the centroid; $b_i$ the per-cell term of
+the conservation sum and $N_{\mathrm{rd}}$ its number of roundings. Every other symbol of this
 section is NOTATION.md's ($P$, $\mathcal P$, $\mathrm{PE}_d$, $\sigma_i^2$, $s_i$, $\mathcal N_i$, $\Delta_\pm$, $\mathsf S$,
 $\tilde{\mathsf S}$, $W^{\mathrm D}$, $\delta_i$, $\Delta t_c$, $\boldsymbol\delta_i$, $\vartheta$, $\lambda_w$).
 
@@ -248,37 +250,37 @@ On a `gnomonic-equiangle` block $x_1$ is the radius, and `face_area1` and `cell_
 per column, so per steradian $A$, $V$ and $\sigma^2$ are those of a spherical-polar column. The one difference is
 where `x1v` sits: it is the face midpoint $r^{\mathrm{m}}$, not the volume centroid $r_c$
 (`docs/derivations/curved-gravity-work-weight.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §12.1). The expansion of @eq-ch06-dwork-pe4 is about
-$r_c$ and does not depend on `x1v`, and because $\phi$ is linear, $\phi(r_c) = \phi(x_{1v}) - g_1\delta$
-exactly. Hence
+$r_c$ and does not depend on `x1v`, and because $\phi$ is linear, $\phi(r_c) = \phi(x_{1v}) - g_1o$
+exactly. Hence, with the code offset $o_i$,
 
 $$
 \begin{aligned}
-\delta_i &= r_{c,i} - x_{1v,i} = \frac{r^{\mathrm{m}}h^3}{6V} + (r^{\mathrm{m}} - x_{1v,i})
+o_i &= r_{c,i} - x_{1v,i} = \frac{r^{\mathrm{m}}h^3}{6V} + (r^{\mathrm{m}} - x_{1v,i})
 = \frac{h^2}{6r^{\mathrm{m}}} + O(h^4/r^3), \\
-P[\rho] &= \sum_iV_i\Big[\rho_i\phi(x_{1v,i}) - g_1\delta_i\rho_i - g_1\sigma_i^2s_i[\rho]\Big], \\
-W^{\mathrm{D}}_i &= W^{\mathrm{face}}_i + g_1\sigma_i^2s_i[\dot\rho] + g_1\delta_i\dot\rho_i .
+P[\rho] &= \sum_iV_i\Big[\rho_i\phi(x_{1v,i}) - g_1o_i\rho_i - g_1\sigma_i^2s_i[\rho]\Big], \\
+W^{\mathrm{D}}_i &= W^{\mathrm{face}}_i + g_1\sigma_i^2s_i[\dot\rho] + g_1o_i\dot\rho_i .
 \end{aligned}
 $$ {#eq-ch06-dwork-cs}
 
 Here $\sigma_i^2$ is still the variance about $r_c$ (@eq-ch06-dwork-variance), $W^{\mathrm{face}}$ uses
-$\phi(x_{1v})$ as the code does, and $s_i$ stays on the `x1v` nodes: $\delta$ varies by $O(h^3/r^2)$ across a
+$\phi(x_{1v})$ as the code does, and $s_i$ stays on the `x1v` nodes: $o$ varies by $O(h^3/r^2)$ across a
 three-cell stencil, so $\sigma^2s$ moves by $O(h^4/r^2)$, below the $O(h^4)$ of $P$ (same note, §12.3). On Cartesian
-and spherical-polar grids $\delta\equiv0$ and @eq-ch06-dwork-cs is @eq-ch06-dwork-pe and @eq-ch06-dwork-d.
+and spherical-polar grids `x1v` is the centroid, $o\equiv0$, and @eq-ch06-dwork-cs is @eq-ch06-dwork-pe and @eq-ch06-dwork-d.
 @eq-ch06-dwork-cs is computed as `x1_centroid_offset` in {{< code src/hydro/gravity_work_radial.hpp x1_centroid_offset >}}, written about the midpoint so that it does
-not cancel at large $r$, and the term $g_1\delta_i\dot\rho_i\Delta t$ is added by `corrected_pe_work` in
+not cancel at large $r$, and the term $g_1o_i\dot\rho_i\Delta t$ is added by `corrected_pe_work` in
 {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}} for the `radial_mid` measure only, so on Cartesian and spherical-polar grids the work is the slope term alone. The measure is chosen by `x1_measure` in {{< code src/hydro/gravity_work_radial.hpp x1_measure >}}, one shared
 helper for every site that books or logs the work.
 
 The change of $P$ equals the booked work term by term, as in @eq-ch06-dwork-booked. $P$ is linear in $\rho$, so over
-a stage $\Delta P_i = V_i[\Delta\rho_i\phi(x_{1v,i}) - g_1\delta_i\Delta\rho_i - g_1\sigma_i^2s_i[\Delta\rho]]$.
+a stage $\Delta P_i = V_i[\Delta\rho_i\phi(x_{1v,i}) - g_1o_i\Delta\rho_i - g_1\sigma_i^2s_i[\Delta\rho]]$.
 The face form books $-V_i\Delta\rho_i\phi(x_{1v,i}) - \Delta t\,\Delta_i[A\phi F]$, the slope term
-$+g_1V_i\sigma_i^2s_i[\Delta\rho]$, the centroid term $+g_1V_i\delta_i\Delta\rho_i$. Each cancels its own part of
+$+g_1V_i\sigma_i^2s_i[\Delta\rho]$, the centroid term $+g_1V_io_i\Delta\rho_i$. Each cancels its own part of
 $\Delta P_i$, which leaves $-\Delta t\,\Delta_i[A\phi F]$, and that telescopes to the walls (same note, §12.5a).
 The new term is diagonal: it uses only the cell's own density change. It enters with the same sign and weights
 the four places that book or log the work: the explicit face work, the diagonal of the VIC energy row, the
 post-solve remainder and the logged `pe=`. With the term in the work but not in $P$, or the reverse, each cell
-keeps $\pm g_1V_i\delta_i\Delta\rho_i$, an $O(h^2/r)$ defect. Left out of both, $E_{\mathrm{tot}}+P$ still closes, but the work
-error is $-g_1\delta\dot\rho$, second order with a $1/r$ coefficient (same note, §12.7).
+keeps $\pm g_1V_io_i\Delta\rho_i$, an $O(h^2/r)$ defect. Left out of both, $E_{\mathrm{tot}}+P$ still closes, but the work
+error is $-g_1o\dot\rho$, second order with a $1/r$ coefficient (same note, §12.7).
 
 `d_cs_centroid_term_check.py` ports the four helpers and checks both statements.[^ch06-dwork-cs-chk]
 
@@ -304,12 +306,20 @@ flux enters. The energy fluxes other than gravity telescope as well. So in exact
 $\sum_iV_iE_i + P$ is constant over one evaluation of the right-hand side.
 
 In floating point the same telescoping argument gives a derived bound. Each cell's term
-$t_i=V_i\big(\Delta t\,W^{\mathrm D}_i+\Delta P_i/V_i\big)+(\text{other energy fluxes})$ is computed with at most $k$
-roundings, and the column adds $n_1$ of them; as for the face form (@sec-ch06-face),
-$\big\lvert\widehat{\Delta(E_{\mathrm{tot}}+P)}\big\rvert\le(k+n_1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert t_i\rvert$ per stage.
-The slope term adds a three-point stencil per cell to $k$; $k$ is not counted here. `[C7]` measures at most
-$3.5\times10^{-16}$ of $E_{\mathrm{tot}}+P$ per step on a stretched Cartesian column, inside the bound for any $k$ of a few
-tens.
+$b_i=V_i\big(\Delta t\,W^{\mathrm D}_i+\Delta P_i/V_i\big)+(\text{other energy fluxes})$ is computed with at most $N_{\mathrm{rd}}$
+roundings, the column adds $n_1$ of them, and the stage combination rounds each $E_i$ five times (`wght0`, [`pyharp integrator.cpp:120`](https://github.com/chengcli/pyharp/blob/4721715855e937c1e8b218e964c0655f46e56e29/src/integrator/integrator.cpp#L120)), as in
+@sec-ch06-face:
+
+$$
+\big\lvert\widehat{\Delta(E_{\mathrm{tot}}+P)}\big\rvert\le(N_{\mathrm{rd}}+n_1)\,\tfrac12\epsilon_{\mathrm m}\sum_i\lvert b_i\rvert
++5\cdot\tfrac12\epsilon_{\mathrm m}\sum_iV_i\lvert E_i\rvert\quad\text{per stage}.
+$$
+
+The slope term adds a three-point stencil per cell to $N_{\mathrm{rd}}$; $N_{\mathrm{rd}}$ is not counted here. `[C7]` reports
+$\lvert\Delta(E_{\mathrm{tot}}+P)\rvert/\lvert E_{\mathrm{tot}}+P\rvert$ per step. In that normalisation the energy-update term
+alone gives $15\cdot\tfrac12\epsilon_{\mathrm m}\sum_iV_i\lvert E_i\rvert/\lvert E_{\mathrm{tot}}+P\rvert$ over the three rk3 stages,
+$1.7\times10^{-15}$ when $E$ dominates the sum; `[C7]` measures at most $3.5\times10^{-16}$ per step on a stretched
+Cartesian column, inside it.
 
 snapy's RK stage is $\mathbf U \leftarrow w_0^{(s)}\mathbf U^n + w_1^{(s)}\mathbf U
 + w_2^{(s)}\Delta t\,\mathcal L(\mathbf U)$ with $w_0^{(s)}+w_1^{(s)}=1$. For rk3 the weights
@@ -513,11 +523,11 @@ $$
 $$ {#eq-ch06-dwork-couple}
 
 with $\Delta\rho^{(0)}$ the total-mass part of $\Delta\mathbf U^{(0)}$. On the cubed sphere the diagonal weight `rx_mid` also
-gains $g_1\delta_i$ of @eq-ch06-dwork-cs, in `couple_radial_exact` at
+gains $g_1o_i$ of @eq-ch06-dwork-cs, in `couple_radial_exact` at
 {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}. That term is diagonal, so the matrix holds it exactly, without lumping:
 wherever @eq-ch06-dwork-couple to @eq-ch06-dwork-remainder write $g_1\sigma_i^2\tilde s_i[\cdot]$, read
 $g_1(\sigma_i^2\tilde s_i+\delta_i)[\cdot]$ there, and the post-solve `corrected_pe_work` call at
-{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} carries the same $g_1\delta_i$ on the solved change. Only fluid cells get these terms
+{{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} carries the same $g_1o_i$ on the solved change. Only fluid cells get these terms
 (`rx_fluid`). Reading the energy row of @eq-ch06-dwork-vicrow with @eq-ch06-dwork-couple:
 
 $$
@@ -736,7 +746,7 @@ the cited symbol contains.
 | $s$, @eq-ch06-dwork-slope | {{< code src/hydro/gravity_work_radial.hpp centroid_slope >}} | `centroid_slope` | zero for $n_1<3$ |
 | $x_1$ measure | {{< code src/hydro/gravity_work_radial.hpp x1_measure >}} | `x1_measure` | `plain`, `radial`, `radial_mid`, `none` |
 | $\delta$, @eq-ch06-dwork-cs | {{< code src/hydro/gravity_work_radial.hpp x1_centroid_offset >}} | `x1_centroid_offset` | `radial_mid` |
-| $g_1\sigma^2s[\cdot]$, plus $g_1\delta$ on `radial_mid` | {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}} | `corrected_pe_work` |  |
+| $g_1\sigma^2s[\cdot]$, plus $g_1o$ on `radial_mid` | {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}} | `corrected_pe_work` |  |
 | the same with the neighbour's row at a seam | {{< code src/hydro/gravity_work_radial.hpp corrected_pe_work_seam >}} | `corrected_pe_work_seam` | internal $x_1$ seam |
 | the gravity-work block runs | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `disable_flux_x1` | $g_1\ne0$, $x_1$ flux on |
 | total $x_1$ mass flux | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `vertical_mass_flux1` |  |
@@ -759,7 +769,7 @@ the cited symbol contains.
 | VIC: face-form rows, partial | {{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}} | `face_work` |  |
 | VIC: remainder @eq-ch06-dwork-remainder, solid gate | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `moved` |  |
 | VIC: solid rows | {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}} | `setIdentity` |  |
-| VIC: $g_1\delta$ on the diagonal | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `rx_mid` | `radial_mid` |
+| VIC: $g_1o$ on the diagonal | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `rx_mid` | `radial_mid` |
 | VIC: remainder call | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `corrected_pe_work` |  |
 | logged $P$ (`pe=`) | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `corrected_pe_work_seam` | `radial_exact_work()` |
 

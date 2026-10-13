@@ -77,6 +77,9 @@ $$
 \mathcal D = \Delta t\sum_iV_i\big(W^{\mathrm{cell}}_i - W^{\mathrm{face}}_i[F^{\mathrm{ref}}]\big),
 $$ {#eq-ch06-cell-defect}
 
+The code forms this defect per stage, with the potential-energy change of the moved mass, as `gwfix_stage`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+
 per stage, before the stage weights of @sec-ch06-fixer. It does not telescope. The argument has four steps.
 
 1. The face form books, per face $i+\tfrac12$, the mass $\Delta t\,A_{i+1/2}F_{i+1/2}$ leaving cell $i$ at $\phi_i$ and
@@ -97,8 +100,14 @@ Locally the cell form is exact, in three steps:
    $\langle\rho v_1\rangle_{V_i}=m_{1,i}$, the conserved momentum the cell stores.
 2. The primitive velocity is that momentum over the cell's total density: every equation of state at the pin divides
    the stored momentum by $\rho_i$, the dry plus all species densities (`IdealMoistImpl::_cons2prim`,
-   {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}}; likewise `IdealGasImpl` and `MoistMixtureImpl`).
-   So $\rho_iv_{1,i}=m_{1,i}$ up to two roundings, the division and the product, at most $\epsilon_{\mathrm m}$ relative.
+   {{< code src/eos/ideal_moist.cpp IdealMoistImpl::_cons2prim >}}; likewise `MoistMixtureImpl`, and for `ideal-gas` the
+   kernel sets the density from the conserved density and divides the momenta by it, `ideal_gas_cons2prim`
+   [`ideal_gas_impl.h:16-24`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/ideal_gas_impl.h#L16-L24)).
+   So $\rho_iv_{1,i}=m_{1,i}$ up to two roundings, the division and the product, at most $\epsilon_{\mathrm m}$ relative,
+   unless the equation-of-state limiter's density floor fires: `apply_primitive_limiter_` then raises the primitive
+   density to the floor after the division, `clamp_min_`
+   ([`equation_of_state.cpp:334`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/equation_of_state.cpp#L334)),
+   and $\rho_iv_{1,i}\ne m_{1,i}$ in that cell.
 3. Hence $W^{\mathrm{cell}}_i=g_1m_{1,i}$ at $\alpha_{\mathrm{nh}}=1$: the exact cell work of the stage state, to that
    round-off. With $\alpha_{\mathrm{nh}}<1$ the $G_i$ term is the hydrostatic split, not the cell work, and is not
    claimed exact.

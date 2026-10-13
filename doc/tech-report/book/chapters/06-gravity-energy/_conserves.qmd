@@ -32,8 +32,9 @@ more term, for the offset between the cell's volume centroid and `x1v`.
 :::
 
 Local symbols (flagged to the editor, ISSUES.md): $\mathcal E=E_{\mathrm{tot}}+P$ [J] as a function of the state;
-$x^{\mathrm m}_{1,i}$ [m] the stored cell centre `x1v`, which on a `gnomonic-equiangle` grid is the face midpoint;
-$x_{1,i}$ and $\delta_i=x_{1,i}-x^{\mathrm m}_{1,i}$ are NOTATION.md's centroid and centroid offset.
+$x_{1v,i}$ [m] the stored cell centre `x1v`; $o_i=x_{1,i}-x_{1v,i}$ [m] the offset of the volume centroid from it, as
+in @sec-ch06-dwork. $x_{1,i}$, $x^{\mathrm m}_{1,i}$ and $\delta_i=x_{1,i}-x^{\mathrm m}_{1,i}$ are NOTATION.md's centroid, face
+midpoint and centroid offset.
 
 Every form in this chapter is the identity @eq-ch06-dwork-booked with a different discrete potential energy, so
 the question "what does it conserve" is "which $P$ does it use, and where does it stop using it". The face form
@@ -66,14 +67,15 @@ closes per step but not per stage. `face-wallc` books $W^{\mathrm{cell}}$ instea
 two $x_1$ wall cells, so its $E_{\mathrm{tot}}+\mathrm{PE}_d$ defect is their cell-minus-face work (@sec-ch06-face).
 
 On a `gnomonic-equiangle` grid the corrected-PE work books one more term, derived in @sec-ch06-dwork as
-@eq-ch06-dwork-cs: the stored cell centre `x1v`, $x^{\mathrm m}_{1,i}$, is the face midpoint, not the volume centroid
-$x_{1,i}$, and with $\delta_i=x_{1,i}-x^{\mathrm m}_{1,i}$ the work gains $g_1\delta_i\dot\rho_i$. In four steps:
+@eq-ch06-dwork-cs: the stored cell centre `x1v`, $x_{1v,i}$, is the face midpoint $x^{\mathrm m}_{1,i}$ there, not the
+volume centroid $x_{1,i}$, and with the code offset $o_i=x_{1,i}-x_{1v,i}$ the work gains $g_1o_i\dot\rho_i$. In four steps:
 
 1. The corrected $P$ is expanded about the centroid, so its potential is $\phi(x_{1,i})$.
-2. $\phi$ is linear, so $\phi(x_{1,i})=\phi(x^{\mathrm m}_{1,i})-g_1\delta_i$ exactly.
-3. The code writes $\phi$ at `x1v`, so $P_i$ gains $-g_1V_i\delta_i\rho_i$, and @eq-ch06-dwork-booked turns that into
-   the extra work $g_1\delta_i\dot\rho_i$.
-4. On Cartesian and spherical-polar grids `x1v` is the centroid, $\delta_i=0$, and the term vanishes.
+2. $\phi$ is linear, so $\phi(x_{1,i})=\phi(x_{1v,i})-g_1o_i$ exactly.
+3. The code writes $\phi$ at `x1v`, so $P_i$ gains $-g_1V_io_i\rho_i$, and @eq-ch06-dwork-booked turns that into
+   the extra work $g_1o_i\dot\rho_i$.
+4. On Cartesian and spherical-polar grids `x1v` is the centroid, $o_i=0$, and the term vanishes. On the
+   `gnomonic-equiangle` grid $x_{1v,i}=x^{\mathrm m}_{1,i}$, so there $o_i$ equals NOTATION.md's $\delta_i$.
 
 The term is booked by `corrected_pe_work` under `radial_mid`
 ({{< code src/hydro/gravity_work_radial.hpp corrected_pe_work >}}), in the logged $P$ and the post-solve remainder,
