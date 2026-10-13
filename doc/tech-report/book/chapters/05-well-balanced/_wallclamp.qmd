@@ -55,18 +55,28 @@ Notation as in @sec-ch05-refkernel; cells are counted from the wall, $j=0$ the w
 
 #### The repeated wall cell is first order
 
-Near the wall write $\chi_j=\chi_0+j\,a+O(\Delta x_1^2)$ with $a=\partial_1\chi\Delta x_1=O(\Delta x_1)$. Repeating $\chi_0$ for every
-$j<0$ gives
+Near the wall write $\chi_j=\chi_0+j\,\alpha_\chi+O(\Delta x_1^2)$ with $\alpha_\chi=\partial_1\chi\,\Delta x_1=O(\Delta x_1)$
+(local symbol; $a$ is not used, NOTATION.md). Repeating $\chi_0$ for every $j<0$ and applying the binomial of
+@sec-ch05-refkernel,
 
 $$
 \begin{aligned}
-\chi^{s}_0 - \chi_0 &= \tfrac38\,a, \\
-\chi^{s}_1 - \chi_1 &= \tfrac1{16}\,a,
+\chi^{s}_0 &= \tfrac1{16}\big(\chi_0+4\chi_0+6\chi_0+4\chi_1+\chi_2\big)=\chi_0+\tfrac{6}{16}\alpha_\chi, \\
+\chi^{s}_1 &= \tfrac1{16}\big(\chi_0+4\chi_0+6\chi_1+4\chi_2+\chi_3\big)=\chi_0+\tfrac{17}{16}\alpha_\chi=\chi_1+\tfrac1{16}\alpha_\chi .
+\end{aligned}
+$$
+
+The binomial reproduces linear data, so the smoothed value of the true profile is $\chi_j+O(\Delta x_1^2)$ and the errors are
+
+$$
+\begin{aligned}
+\chi^{s}_0 - \chi_0 &= \tfrac38\,\alpha_\chi, \\
+\chi^{s}_1 - \chi_1 &= \tfrac1{16}\,\alpha_\chi,
 \end{aligned}
 $$ {#eq-ch05-wallclamp-repeat}
 
-and errors $\tfrac{23}{32}a$, $\tfrac7{32}a$, $\tfrac1{32}a$ and $0$ in the face average $\tfrac12(\chi^s_{f-1}+\chi^s_f)$ at
-faces 0 to 3 (`[C4]`, exact). Relative to $\chi$ these are fixed multiples of $(\partial_1\chi/\chi)\Delta x_1$, so the face density
+and, with $\chi^s_{-1}-\chi_{-1}=\tfrac{17}{16}\alpha_\chi$ and $\chi^s_2=\chi_2$, errors $\tfrac{23}{32}\alpha_\chi$,
+$\tfrac7{32}\alpha_\chi$, $\tfrac1{32}\alpha_\chi$ and $0$ in the face average $\tfrac12(\chi^s_{f-1}+\chi^s_f)$ at faces 0 to 3 (`[C4]`, exact). Relative to $\chi$ these are fixed multiples of $(\partial_1\chi/\chi)\Delta x_1$, so the face density
 reference is first order at faces 0-2. The even-parity perturbation ghosts (@sec-ch05-wbx1) copy the bias of
 $\rho'=\overline\rho-\rho_{\mathrm{ref}}$ into the ghosts, so the solver's face densities there are first order too;
 the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is.[^ch05-wall-mirror]
@@ -88,9 +98,9 @@ $$ {#eq-ch05-wallclamp-cont}
 and $\chi_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
 `hydro_ref_x1_wall_rop`
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}).
-The binomial reproduces a linear profile exactly, so with the linear branch the $O(a)$ errors
-of @eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(a^2)$, errors
-$\tfrac{31}{32}a^2/\chi_0$, $\tfrac14a^2/\chi_0$, $\tfrac1{32}a^2/\chi_0$ (`[C5]`, exact series). Either way faces 0-2 keep
+The binomial reproduces a linear profile exactly, so with the linear branch the $O(\alpha_\chi)$ errors
+of @eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(\alpha_\chi^2)$, errors
+$\tfrac{31}{32}\alpha_\chi^2/\chi_0$, $\tfrac14\alpha_\chi^2/\chi_0$, $\tfrac1{32}\alpha_\chi^2/\chi_0$ (`[C5]`, exact series). Either way faces 0-2 keep
 the interior's $O(\Delta x_1^2)$, and for constant $\chi$ the linear branch returns $\chi_0$ exactly, so an isothermal
 column is unchanged bit for bit.
 
@@ -101,8 +111,10 @@ $[\chi_0(\chi_0/\chi_1)^k,\ \chi_0(1+k)]$ and is positive (`[C6]`, 60000 random 
 
 #### The one-sided cell-pressure rows
 
-The two wall cells take the cell average of the quintic through the six faces starting at the wall, weights `w6e`
-derived exactly in `[C2]`: $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/160)$ for the wall cell and
+The two wall cells take the cell average of the quintic through the six faces starting at the wall. With
+$\varsigma$ the cell-unit coordinate of block 5 (local symbol), the faces sit at $\varsigma_m=m-\tfrac12$ for the wall cell and
+$\varsigma_m=m-\tfrac32$ for the next, $m=0..5$, and the weights solve the same moment equations
+$\sum_m w_m\varsigma_m^{\,n}=(1,0,\tfrac1{12},0,\tfrac1{80},0)_n$, giving the rows `w6e` (`[C2]`): $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/160)$ for the wall cell and
 $(-3/160, 637/1440, 511/720, -43/240, 77/1440, -11/1440)$ for the next. They keep the sixth order
 of @eq-ch05-refkernel-pref and read no ghost face.
 

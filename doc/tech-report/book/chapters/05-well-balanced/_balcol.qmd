@@ -63,15 +63,19 @@ In the code, @eq-ch05-balcol-iter reads the gauge `c` at the top cell and then u
 and stops when
 
 $$
-\varepsilon = \max_i\frac{\lvert \overline{p}_i - p_{\mathrm{ref},i} - C\rvert}{\overline{\rho}_i\,g\,\Delta x_{1,i}} < \mathrm{rtol} .
+\varepsilon_{\mathrm{bal}} = \max_i\frac{\lvert \overline{p}_i - p_{\mathrm{ref},i} - C\rvert}{\overline{\rho}_i\,g\,\Delta x_{1,i}} < \mathrm{rtol} .
 $$ {#eq-ch05-balcol-res}
 
 The sweep @eq-ch05-balcol-iter and the stop test @eq-ch05-balcol-res are the loop that calls `call_hydro_ref_x1`
 ({{< code src/hydro/balance_column.cpp balance_column >}}).
 A fixed point of @eq-ch05-balcol-iter satisfies @eq-ch05-wbx1-rest with $c=C$, so it is at rest in the solver. The
 residual is checked before the update, so the returned column is the one it describes and an already balanced
-column comes back after zero updates. $\varepsilon$ bounds the residual acceleration in units of $g$: a perturbation
-difference $\delta p'$ across a cell drives an acceleration $\delta p'/(\overline\rho\Delta x_1)$.
+column comes back after zero updates. With $p'_i=\overline p_i-p_{\mathrm{ref},i}-C$ the cell's pressure perturbation at the gauge (NOTATION.md prime: minus
+the reference), the residual says $\lvert p'_i\rvert<\varepsilon_{\mathrm{bal}}\,\overline\rho_i\,g\,\Delta x_{1,i}$ in every cell.
+The face between cells $i$ and $i+1$ is pushed by the difference, an acceleration
+$\lvert a\rvert\approx\lvert p'_{i+1}-p'_i\rvert/(\overline\rho\,\Delta x_1)$, so on a column whose $\overline\rho\Delta x_1$ varies slowly
+from cell to cell $\lvert a\rvert<2\varepsilon_{\mathrm{bal}}\,g$: the residual bounds the acceleration in units of $g$ to
+within a factor of 2.
 
 The gauge is read at the top cell, where the pressure is lowest, so the column moves least where it is thinnest; the
 code comment records that a gauge at the bottom diverges on a deep column. Holding $\chi_i$ fixed holds the
@@ -87,7 +91,7 @@ faces that the ghost-free column does not have, and the two disagree, which is w
 $\rho_{\mathrm{sf}}$ differs at the bottom cell only (its fallback keys on the array index), and it plays no part in
 the fixed point.
 
-*Exact and truncated.* The returned column satisfies @eq-ch05-wbx1-rest to $\varepsilon<\mathrm{rtol}$; nothing is
+*Exact and truncated.* The returned column satisfies @eq-ch05-wbx1-rest to $\varepsilon_{\mathrm{bal}}<\mathrm{rtol}$; nothing is
 truncated beyond that.
 
 ### Numerical method
