@@ -86,9 +86,21 @@ reviewer: <name>
 
 ### Summary
 ::: {.callout-note title="At a glance"}
-What it does (one line). Switch or key, how it is set, default. Requires / implies / turns off. Order of accuracy.
-The one equation that defines it (a reference to the labelled equation).
+**Purpose.** What it does (one line); the one equation that defines it (a reference to the labelled equation).
+
+**Data.** Inputs and outputs, units, mass basis, where they live.
+
+**Placement.** Stage and order in the step.
+
+**Activation.** Switch or key, how it is set, default. Requires / implies / turns off.
+
+**Guarantee / limits.** Order of accuracy, invariant, domain.
+
+**Evidence.** One line pointing to the Tests layer.
 :::
+
+Each field label starts its own paragraph: a blank line before every `**Label.**` line after the first
+(`python3 tools/check_glance_boxes.py` is the gate; `python3 tools/fix_glance_boxes.py` inserts the blank lines).
 
 Then one to three paragraphs of prose: what it does, why it is there (the error or failure it removes, with its
 order), and when it is on. Bullets only for the list of switch couplings. Aliases (PR numbers, leg names, option

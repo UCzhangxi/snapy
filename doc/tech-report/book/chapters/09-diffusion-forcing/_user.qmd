@@ -12,16 +12,21 @@ status: draft
 ::: {.callout-note title="At a glance"}
 **Purpose.** Calls user TorchScript modules once per Runge–Kutta stage and adds what they return to the hydro and
 scalar increments; @eq-ch09-user-add.
+
 **Data.** In: one dictionary of every named block buffer and the stage variables (stage variables win), the
 full step $\Delta t$ [$\mathrm{s}$] and the stage index. Out: `hydro_du` (the shape of the hydro increment,
 total-mass basis, per unit volume) and/or `scalar_ds` (the shape of the scalar increment), each an increment over the
 full step. Check case: three toy modules, and the rk1, rk2, rk3, rk3s4 stage weights of pyharp.
+
 **Placement.** Every RK stage, in `MeshBlockImpl::advance_local`, after the native forcings, the vertical implicit
 correction and the scalar update, before the RK average.
+
 **Activation.** The call `MeshBlockImpl::set_user_stage_forcings(filenames)`; no YAML key. Default: none.
 `scalar_ds` needs passive scalars.
+
 **Guarantee / limits.** The return value is added as it is, not multiplied by $\Delta t$; a wrong shape or an
 unknown key is refused.
+
 **Evidence.** Tests: a scripted module adds $0.25\cdot1+0.5$ to the dry density in one stage,
 {{< code tests/test_jit_user_forcing.py main >}} (`assert_close` defaults); a user dry increment changes the density by
 $w_2^{(s)}$ times it for every integrator, {{< code tests/test_stage_forcing_dry_tracer.py main >}} ($10^{-12}$

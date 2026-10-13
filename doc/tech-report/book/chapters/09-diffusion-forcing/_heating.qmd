@@ -15,17 +15,22 @@ status: draft
 **Purpose.** `body-heat` heats every interior cell whose pressure lies in a band at a fixed rate of temperature
 change at constant volume; `top-cool` and `bot-heat` remove or add a fixed energy flux, spread evenly over the top
 or bottom `depth` cells; @eq-ch09-heating-body and @eq-ch09-heating-flux.
+
 **Data.** In: the interior density $\rho$, pressure $p$ [$\mathrm{Pa}$] and mixture $c_v$ (`body-heat`); the
 flux $F$ [$\mathrm{W\,m^{-2}}$], `depth` and the $x_1$ width `dz` of the boundary cell (`top-cool`, `bot-heat`); $\Delta t$.
 Out: the energy row of the increment, per unit volume [$\mathrm{J\,m^{-3}}$]. Check cases: $F=-30$
 $\mathrm{W\,m^{-2}}$ with `depth` 4 on uniform cells and on cells growing upward by 10 %.
+
 **Placement.** Every RK stage, in the forcing loop; `top-cool` and `bot-heat` only on the block that owns the
 physical $x_1$ boundary.
+
 **Activation.** `forcing/body-heat: {dTdt, pmin, pmax}`, defaults 0, 0, 1 [$\mathrm{K\,s^{-1}}$, $\mathrm{Pa}$,
 $\mathrm{Pa}$]; `top-cool: {flux, depth}`, `flux` $\le0$, defaults 0 and 1; `bot-heat: {flux, depth}`, `flux`
 $\ge0$, defaults 0 and 1 [$\mathrm{W\,m^{-2}}$, cells]. Each off unless its key is present.
+
 **Guarantee / limits.** Exact pointwise sources; the column receives exactly $F$ only on uniform cells and not on
 curved grids; the default `pmax` of 1 $\mathrm{Pa}$ heats almost nothing.
+
 **Evidence.** Tests: heating only inside the pressure band with the mixture $c_v$,
 {{< code tests/test_forcing.cpp forcing.body_heat_uses_pressure_mask_and_mixture_cv >}}; linearity of the boundary
 fluxes in $\Delta t$, {{< code tests/test_forcing.cpp forcing.boundary_fluxes_scale_with_timestep >}} (both

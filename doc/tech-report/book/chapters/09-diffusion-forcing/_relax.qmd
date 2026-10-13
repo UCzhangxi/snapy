@@ -16,17 +16,22 @@ status: draft
 **Purpose.** Nudges the first interior cell row above the physical lower $x_1$ boundary toward a target
 temperature, velocity, or composition with a time scale $\tau$; @eq-ch09-relax-temp, @eq-ch09-relax-velo and
 @eq-ch09-relax-comp.
+
 **Data.** In: the bottom interior row's density, temperature, mixture $c_v$, velocity and mass fractions, and
 for `at-face` the row above and the $x_1$ centres and lower face; the targets `btemp` [$\mathrm{K}$], `bvx..bvz`
 [$\mathrm{m\,s^{-1}}$] or `species`/`xfrac` (mole fractions); $\tau$ [$\mathrm{s}$]. Out: the energy, momentum, or dry and
 species rows of the bottom row. Check cases: 100 random spacings for the face target, uniform cells, one composition
 swap.
+
 **Placement.** Every RK stage, in the forcing loop, only on the block that owns the physical lower $x_1$ boundary.
+
 **Activation.** `relax-bot-temp: {tau, btemp, at-face}` (`btemp` required, `at-face` default `false`);
 `relax-bot-velo: {tau, bvx, bvy, bvz}` (targets default 0); `relax-bot-comp: {tau, species, xfrac}`
 ($\sum$`xfrac` $\le1$). $\tau>0$ [$\mathrm{s}$] for all three. Each off unless its key is present.
+
 **Guarantee / limits.** First order in time; the at-face target is exact for a linear $T$; `relax-bot-comp` keeps
 the total density.
+
 **Evidence.** Tests: the cell form, {{< code tests/test_forcing.cpp forcing.relax_bottom_temperature >}} (`allclose` defaults);
 the at-face target, {{< code tests/test_forcing.cpp forcing.relax_bottom_temperature_at_face >}} (exact; rtol
 $10^{-13}$); the composition swap keeps density and temperature,
