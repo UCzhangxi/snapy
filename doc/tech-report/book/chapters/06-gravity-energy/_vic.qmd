@@ -8,6 +8,16 @@ author: Linfeng Li
 reviewer:
 -->
 
+The VIC solves each $x_1$ column implicitly for the stage's changes of mass, normal momentum and energy (the
+time-integration chapter covers the solve). Gravity enters it twice. The momentum row's mass column and the
+energy row's momentum column hold the gravity source Jacobian $\boldsymbol\Phi$, the linearisation of the body force
+$\rho g_1$ and of the cell work $\rho v_1g_1$. With `gravity-work: face` the energy row is changed so that it
+books the face form of the mass the solve itself moves; booked after the solve instead, that work makes a tall
+column blow up at acoustic Courant about 66.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
+only the dissipative part of the face form. After the solve two corrections book the work of the mass that the
+solve's projection and its availability clamp moved differently from what the matrix assumed, so the booked
+energy matches the mass actually moved.
+
 Local symbols: $\mathbf e_m$ is the unit row vector of the normal-momentum unknown; $[\mathsf X]_\rho$ and
 $[\mathsf X]_E$ are the mass and energy rows of a block $\mathsf X$. Tracked in ISSUES.md.
 
@@ -33,16 +43,6 @@ matches the mass actually moved.
 **Evidence.** `vicwork_check.py` `[C1]`-`[C4]`; `test_implicit_face_work_operator` and
 `test_implicit_stratified_solid`, read from the source, not run here.
 :::
-
-The VIC solves each $x_1$ column implicitly for the stage's changes of mass, normal momentum and energy (the
-time-integration chapter covers the solve). Gravity enters it twice. The momentum row's mass column and the
-energy row's momentum column hold the gravity source Jacobian $\boldsymbol\Phi$, the linearisation of the body force
-$\rho g_1$ and of the cell work $\rho v_1g_1$. With `gravity-work: face` the energy row is changed so that it
-books the face form of the mass the solve itself moves; booked after the solve instead, that work makes a tall
-column blow up at acoustic Courant about 66.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
-only the dissipative part of the face form. After the solve two corrections book the work of the mass that the
-solve's projection and its availability clamp moved differently from what the matrix assumed, so the booked
-energy matches the mass actually moved.
 
 Under `face-wallc` the face work stays outside the operator and is swapped in after the solve, with the wall cells
 keeping the cell work; setup warns about it. With the corrected-PE switch on, the energy row also carries part of

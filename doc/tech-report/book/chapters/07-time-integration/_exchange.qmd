@@ -8,6 +8,13 @@ status: draft
 
 ### Summary
 
+A stage reads ghost cells when it reconstructs face states (@sec-ch04), so the ghosts must hold the
+neighbours' current values when the stage starts. The two drivers satisfy this in different ways. A single
+block driven through `MeshBlockImpl::forward` exchanges first and then advances, so anything the driver
+changed between calls (for example the kinetics of `examples/run_hydro.cpp`) reaches the ghosts before the next
+reconstruction. A `MeshImpl` with several blocks per process advances every block and then exchanges, so its
+ghosts are fresh after each stage but not after a change the driver makes between steps.
+
 ::: {.callout-note title="At a glance"}
 **What it does.** Fills the ghost cells of every block from its neighbours once per stage.
 
@@ -18,13 +25,6 @@ status: draft
 
 **Defining equation.** None; the invariant is stated in the Derivation layer.
 :::
-
-A stage reads ghost cells when it reconstructs face states (@sec-ch04), so the ghosts must hold the
-neighbours' current values when the stage starts. The two drivers satisfy this in different ways. A single
-block driven through `MeshBlockImpl::forward` exchanges first and then advances, so anything the driver
-changed between calls (for example the kinetics of `examples/run_hydro.cpp`) reaches the ghosts before the next
-reconstruction. A `MeshImpl` with several blocks per process advances every block and then exchanges, so its
-ghosts are fresh after each stage but not after a change the driver makes between steps.
 
 ### Derivation
 

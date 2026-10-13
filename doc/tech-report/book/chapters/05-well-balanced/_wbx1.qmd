@@ -9,6 +9,14 @@ status: draft
 
 ### Summary
 
+A column in hydrostatic balance has pressure and density that fall by orders of magnitude along $x_1$. A high-order
+reconstruction of $p$ itself returns face values whose difference across a cell is not exactly $\rho g_1\Delta x_1$,
+so a resting column feels a spurious vertical force of the size of the reconstruction error and starts to move.
+snapy removes that force by construction: it builds, on every call, a reference $(p_{\mathrm{ref}},
+\rho_{\mathrm{ref}})$ whose face pressures satisfy the discrete hydrostatic balance exactly, reconstructs only the
+perturbations about it, and restores the reference at the faces. The perturbation of a resting column is a constant,
+which every reconstruction reproduces, so the restored faces carry exactly the balanced pressure difference.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ instead of $p$ and $\rho$, then
 adds the reference face values back, so a discretely hydrostatic column produces no $x_1$ force
@@ -29,14 +37,6 @@ the default reference and $O(\Delta x_1^4)$ with @sec-ch05-wbref4. No well-balan
 **Evidence.** `test_face_floor`, `test_wb_wall_corner`, `test_hydrostatic` pass at the pin (CPU); check claims
 `[C14]`, `[C19]` of `wbref_check.py`.
 :::
-
-A column in hydrostatic balance has pressure and density that fall by orders of magnitude along $x_1$. A high-order
-reconstruction of $p$ itself returns face values whose difference across a cell is not exactly $\rho g_1\Delta x_1$,
-so a resting column feels a spurious vertical force of the size of the reconstruction error and starts to move.
-snapy removes that force by construction: it builds, on every call, a reference $(p_{\mathrm{ref}},
-\rho_{\mathrm{ref}})$ whose face pressures satisfy the discrete hydrostatic balance exactly, reconstructs only the
-perturbations about it, and restores the reference at the faces. The perturbation of a resting column is a constant,
-which every reconstruction reproduces, so the restored faces carry exactly the balanced pressure difference.
 
 The scheme has no switch and no default to change: it is the $x_1$ path whenever gravity acts in $x_1$. The
 perturbation ghosts at a physical, non-outflow $x_1$ wall are filled with even parity; the reconstruction runs with

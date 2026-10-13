@@ -8,6 +8,14 @@ sources: OUTLINE.md 10.6; examples/run_hydro.cpp, examples/jupiter_evap_precip_1
 status: draft
 -->
 
+The snapy library does not run reaction kinetics. Two example drivers do: `examples/run_hydro.cpp` and
+`examples/jupiter_evap_precip_1d.cpp`. After all RK stages of a step, they refresh the primitive state, evaluate
+kintera's rates and their Jacobian at the post-step state, take one linearised implicit step for the
+concentrations, add the change to the species rows of the conserved state and call `check_redo`. The coupling is
+therefore operator-split, first order, and a property of those drivers: a run built on the library alone has no
+kinetics unless its own driver adds the same block. As with the saturation adjustment, latent heat is carried by
+the reference energies, so the energy row is not touched.
+
 Local symbols: $\dot{\boldsymbol\omega}$ is the vector of reaction rates [$\mathrm{mol\,m^{-3}\,s^{-1}}$] and
 $\mathsf J_{\dot\omega}$ its Jacobian with respect to the molar concentrations; $x$ is the extent of a
 two-product evaporation to equilibrium [$\mathrm{mol\,m^{-3}}$]. Tracked in ISSUES.md. The subscript keeps
@@ -33,14 +41,6 @@ rate law; no exchange after the update.
 **Evidence.** `test_uranus_cycle1_abort.release` (exit status) and `kinetics_check.py` `[C1]`–`[C4]`; no snapy test
 of one step's budget; the ctest was not run at the pin.
 :::
-
-The snapy library does not run reaction kinetics. Two example drivers do: `examples/run_hydro.cpp` and
-`examples/jupiter_evap_precip_1d.cpp`. After all RK stages of a step, they refresh the primitive state, evaluate
-kintera's rates and their Jacobian at the post-step state, take one linearised implicit step for the
-concentrations, add the change to the species rows of the conserved state and call `check_redo`. The coupling is
-therefore operator-split, first order, and a property of those drivers: a run built on the library alone has no
-kinetics unless its own driver adds the same block. As with the saturation adjustment, latent heat is carried by
-the reference energies, so the energy row is not touched.
 
 ### Derivation
 

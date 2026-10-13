@@ -6,6 +6,12 @@ sources: src/coord/coordinate.cpp, src/coord/coordinate.hpp, tests/test_coordina
 status: draft
 -->
 
+snapy builds the face coordinates of a block by slicing one global array per axis rather than by spacing the block's
+own interval. Spacing per block produces the same physical face from different floating-point arithmetic in the two
+blocks that share it and in different decompositions of one problem, and every metric term (areas, volumes, the
+spherical-polar and gnomonic source coefficients) inherits that difference. With the slice, a face has one value
+whoever owns it, and the cell width is the global $\Delta x_a$ in every block.
+
 Local symbols (flagged to the editor): $x^{\min}_a, x^{\max}_a$ the declared global bounds of axis $a$ [m or rad];
 $n^{\mathrm{glob}}_a$ the declared global cell count of axis $a$ (count); $\Delta x_a$ the global cell width of axis
 $a$ [m or rad]; $o_a$ the global index of a block's first interior cell on axis $a$ (count); $X_{a,m}$ entry $m$ of
@@ -31,12 +37,6 @@ Requires each global count divisible by the blocks on its axis.
 **Evidence.** `test_coordinate`, `test_cubed_sphere_exchange`, `test_local_horizontal_cells_python`; check
 `[C16]`; the ctest entries were not run for this chapter at the pin (missing evidence).
 :::
-
-snapy builds the face coordinates of a block by slicing one global array per axis rather than by spacing the block's
-own interval. Spacing per block produces the same physical face from different floating-point arithmetic in the two
-blocks that share it and in different decompositions of one problem, and every metric term (areas, volumes, the
-spherical-polar and gnomonic source coefficients) inherits that difference. With the slice, a face has one value
-whoever owns it, and the cell width is the global $\Delta x_a$ in every block.
 
 The scheme is always on. The YAML card declares the global bounds and cell counts; `distribute` declares the number of
 blocks per axis; each block's own bounds and counts follow from its place in the layout (@sec-ch03-layouts). A block

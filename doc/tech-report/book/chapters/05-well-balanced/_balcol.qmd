@@ -9,6 +9,14 @@ status: draft
 
 ### Summary
 
+A column integrated from the continuum hydrostatic equation is balanced to the truncation error of that integration,
+not to the scheme's own discrete balance. The well-balanced reconstruction then sees a perturbation $p'$ that is not
+constant and turns its variation into a standing force on an atmosphere that should be at rest. `balance_column`
+removes that force before the run starts: it iterates the column onto the discrete rest state, holding the
+temperature of each cell fixed for ideal mixtures, and returns the balanced column, the residual and the number of
+updates. The fixed point is defined only up to a free constant $C$, so the column moves; any pinned quantity (surface
+pressure, column mass) has to be re-pinned by the caller.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Moves a column of cell averages, at fixed $1/\chi=p/\rho$ per cell, to the fixed point
 $\overline p=p_{\mathrm{ref}}(\overline p)+C$ of @eq-ch05-wbx1-rest, so that the solver starts it at rest
@@ -28,14 +36,6 @@ moves by a free constant $C$.
 **Evidence.** `test_balance_column` (three arms) and `test_bryan_balance_ic` pass at the pin (CPU); check claim
 `[C15]` of `wbref_check.py`.
 :::
-
-A column integrated from the continuum hydrostatic equation is balanced to the truncation error of that integration,
-not to the scheme's own discrete balance. The well-balanced reconstruction then sees a perturbation $p'$ that is not
-constant and turns its variation into a standing force on an atmosphere that should be at rest. `balance_column`
-removes that force before the run starts: it iterates the column onto the discrete rest state, holding the
-temperature of each cell fixed for ideal mixtures, and returns the balanced column, the residual and the number of
-updates. The fixed point is defined only up to a free constant $C$, so the column moves; any pinned quantity (surface
-pressure, column mass) has to be re-pinned by the caller.
 
 Under `SNAP_WB_REF4` on a non-uniform grid it iterates against the switched cell pressure, which is the fixed point
 the solver then enforces. Under `SNAP_X1_CENTROID_EXACT` it balances only a column declared Cartesian.

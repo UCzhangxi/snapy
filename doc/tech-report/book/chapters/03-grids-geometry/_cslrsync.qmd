@@ -8,6 +8,14 @@ status: draft
 
 ### Summary
 
+At a face between two panels, each panel reconstructs the state on its own side from its interior and the state on
+the other side from its interpolated ghosts. Without a sync the two panels would solve different Riemann problems for
+the same face and the fluxes would not cancel. snapy sends each panel's interior-side state to the neighbour, which
+overwrites its ghost-side state with it; then both hold the same pair. Because a panel edge can join two edges of the
+same orientation, where one panel's "left" is the other's "right" in the other panel's frame, the two states travel
+under keys whose suffix selects the direction, and the receiving block assigns the role in its own frame. A single key without the suffix would swap
+the two states at such an edge, and the upwind solver would then pick the downwind state.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** The reconstructed left and right states at panel-edge faces are exchanged as raw copies, one face deep,
 so both panels solve the same Riemann problem at a shared face; a rule, the suffix rule of the Derivation layer.
@@ -23,14 +31,6 @@ so both panels solve the same Riemann problem at a shared face; a rule, the suff
 **Evidence.** `test_flux_covariance_seams_python` ($10^{-12}$ relative drift) and
 `test_flux_positivity_cubedsphere_python` ($10^{-13}$ drift); both were not run for this chapter at the pin (missing evidence).
 :::
-
-At a face between two panels, each panel reconstructs the state on its own side from its interior and the state on
-the other side from its interpolated ghosts. Without a sync the two panels would solve different Riemann problems for
-the same face and the fluxes would not cancel. snapy sends each panel's interior-side state to the neighbour, which
-overwrites its ghost-side state with it; then both hold the same pair. Because a panel edge can join two edges of the
-same orientation, where one panel's "left" is the other's "right" in the other panel's frame, the two states travel
-under keys whose suffix selects the direction, and the receiving block assigns the role in its own frame. A single key without the suffix would swap
-the two states at such an edge, and the upwind solver would then pick the downwind state.
 
 ### Derivation
 

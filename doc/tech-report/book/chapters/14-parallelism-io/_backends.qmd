@@ -8,6 +8,10 @@ status: draft
 
 ### Summary
 
+There is no NCCL path. `BACKEND=nccl` with no external group stops with "Unsupported BACKEND". An external NCCL group
+is accepted at registration, but its sends go through the non-UCX branch, which refuses CUDA tensors. That
+consequence is read from the code and has not been run.
+
 ::: {.callout-note title="At a glance"}
 **What**: one `ProcessGroupContext` per process carries every point-to-point message and collective. It is backed by
 Gloo, by UCX through the commux library, or by a `torch.distributed` group created outside snapy. **Switch**:
@@ -25,10 +29,6 @@ on Linux when built with UCX, otherwise `gloo`; always `gloo` on macOS. **Requir
 
 : What each backend can carry, read from `ProcessGroupContext::send`, `recv` and `supports_coalescing`.
 {#tbl-ch14-backend-matrix}
-
-There is no NCCL path. `BACKEND=nccl` with no external group stops with "Unsupported BACKEND". An external NCCL group
-is accepted at registration, but its sends go through the non-UCX branch, which refuses CUDA tensors. That
-consequence is read from the code and has not been run.
 
 ### Derivation
 

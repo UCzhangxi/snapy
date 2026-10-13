@@ -11,6 +11,15 @@ reviewer:
 
 ### Summary
 
+Every boundary callback is a function of a tensor, a dimension and a `BoundaryFuncOptions` context, entered
+into one global registry under its name by the `BC_FUNCTION` macro ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}),
+which also declares the contract a callback must keep: it may be called again on a thin tangential ghost slab
+after an exchange, so it must not depend on the orthogonal extent of its input and a second call must
+reproduce the first. The card names a callback per face; `MeshBlockOptionsImpl::from_yaml` appends `_inner`
+or `_outer`, looks the name up in the registry, and refuses a name that is not there. Construction of the block
+then nulls the callbacks of the faces that another block or a periodic wrap supplies, so that "physical face"
+and "callback present" mean the same thing from then on.
+
 ::: {.callout-note title="At a glance"}
 **What it does.** Maps the six face names of the YAML card to registered callbacks, drops the callbacks on the
 faces the layout owns, and classifies a face when an operator asks whether it is physical or a wall.
@@ -24,15 +33,6 @@ does so only on the `cubed` layout. A layout-owned face has no callback.
 
 **Defining equation.** None; the two predicates are stated in the Derivation layer.
 :::
-
-Every boundary callback is a function of a tensor, a dimension and a `BoundaryFuncOptions` context, entered
-into one global registry under its name by the `BC_FUNCTION` macro ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}),
-which also declares the contract a callback must keep: it may be called again on a thin tangential ghost slab
-after an exchange, so it must not depend on the orthogonal extent of its input and a second call must
-reproduce the first. The card names a callback per face; `MeshBlockOptionsImpl::from_yaml` appends `_inner`
-or `_outer`, looks the name up in the registry, and refuses a name that is not there. Construction of the block
-then nulls the callbacks of the faces that another block or a periodic wrap supplies, so that "physical face"
-and "callback present" mean the same thing from then on.
 
 ### Derivation
 

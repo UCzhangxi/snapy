@@ -9,6 +9,12 @@ status: draft
 
 ### Summary
 
+A user stage forcing is a source term written in Python, compiled with `torch.jit.script`, saved, and loaded by
+file name. In every stage the block hands each module one dictionary with all its buffers and the stage variables,
+the step $\Delta t$ and the stage index, and adds what the module returns to the native increments. The modules
+run after the native forcings, the vertical implicit correction and the passive-scalar update, and before the
+Runge–Kutta average. A user change of the dry-air density carries the passive tracers like a native one.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Calls user TorchScript modules once per Runge–Kutta stage and adds what they return to the hydro and
 scalar increments; @eq-ch09-user-add.
@@ -32,12 +38,6 @@ unknown key is refused.
 $w_2^{(s)}$ times it for every integrator, {{< code tests/test_stage_forcing_dry_tracer.py main >}} ($10^{-12}$
 absolute); these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/user_check.py`, output `user_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
-
-A user stage forcing is a source term written in Python, compiled with `torch.jit.script`, saved, and loaded by
-file name. In every stage the block hands each module one dictionary with all its buffers and the stage variables,
-the step $\Delta t$ and the stage index, and adds what the module returns to the native increments. The modules
-run after the native forcings, the vertical implicit correction and the passive-scalar update, and before the
-Runge–Kutta average. A user change of the dry-air density carries the passive tracers like a native one.
 
 The returned `hydro_du` is added as it is. The block does not multiply it by $\Delta t$: a module that models
 a rate $\mathbf S$ returns $\Delta t\,\mathbf S$ itself.

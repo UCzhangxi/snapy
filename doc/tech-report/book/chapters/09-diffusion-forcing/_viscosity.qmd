@@ -9,6 +9,15 @@ status: draft
 
 ### Summary
 
+The diffusion module is snapy's only closure for sub-grid momentum and heat transport: constant isotropic
+coefficients, optionally shaped in $x_1$ (@sec-ch09-x1profile). With the default `dynamic: false`, `nu_iso` is a
+kinematic viscosity $\nu$ [$\mathrm{m^2\,s^{-1}}$] multiplied by the face density, and `kappa_iso` a thermal
+diffusivity $\kappa$ [$\mathrm{m^2\,s^{-1}}$] multiplied by the face volumetric heat capacity $\rho c_v$. With
+`dynamic: true` the two numbers are a dynamic viscosity $\mu$ [$\mathrm{Pa\,s}$] and a conductivity, still written
+$\kappa$ but in $\mathrm{W\,m^{-1}\,K^{-1}}$ (NOTATION.md §8), and no density enters. The heat flux acts on the
+temperature, not on the potential temperature, so a resting adiabatic column, which is neutrally stable, is heated
+in the interior and at the walls (Limits).
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Adds the Newtonian viscous stress, its work, and a Fourier heat flux as face fluxes whose divergence
 enters the stage increment; @eq-ch09-viscosity-flux.
@@ -36,15 +45,6 @@ decays as $e^{-\nu t}$ over 100 steps, {{< code tests/test_diffusion.cpp DeviceT
 {{< code tests/test_diffusion.cpp DeviceTest.timestep_uses_largest_diffusivity >}} ($10^{-12}$); these ctests were not
 run at the pin. Check: `python3 src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out` lines `[C1]`–`[C8]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
-
-The diffusion module is snapy's only closure for sub-grid momentum and heat transport: constant isotropic
-coefficients, optionally shaped in $x_1$ (@sec-ch09-x1profile). With the default `dynamic: false`, `nu_iso` is a
-kinematic viscosity $\nu$ [$\mathrm{m^2\,s^{-1}}$] multiplied by the face density, and `kappa_iso` a thermal
-diffusivity $\kappa$ [$\mathrm{m^2\,s^{-1}}$] multiplied by the face volumetric heat capacity $\rho c_v$. With
-`dynamic: true` the two numbers are a dynamic viscosity $\mu$ [$\mathrm{Pa\,s}$] and a conductivity, still written
-$\kappa$ but in $\mathrm{W\,m^{-1}\,K^{-1}}$ (NOTATION.md §8), and no density enters. The heat flux acts on the
-temperature, not on the potential temperature, so a resting adiabatic column, which is neutrally stable, is heated
-in the interior and at the walls (Limits).
 
 The module adds its own time-step bound, $\Delta t\le \Delta x_{\min}^2/(2n_{\mathrm{dim}}K)$, with $\Delta x_{\min}$ the smallest cell width over the active directions, which the solver takes
 together with the hyperbolic bound before the Courant factor is applied (@sec-ch07-cfl). The YAML parser refuses

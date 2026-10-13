@@ -9,6 +9,14 @@ status: draft
 
 ### Summary
 
+Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK stages. It lets the
+stages advect vapour and condensate as tracers that carry their own reference energies, and once per step, after
+the last stage has been averaged, it hands each interior cell to kintera's equilibrium solve at fixed volume and
+fixed internal energy density (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is never a separate source: it is
+the difference of the species reference energies $u^{\star}_n$ (NOTATION.md section 2), so moving mass between
+phases at fixed $\rho e$ changes the temperature and leaves $E$ alone. This section is the snapy side of that solve:
+when it runs, what it is handed, what it writes, and what happens when it fails.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Brings every interior cell to phase equilibrium once per step, at fixed density and fixed internal
 energy density, by moving mass between each vapour and its condensates; @eq-ch10-satadj-state.
@@ -27,14 +35,6 @@ cell stays unadjusted and raises redo cause 16.
 **Evidence.** `test_wall_saturation` ($10^{-12}$ relative) and `satadj_check.py` `[C1]`–`[C3]`; the ctest was not
 run at the pin.
 :::
-
-Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK stages. It lets the
-stages advect vapour and condensate as tracers that carry their own reference energies, and once per step, after
-the last stage has been averaged, it hands each interior cell to kintera's equilibrium solve at fixed volume and
-fixed internal energy density (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is never a separate source: it is
-the difference of the species reference energies $u^{\star}_n$ (NOTATION.md section 2), so moving mass between
-phases at fixed $\rho e$ changes the temperature and leaves $E$ alone. This section is the snapy side of that solve:
-when it runs, what it is handed, what it writes, and what happens when it fails.
 
 The adjustment is on whenever the thermo block of the YAML card lists reactions; there is no flag to turn it off
 while keeping the reactions. Its failures do not stop the step: they are counted and turned into redo cause 16
