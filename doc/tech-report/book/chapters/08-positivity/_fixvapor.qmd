@@ -21,7 +21,7 @@ $x_1$ column for mass to move.
 
 **Activation.** With the limiter, where a vapour row is negative, or a parentless cloud after the borrow.
 
-**Guarantee / limits.** Conserves column mass; vapour throws when the column cannot be repaired, clouds clamp instead.
+**Guarantee / limits.** Conserves the mass of the column it sees (whole only on whole-column calls); vapour throws, clouds clamp.
 
 **Evidence.** `test_fix_vapor_volume.<b>` ($10^{-12}$), the two failure-reporting Python ctests; no report check.
 :::
@@ -41,8 +41,12 @@ property above is read from the code and its comment, and asserted by the ctest 
 ### Numerical method
 
 The repair is the lambda at `split` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). When the $x_1$ axis is split
-across ranks it gathers the column first, so the repair sees the whole column rather than one block's
-piece of it.
+across ranks it gathers the column first, but only on a call made with `whole_column` true. The two calls of the stage
+pass it, after the multi-stage averaging and before the saturation adjustment (`whole_column`,
+{{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}), and every block of the column then calls together.
+The calls inside the equation-of-state conversions keep the default of `whole_column`, false
+({{< code src/eos/equation_of_state.hpp EquationOfStateImpl >}}), and repair only the block's own piece of the
+column, so on a split axis their column-mass conservation holds per block piece.
 
 The two callers are deliberately different, and the comment at `repair_column`
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) says why. Clouds tolerate a
@@ -57,7 +61,8 @@ path is therefore a hard stop, not a silent repair.
 1. The redistribution weights by cell volume, so it moves mass and not density; moving densities would not conserve
    mass on a non-uniform grid
    ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
-2. When the $x_1$ axis is split across ranks the column is gathered first, so the repair sees the whole column.
+2. When the $x_1$ axis is split across ranks the column is gathered first only for `whole_column` true, which the two
+   stage calls pass. The conversions' calls repair the block's piece of the column, and conserve its mass there.
 3. Clouds tolerate an unrepairable column and fall back to a clamp. Vapour must not copy a bad column back, so its
    caller passes `require_success` and the kernel's error becomes a hard stop.
 
