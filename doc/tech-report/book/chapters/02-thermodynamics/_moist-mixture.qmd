@@ -24,15 +24,18 @@ stops at a relative tolerance, which sets how closely the two directions of the 
 
 **Activation.** The default, `type: moist-mixture`, with a species card; `max-iter` (10) and `ftol` ($10^{-6}$) tune the Newton.
 
-**Guarantee / limits.** After the stop the temperature error is below $(\Lambda/2)(\mathtt{ftol}\,T)^2$ plus round-off; only $Z_n=1$ is supported by evidence.
+**Guarantee / limits.** After the stop the temperature error is below $(\Upsilon/2)(\mathtt{ftol}\,T)^2$ plus a derived rounding term; only $Z_n=1$ is supported by evidence.
 
 **Evidence.** @tbl-ch02-moist-mixture-tests: two ctests by source reading, `moist-mixture_check.py` `[C1]`–`[C5]`.
 :::
 
 Local symbols (flagged to the editor, ISSUES.md): $\tilde c_n=\rho_n/\mu_n$ the molar concentration
 [mol m$^{-3}$]; $Z_n$ the compressibility factor of gas $n$ [-]; $c_T$ the isothermal sound speed [m s$^{-1}$];
-$U(T)$ the internal energy density at fixed composition [J m$^{-3}$] and $C(T)=\mathrm dU/\mathrm dT$ the
-volumetric heat capacity [J m$^{-3}$ K$^{-1}$]; $\Lambda=\max\lvert C'\rvert/\min C$ [K$^{-1}$]; $\beta$ the contraction factor of the Newton error [-]; $T_{\mathrm{int}}$ an
+$U(T)$ the internal energy density at fixed composition [J m$^{-3}$] and $\Psi(T)=\mathrm dU/\mathrm dT$ the
+volumetric heat capacity [J m$^{-3}$ K$^{-1}$], $\Psi_{\min}$ its minimum between the start and the root;
+$\Upsilon=\max\lvert\mathrm d\Psi/\mathrm dT\rvert/\Psi_{\min}$ [K$^{-1}$]; $\varsigma$ the contraction factor of the Newton error [-];
+$\psi$ the error of a Newton iterate [K]; $T_{\mathrm{mid}}$ an intermediate temperature [K]; $\Xi_U$ the magnitude sum of
+the energy residual [J m$^{-3}$]; $N_{\mathrm{rnd}}$ the number of roundings in one molar energy; $T_{\mathrm{int}}$ an
 integration temperature [K]; $e_n(T)$ the specific internal energy of species $n$; $c_{v,n}^{\mathrm{ref}}$ its
 tabulated constant capacity; $J$ a rotational quantum number; $k_{\mathrm B}$ Boltzmann's constant [J K$^{-1}$]; $T_{\mathrm{rot}}$ the rotational temperature of
 H$_2$ [K]; angle brackets a normalized ensemble average over $J$.
@@ -71,7 +74,7 @@ only: the enthalpy test of @tbl-ch02-moist-mixture-tests asserts $Z=1$ for the d
 #### Temperature from energy
 
 4. *Linearize the energy.* At fixed partial densities $U(T)=\rho_{\mathrm d}e_{\mathrm d}(T)+\sum_n\rho_ne_n(T)$
-   and $U'(T)=C(T)$, the volumetric heat capacity.
+   and $\mathrm dU/\mathrm dT=\Psi(T)$, the volumetric heat capacity.
 5. *One Newton step* solves $U(T)=\rho e$ for the linearization:
 
 $$
@@ -87,22 +90,39 @@ $$ {#eq-ch02-moist-mixture-newton}
 
 #### What the stopping rule guarantees
 
-The loop stops when the relative step $\lvert1-T_k/T_{k+1}\rvert$ falls below `ftol` in every cell, or after
-`max-iter` steps with a warning. Let $T_\ast$ be the root and $e_k=T_k-T_\ast$.
+The loop stops when the relative step $\lvert1-T_{\mathrm{old}}/T_{\mathrm{new}}\rvert$ falls below `ftol` in every
+cell, or after `max-iter` steps with a warning. Let $T_\ast$ be the root, and $\psi_{\mathrm{old}}$,
+$\psi_{\mathrm{new}}$ the errors of two successive iterates ($\psi_{\mathrm{start}}$ that of the starting guess).
 
-1. *Newton error.* Taylor's theorem with $U(T_\ast)=\rho e$ gives $e_{k+1}=U''(\xi)e_k^2/(2C(T_k))$, so
-   $\lvert e_{k+1}\rvert\le(\Lambda/2)e_k^2$.
-2. *Contraction.* If $\beta=(\Lambda/2)\lvert e_0\rvert<\tfrac12$, every error shrinks by at least $\beta$.
-3. *Step bounds error.* The step is $e_{k+1}-e_k$, so $\lvert e_k\rvert\le\lvert T_{k+1}-T_k\rvert/(1-\beta)$.
-4. *Hence at the stop*, with $\lvert T_{k+1}-T_k\rvert<\mathtt{ftol}\,T$:
+1. *Newton error.* Taylor's theorem with $U(T_\ast)=\rho e$ gives
+   $\psi_{\mathrm{new}}=U''(T_{\mathrm{mid}})\psi_{\mathrm{old}}^2/(2\Psi(T_{\mathrm{old}}))$ for some $T_{\mathrm{mid}}$
+   between $T_{\mathrm{old}}$ and $T_\ast$, so $\lvert\psi_{\mathrm{new}}\rvert\le(\Upsilon/2)\psi_{\mathrm{old}}^2$.
+2. *Contraction.* If $\varsigma=(\Upsilon/2)\lvert\psi_{\mathrm{start}}\rvert<\tfrac12$, every error shrinks by at
+   least $\varsigma$.
+3. *Step bounds error.* The step is $\psi_{\mathrm{new}}-\psi_{\mathrm{old}}$, so
+   $\lvert\psi_{\mathrm{old}}\rvert\le\lvert T_{\mathrm{new}}-T_{\mathrm{old}}\rvert/(1-\varsigma)$.
+4. *Rounding of the residual.* The update line of the excerpt below (`out` in
+   [`kintera thermo_y.cpp:509`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L509))
+   computes $\rho e-\sum_n\tilde c_nu_n(T)$ over dry air and the $N_y$ species. With $N_{\mathrm{rnd}}$ roundings in each molar energy
+   $u_n$, one in each product, $N_y$ in the sum and one in the subtraction, and every partial result bounded by
+   $\Xi_U=\lvert\rho e\rvert+\sum_n\tilde c_n\sum_j\lvert u_{n,j}\rvert$ (the magnitudes $u_{n,j}$ of the terms of
+   $u_n$), the computed residual is off by at most $(N_{\mathrm{rnd}}+2)(N_y+1)(\epsilon_{\mathrm m}/2)\Xi_U$. Divided by the
+   capacity, that is a temperature error of $(N_{\mathrm{rnd}}+2)(N_y+1)(\epsilon_{\mathrm m}/2)\Xi_U/\Psi$, the same scale
+   $\epsilon_{\mathrm m}\Xi/\Psi$ as the thermal-energy bound of @sec-ch02-ideal-moist. The `+=` adds
+   $(\epsilon_{\mathrm m}/2)T$, and the rounding of the last step itself $(N_y+3)(\epsilon_{\mathrm m}/2)\,\mathtt{ftol}\,T$.
+5. *Hence at the stop*, with $\lvert T_{\mathrm{new}}-T_{\mathrm{old}}\rvert<\mathtt{ftol}\,T$ and to first order in
+   $\epsilon_{\mathrm m}$:
 
 $$
-\lvert T_{k+1}-T_\ast\rvert\le\frac\Lambda2\left(\frac{\mathtt{ftol}\,T}{1-\beta}\right)^2 .
+\lvert T_{\mathrm{new}}-T_\ast\rvert\le\frac\Upsilon2\left(\frac{\mathtt{ftol}\,T}{1-\varsigma}\right)^2
++(N_{\mathrm{rnd}}+2)(N_y+1)\frac{\epsilon_{\mathrm m}}{2}\frac{\Xi_U}{\Psi_{\min}}
++\frac{\epsilon_{\mathrm m}}{2}\bigl(1+(N_y+3)\,\mathtt{ftol}\bigr)T .
 $$
 
-With `ftol` $=10^{-6}$, $T=300$ K and $\Lambda=10^{-3}$ K$^{-1}$ this is $5\times10^{-11}$ K: the stopping rule is far
-tighter than its value suggests, and round-off of the energy evaluation, of order $\epsilon_{\mathrm m}T$, is what
-remains. The check adds an allowance of $4\epsilon_{\mathrm m}T$ for it, which is not derived here.
+With `ftol` $=10^{-6}$, $T=300$ K and $\Upsilon=10^{-3}$ K$^{-1}$ the first term is $5\times10^{-11}$ K: the stopping
+rule is far tighter than its value suggests, and the rounding terms are what remain. They grow with the energy
+zeros: when $\sum_n\tilde c_n\lvert u^{\star}_n\rvert$ is $10^5$ times $\Psi T$, the second term is about $10^5$
+times $\epsilon_{\mathrm m}T$. For the quadratic energies of `[C5]`, $N_{\mathrm{rnd}}=5$.
 
 The pressure inversion `PV->T` is Newton on $T\sum\tilde c_nZ_n-p/\mathcal R$ with the derivative replaced by
 $\sum\tilde c_n(c_{p,n}-c_{v,n})/\mathcal R$ over the gases, after flooring each gas concentration at `gas_floor`
@@ -222,7 +242,7 @@ while (iter++ < options->max_iter()) {
 ```
 
 `ie` is $\rho e$; `DY->V` gives $\rho_n$; `VU->T` is the loop below it. The first loop line is step 6; the
-`+=` line is @eq-ch02-moist-mixture-newton with `u * conc` summing to $U(T)$ and `cv * conc` to $C(T)$; the test
+`+=` line is @eq-ch02-moist-mixture-newton with `u * conc` summing to $U(T)$ and `cv * conc` to $\Psi(T)$; the test
 is the stopping rule, a maximum over all cells.
 
 ### Tests
@@ -231,21 +251,21 @@ is the stopping rule, a maximum over all cells.
 |---|---|---|---|
 | {{< code tests/test_eos.cpp DeviceTest.moist_mixture >}} (`test_eos.release`) | conserved-primitive round trip; $\gamma=1.4$ for the dry card; a mutated pressure invalidates the cached $T$ | $10^{-6}$ abs. and rel. | `torch::allclose`, set in the test; sized for the single-precision arm |
 | {{< code tests/test_flux_positivity_carry.cpp flux_positivity.moist_mixture_nasa9_h2_enthalpy_matches_internal_plus_pressure >}} (`test_flux_positivity_carry.release`) | NASA-9/H$_2$ carried enthalpies sum to $E+p$; $Z=1$ exactly | $10^{-9}$ relative; exact | the test's comment: measured residual near $10^{-16}$, far below the $10^{-6}$ miss of dropping $K$ |
-| `moist-mixture_check.py` `[C1]`–`[C5]` (this report) | NASA antiderivative; rotor capacity; synthetic pressure loop; symbolic $c_T$ and Newton; Newton stop inside the derived bound | exact; $2\times10^{-6}$; $10^{-9}$ K; exact; bound above | stated in the check |
+| `moist-mixture_check.py` `[C1]`–`[C5]` (this report) | NASA antiderivative; rotor capacity; synthetic pressure loop; symbolic $c_T$, Newton update and Newton error; Newton stop inside the derived bound | exact; $2\times10^{-6}$; $10^{-9}$ K; exact; bound above | stated in the check |
 
 : Tests of the moist mixture. {#tbl-ch02-moist-mixture-tests}
 
 The check is independent algebra and isolated loop ports, not kintera.[^mm-run] `[C1]`: the NASA-9 antiderivative
 differentiates back exactly. `[C2]`: the rotor capacity matches a central difference of the rotor energy to
 $5.7\times10^{-9}$ in both modes. `[C3]`: the pressure loop with a synthetic $Z(T)=1+10^{-3}T$ stops after 4 steps,
-$5.7\times10^{-14}$ K from the root. `[C4]`: sympy confirms steps 2 and 5. `[C5]`: over 200 random linear
-capacities, the error at the stop is at most 0.722 of the derived bound plus allowance.
+$5.7\times10^{-14}$ K from the root. `[C4]`: sympy confirms steps 2 and 5. `[C5]`: over two decks of 200 random mixtures with linear capacities, with energy zeros up to $10^5$ and up to $10^{10}$ J mol$^{-1}$, the error at the stop is at most 0.547
+and 0.081 of the derived bound of step 5; the step-1 Newton error identity is also checked by sympy in `[C4]`.
 
 The ctest cases have not been run for this report at the pin: **pending a pinned ctest run**.
 
 [^mm-run]: [sha: the code pin; kintera c55b13b2204997d2d09e04498558ab9495d8ee77 for the ported loops; deck: the
     check itself, seed 5; run: `python3 src/snapy_report/ch02/moist-mixture_check.py`, CPU, double, 1 process;
-    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0, mpmath 1.3.0; output identical to the committed file]. Output
     `moist-mixture_check.out`, lines `[C1]`–`[C5]`.
 
 ### Limits
