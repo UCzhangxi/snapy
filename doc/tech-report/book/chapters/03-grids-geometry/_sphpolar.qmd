@@ -14,6 +14,9 @@ written so that the pressure force reduces to the plain face difference of the R
 which the well-balanced reconstruction of @sec-ch05 balances against gravity.
 
 Local symbols (flagged to the editor): $r_\pm = x_{1,i\pm1/2}$ and $\theta_\pm = x_{2,j\pm1/2}$, the faces of one cell;
+$\Delta\theta = \theta_+ - \theta_-$ and $\Delta\varphi$ the cell's angular widths [rad]; $x^{\mathrm m}_{1,i} = \tfrac12(r_- + r_+)$
+the radial midpoint of the cell [m]; $\mathsf T = \rho\mathbf v\mathbf v + p\mathsf I$ the momentum flux tensor
+[$\mathrm{Pa}$], with physical components $T_{ab}$;
 $f^{(a)}_{i\pm1/2}$ the $x_1$ face flux of the momentum component $m_a$ (`flux1[IVY]`, `flux1[IVZ]`) [$\mathrm{kg\,m^{-1}\,s^{-2}}$]; $p_{i\pm1/2}$ the face pressure returned by the Riemann solver
 [$\mathrm{Pa}$].
 
@@ -43,8 +46,26 @@ moments of @sec-ch03-facemoments. The coefficient names `coord_src1_i` to `coord
 
 ### Derivation
 
-The volume element is $\mathrm{d}V = r^2\sin\theta\,\mathrm{d}r\,\mathrm{d}\theta\,\mathrm{d}\varphi$. Integrating it,
-and the area elements of the three face families, over cell $(i,j,k)$ gives
+The volume element and the area elements of the three face families are
+
+$$
+\begin{aligned}
+\mathrm{d}V &= r^2\sin\theta\,\mathrm{d}r\,\mathrm{d}\theta\,\mathrm{d}\varphi, \\
+\mathrm{d}A_1 &= r^2\sin\theta\,\mathrm{d}\theta\,\mathrm{d}\varphi \quad\text{on } r = r_\pm, \\
+\mathrm{d}A_2 &= r\sin\theta\,\mathrm{d}r\,\mathrm{d}\varphi \quad\text{on } \theta = \theta_\pm, \\
+\mathrm{d}A_3 &= r\,\mathrm{d}r\,\mathrm{d}\theta \quad\text{on } \varphi = \varphi_\pm.
+\end{aligned}
+$$
+
+The integrals over one cell separate into the one-dimensional factors
+
+$$
+\int_{r_-}^{r_+} r\,\mathrm{d}r = \tfrac12\left(r_+^2 - r_-^2\right), \qquad
+\int_{r_-}^{r_+} r^2\,\mathrm{d}r = \tfrac13\left(r_+^3 - r_-^3\right), \qquad
+\int_{\theta_-}^{\theta_+} \sin\theta\,\mathrm{d}\theta = \cos\theta_- - \cos\theta_+,
+$$
+
+and the $\varphi$ integral gives $\Delta\varphi$. Multiplying the factors of each element gives
 
 $$
 \begin{aligned}
@@ -74,11 +95,43 @@ with the integrals over the cell's own interval and $x_{3,k}$ the midpoint. @eq-
 `radial_centers` and `polar_centers` ({{< code src/coord/spherical_polar.cpp polar_centers >}}, {{< code src/coord/spherical_polar.cpp radial_centers >}}); with a single $x_2$ cell the code sets `x2v`
 to the midpoint instead ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::reset >}}).
 
-The momentum equations in conservation form, written for the physical components $m_a = \rho v_a$, are the divergence
-of the momentum flux $\rho\mathbf v\mathbf v + p\mathsf I$ plus terms from the turning of the basis. For the radial
-component the extra terms are $\left[\rho(v_2^2 + v_3^2) + 2p\right]/r$. Averaging over the cell, and using that the
-measure separates, the factor $1/r$ becomes its volume average and the factor $\cot\theta$ of the $\theta$ equation
-becomes its own:
+The momentum equation is $\partial_t(\rho\mathbf v) + \nabla\cdot\mathsf T = 0$. Its physical components
+$m_a = \rho v_a$ need the components of $\nabla\cdot\mathsf T$ in the turning basis
+$(\hat{\mathbf e}_r, \hat{\mathbf e}_\theta, \hat{\mathbf e}_\varphi)$. For a symmetric $\mathsf T$ the radial and polar
+components are
+
+$$
+\begin{aligned}
+(\nabla\cdot\mathsf T)_r &= \frac{1}{r^2}\partial_r\left(r^2T_{rr}\right)
+  + \frac{1}{r\sin\theta}\partial_\theta\left(\sin\theta\,T_{\theta r}\right)
+  + \frac{1}{r\sin\theta}\partial_\varphi T_{\varphi r}
+  - \frac{T_{\theta\theta} + T_{\varphi\varphi}}{r}, \\
+(\nabla\cdot\mathsf T)_\theta &= \frac{1}{r^2}\partial_r\left(r^2T_{r\theta}\right)
+  + \frac{1}{r\sin\theta}\partial_\theta\left(\sin\theta\,T_{\theta\theta}\right)
+  + \frac{1}{r\sin\theta}\partial_\varphi T_{\varphi\theta}
+  + \frac{T_{r\theta} - \cot\theta\,T_{\varphi\varphi}}{r}.
+\end{aligned}
+$$
+
+In each row the first three terms are the divergence of the flux row in conservation form: the code's face-area
+difference over the volume. The last term is the turning of the basis, and it moves to the right-hand side as a
+source. With $\mathsf T = \rho\mathbf v\mathbf v + p\mathsf I$,
+
+$$
+\begin{aligned}
+T_{\theta\theta} + T_{\varphi\varphi} &= \rho\left(v_2^2 + v_3^2\right) + 2p, \\
+T_{r\theta} &= \rho v_1v_2, \qquad T_{\varphi\varphi} = \rho v_3^2 + p,
+\end{aligned}
+$$
+
+so the radial source is $+\left[\rho(v_2^2 + v_3^2) + 2p\right]/r$ and the polar source is
+$+\cot\theta\,(\rho v_3^2 + p)/r - \rho v_1v_2/r$. The signs match the code, which subtracts each source from the
+divergence (`div[IVX] -= src1`) before the update $\Delta\mathbf U = -\Delta t\,(\nabla\cdot\mathbf F)$
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+
+To average a source over the cell, the code assumes that each factor of the geometry averages on its own.
+The measure separates as $r^2\,\mathrm{d}r$ times $\sin\theta\,\mathrm{d}\theta$, so the factor $1/r$ is replaced by
+its volume average and the factor $\cot\theta$ by its own, while $\rho$, $\mathbf v$ and $p$ keep their cell values:
 
 $$
 \begin{aligned}
@@ -112,8 +165,10 @@ A_{i-1/2})/V_i = 2p\,\langle r^{-1}\rangle_{V_i}$ by @eq-ch03-sphpolar-metric, s
 @eq-ch03-sphpolar-src1 in that limit. Under `SNAP_X1_CENTROID_EXACT` the face difference is replaced by `x1_pressure_source`,
 the $r^2$-weighted moment of a quintic through six faces ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}); @sec-ch05 derives it.
 
-For $m_2$ the source has a curvature part $\langle r^{-1}\rangle\langle\cot\theta\rangle(\rho v_3^2 + p)$, applied
-as written, and a part $-\rho v_1v_2/r$ that the code puts in angular-momentum form. Combined with the $x_1$ flux
+For $m_2$ the polar source derived above has two parts. The curvature part
+$\langle r^{-1}\rangle\langle\cot\theta\rangle(\rho v_3^2 + p)$ is applied as written
+(`div[IVY] -= coord_src1_i * coord_src1_j * m_pp`). The part $-\rho v_1v_2/r = -T_{r\theta}/r$ the code puts in
+angular-momentum form. Combined with the $x_1$ flux
 divergence of $m_2$, the target form is
 
 $$
@@ -124,7 +179,20 @@ $$
 \end{aligned}
 $$ {#eq-ch03-sphpolar-angmom}
 
-with $c_i = \Delta x_{1,i}/[(r_- + r_+)V_i]$. The identity follows from $1 \pm \Delta x_{1,i}/(r_-+r_+) = 2r_\pm/(r_-+r_+)$. The right side
+with $c_i = \Delta x_{1,i}/[(r_- + r_+)V_i]$. Writing $A_\pm = A_{i\pm1/2}$ and $f_\pm = f^{(2)}_{i\pm1/2}$, the identity
+takes three lines:
+
+$$
+\begin{aligned}
+\frac{A_+f_+ - A_-f_-}{V_i} + c_i\left(A_-f_- + A_+f_+\right)
+&= \frac{A_+f_+\left(1 + \frac{\Delta x_{1,i}}{r_- + r_+}\right) - A_-f_-\left(1 - \frac{\Delta x_{1,i}}{r_- + r_+}\right)}{V_i} \\
+&= \frac{2\left(r_+A_+f_+ - r_-A_-f_-\right)}{(r_- + r_+)V_i} \\
+&= \frac{r_+A_+f_+ - r_-A_-f_-}{x^{\mathrm m}_{1,i}V_i}.
+\end{aligned}
+$$
+
+The second line uses $1 \pm \Delta x_{1,i}/(r_- + r_+) = 2r_\pm/(r_- + r_+)$, since $\Delta x_{1,i} = r_+ - r_-$;
+the third uses $r_- + r_+ = 2x^{\mathrm m}_{1,i}$. The right side
 is a difference of face quantities divided by $x^{\mathrm{m}}_{1,i}V_i$, so $\sum_i x^{\mathrm{m}}_{1,i}V_i m_{2,i}$
 changes only through the domain-end faces: the $x_1$ fluxes conserve this discrete angular momentum. The same form is
 used for $m_3$, and for $m_3$ along $x_2$ with $\sin\theta$ in place of $r$. The code coefficient is `coord_src2_i`

@@ -34,15 +34,16 @@ $n_g$-wide slab.
 ### Derivation
 
 There is nothing to derive; it is a consistency rule. For each installed $x_1$ bfunc that is not outflow, and each
-tangential direction with more than one cell, the bfunc is called on the first and last $g = \min(n_g, n/2)$ cells of
-that direction, unless that tangential face is itself physical and not periodic, in which case its own bfunc already
+tangential direction with more than one cell, the bfunc is called on the first and last $w_{\mathrm s} = \min(n_g, \lfloor n_{\mathrm t}/2\rfloor)$ cells of
+that direction, with $n_{\mathrm t}$ the array length along the tangential direction, ghosts included, and $w_{\mathrm s}$ the slab width in
+cells (`int g = ng < n / 2 ? ng : n / 2` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}), unless that tangential face is itself physical and not periodic, in which case its own bfunc already
 wrote the corner. The rule relies on the contract stated with the `BC_FUNCTION` macro: a face function called again on
 a tangential slab must not depend on the slab's size and must give the same ghosts ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}).
 Outflow is excluded because its background must match the whole block and it needs primitives.
 
-The check enumerates the rule (`[C19]`).[^cr-c19] Over 35 $(n_g, n)$ pairs the two end slabs of width
-$g = \min(n_g, n/2)$ never meet, which is what the minimum is for; and over the 140 combinations of
-$(n_g, n, \text{tangential face physical}, \text{periodic})$ the number of writers of a corner cell is never more
+The check enumerates the rule (`[C19]`).[^cr-c19] Over 35 $(n_g, n_{\mathrm t})$ pairs the two end slabs of width
+$w_{\mathrm s}$ never meet, which is what the minimum is for; and over the 140 combinations of
+$(n_g, n_{\mathrm t}, \text{tangential face physical}, \text{periodic})$ the number of writers of a corner cell is never more
 than one, so the exclusion is exactly what keeps the result independent of the order the bfuncs run in.
 
 [^cr-c19]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,

@@ -48,9 +48,26 @@ $$ {#eq-ch03-cartesian-metric}
 The face areas of @eq-ch03-cartesian-metric are `face_area1` to `face_area3` and the volume is `cell_volume`
 ({{< code src/coord/coordinate.cpp CoordinateImpl::cell_volume >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_area1 >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_area2 >}}, {{< code src/coord/coordinate.cpp CoordinateImpl::face_area3 >}}). The centroid of a uniform weight over an interval is its midpoint,
 $x_{1,i} = \tfrac12(x_{1,i-1/2}+x_{1,i+1/2})$, computed in `reset` for `x1v` ({{< code src/coord/cartesian.cpp CartesianImpl::reset >}}).
-Integrating the conservation law $\partial_t q + \nabla\cdot\mathbf F = 0$ over the cell and dividing by $V_i$ gives
-the update of the cell average by the face-area-weighted flux difference over the volume, with no further term,
-because the basis vectors are constant. Every quantity here is exact: the check integrates the three face
+Let $q$ be a conserved density (mass, momentum or energy per unit volume) and $\mathbf F$ its flux, in the units of
+$q$ times $\mathrm{m\,s^{-1}}$, with $F_a$ its component along $x_a$. Integrating the conservation law
+$\partial_t q + \nabla\cdot\mathbf F = 0$ over cell $i$ and applying the divergence theorem gives, line by line,
+
+$$
+\begin{aligned}
+\int_{V_i}\partial_t q\,\mathrm{d}V + \oint_{\partial V_i}\mathbf F\cdot\mathbf n\,\mathrm{d}A &= 0, \\
+V_i\,\frac{\mathrm{d}\overline q_i}{\mathrm{d}t}
+ + \sum_{a=1}^{3}\left(A_{a,+}\overline F_{a,+} - A_{a,-}\overline F_{a,-}\right) &= 0, \\
+\frac{\mathrm{d}\overline q_i}{\mathrm{d}t}
+ &= -\frac{1}{V_i}\sum_{a=1}^{3}\left(A_{a,+}\overline F_{a,+} - A_{a,-}\overline F_{a,-}\right),
+\end{aligned}
+$$
+
+with $\overline q_i$ the cell average, $A_{a,\pm}$ the areas of the two faces normal to $x_a$ from
+@eq-ch03-cartesian-metric and $\overline F_{a,\pm}$ the face-average fluxes through them. The second line holds because
+each face is flat with a constant outward normal $\pm\hat{\mathbf e}_a$. No further term appears: the basis vectors
+are constant, so a vector field's components obey the same law as a scalar's. The last line is
+`CoordinateImpl::divergence` followed by $\Delta\overline q_i = -\Delta t$ times it
+({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}, {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). Every quantity here is exact: the check integrates the three face
 measures and $\mathrm{d}V$ over the cell in sympy and recovers $A_{i\pm1/2} = \Delta x_2\Delta x_3$,
 $A_{j\pm1/2} = \Delta x_1\Delta x_3$, $A_{k\pm1/2} = \Delta x_1\Delta x_2$ and $V_i$, and the uniform-weight
 centroid as the midpoint, each with zero residual (`[C17]`).[^cart-c17] The Tests layer adds the product test on

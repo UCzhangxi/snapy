@@ -15,7 +15,9 @@ whoever owns it, and the cell width is the global $\Delta x_a$ in every block.
 Local symbols (flagged to the editor): $x^{\min}_a, x^{\max}_a$ the declared global bounds of axis $a$ [m or rad];
 $n^{\mathrm{glob}}_a$ the declared global cell count of axis $a$ (count); $\Delta x_a$ the global cell width of axis
 $a$ [m or rad]; $o_a$ the global index of a block's first interior cell on axis $a$ (count); $X_{a,m}$ entry $m$ of
-the global face array of axis $a$.
+the global face array of axis $a$; $n_a$ the block's interior cell count on axis $a$ (count);
+$x^{\mathrm{blk}}_{a,\min}$ the block's lower bound on axis $a$ [m or rad]; $n_b$ the number of blocks on axis $a$
+(count); $b_a$ the block's index along axis $a$, from 0 (count); $n_g$ the ghost cells per side (`nghost`, count).
 
 ### Summary
 
@@ -71,14 +73,14 @@ The offset is `_offset` ({{< code src/coord/coordinate.hpp CoordinateOptionsImpl
 
 Two blocks that share global face $g$ read the same entry $X_{a,g+n_g}$, so their face values are equal bit for bit,
 and the same holds between any two decompositions that slice the same $X_a$. The offset ([-@eq-ch03-globalgrid-offset])
-needs rounding, not truncation: `repartition` places block $l$ at $x^{\min}_a + l\,(x^{\max}_a - x^{\min}_a)/n_b$, so the
+needs rounding, not truncation: `repartition` places block $b_a$ at $x^{\min}_a + b_a\,(x^{\max}_a - x^{\min}_a)/n_b$, so the
 quotient is an integer only up to round-off, and truncating a value just below an integer would shift the block by a
 whole cell. Nothing is truncated in this scheme; the statement is exact.
 
 The check builds $X_a$ for $n^{\mathrm{glob}}_a = 96$ on $[-3, 5]$ with $n_g = 3$, slices it with three pairs of
 decompositions and compares every shared entry as a bit pattern: 634 shared entries, no mismatch. It then walks the
 block boundaries `repartition` produces for $n_b = 2$ to $24$: rounding recovers the exact integer at all 107 of
-them, while truncation is a whole cell low at two, the first being $n_b = 12$, $l = 1$, where it gives 7 instead
+them, while truncation is a whole cell low at two, the first being $n_b = 12$, $b_a = 1$, where it gives 7 instead
 of 8 (`[C16]`).[^gg-c16]
 
 [^gg-c16]: `python3 src/snapy_report/ch03/geometry_check.py`, output `src/snapy_report/ch03/geometry_check.out`,

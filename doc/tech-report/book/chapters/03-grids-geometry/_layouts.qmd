@@ -40,21 +40,23 @@ entries were not run for this chapter at the pin (missing evidence).
 ### Derivation
 
 The rank maps are definitions, not approximations; the derivation states them. Within a block grid of $p_x\times p_y$
-(or $p_x\times p_y\times p_z$) blocks, rank $\rho$ is the $\rho$-th valid point of the Morton curve: the codes
+(or $p_x\times p_y\times p_z$) blocks, rank $\mathrm{rank}$ is the $\mathrm{rank}$-th valid point of the Morton curve: the codes
 $0, 1, 2, \dots$ are decoded with $r_x$ the even bits and $r_y$ the odd bits (three interleaved bit sets in 3-D), codes
-that fall outside the block grid are skipped, and the $\rho$-th surviving code is the location of rank $\rho$,
+that fall outside the block grid are skipped, and the $\mathrm{rank}$-th surviving code is the location of that rank,
 in `build_zorder_coords2` ({{< code src/layout/connectivity.cpp build_zorder_coords2 >}}), with the decoder `morton_decode2`
-({{< code src/layout/connectivity.hpp morton_decode2 >}}). On the cubed sphere the global rank of the block at Morton rank $\rho_{\mathrm{f}}$
+({{< code src/layout/connectivity.hpp morton_decode2 >}}). On the cubed sphere the global rank of the block at Morton rank $\mathrm{rank}_f$
 on face $f$ is face-major, and with $b$ blocks per process a block's rank splits as
 
 $$
 \begin{aligned}
-\rho &= f\,p_x^2 + \rho_{\mathrm{f}}, \\
-\rho &= b\,\pi + \lambda, \qquad 0 \le \lambda < b,
+\mathrm{rank} &= f\,p_x^2 + \mathrm{rank}_f, \\
+\mathrm{rank} &= b\,\mathrm{proc} + \mathrm{loc}, \qquad 0 \le \mathrm{loc} < b,
 \end{aligned}
 $$ {#eq-ch03-layouts-rank}
 
-with $\pi$ the owning process and $\lambda$ the local index (local notation). The first row is
+with $f = 0..5$ the panel, $\mathrm{rank}_f$ the block's rank inside panel $f$, $\mathrm{proc}$ the owning process and
+$\mathrm{loc}$ the local index on that process (upright names, so that none reads as a density, a constant or a
+wavelength). The first row is
 `_global_rank_from_face_local` ({{< code src/layout/cubed_sphere_layout.hpp CubedSphereLayoutImpl >}}), the second `owner_process_rank`,
 `local_block_index` and `global_block_rank` ({{< code src/layout/layout.hpp LayoutOptionsImpl >}}).
 
