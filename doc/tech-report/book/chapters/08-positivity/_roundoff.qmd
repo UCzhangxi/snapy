@@ -9,27 +9,25 @@ status: draft
 ### Summary
 
 A limiter that aims at exactly zero will overshoot, because the target rounds negative. A census that
-counts every such overshoot will report a flood of events that mean nothing. These two constants are
-how the code separates a real repair from arithmetic, and the float32 value is not the float64 one.
+counts every such overshoot will report a flood of events that mean nothing. The donor margin and event threshold serve different purposes, especially in float32.
 
 ::: {.callout-note title="At a glance"}
 - Two constants decide what counts as a real positivity event rather than arithmetic noise.
-- The limiter stops short of zero by 4096 ulp in float64 and 64 ulp in float32.
-- The thresholds are fractions of the cell's *total gas mass*, not of the species being limited.
+- The donor margin is 4096 ulp of the species mass in both precisions.
+- The event thresholds are fractions of the cell's *total gas mass*, not of the species being limited.
 - The clip itself is always applied; the threshold only decides whether it is reported and marked.
 :::
 
 ### Derivation
 
-The margin leaves a fixed fraction of the cell's own species mass behind on purpose. In float64, 4096
-ulp is $9.09\times10^{-13}$ of the gas mass, which `[C4]` computes: negligible against anything
-physical.
+The donor budget is $(1-4096\epsilon)\max(u,0)V$, where $u$ is the species density.
+The retained fraction is $9.09\times10^{-13}$ in float64 and $4.88\times10^{-4}$ in float32.
+Both use 4096 ulp ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}).
 
-The same 4096 ulp in float32 would be $4.88\times10^{-4}$, which the header calls the size of a real
-repair. Using it would make the margin itself larger than the events it is meant to filter out. The
-float32 constant is therefore 64 ulp, giving $7.63\times10^{-6}$, and `[C4]` checks all three numbers
-together so the reason for the second constant is visible rather than asserted
-[check `src/snapy_report/ch08/positivity_check.py`, output `src/snapy_report/ch08/positivity_check.out`].
+Event reporting instead uses `positivity_roundoff`: 4096 ulp in float64 and 64 ulp
+($7.63\times10^{-6}$) in float32. The smaller float32 threshold avoids dismissing a real
+repair as noise ({{< code src/hydro/flux_positivity.cpp positivity_roundoff >}}).
+`[C4]` checks these arithmetic fractions; it does not execute the C++ census.
 
 The threshold is measured against the cell's total gas mass over all species, not against the species
 being limited. That is what makes it robust for a trace species: an almost-empty cell drained by a
@@ -64,14 +62,18 @@ round-off events.
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| this chapter's check | `[C4]` the two margins as fractions of the gas mass, and why float32 needs its own | exact arithmetic | the precisions, not a measurement: `positivity_check.py` `check_C4` works from `numpy.finfo(float64).eps` and `finfo(float32).eps` and asserts the margins below $10^{-12}$ and within $10^{-6}$ to $10^{-4}$ |
+| this chapter's check | `[C4]` the donor margins and distinct event thresholds | exact arithmetic | the precisions, not a measurement: `positivity_check.py` `check_C4` works from `numpy.finfo(float64).eps` and `finfo(float32).eps` and asserts the event thresholds below $10^{-12}$ and within $10^{-6}$ to $10^{-4}$ |
 
 : Tests of the round-off thresholds. {#tbl-ch08-roundoff-tests}
 
+`test_cycle_diagnostics.<b>` ({{< code tests/CMakeLists.txt >}}) contains
+`positivity_severe_needs_more_than_roundoff_withheld` and
+`positivity_severe_float32_needs_more_than_roundoff_withheld`
+({{< code tests/test_cycle_diagnostics.cpp >}}), which exercise the real severity census.
+
 ### Limits
 
-1. **The constants are not derived.** They are chosen so that the margin sits below a real repair and
-   above arithmetic noise. The header gives the reasoning for the float32 value; neither constant comes
+1. **The constants are not derived.** The event thresholds distinguish repairs from arithmetic noise. The header gives the reasoning for the float32 value; neither constant comes
    from an error analysis.
 2. **A fixed fraction is left behind.** The limiter deliberately does not drain a cell to exactly zero.
-   That residue is bounded by the margin and is not accounted anywhere.
+   The budget reserves that fraction of the donor species mass; inflow may leave more.
