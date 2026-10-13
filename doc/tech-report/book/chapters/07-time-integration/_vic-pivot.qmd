@@ -13,61 +13,68 @@ status: draft
 (@sec-ch07-vic-reject).
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Refuses to factor a VIC block when a pivot is, relative to the original size of its row, no bigger than
-$\epsilon_{\mathrm{piv}} = 8N\epsilon_{\mathrm m}$, or when anything in the factorisation is not finite;
-@eq-ch07-vic-pivot.
+**Purpose.** Refuses a VIC block whose pivot is within $\epsilon_{\mathrm{piv}} = 8N\epsilon_{\mathrm m}$ of its row, or any non-finite value; @eq-ch07-vic-pivot.
 
-**Data.** In: one $N\times N$ block of the column system at one layer $i$ of one column, in the working precision
-(float32 or float64); entry $(k,l)$ of a block is in [unit of solved variable $k$]/([unit of variable $l$] s), so s$^{-1}$ on its diagonal (@eq-ch07-vic-blocks), the solved variables being $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$]. Out: its LU factors, in the same
-layout: $\mathsf L$ with a unit diagonal, entry $(k,l)$ in [unit of $k$]/[unit of $l$] for the rows after pivoting,
-and the upper factor in the block's units; or a refusal. The pivot ratio divides the pivot by the largest original entry of
-its row: a row factor cancels (`[C3]`), but that largest entry is taken over columns of different units, so the
-decision depends on the units of the solved variables (SI in the code); mass basis: none, no mass enters the
-decision. Check cases: the tolerance table for $N = 3$ and $5$ in both precisions, ratios $0.99$ and $1.01$ of the
-tolerance, 400 random matrices scaled by powers of two, a NaN entry and a zero row.
+**Data.** Reads one $N\times N$ block in float32 or float64; writes its LU factors in place, or a refusal.
 
 **Placement.** Inside the sweep, for every block it factors.
 
-**Activation.** None.
+**Activation.** None; always on with the VIC.
 
-**Guarantee / limits.** A column at rest is not refused.
+**Guarantee / limits.** A column at rest is not refused; the decision depends on the units of the solved variables.
 
-**Evidence.** Tests: regular matrices factor and near-singular rows are refused,
-{{< code tests/test_lu_failure.cpp lu_failure.float_three >}} and its siblings (exact, logical); a column at rest is
-not refused, {{< code tests/test_lu_failure.cpp lu_failure.float_rest_column_finite_vicclamp >}} (exact); not run at the pin. Check: `python3 src/snapy_report/ch07/vic_pivot_check.py`, output `vic_pivot_check.out` lines `[C1]`–`[C4]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
+**Evidence.** @tbl-ch07-vic-pivot-tests; `test_lu_failure.release`, `vic_pivot_check.py` `[C1]`–`[C5]`.
 :::
+
+Local symbols: $\iota$ [-] is a pivot position, $0..N-1$ ($i$, $j$, $k$ are the cell indices); $a^{\mathrm{row}}_\iota$ is
+the largest magnitude in the original row that ends up in position $\iota$, and $a^{\mathrm{piv}}_\iota$ the pivot found
+there; $\mathsf L$, $\mathsf U$ are the unit lower and the upper factor; $\zeta_n=n(\epsilon_{\mathrm m}/2)/(1-n\epsilon_{\mathrm m}/2)$
+bounds the relative error of $n$ roundings. A block entry is in [unit of its row's variable]/([unit of its column's
+variable] s), the solved variables being $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$);
+no mass enters the decision.
 
 ### Derivation
 
-Let $s_j$ be the largest magnitude in the original row that ends up in position $j$, and $p_j$ the pivot found
-there. The factorisation is refused when
+The factorisation is refused when
 
 $$
-\frac{|p_j|}{s_j} \le \epsilon_{\mathrm{piv}} , \quad \epsilon_{\mathrm{piv}} = 8N\epsilon_{\mathrm m} ,
+\frac{|a^{\mathrm{piv}}_\iota|}{a^{\mathrm{row}}_\iota} \le \epsilon_{\mathrm{piv}} , \quad \epsilon_{\mathrm{piv}} = 8N\epsilon_{\mathrm m} ,
 $$ {#eq-ch07-vic-pivot}
 
 with $\epsilon_{\mathrm m}$ the machine epsilon of the scalar type (`epsilon_T` in the note), the last pivot included; in the
-code the threshold is `tolerance` in `ludcmp` ({{< code src/math/ludcmp.h ludcmp >}}). A dot product of length about
-$2N$ accumulates a relative rounding error of about $N\epsilon_{\mathrm m}$. The factor 8 is a guard band around that
-scale, as the derivation note argues with `epsilon_T`.[^ch07-pivot-note]
-The values are $2.861\times10^{-6}$ and $4.768\times10^{-6}$ in float, and $5.329\times10^{-15}$ and
-$8.882\times10^{-15}$ in double, for $N=3$ and 5 [check `src/snapy_report/ch07/vic_pivot_check.py`, output
-`vic_pivot_check.out`, `[C1]`]. A ratio $0.99\,\epsilon_{\mathrm{piv}}$ is refused and $1.01\,\epsilon_{\mathrm{piv}}$ accepted, with $\epsilon_{\mathrm{piv}} = 24\epsilon_{\mathrm m}$ at $N=3$, in both types
-(`[C2]`).
+code the threshold is `tolerance` in `ludcmp` ({{< code src/math/ludcmp.h ludcmp >}}). Why that scale:
+
+1. Crout forms each entry of the factors as the block entry minus an inner product of a row of $\mathsf L$ and a column
+   of $\mathsf U$ over the positions before it. The loops run `k < i` above the diagonal and `k < j` on and below it, so
+   the longest inner product has $N-1$ terms ({{< code src/math/ludcmp.h ludcmp >}}; `[C5]`).
+2. With $\epsilon_{\mathrm m}/2$ per operation, an inner product of at most $N-1$ products and its subtraction give
+   computed factors with $\mathsf L\mathsf U=\mathsf A+\Delta\mathsf A$, $|\Delta\mathsf A|\le\zeta_N\,|\mathsf L|\,|\mathsf U|$ entrywise.
+3. A pivot whose ratio to its row scale is within a small multiple of $\zeta_N\approx N\epsilon_{\mathrm m}/2$ cannot be told
+   from a pivot that rounding made non-zero. The tolerance is $8N\epsilon_{\mathrm m}=16(1-N\epsilon_{\mathrm m}/2)\,\zeta_N$
+   (`[C5]`): the factor 16 over the backward error is a guard band, as the derivation note argues with
+   `epsilon_T`.[^ch07-pivot-note] The bound is in $|\mathsf L||\mathsf U|$, not in the row scale, so the factor stays a
+   choice (Limits 2).
+
+The values are $2.861\times10^{-6}$ and $4.768\times10^{-6}$ in float, and $5.329\times10^{-15}$ and $8.882\times10^{-15}$ in
+double, for $N=3$ and 5 (`[C1]`). A ratio $0.99\,\epsilon_{\mathrm{piv}}$ is refused and $1.01\,\epsilon_{\mathrm{piv}}$ accepted,
+with $\epsilon_{\mathrm{piv}} = 24\epsilon_{\mathrm m}$ at $N=3$, in both types (`[C2]`).
 
 [^ch07-pivot-note]: `docs/derivations/290-lu-pivot-tolerance.md@6fbb39750f62b83df096058a4746e77d0a634bc5`, opening section.
 
-Entry $(k,l)$ of a block is in [unit of $k$]/([unit of $l$] s). The pivot $p_j$ and the scale $s_j$ belong to the same
-row $k$, so multiplying that row by a factor $c_k$ (a change of the unit of its equation) multiplies both and leaves
-$|p_j|/s_j$ unchanged. The columns are another matter: $s_j = \max_l\lvert a_{kl}\rvert$ compares entries whose units
-change with $l$, and multiplying column $l$ by a factor $d_l$ (a change of the unit of solved variable $l$) moves
-$s_j$ and $p_j$ by different factors unless every $d_l$ is the same. The ratio therefore has no units, but its value,
-and the refusal, depend on the units of $(\rho, \rho v_1, [\rho v_2, \rho v_3,] E)$; the code decides in SI units
-({{< code src/math/ludcmp.h ludcmp >}}). The check covers the row half of this statement. With power-of-two
-row factors, which are exact in floating point, no decision of 400 random matrices changes. With decimal factors
-one borderline case flips by rounding (`[C3]`). How many of the 400 are refused is not part of the claim: one
-matrix lies within $10^{-3}$ of $\epsilon_{\mathrm{piv}}$ relative, so a last-bit difference in forming it moves the count by one. A pivot ratio of $1.25\times10^{-6}$ passes in double and is
-refused in float32 (`[C4]`).
+The units of the decision follow from the same ratio:
+
+4. *Rows drop out.* $a^{\mathrm{piv}}_\iota$ and $a^{\mathrm{row}}_\iota$ belong to the same row, so multiplying that row by a
+   factor (a change of the unit of its equation) multiplies both and leaves the ratio unchanged. With power-of-two
+   row factors, which are exact in floating point, no decision of 400 random matrices changes; with decimal
+   factors one borderline case flips by rounding (`[C3]`).
+5. *Columns do not.* $a^{\mathrm{row}}_\iota=\max\lvert\text{entries of the row}\rvert$ compares entries whose units change from
+   column to column, and multiplying one column by a factor (a change of the unit of one solved variable) moves
+   $a^{\mathrm{row}}_\iota$ and $a^{\mathrm{piv}}_\iota$ by different factors unless every column gets the same one. The ratio
+   therefore has no units, but its value, and the refusal, depend on the units of
+   $(\rho, \rho v_1, [\rho v_2, \rho v_3,] E)$; the code decides in SI units ({{< code src/math/ludcmp.h ludcmp >}}). How
+   many of the 400 are refused is not part of the claim: one matrix lies within $10^{-3}$ of $\epsilon_{\mathrm{piv}}$
+   relative, so a last-bit difference in forming it moves the count by one.
+6. *Precision.* A pivot ratio of $1.25\times10^{-6}$ passes in double and is refused in float32 (`[C4]`).
 
 ### Numerical method
 
@@ -75,7 +82,7 @@ See @fig-ch07-vic-pivot for the threshold.
 
 ```{python}
 #| label: fig-ch07-vic-pivot
-#| fig-cap: "ludcmp on the $3\\times3$ test matrix of the check as its last pivot ratio $|p_j|/s_j$ is swept: dots are accepted, crosses (vermillion) refused. The dashed lines are $\\epsilon_{\\mathrm{piv}}=24\\epsilon_{\\mathrm m}$ ($N=3$) for float64 (blue) and float32 (orange); the refusals end exactly there."
+#| fig-cap: "ludcmp on the $3\\times3$ test matrix of the check as its last pivot ratio $|a^{\\mathrm{piv}}_\\iota|/a^{\\mathrm{row}}_\\iota$ is swept: dots are accepted, crosses (vermillion) refused. The dashed lines are $\\epsilon_{\\mathrm{piv}}=24\\epsilon_{\\mathrm m}$ ($N=3$) for float64 (blue) and float32 (orange); the refusals end exactly there."
 #| fig-alt: "Two horizontal rows of markers, float64 and float32, against a log axis of pivot ratio; crosses to the left of each dashed threshold line and dots to its right."
 #| echo: false
 from snapy_report.ch07.fig_vic_pivot import make_fig
@@ -99,23 +106,42 @@ nonfinite factor ({{< code src/math/ludcmp.h ludcmp >}}).
 
 : Code map of the LU pivot tolerance. {#tbl-ch07-vic-pivot-code}
 
+**How to use it.** There is no key: the tolerance is set in the header, and the only lever is the working
+precision, float64 or float32 (Limits 1). The tolerance and the test of @eq-ch07-vic-pivot are these lines
+({{< code src/math/ludcmp.h ludcmp >}}):
+
+```cpp
+  const T tolerance = T(8 * N) * std::numeric_limits<T>::epsilon();
+  ...
+    if (fabs(a(j, j)) / scale[j] <= tolerance) return 0;
+```
+
+`tolerance` is $\epsilon_{\mathrm{piv}}$, `a(j, j)` is $a^{\mathrm{piv}}_\iota$ at position $\iota$ = `j`, and `scale[j]` is
+$a^{\mathrm{row}}_\iota$, carried through the row swaps. A return of 0 is the refusal that @sec-ch07-vic-sweep turns into a
+failed column.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `float_three`, `float_five`, `double_three`, `double_five` | regular matrices return $\pm1$; near-singular rows at several scales, a final zero pivot, nonfinite entries and an overflowing elimination return 0 | exact (logical) | contract |
 | `tests/test_lu_failure.cpp`, `float_rest_column_finite_vicclamp`, `double_rest_column_finite_vicclamp` | a column at rest is not refused and gives a zero correction | exact | contract |
-| this section's check, `vic_pivot_check.py` | `[C1]`–`[C4]` | per claim | stated in the check |
+| this section's check, `vic_pivot_check.py` | `[C1]`–`[C5]` | exact; 0.99 and 1.01 of $\epsilon_{\mathrm{piv}}$ | stated in the check |
 
-: Tests of the LU pivot tolerance. {#tbl-ch07-vic-pivot-tests}
+: Tests of the LU pivot tolerance (@tbl-ch07-ctest-run for the run at the pin). {#tbl-ch07-vic-pivot-tests}
 
-::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `vic_pivot_check.py`, which ports, from the code at the pin, `ludcmp` for float32 and float64; deck: the check itself.[^ch07-vic-pivot-run] ctest cases: **pending:
-pinned ctest run**.
-**Coverage.** CPU and CUDA share the header.
-:::
+`test_lu_failure.release` passes at the pin (@tbl-ch07-ctest-run), with
+{{< code tests/test_lu_failure.cpp lu_failure.float_three >}} and
+{{< code tests/test_lu_failure.cpp lu_failure.float_rest_column_finite_vicclamp >}} among its cases.
+`vic_pivot_check.py` ports `ludcmp` for float32 and float64.[^ch07-vic-pivot-run] `[C1]` reproduces the four
+tolerances; `[C2]` refuses at $0.99\,\epsilon_{\mathrm{piv}}$ and accepts at $1.01\,\epsilon_{\mathrm{piv}}$; `[C3]` changes no decision
+of 400 matrices under power-of-two row factors (130 refused on this run); `[C4]` gives double $-1$, float32 0, NaN 0
+and zero row 0; `[C5]` counts the Crout inner products and gives the ratio of the tolerance to $\zeta_N$. CPU and
+CUDA share the header; only the CPU path ran.
 
-[^ch07-vic-pivot-run]: Run: `python3 src/snapy_report/ch07/vic_pivot_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/vic_pivot_check.out`.
+[^ch07-vic-pivot-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch07/vic_pivot_check.py`,
+    CPU, float32 and float64, 1 process; Python 3.12.10, numpy 2.5.3; output identical to the committed
+    `vic_pivot_check.out`].
 
 ### Limits
 
@@ -125,10 +151,11 @@ conditioned, and acceptance does not mean an accurate step.
 :::
 
 1. **Float32.** The guard is about $5\times10^8$ times stricter in `float32`. The derivation note records an independent
-   probe of random 3 x 3 matrices: 166 of 5000 refused at condition number $10^6$ and 4915 of 5000 at $10^8$ in
+   probe of random $3\times3$ matrices: 166 of 5000 refused at condition number $10^6$ and 4915 of 5000 at $10^8$ in
    `float32`, none from $10^4$ to $10^{14}$ in double.[^ch07-pivot-probe] A smaller step need not cure such a column;
    use float64.
+2. **Fixed factor.** The factor 8 is a choice, not a derived bound: step 3 derives the scale $\zeta_N$, not the
+   guard band.
 
 [^ch07-pivot-probe]: `docs/derivations/290-lu-pivot-tolerance.md@6fbb39750f62b83df096058a4746e77d0a634bc5`, "Float32 VIC conditioning limitation",
     which credits the probe to an independent review.
-2. **Fixed factor.** The factor 8 is a choice, not a derived bound.

@@ -14,27 +14,22 @@ the stage. It is latched for the rest of the step and becomes cause 32 of the st
 in @sec-ch07-redo, which restores the step input and halves the step.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** When any column of a block cannot be solved, or any value around the solve is not finite, undoes the
-correction for the whole block, skips the solve in the remaining stages, and asks for the step to be redone; N/A as
-an equation, the guards are listed in the Derivation.
+**Purpose.** Undoes a block's correction when any column fails or any value is not finite, and asks for a redo.
 
-**Data.** In: for every cell of every column of the block, the explicit increment $\Delta\mathbf U^{(0)}$ (`du` on
-entry; $\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$], total-mass basis), the primitives $\mathbf W$: $\rho$ [kg m$^{-3}$], $v_a$ [m s$^{-1}$], $p$ [Pa], $y_n$ [-] (total-mass basis), at the cell centres, and the
-solved increment $\boldsymbol\delta_i$ in the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$]; the stage index [count]. Out: the restored `du` (units of
-$\Delta\mathbf U^{(0)}$) and $\mathbf W$ (units above) of every cell, a zero correction for the whole block (units of
-$\Delta\mathbf U^{(0)}$), and the solve latch [flag] read by the redo check. Check cases: each of the four guards, a
-failure at stage 0, one failed column of 4, a screen total that overflows.
+**Data.** Reads `du`, $\mathbf W$, $\gamma$ and the solved $\boldsymbol\delta$; writes the restored `du`, $\mathbf W$, a zero correction and the latch.
 
 **Placement.** Every stage with a VIC, around the solve.
 
 **Activation.** None; always on with the VIC.
 
-**Guarantee / limits.** The whole block is rejected, never a single column.
+**Guarantee / limits.** The whole block is rejected, never a single column; the decision is exact.
 
-**Evidence.** Tests: a refused column restores the step and the retry solves again,
-{{< code tests/test_lu_failure.cpp lu_failure.partial_retry_restores_step >}}, and the full, stop and assembly
-variants (`torch::equal`, bitwise); not run at the pin. Check: `python3 src/snapy_report/ch07/vic_reject_check.py`, output `vic_reject_check.out` lines `[C1]`–`[C5]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.
+**Evidence.** @tbl-ch07-vic-reject-tests; `test_lu_failure.release`, `vic_reject_check.py` `[C1]`–`[C5]`.
 :::
+
+No local symbols: `du` is the explicit increment $\Delta\mathbf U^{(0)}$ on entry ($\rho_{\mathrm d}$, $\rho_n$, $m_a$, $E$,
+total-mass basis), `w` the primitives $\mathbf W$ ($\rho$, $v_a$, $p$, $y_n$) and $\boldsymbol\delta_i$ the solved increment
+of @sec-ch07-vic-sweep. The latch is a flag; the stage index is a count.
 
 ### Derivation
 
@@ -48,18 +43,23 @@ in this order:
 4. the results: the corrected `du` and the redistribution buffer finite;
 5. the correction: `du` after minus `du` before finite.
 
-Guards 2 to 5 are screened: each checked tensor contributes one interior sum, and two totals are read back per
-stage, one for the inputs and the solve before the redistribution and one for the results and the correction at
-the end. Only a non-finite total runs the per-column guards, in the order above, so the rejected columns and the
-messages are those of the guards themselves; a finite stage costs two device-to-host reads.
+Why the guards keep the step clean:
 
-A refusal at guards 2 to 5 restores `du` and `w` from copies taken on entry and returns a zero correction. Both
-copies are bit for bit the inputs [check `src/snapy_report/ch07/vic_reject_check.py`, output
-`vic_reject_check.out`, `[C1]`]. It also sets the latch and logs the rank, column, step, stage and retry. After a
-failure at stage 0 the other two stages of rk3 do not solve (`[C2]`). The latch raises redo cause 32. The reset
-at stage 0 of the retry lets the retry solve again (`[C3]`). One failed column out of four gives a zero
-correction for every column of the block, so no column is partly updated (`[C4]`). A screen total that overflows
-while every value is finite runs the per-column guards, which find nothing, and the stage is not refused (`[C5]`).
+6. *One screen per side of the redistribution.* Each checked tensor contributes one interior sum, and two totals
+   are read back per stage, one for the inputs and the solve before the redistribution and one for the results and
+   the correction at the end. A sum is non-finite whenever one of its terms is, so a finite total proves every
+   value finite. Only a non-finite total runs the per-column guards, in the order above, so the rejected columns
+   and the messages are those of the guards themselves; a finite stage costs two device-to-host reads.
+7. *Exact restore.* A refusal at guards 2 to 5 copies `du` and the two rows of `w` the solve changes back from
+   copies taken on entry and returns a zero correction; copies are exact, so the restore is bit for bit (`[C1]`).
+   It also sets the latch and logs the rank, column, step, stage and retry.
+8. *The rest of the step.* After a failure at stage 0 the other two stages of rk3 do not solve (`[C2]`). The latch
+   raises redo cause 32, and the reset at stage 0 of the retry lets the retry solve again (`[C3]`).
+9. *Block-wide.* One failed column out of four gives a zero correction for every column of the block, so no column
+   is partly updated (`[C4]`).
+10. *Round-off.* The only rounded number is the screen total. A sum of finite values can overflow only when the
+    sum of their magnitudes exceeds the largest finite number of the type; then the per-column guards run, find
+    nothing, and the stage is not refused (`[C5]`). No false refusal comes from rounding.
 
 ### Numerical method
 
@@ -81,7 +81,7 @@ projection ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_
 lambda `reject` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The guards are `bad_inputs`
 ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}), `bad_columns` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}),
 `bad_results` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}) and `bad_correction`
-({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). They run behind the two screens described above.
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). They run behind the two screens of step 6.
 
 The step-acceptance flags read the latch as the VIC flag of `local_redo_flag_tensor` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}); the
 fixer's sums carry it too, as `solve_failure` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}). Stage 0 of
@@ -104,23 +104,47 @@ cause that still restores the step after `max_redo` (@sec-ch07-redo).
 
 : Code map of VIC rejection and rollback. {#tbl-ch07-vic-reject-code}
 
+**How to use it.** There is no key: the guards are always on with a VIC. What a user sees is the log line of the
+refusal and then the redo of @sec-ch07-redo with cause `vic-solve`. The refusal is these lines
+({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}):
+
+```cpp
+  auto reject = [&](torch::Tensor const& bad_columns) {
+    _solve_failed = true;
+    ...
+                << " VIC singular/near-singular or nonfinite value: column=("
+    ...
+    du.copy_(_du0);
+    w.narrow(0, IVY, 2).copy_(w0);
+    _corr.zero_();
+```
+
+`_solve_failed = true` is the latch of step 8, the two `copy_` calls are the exact restore of step 7, and
+`_corr.zero_()` is the zero correction. The full log line reads "[ImplicitHydro] rank=… VIC singular/near-singular or
+nonfinite value: column=(…) step=… stage=… retry=…; check_redo will restore step input." A column refused again at
+every halving ends the run after `max_redo` retries, with the step input restored (@sec-ch07-redo).
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `partial_retry_restores_step`, `full_retry_restores_step`, `*_stop_restores_step`, `*_assembly_*` | a refused correction (a NaN $\gamma$, or $\Delta t=0$ in the `*_assembly_*` cases) leaves `du` and the primitives unchanged, and `check_redo` returns 1 (retry) or $-1$ (stop) with `hydro_u` restored to the step input | `torch::equal` (bitwise) | contract |
-| same file, `mesh_terminal_failure_restores_all_blocks` | a two-block Mesh restores both blocks at a terminal failure | `torch::equal` | contract |
+| `tests/test_lu_failure.cpp` (`test_lu_failure.release`), `partial_retry_restores_step`, `full_retry_restores_step`, `*_stop_restores_step`, `*_assembly_*` | a refused correction (a NaN $\gamma$, or $\Delta t=0$ in the `*_assembly_*` cases) leaves `du` and the primitives unchanged, and `check_redo` returns 1 (retry) or $-1$ (stop) with `hydro_u` restored to the step input | `torch::equal` (bitwise) | exact copies (step 7) |
+| same file, `mesh_terminal_failure_restores_all_blocks` | a two-block Mesh restores both blocks at a terminal failure | `torch::equal` | exact copies |
 | same file, `finite_near_singular_forward_masked` (and CUDA twins of these cases) | a finite float32 column with a long step ($10^4$) is refused by the pivot guard and sets the latch, leaving `du` and the primitives unchanged | logical; `torch::equal` | contract |
-| this section's check, `vic_reject_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
+| this section's check, `vic_reject_check.py` | `[C1]`–`[C5]` | bitwise; logical | exact copies; control flow |
 
-: Tests of VIC rejection and rollback. {#tbl-ch07-vic-reject-tests}
+: Tests of VIC rejection and rollback (@tbl-ch07-ctest-run for the run at the pin). {#tbl-ch07-vic-reject-tests}
 
-::: {.callout-important title="Check"}
-**Evidence.** Check numbers come from `vic_reject_check.py`, which ports, from the code at the pin, the rejection control flow as a state machine around the ported sweep; deck: the check itself.[^ch07-vic-reject-run] ctest cases: **pending: pinned ctest run**.
-**Coverage.** CPU and CUDA (the CUDA twins of the retry cases).
-:::
+`test_lu_failure.release` passes at the pin (@tbl-ch07-ctest-run), with
+{{< code tests/test_lu_failure.cpp lu_failure.partial_retry_restores_step >}} as its first retry case; the CUDA twins are
+not registered in that build. `vic_reject_check.py` ports the rejection control flow as a state machine around the
+ported sweep.[^ch07-vic-reject-run] `[C1]` restores `du` and `w` bit for bit for each of the four guards; `[C2]` runs
+the solve in 1 of 3 stages after a stage-0 failure; `[C3]` raises the mask 32 and lets the retry solve, with a
+largest correction of 2.97; `[C4]` zeroes every column's correction when one of four fails; `[C5]` does not refuse a
+stage whose screen total is infinite while every value is finite.
 
-[^ch07-vic-reject-run]: Run: `python3 src/snapy_report/ch07/vic_reject_check.py`, numpy 2.4.6, double; output `src/snapy_report/ch07/vic_reject_check.out`.
+[^ch07-vic-reject-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch07/vic_reject_check.py`,
+    CPU, double, 1 process; Python 3.12.10, numpy 2.5.3; output identical to the committed `vic_reject_check.out`].
 
 ### Limits
 

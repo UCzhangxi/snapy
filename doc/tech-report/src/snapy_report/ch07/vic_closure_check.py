@@ -2,14 +2,16 @@
 
 What is checked: the closure a += b Bnd at the bottom and a += c Bnd at the top, Bnd = diag(1, -1, 1, 1, 1)
 (src/implicit/vic_assemble_full_impl.h:44-45, 122-126; vic_assemble_partial_impl.h:50, 142-144 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0), ported in vic_port.py with grav = 0. Claims C1-C4.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5), ported in vic_port.py with grav = 0. Claims C1-C5; C5 is exact
+(sympy).
 
-Run: python3 vic_closure_check.py   (numpy only; exits with the number of failed claims)
+Run: python3 vic_closure_check.py   (numpy and sympy; exits with the number of failed claims)
 """
 import os
 import sys
 
 import numpy as np
+import sympy as sp
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vic_port as vp  # noqa: E402
@@ -111,9 +113,49 @@ def check_C4_mirror_wall_face_is_at_rest():
                   "|u_Roe| / |u_edge| at the two walls: %.1e" % worst)
 
 
+def euler(nv, gamma):
+    """The Euler x1 flux in the solved variables (rho, m1, [m2, m3,] E), N = nv."""
+    rho, E = sp.symbols("rho E", positive=True)
+    m = sp.symbols("m1:%d" % (nv - 1))
+    U = sp.Matrix([rho, *m, E])
+    p = (gamma - 1) * (E - sum(mi**2 for mi in m) / (2 * rho))
+    F = sp.Matrix([m[0], *[m[0] * mi / rho + (p if k == 0 else 0) for k, mi in enumerate(m)], (E + p) * m[0] / rho])
+    return U, F, m
+
+
+def wall_parity(nv):
+    return sp.diag(*([1, -1] + [1] * (nv - 2)))
+
+
+def check_C5_wall_parity_steps():
+    """Steps 1-3 of _vic-closure.qmd for N = 3 and 5: F(P U) = -P F(U); J(P U) P = -P J(U); at v1 = 0
+    A^3 = c_s^2 A, so |A| = A^2 / c_s; the rows with P = +1 of the linearised wall flux vanish."""
+    g = sp.Symbol("gamma", positive=True)
+    ok, rows = True, []
+    for nv in (3, 5):
+        U, F, m = euler(nv, g)
+        P = wall_parity(nv)
+        J = F.jacobian(U)
+        odd = (F.subs(m[0], -m[0]) + P * F).applyfunc(sp.simplify) == sp.zeros(nv, 1)
+        jac = (J.subs(m[0], -m[0]) * P + P * J).applyfunc(sp.simplify) == sp.zeros(nv)
+        A0 = J.subs(m[0], 0)
+        cs2 = g * (g - 1) * (U[-1] - sum(mi**2 for mi in m[1:]) / (2 * U[0])) / U[0]
+        cubic = (A0 * A0 * A0 - cs2 * A0).applyfunc(sp.simplify) == sp.zeros(nv)
+        absA = A0 * A0 / sp.sqrt(cs2)
+        Id = sp.eye(nv)
+        wall = ((Id - P) * A0 / 2 - absA * (Id - P) / 2).applyfunc(sp.simplify)
+        even = all(wall[k, l] == 0 for k in range(nv) if P[k, k] == 1 for l in range(nv))
+        ok = ok and odd and jac and cubic and even
+        rows.append("N=%d: odd flux %s, Jacobian parity %s, A^3 = c_s^2 A %s, even rows of the wall flux zero %s"
+                    % (nv, odd, jac, cubic, even))
+    return report("C5", ok, "the mirror parity of the Euler flux and its Jacobian, and the minimal polynomial at zero "
+                  "normal velocity, cancel every wall-flux row with P_w = +1", "; ".join(rows))
+
+
 def main():
     checks = [check_C1_closure_is_a_mirror_ghost, check_C2_sealed_column_conserves, check_C3_open_ends_leak,
-              check_C4_mirror_wall_face_is_at_rest]
+              check_C4_mirror_wall_face_is_at_rest,
+              check_C5_wall_parity_steps]
     sys.exit(sum(not c() for c in checks))
 
 

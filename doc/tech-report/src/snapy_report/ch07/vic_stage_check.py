@@ -1,15 +1,16 @@
 """Executable check of the stage-weighted implicit step (chapter 7, _vic-stage.qmd).
 
-What is checked: dt_corr = wght2 * dt for the three-stage integrator only (src/hydro/hydro_forward.cpp:929-944 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0), with the stage update u = w0 u0 + w1 u + w2 du of
+What is checked: dt_corr = wght2 * dt for the three-stage integrator only (src/hydro/hydro_forward.cpp:1065-1080 at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5), with the stage update u = w0 u0 + w1 u + w2 du of
 pyharp src/integrator/integrator.cpp:101-122 and the VIC solve (I/dt_corr + J) delta = du/dt_corr. A scalar model: the explicit
-tendency is L(u) = -lam u and the operator Jacobian is J = lam, so z = lam dt. Claims C1-C4.
+tendency is L(u) = -lam u and the operator Jacobian is J = lam, so z = lam dt. Claims C1-C5; C5 is exact (sympy).
 
-Run: python3 vic_stage_check.py   (numpy only; exits with the number of failed claims)
+Run: python3 vic_stage_check.py   (numpy and sympy; exits with the number of failed claims)
 """
 import sys
 
 import numpy as np
+import sympy as sp
 
 
 def report(tag, ok, label, numbers):
@@ -88,9 +89,31 @@ def check_C4_stable_and_first_order_on_the_decay():
                   % (worst, ", ".join("%.2e" % e for e in errs), order))
 
 
+def check_C5_stiff_limit_steps():
+    """Derivation steps 1-3 of _vic-stage.qmd in exact arithmetic: w2 delta as Z -> oo, then the rk3 stage product."""
+    Z, r, Y = sp.symbols("Z r Y", positive=True)       # r = dt_c / dt
+    delta = -Z * Y / (1 + r * Z)                        # step 1: (1 + dt_c G)^-1 (-Z Y)
+    R = sp.Rational
+    w3 = [(0, 1, 1), (R(3, 4), R(1, 4), R(1, 4)), (R(1, 3), R(2, 3), R(2, 3))]
+    got = {}
+    for name, ratio in (("weighted", lambda w2: w2), ("full dt", lambda w2: 1)):
+        y, ys = sp.Integer(1), []
+        for w0, w1, w2 in w3:
+            lim = sp.limit(w2 * delta.subs(r, ratio(w2)), Z, sp.oo)   # -Y weighted, -w2 Y with the full dt
+            y = sp.nsimplify(w0 + w1 * y + lim.subs(Y, y))
+            ys.append(y)
+        got[name] = ys
+    stated = {"weighted": [0, R(3, 4), R(1, 12)], "full dt": [0, R(3, 4), R(1, 3)]}
+    ok = got == stated
+    return report("C5", ok, "as Z -> oo the stage takes w0 Y^n + (w1 - 1) Y weighted and w0 Y^n + (w1 - w2) Y with the "
+                  "full dt; the rk3 stages then give 1/12 and 1/3 exactly",
+                  "weighted %s; full dt %s" % (", ".join(map(str, got["weighted"])), ", ".join(map(str, got["full dt"]))))
+
+
 def main():
     checks = [check_C1_weight_inside_equals_weight_outside, check_C2_only_three_stages_are_weighted,
-              check_C3_stiff_limit, check_C4_stable_and_first_order_on_the_decay]
+              check_C3_stiff_limit, check_C4_stable_and_first_order_on_the_decay,
+              check_C5_stiff_limit_steps]
     sys.exit(sum(not c() for c in checks))
 
 

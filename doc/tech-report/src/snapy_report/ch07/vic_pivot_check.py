@@ -1,8 +1,8 @@
 """Executable check of the LU pivot tolerance (chapter 7, _vic-pivot.qmd).
 
 What is checked: ludcmp's rejection rule |p_j| / s_j <= 8 N eps (src/math/ludcmp.h:29-94 at
-snapy@e894700ff7aee30b52882e5202b16461413780b0; docs/derivations/290-lu-pivot-tolerance.md), ported in
-vic_port.py for float32 and float64. Claims C1-C4.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; docs/derivations/290-lu-pivot-tolerance.md), ported in
+vic_port.py for float32 and float64. Claims C1-C5.
 
 Run: python3 vic_pivot_check.py   (numpy only; exits with the number of failed claims)
 """
@@ -83,9 +83,35 @@ def check_C4_float32_is_stricter_and_nonfinite_is_refused():
                   "row is refused", "double %d, float32 %d, NaN %d, zero row %d" % (d64, d32, dn, dz))
 
 
+def longest(N):
+    return N - 1   # step 1 of _vic-pivot.qmd: the longest Crout inner product has N - 1 terms
+
+
+def check_C5_crout_inner_products_and_the_bound():
+    """ludcmp.h:50-61: entry (i, j) above the diagonal sums k < i, on and below it k < j. With eps_m/2 per operation
+    the computed factors satisfy L U = A + dA, |dA| <= zeta_N |L| |U|, zeta_N = N (eps_m/2) / (1 - N eps_m/2)."""
+    rows, ok = [], True
+    for N in (3, 5):
+        lengths = []
+        for j in range(N):
+            lengths += [i for i in range(j)]          # for (k = 0; k < i; k++)
+            lengths += [j for _ in range(j, N)]       # for (k = 0; k < j; k++)
+        n = max(lengths)
+        ok = ok and n == longest(N)
+        for dtype in (np.float32, np.float64):
+            u = float(np.finfo(dtype).eps) / 2
+            zeta = N * u / (1 - N * u)
+            factor = float(tol(dtype, N)) / zeta
+            ok = ok and 15.99 < factor <= 16.
+            rows.append("N=%d %s: longest %d terms, tolerance / zeta_N = %.6f" % (N, np.dtype(dtype).name, n, factor))
+    return report("C5", ok, "the longest inner product of the Crout loops has N - 1 terms, and the tolerance 8 N eps_m "
+                  "is 16 (1 - N eps_m / 2) times the backward-error bound zeta_N", "; ".join(rows))
+
+
 def main():
     checks = [check_C1_tolerance_table, check_C2_threshold, check_C3_row_scaling_does_not_change_the_decision,
-              check_C4_float32_is_stricter_and_nonfinite_is_refused]
+              check_C4_float32_is_stricter_and_nonfinite_is_refused,
+              check_C5_crout_inner_products_and_the_bound]
     sys.exit(sum(not c() for c in checks))
 
 

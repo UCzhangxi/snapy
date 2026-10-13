@@ -2,14 +2,15 @@
 
 What is checked: the Roe flux decomposition (src/implicit/flux_decomposition_impl.h:37-126) and the assembly of
 a, b, c (src/implicit/vic_assemble_full_impl.h:89-99, vic_assemble_partial_impl.h:110-120) at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported in vic_port.py with grav = 0. Claims C1-C5.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported in vic_port.py with grav = 0. Claims C1-C6; C6 is exact (sympy).
 
-Run: python3 vic_assembly_check.py   (numpy only; exits with the number of failed claims)
+Run: python3 vic_assembly_check.py   (numpy and sympy; exits with the number of failed claims)
 """
 import os
 import sys
 
 import numpy as np
+import sympy as sp
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vic_port as vp  # noqa: E402
@@ -142,10 +143,37 @@ def check_C5_solid_cell_is_inert():
                   "solid row exact; neighbour block change when the solid cell's state is replaced: %.1e" % same)
 
 
+def check_C6_blocks_from_the_row_residual():
+    """eq-ch07-vic-blocks: differentiate U_i/dt_c + (A_hi F_hi - A_lo F_lo)/V_i - Phi U_i with A^+- frozen, on
+    generic 2 x 2 blocks (the Euler flux is homogeneous of degree 1, F(U) = J(U) U)."""
+    def mat(n):
+        return sp.Matrix(2, 2, sp.symbols(n + "0:4"))
+
+    def vec(n):
+        return sp.Matrix(sp.symbols(n + "0:2"))
+
+    Um, U0, Up = vec("um"), vec("u0"), vec("up")
+    Am, Ap, Jm, J0, Jp, Phi = (mat(s) for s in ("am", "ap", "jm", "j0", "jp", "phi"))
+    Alo, Ahi, V, dtc = sp.symbols("A_lo A_hi V dt_c", positive=True)
+    F_lo = (Jm * Um + J0 * U0) / 2 - Am * (U0 - Um) / 2
+    F_hi = (J0 * U0 + Jp * Up) / 2 - Ap * (Up - U0) / 2
+    res = U0 / dtc + (Ahi * F_hi - Alo * F_lo) / V - Phi * U0
+    stated = {  # eq-ch07-vic-blocks of _vic-assembly.qmd
+        "A_i": (Alo * Am + Ahi * Ap + (Ahi - Alo) * J0) / (2 * V) - Phi + sp.eye(2) / dtc,
+        "B_i": -Alo / (2 * V) * (Am + Jm),
+        "C_i": -Ahi / (2 * V) * (Ap - Jp),
+    }
+    got = {"A_i": res.jacobian(U0), "B_i": res.jacobian(Um), "C_i": res.jacobian(Up)}
+    ok = all((got[k] - stated[k]).applyfunc(sp.simplify) == sp.zeros(2) for k in stated)
+    return report("C6", ok, "the derivatives of the row residual are the blocks of eq-ch07-vic-blocks, with I/dt_c on the "
+                  "diagonal and the gravity Jacobian Phi subtracted", "A_i, B_i, C_i exact on generic 2 x 2 blocks")
+
+
 def main():
     checks = [check_C1_eigenvectors_invert, check_C2_roe_matrix_and_roe_property,
               check_C3_blocks_linearise_the_roe_divergence, check_C4_partial_is_the_full_without_transverse_motion,
-              check_C5_solid_cell_is_inert]
+              check_C5_solid_cell_is_inert,
+              check_C6_blocks_from_the_row_residual]
     sys.exit(sum(not c() for c in checks))
 
 

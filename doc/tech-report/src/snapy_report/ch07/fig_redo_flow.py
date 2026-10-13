@@ -1,6 +1,6 @@
 """The step loop and its acceptance decision: stages, step-end sources, check_redo, then accept, redo at half
 the step, or stop. From examples/run_hydro.cpp:161-200 and MeshBlockImpl::check_redo/apply_redo
-(src/mesh/meshblock.cpp:1229-1304) at snapy@e894700ff7aee30b52882e5202b16461413780b0. A cartoon; it reads no data.
+(src/mesh/meshblock.cpp:1238-1284, 1355-1357) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
@@ -24,7 +24,7 @@ def make_fig():
     ax.set_axis_off()
     ax.set_xlim(0, 12)
     ax.set_ylim(0, 3.4)
-    _box(ax, 0.1, 1.5, 2.0, "$\\Delta t=2^{-n_{\\mathrm{redo}}}C\\,\\min\\tau$", fs.SKY)
+    _box(ax, 0.1, 1.5, 2.0, "$\\Delta t=2^{-n_{\\mathrm{redo}}}\\Delta t_0$", fs.SKY)
     _box(ax, 2.6, 1.5, 1.9, "stages $s=1..S$", fs.SKY)
     _box(ax, 5.0, 1.5, 1.9, "step-end sources", "white")
     _box(ax, 7.4, 1.5, 1.8, "check_redo", fs.ORANGE)
