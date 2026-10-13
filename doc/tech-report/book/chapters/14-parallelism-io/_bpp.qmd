@@ -1,7 +1,7 @@
 ## Several blocks per process and GPU streams (`distribute.blocks_per_process`) {#sec-ch14-bpp}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: src/mesh/mesh.cpp, src/layout/layout.cpp, src/output/pnetcdf.cpp, tests/test_cubed_sphere_exchange.cpp, tests/test_output_barrier.cpp
 status: draft
 -->
@@ -15,19 +15,42 @@ time, under the process-wide mutex. The call order of the mesh-level driver is i
 the threads, streams and events.
 
 ::: {.callout-note title="At a glance"}
-**What**: a `Mesh` holds $b$ blocks in one process and runs each per-block job on a pool of $b$ worker threads; on a
-CUDA device each worker has its own stream, fenced with events against the caller's stream in both directions.
-**Switch**: `distribute: blocks_per_process` ($b$). **Default**: $b = 1$, no pool. **Requires**: nothing.
-**Order**: n/a. **Defining equation**: @eq-ch14-launch-rank.
+**Purpose.** Runs $b$ blocks in one process together, each per-block job on a pool of $b$ worker threads.
+
+**Data.** The $b$ blocks of the process; on CUDA one stream per worker, fenced with events.
+
+**Placement.** `MeshImpl`: the pool is built in `reset` and used by every block-level step.
+
+**Activation.** `distribute: blocks_per_process` ($b$). Default: $b=1$, no pool.
+
+**Guarantee / limits.** Work before a job is visible to it and its work after it; all workers share one device.
+
+**Evidence.** The Tests layer below, @tbl-ch14-bpp-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $b$ the blocks per process [count]; $\mathrm{loc}$ a local block
+index, as in @eq-ch14-launch-rank [count].
 
 ### Derivation
 
-None.
+There is no equation, and the pool does no arithmetic, so there is no round-off. The one property to show is that
+the pool's parallel jobs see the work queued before them and leave their work visible after them, on CUDA where each
+worker has its own stream. In five steps, each a line of `BlockWorkerPool`
+({{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool >}}):
+
+1. *Before the job.* `submit` records `caller_ready_event` on the caller's stream, then bumps the generation that
+   wakes the workers.
+2. *Each worker waits for it.* A woken worker makes its own stream wait on `caller_ready_event` before it runs the job,
+   under a device guard and a stream guard for its stream. So work queued on the caller's stream before `submit` is
+   ordered before the worker's kernels.
+3. *Each worker signals its end.* After the job the worker records its done event on its own stream.
+4. *The caller waits for all of them.* `submit` returns only when every worker has finished. It then makes the
+   caller's stream wait on every done event, so the caller's later kernels are ordered after every worker's.
+5. *Errors are not lost.* The first exception a worker throws is stored and rethrown by `submit` to the caller.
 
 ### Numerical method
 
-`MeshImpl::reset` clones the block options $b$ times, gives block $\ell$ the rank of @eq-ch14-launch-rank, re-cuts the
+`MeshImpl::reset` clones the block options $b$ times, gives block $\mathrm{loc}$ the rank of @eq-ch14-launch-rank, re-cuts the
 coordinate options for that rank and builds the block. It creates the pool only for $b > 1$, on the first block's
 device (`MeshImpl::reset`, {{< code src/mesh/mesh.cpp MeshImpl::reset >}}).
 
@@ -53,6 +76,33 @@ the gravity-work chapter (@sec-ch06); this section only records where its reduct
 
 ### Code
 
+**A minimal input.** Four blocks in one process on one GPU, a slab split in $x_2$:
+
+```yaml
+distribute:
+  layout: slab
+  nb2: 4
+  blocks_per_process: 4
+```
+
+run with `DEVICE=cuda`; with one process no `MASTER_PORT` is needed (@sec-ch14-launch).
+
+**What is refused, and why.**
+
+1. *`blocks_per_process` not positive*: "blocks_per_process must be positive" in `MeshImpl::reset`. There would be no
+   block to build.
+2. *More than 16 blocks per process with $x_1$ relays*: "at most 16 blocks per process" in `send_to_block`. The
+   tag fold of @sec-ch14-msgmatch would leave 16 bits.
+3. *PnetCDF output with $b>1$*: "PNetcdfOutput currently requires blocks_per_process=1" (@sec-ch14-pnetcdf).
+
+**The excerpt.** Steps 2 and 3, in the worker loop of `BlockWorkerPool`:
+
+```cpp
+caller_ready_event_->block(streams_.at(index));        // step 2
+...                                                     // the job
+done_events_.at(index)->record(streams_.at(index));    // step 3
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | worker pool, streams, events | {{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool >}} | `BlockWorkerPool` | $b > 1$ |
@@ -73,6 +123,12 @@ the gravity-work chapter (@sec-ch06); this section only records where its reduct
 | `test_exchange` | three blocks per process: local and remote neighbours both exchanged | value bounds | payloads identify the sender |
 
 : Tests of several blocks per process. C++ entries carry the build suffix (`.release`). {#tbl-ch14-bpp-tests}
+
+There is no check script: steps 1 to 5 are read from the code, and no test asserts the event order itself; the
+CUDA case asserts one stream per block.[^ch14-bpp-run]
+
+[^ch14-bpp-run]: [sha: the code pin; deck: the registrations of `tests/CMakeLists.txt` at the pin; run: none,
+    the entries were read, not run, for this chapter].
 
 The stream checks are in `run` of {{< code tests/test_cubed_sphere_exchange.cpp run >}}.
 The CUDA case runs only in a CUDA build with a visible device (`snapy_cuda_test_enabled`, @sec-ch14-gpu). Their pass

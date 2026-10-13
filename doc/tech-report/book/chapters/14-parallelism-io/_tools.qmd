@@ -1,7 +1,7 @@
 ## Combine and inspect tools (`pd-combine`, `pd-inspect`) {#sec-ch14-tools}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
 sources: pyproject.toml, python/api/pd_combine.py, python/api/pd_inspect.py
 status: draft
 -->
@@ -12,15 +12,32 @@ Both are entry points of the `snapy` package (`[project.scripts]`,
 [`pyproject.toml:52-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L54)).
 
 ::: {.callout-note title="At a glance"}
-**What**: two command-line tools installed with the Python package. `pd-combine` concatenates a run's combined NetCDF
-frames along time and merges output streams; `pd-inspect` lists the tensors in a `.part` or `.restart` file.
-**Switch**: command line. **Default**: n/a. **Requires**: NCO's `ncrcat` and `ncks` on the `PATH` for `pd-combine`.
-**Order**: n/a. **Defining equation**: none.
+**Purpose.** Two command-line tools: `pd-combine` joins frames in time and merges streams; `pd-inspect` lists tensors.
+
+**Data.** `pd-combine` reads combined `*.out<n>.<kkkkk>.nc` frames; `pd-inspect` reads `.part` and `.restart` files.
+
+**Placement.** After a run, from the shell; entry points of the `snapy` Python package.
+
+**Activation.** Command line. `pd-combine` needs NCO's `ncrcat` and `ncks` on the `PATH`.
+
+**Guarantee / limits.** Values are copied by NCO unchanged; blocks are not joined in space.
+
+**Evidence.** The Tests layer below, @tbl-ch14-tools-tests.
 :::
+
+Local symbols: none. This section uses no mathematical symbol.
 
 ### Derivation
 
-None.
+There is no equation, and the tools copy values without arithmetic, so there is no round-off. Why `pd-combine` does
+not join per-block files in space, in three steps (`ParseOutputFields`,
+{{< code python/api/pd_combine.py ParseOutputFields >}}):
+
+1. *The glob.* It collects `*.out*.<5 digits>.nc`, which matches per-block files `<basename>.block<r>.out<n>.<kkkkk>.nc`
+   as well as combined frames.
+2. *The split.* It takes the last three dot-separated fields as stream, stamp and extension, and everything before
+   them as the case. For a per-block file the case is `<basename>.block<r>`.
+3. *Hence* each block is its own case, and `CombineTimeseries` concatenates that block's frames in time only.
 
 ### Numerical method
 
@@ -43,6 +60,27 @@ tensors of every part (name, shape, dtype); otherwise it reads the file as one p
 
 ### Code
 
+**A minimal input.** After a run in its output directory, join streams 0 and 1 of every case in time and merge them
+into one file per case, keeping the per-frame files:
+
+```bash
+pd-combine 0,1 -d . -o main --no-remove
+pd-inspect straka.00002.restart
+```
+
+**What is refused, and why.** `pd-combine` exits with "Error: output id … not found!" when a requested stream has no
+frame in the directory, before it touches any file (`main`, {{< code python/api/pd_combine.py main >}}). A missing
+`ncrcat` or `ncks` makes the NCO call fail. `pd-inspect` reads a file without the bundle magic as one part.
+
+**The excerpt.** Steps 1 and 2, in `ParseOutputFields`:
+
+```python
+files = glob(path + "/*.out*.[0-9][0-9][0-9][0-9][0-9].nc")
+for fname in files:
+    field, stamp, ext = os.path.basename(fname).split(".")[-3:]
+    case = ".".join(os.path.basename(fname).split(".")[:-3])
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | entry points | [`pyproject.toml:52-54`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L52-L54) | `pd-combine` | none |
@@ -56,7 +94,13 @@ tensors of every part (name, shape, dtype); otherwise it reads the file as one p
 
 ### Tests
 
-No ctest tests either tool on its own. The `FULL_TESTS` decomposition runners call `pd-combine 0 -o main` on each
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| none on its own | the `FULL_TESTS` decomposition runners call `pd-combine 0 -o main` | — | — |
+
+: Tests of the tools. {#tbl-ch14-tools-tests}
+
+There is no check script: the section derives nothing.[^ch14-tools-run] No ctest tests either tool on its own. The `FULL_TESTS` decomposition runners call `pd-combine 0 -o main` on each
 case: `run_shallow_splash_decomp.py` skips (exit 125) without it, and `run_shallow_xy_decomp.py` fails without it
 (`pd_combine`, {{< code tests/run_shallow_xy_decomp.py main >}}). `pd-inspect` is used by no test.
 
@@ -67,3 +111,6 @@ case: `run_shallow_splash_decomp.py` skips (exit 125) without it, and `run_shall
 - It needs NCO on the `PATH` and deletes its inputs by default.
 - It does not join per-block files in space.
 :::
+
+[^ch14-tools-run]: [sha: the code pin; deck: the registrations of `tests/CMakeLists.txt` at the pin; run: none,
+    the runners were read, not run, for this chapter].

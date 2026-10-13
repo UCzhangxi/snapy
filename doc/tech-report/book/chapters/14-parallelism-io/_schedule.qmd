@@ -1,48 +1,86 @@
 ## Output scheduling, statistics and termination (`outputs: dt`) {#sec-ch14-schedule}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: src/mesh/meshblock.cpp, src/mesh/mesh.cpp, src/output/output_type.cpp, src/utils/signal_handler.cpp, examples/straka.cpp, tests/test_user_output.cpp
 status: draft
 -->
 
+### Summary
+
 The driver calls `make_outputs` once after initialisation and once after every accepted step. A rejected (redone)
 step writes nothing.
 
-Local symbols (flagged to the editor): $q_i$ the value of a field after accepted step $i$; $w_i$ that step's length;
-$W$ the summed weight since the last write; $\bar q$, $M_2$ the running weighted mean and sum of squared deviations.
-
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**What**: each output fires when the time reaches its next time, which then advances by one interval; selected
-`*_stat` variables write time-weighted means and standard deviations since the previous write. A run ends on its
-time or cycle limit or on a signal, with one final write. **Switch**: output `dt`; `variables` (statistics
-selections); `integration: tlim`, `nlim`. **Default**: `dt: 0` (every cycle). **Requires**: nothing. **Order**: n/a;
-the statistics are exact for the sampled states. **Defining equation**: @eq-ch14-schedule-moments.
+**Purpose.** Fires each output when its next time is reached; writes time-weighted statistics, @eq-ch14-schedule-moments.
+
+**Data.** Reads the accepted state after every step; keeps a running mean and $Q$ per selected `*_stat` field.
+
+**Placement.** `make_outputs`, once after initialisation and after every accepted step; a final write at the end.
+
+**Activation.** Output `dt`; `*_stat` in `variables`; `integration: tlim`, `nlim`. Default: `dt: 0`, every cycle.
+
+**Guarantee / limits.** Exact weighted mean and population deviation of the sampled states, up to the bound below.
+
+**Evidence.** The Tests layer below, @tbl-ch14-schedule-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md), chosen to avoid NOTATION.md's $\sigma$ (cell variance), $\mathbf W$
+(primitive vector), $M$ (mass) and the overline (cell mean): $q_i$ a field's value after accepted step $i$;
+$\Delta t_i=t_i-t_{i-1}$ that step's length [s]; $\mathcal T_i=\sum_{j\le i}\Delta t_j$ the time summed since the last
+write [s]; $q^{\mathrm{avg}}_i$ the running time-weighted mean; $Q_i$ the running weighted sum of squared deviations
+[units of $q^2$ s]; $q^{\mathrm{sd}}$ the reported deviation; $N_{\mathrm{acc}}$ the number of accumulated steps [count]; $e_i$ the
+round-off error of $q^{\mathrm{avg}}_i$.
 
 ### Derivation
 
-Between two writes the statistics weight each accepted state by the step that produced it, $w_i = t_i - t_{i-1}$.
-They are updated in place by the weighted form of Welford's recurrence. With $W_{i-1} = \sum_{j<i} w_j$:
+Between two writes the statistics weight each accepted state by the step that produced it, $\Delta t_i$. They are
+updated in place by the weighted form of Welford's recurrence. With $\mathcal T_{i-1}=\sum_{j<i}\Delta t_j$:
 
 $$
 \begin{aligned}
-\bar q_i &= \bar q_{i-1} + \frac{w_i}{W_{i-1} + w_i}\,(q_i - \bar q_{i-1}), \\
-M_{2,i} &= M_{2,i-1} + w_i\,(q_i - \bar q_{i-1})(q_i - \bar q_i), \\
-\sigma &= \sqrt{\max(M_2 / W,\ 0)} ,
+q^{\mathrm{avg}}_i &= q^{\mathrm{avg}}_{i-1} + \frac{\Delta t_i}{\mathcal T_{i-1}+\Delta t_i}\,\big(q_i-q^{\mathrm{avg}}_{i-1}\big), \\
+Q_i &= Q_{i-1} + \Delta t_i\,\big(q_i-q^{\mathrm{avg}}_{i-1}\big)\big(q_i-q^{\mathrm{avg}}_i\big), \\
+q^{\mathrm{sd}} &= \sqrt{\max(Q/\mathcal T,\ 0)} ,
 \end{aligned}
 $$ {#eq-ch14-schedule-moments}
 
-By induction, $\bar q_i = \sum_{j \le i} w_j q_j / W_i$ and $M_{2,i} = \sum_{j \le i} w_j (q_j - \bar q_i)^2$, the
-weighted mean and the weighted sum of squared deviations; $M_2/W$ is the population variance, with no small-sample
-correction. Each state is weighted by the step that ends at it (a right-endpoint rule in time). @eq-ch14-schedule-moments
+Why this is the weighted mean and the weighted sum of squared deviations, by induction in four steps. Assume
+$q^{\mathrm{avg}}_{i-1}=\sum_{j<i}\Delta t_jq_j/\mathcal T_{i-1}$ and $Q_{i-1}=\sum_{j<i}\Delta t_j(q_j-q^{\mathrm{avg}}_{i-1})^2$.
+
+1. *The mean.* The first line equals
+   $(\mathcal T_{i-1}q^{\mathrm{avg}}_{i-1}+\Delta t_iq_i)/\mathcal T_i=\sum_{j\le i}\Delta t_jq_j/\mathcal T_i$.
+2. *Shift of the centre.* For any $c$,
+   $\sum_{j<i}\Delta t_j(q_j-c)^2=Q_{i-1}+\mathcal T_{i-1}(q^{\mathrm{avg}}_{i-1}-c)^2$, since the cross term vanishes
+   at the mean.
+3. *Add the new state.* Take $c=q^{\mathrm{avg}}_i$ and add $\Delta t_i(q_i-q^{\mathrm{avg}}_i)^2$. With step 1,
+   $q^{\mathrm{avg}}_i-q^{\mathrm{avg}}_{i-1}=\Delta t_i(q_i-q^{\mathrm{avg}}_{i-1})/\mathcal T_i$, and the sum
+   simplifies to $Q_{i-1}+\Delta t_i(q_i-q^{\mathrm{avg}}_{i-1})(q_i-q^{\mathrm{avg}}_i)$, the second line.
+4. *Start.* At the first accumulated state, $\mathcal T_0=0$ gives $q^{\mathrm{avg}}=q_1$ and $Q=0$.
+
+So $Q/\mathcal T$ is the population variance, with no small-sample correction.
+
+*Round-off of the mean*, to first order, from the four roundings of one update in
+`update_weighted_moments` (`delta = value - mean`, `weight / total_weight` with `total_weight` itself a sum, the
+product, the `add_`):
+
+1. *The new error of one update.* The ratio $r_i=\Delta t_i/\mathcal T_i\le1$ carries at most $\epsilon_{\mathrm m}$ relative, and
+   `delta` and the product $\tfrac12\epsilon_{\mathrm m}$ each, so the increment is off by at most $2\epsilon_{\mathrm m}\,r_i\lvert q_i-q^{\mathrm{avg}}_{i-1}\rvert
+   \le 4\epsilon_{\mathrm m}\max\lvert q\rvert$; the `add_` adds $\tfrac12\epsilon_{\mathrm m}\max\lvert q\rvert$.
+2. *The carried error is damped.* An error $e_{i-1}$ in $q^{\mathrm{avg}}_{i-1}$ enters $q^{\mathrm{avg}}_i$ multiplied by
+   $1-r_i\in[0,1)$.
+3. *The weights.* The rounding of the running sum $\mathcal T$ perturbs the weights, not the form of the mean; it is
+   inside the $\epsilon_{\mathrm m}$ of step 1.
+4. *Hence* after $N_{\mathrm{acc}}$ updates $\lvert e\rvert\le 4.5\,N_{\mathrm{acc}}\,\epsilon_{\mathrm m}\max\lvert q\rvert$:
+   $2.0\times10^{-13}\max\lvert q\rvert$ for the 200 steps of `[C1]`, which measures $1.3\times10^{-15}$. The bound
+   is loose because the roundings do not add up with one sign.
+
+Each state is weighted by the step that ends at it (a right-endpoint rule in time). @eq-ch14-schedule-moments
 is `update_weighted_moments` and `PrimStatStd` ({{< code src/output/output_type.cpp OutputType::PrimStatStd >}}, {{< code src/output/output_type.cpp update_weighted_moments >}}).
 A port of the recurrence and of `AccumulateStats` agrees with the two-pass weighted mean and deviation to
 $2\times10^{-15}$ relative over 200 unequal steps [check `src/snapy_report/ch14/schedule_check.py`, output
-`schedule_check.out`, `[C1]`]. The state at the first call carries no weight (`[C2]`), and $\sigma$ has no
-small-sample correction, while a constant field gives $M_2 = 0$ exactly (`[C3]`).
+`schedule_check.out`, `[C1]`]. The state at the first call carries no weight (`[C2]`), and $q^{\mathrm{sd}}$ has no
+small-sample correction, while a constant field gives $Q = 0$ exactly (`[C3]`).
 
 ### Numerical method
 
@@ -72,6 +110,31 @@ time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl:
 
 ### Code
 
+**A minimal input.** A NetCDF stream every 60 s with the time-weighted mean and deviation of the primitives, and a
+run that stops at 600 s:
+
+```yaml
+integration:
+  tlim: 600.
+outputs:
+  - type: netcdf
+    variables: [prim, prim_stat]
+    dt: 60.
+```
+
+**What is refused, and why.** The output-entry refusals are those of @sec-ch14-netcdf (unknown keys, a missing
+`type`); this section adds none. The statistics are written only when selected in `variables`
+(`test_user_output` `OutputSelection`).
+
+**The excerpt.** The first two lines of @eq-ch14-schedule-moments, in `update_weighted_moments`:
+
+```cpp
+auto delta = value - mean;                       // q_i - q^avg_{i-1}
+double total_weight = previous_weight + weight;  // T_{i-1} + dt_i
+mean.add_(delta * (weight / total_weight));
+m2.add_(weight * delta * (value - mean));        // Q_i
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | when an output fires | {{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}} | `MeshBlockImpl::make_outputs` | `dt` |
@@ -94,6 +157,15 @@ time limit, or "abnormally". It returns 1 only in the last case (`MeshBlockImpl:
 | `test_restart_dt_change`, `test_restart_output_schedule` | schedules across a resume (@sec-ch14-restart) | see there | see there |
 
 : Tests of output scheduling. C++ entries carry the build suffix (`.release`). {#tbl-ch14-schedule-tests}
+
+`[C1]` of `schedule_check.py`: over 20 runs of 200 unequal steps, half after a reset, the recurrence matches the
+two-pass mean to $1.3\times10^{-15}$ and the deviation to $1.9\times10^{-15}$ relative. `[C2]`: the first state
+carries no weight. `[C3]`: no small-sample correction, and $Q=0$ for a constant field. `[C10]`–`[C13]` of
+`derivation_check.py` check steps 1 to 3 symbolically and the recurrence over 50 random steps.[^ch14-sched-chk]
+
+[^ch14-sched-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch14/schedule_check.py`, CPU, double, 1 process;
+    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `schedule_check.out`, lines `[C1]`–`[C3]`. The same for
+    `derivation_check.py`, output `derivation_check.out`, lines `[C10]`–`[C13]`.
 
 The statistics cases are the `OutputStatistics` tests in [`test_user_output.cpp:911-998`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_user_output.cpp#L911-L998) (`primitive_statistics_are_time_weighted_and_reset`,
 `scalar_statistics_are_time_weighted_and_reset`; the selection cases are

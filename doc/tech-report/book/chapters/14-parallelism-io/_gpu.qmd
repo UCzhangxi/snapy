@@ -1,8 +1,8 @@
 ## GPU execution (`CUDA`, `DEVICE`) {#sec-ch14-gpu}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/mesh/meshblock_options.cpp, examples/run_hydro.cpp, src/recon/recon_dispatch.cu, tests/cuda_test_gate.hpp, tests/CMakeLists.txt, tests/test_vic_moist_device.py, chengcli/snapy#291
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+sources: src/mesh/meshblock_options.cpp, examples/run_hydro.cpp, src/recon/recon_dispatch.cu, tests/cuda_test_gate.hpp, tests/CMakeLists.txt, tests/test_vic_moist_device.py
 status: draft
 -->
 
@@ -15,15 +15,37 @@ equation of state, boundaries and others) have a CPU and a CUDA implementation b
 (@sec-ch01-dispatch). Collectives and decisions run on the host (@sec-ch14-collectives), so they read device values back.
 
 ::: {.callout-note title="At a glance"}
-**What**: the same code runs on a CUDA device. A block is built on the CPU and moved with `to(device)`, and the
-kernels dispatch to their CUDA implementations. **Switch**: CMake `CUDA=ON`; environment `DEVICE=cuda`,
-`DEVICE_ID`. **Default**: CPU. **Requires**: a CUDA build and a visible device; UCX built with CUDA for multi-GPU
-runs (@sec-ch14-backends). **Order**: same scheme; round-off differs from the CPU. **Defining equation**: none.
+**Purpose.** Runs the same code on a CUDA device: blocks are moved with `to(device)` and kernels dispatch to CUDA.
+
+**Data.** Every tensor of a block, moved once before initialisation; host read-backs for collectives.
+
+**Placement.** The driver, before `initialize`; snapy's kernels through their dispatch stubs every stage.
+
+**Activation.** CMake `CUDA=ON` and environment `DEVICE=cuda` (`DEVICE_ID`). Default: CPU.
+
+**Guarantee / limits.** Same scheme; CPU and CUDA round-off differ, by an amount the code does not bound.
+
+**Evidence.** The Tests layer below, @tbl-ch14-gpu-tests.
 :::
+
+Local symbols: none. This section uses no mathematical symbol beyond the cell counts of its tests.
 
 ### Derivation
 
-None.
+There is no equation. Why a run can end up on the CPU without saying so, and why a CPU build skips the CUDA tests,
+in four steps:
+
+1. *The driver asks two questions.* `run_hydro` moves the block to `cuda:<id>` only if `torch::cuda::is_available()`
+   and the layout's device is `cuda`; it prints "Running on CUDA" only then ({{< code examples/run_hydro.cpp main >}}).
+2. *There is no else.* Otherwise the device stays `torch::kCPU`, with no message.
+3. *The test gate asks the build first.* `snapy_cuda_test_enabled` returns `torch::cuda::is_available()` only when
+   snapy was compiled with `USE_CUDA`, and false otherwise.
+4. *Hence* a CPU build never enters a CUDA test, even with a GPU visible, and a `DEVICE=cuda` run on a machine without
+   CUDA runs on the CPU.
+
+Round-off: CPU and CUDA kernels sum stencil terms and reductions in different orders, so their results differ by
+round-off. The size depends on each kernel's summation order on each device, which the code does not fix, so no
+bound is derived here; the tests below assert measured tolerances instead.
 
 ### Numerical method
 
@@ -41,10 +63,37 @@ A CUDA test of snapy runs only when snapy was built with CUDA *and* torch sees a
 ({{< code tests/cuda_test_gate.hpp snapy_cuda_test_enabled >}}).
 
 Each host read-back (`.item()`) of a device value synchronises the device. Per step, they come from the time-step
-MIN, the redo flags, the signal check, the cycle-line meters and the gravity-work fixer. Issue #291 (open) measured
-33 of them per step on a small 2-D moist grid with snapy 2.11.2, against 7 on 2.10.9.
+MIN, the redo flags, the signal check, the cycle-line meters and the gravity-work fixer. Their count per step at
+the pin was not measured for this chapter.[^ch14-gpu-sync]
+
+[^ch14-gpu-sync]: An open upstream issue (chengcli/snapy#291) counted 33 per step on a small 2-D moist grid with
+    snapy 2.11.2, against 7 on 2.10.9. The pin includes later changes that remove host syncs, so that count is not
+    the pin's.
 
 ### Code
+
+**A minimal input.** A CUDA build and the environment, with the card unchanged:
+
+```bash
+cmake -B build -DCUDA=ON && cmake --build build
+DEVICE=cuda DEVICE_ID=0 run_hydro -i card.yaml
+```
+
+**What is refused, and why.** Nothing at the device choice: a missing GPU falls back to the CPU (steps 1 and 2). A
+multi-process CUDA run over Gloo or an external group is refused at its first message, "Gloo communication requires
+CPU tensors" (@sec-ch14-backends).
+
+**The excerpt.** Steps 1 and 2, in `run_hydro`:
+
+```cpp
+torch::Device device(torch::kCPU);
+if (torch::cuda::is_available() && op_block->layout()->device() == "cuda") {
+  std::cout << "Running on CUDA" << std::endl;
+  ...
+  device = torch::Device(torch::kCUDA, device_id);
+}
+block->to(device);
+```
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -68,6 +117,12 @@ MIN, the redo flags, the signal check, the cycle-line meters and the gravity-wor
 
 : CUDA tests. C++ entries carry the build suffix (`.release`). {#tbl-ch14-gpu-tests}
 
+There is no check script: the section derives no formula. The CUDA entries need a CUDA build with a
+device.[^ch14-gpu-run]
+
+[^ch14-gpu-run]: [sha: the code pin; deck: the registrations of `tests/CMakeLists.txt` at the pin; run: none,
+    the entries were read, not run, for this chapter, and no CUDA run was made].
+
 The CUDA registrations use `snapy_add_python_test` [`tests/CMakeLists.txt:280-314`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L280-L314), with the
 seam arms from `seam_arm` [`tests/CMakeLists.txt:62-78`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/CMakeLists.txt#L62-L78). The device tolerance is `DEVICE_TOL`
 ({{< code tests/test_vic_moist_device.py DEVICE_TOL >}}). Pass status at the pin was not run
@@ -76,9 +131,11 @@ for this chapter.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-- Issue #291 (open): on a 178 by 120 moist grid on one A100, a step cost 42.1 ms on 2.11.2 against 27.4 ms on 2.10.9
-  (1.54 times). That is 3005 kernels against 2061 per step, and 33 `.item()` calls against 7. The grid is
-  launch-bound, so the cost follows the kernel count. The numbers are the issue's
-  ([chengcli/snapy#291](https://github.com/chengcli/snapy/issues/291)) and were not re-measured here.
+- The per-step cost of the host read-backs on GPU was not measured at the pin; an upstream issue reports a launch-bound
+  grid slowing down with their count.[^ch14-gpu-cost]
 - A driver that asks for CUDA on a machine without it runs on the CPU silently (`run_hydro`).
 :::
+
+[^ch14-gpu-cost]: chengcli/snapy#291 (open): on a 178 by 120 moist grid on one A100, a step cost 42.1 ms on 2.11.2
+    against 27.4 ms on 2.10.9, with 3005 against 2061 kernels and 33 against 7 `.item()` calls per step. The
+    numbers are the issue's and were not re-measured here.
