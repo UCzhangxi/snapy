@@ -20,24 +20,23 @@ falls. A plain repetition of the wall cell is exact only for constant $\chi$ and
 leaves the face density reference first order at the three faces next to each wall.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Keeps every reference stencil inside the owned cells at a physical $x_1$ wall: one-sided six-face
-rows for the two wall cells, and $\chi$ continued past the wall from the two owned cells next to it
-(@eq-ch05-wallclamp-cont).
+**Purpose.** Keeps every reference stencil on owned cells at a physical $x_1$ wall, @eq-ch05-wallclamp-cont.
 
-**Data.** In: $\chi$ and the face pressures of the owned cells next to the wall; out: $\rho_{\mathrm{sf}}$ at faces 0-2
-and $\rho_{\mathrm{ref}}$ at cells 0-1 next to each clamped wall.
+**Data.** Reads $\chi$ and $p_{\mathrm{sf}}$ of the cells next to the wall; writes $\rho_{\mathrm{sf}}$ (faces 0-2), $\rho_{\mathrm{ref}}$ (cells 0-1).
 
 **Placement.** Inside the reference kernel, at the first and last cells of a column with a physical $x_1$ face.
 
-**Activation.** YAML `dynamics/wb-wall-clamp`, default `true`; with `SNAP_WB_REF4` the cubic wall values of
-@sec-ch05-wbref4 take over.
+**Activation.** `dynamics/wb-wall-clamp`, default `true`; with `SNAP_WB_REF4` its cubic wall values take over.
 
-**Guarantee / limits.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 next to each wall on a uniform grid (first order
-with the wall cell repeated); continuation in cell index, so stretched grids are not covered.
+**Guarantee / limits.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 on a uniform grid; stretched grids not covered.
 
-**Evidence.** `test_wb_ref_wall` prints second-order wall faces at the pin (CPU); check claims `[C2]`, `[C4]`–`[C6]`,
-`[C11]`, `[C12]` of `wbref_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-wallclamp-tests.
 :::
+
+Local symbols: $l$ the cell index counted from the wall ($l=0$ the wall cell; NOTATION reserves $j$ and $k$ for the
+$x_2$, $x_3$ indices); $\ell$ the number of cells past the wall; $\alpha_\chi=\partial_1\chi\,\Delta x_1$ the change of
+$\chi$ across one cell; $d_\chi=(\chi_1-\chi_0)/\chi_0$ its relative size; $\varsigma$ and $w^{\mathrm c}_m$ as in
+@sec-ch05-refkernel. $\chi$, $\chi^s$, $\rho'$ and $\rho_{\mathrm{sf}}$ are NOTATION's.
 
 The continuation changes only $\rho_{\mathrm{sf}}$ at faces 0-2 and $\rho_{\mathrm{ref}}$ at cells 0-1 next to each
 clamped wall (and their ghost rows); $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$ and the rest balance are untouched. It
@@ -51,12 +50,12 @@ values. `balance_column` refuses to run with the clamp off.
 
 ### Derivation
 
-Notation as in @sec-ch05-refkernel; cells are counted from the wall, $j=0$ the wall cell, and $\chi_j=\overline\rho_j/\overline p_j$.
+Notation as in @sec-ch05-refkernel; cells are counted from the wall, $l=0$ the wall cell, and $\chi_l=\overline\rho_l/\overline p_l$.
 
 #### The repeated wall cell is first order
 
-Near the wall write $\chi_j=\chi_0+j\,\alpha_\chi+O(\Delta x_1^2)$ with $\alpha_\chi=\partial_1\chi\,\Delta x_1=O(\Delta x_1)$
-(local symbol; $a$ is not used, NOTATION.md). Repeating $\chi_0$ for every $j<0$ and applying the binomial of
+Near the wall write $\chi_l=\chi_0+l\,\alpha_\chi+O(\Delta x_1^2)$ with $\alpha_\chi=\partial_1\chi\,\Delta x_1=O(\Delta x_1)$
+(local symbol; $a$ is not used, NOTATION.md). Repeating $\chi_0$ for every $l<0$ and applying the binomial of
 @sec-ch05-refkernel,
 
 $$
@@ -66,7 +65,7 @@ $$
 \end{aligned}
 $$
 
-The binomial reproduces linear data, so the smoothed value of the true profile is $\chi_j+O(\Delta x_1^2)$ and the errors are
+The binomial reproduces linear data, so the smoothed value of the true profile is $\chi_l+O(\Delta x_1^2)$ and the errors are
 
 $$
 \begin{aligned}
@@ -85,13 +84,13 @@ the mirror is not the source, the bias in $\rho_{\mathrm{ref}}$ is.[^ch05-wall-m
 
 #### The continuation
 
-Past a clamped wall the binomial reads, $k$ cells beyond the wall,
+Past a clamped wall the binomial reads, $\ell$ cells beyond the wall,
 
 $$
-\chi_{-k} =
+\chi_{-\ell} =
 \begin{cases}
-\chi_0 + k\,(\chi_0 - \chi_1), & \chi_1 \le \chi_0,\\
-\chi_0\,(\chi_0/\chi_1)^{k}, & \chi_1 > \chi_0,
+\chi_0 + \ell\,(\chi_0 - \chi_1), & \chi_1 \le \chi_0,\\
+\chi_0\,(\chi_0/\chi_1)^{\ell}, & \chi_1 > \chi_0,
 \end{cases}
 $$ {#eq-ch05-wallclamp-cont}
 
@@ -104,17 +103,27 @@ $\tfrac{31}{32}\alpha_\chi^2/\chi_0$, $\tfrac14\alpha_\chi^2/\chi_0$, $\tfrac1{3
 the interior's $O(\Delta x_1^2)$, and for constant $\chi$ the linear branch returns $\chi_0$ exactly, so an isothermal
 column is unchanged bit for bit.
 
-Each branch is unbounded on one side: the linear one reaches zero when $\chi$ rises steeply away from the wall
-($\chi_{-3}=\chi_0(1-3d)$ with $d=(\chi_1-\chi_0)/\chi_0$), and the ln-linear one diverges when the neighbour is nearly empty. The
-code takes the branch that stays closer to $\chi_0$, so for $\chi_1\ge0$ the continuation lies in
-$[\chi_0(\chi_0/\chi_1)^k,\ \chi_0(1+k)]$ and is positive (`[C6]`, 60000 random samples, none outside).
+Why the code switches branch, in four steps.
+
+1. *The linear branch can reach zero.* Where $\chi$ rises steeply away from the wall, the linear continuation three
+   cells out is $\chi_{-3}=\chi_0(1-3d_\chi)$, which is zero at $d_\chi=1/3$ and negative beyond.
+2. *The ln-linear branch can diverge.* $\chi_0(\chi_0/\chi_1)^{\ell}$ grows without bound as the neighbour empties,
+   $\chi_1\to0$.
+3. *The code takes the branch that stays closer to $\chi_0$.* `hydro_ref_x1_wall_rop` returns
+   `r0 * pow(r0 / r1, k)` when `r1 > r0` and `r0 + k * (r0 - r1)` otherwise, and the wall value `r0` if the result
+   is not positive.
+4. *So the continuation is bounded and positive.* For $\chi_1\ge0$ it lies in
+   $[\chi_0(\chi_0/\chi_1)^\ell,\ \chi_0(1+\ell)]$ (`[C6]`, 60000 random samples, none outside).
+
+For constant $\chi$ the linear branch computes $\chi_0+\ell(\chi_0-\chi_0)$, and the difference of two equal numbers is
+exactly zero in floating point, so an isothermal column is unchanged bit for bit, not merely to round-off.
 
 #### The one-sided cell-pressure rows
 
 The two wall cells take the cell average of the quintic through the six faces starting at the wall. With
-$\varsigma$ the cell-unit coordinate of block 5 (local symbol), the faces sit at $\varsigma_m=m-\tfrac12$ for the wall cell and
+$\varsigma$ the cell-unit coordinate of @sec-ch05-refkernel, the faces sit at $\varsigma_m=m-\tfrac12$ for the wall cell and
 $\varsigma_m=m-\tfrac32$ for the next, $m=0..5$, and the weights solve the same moment equations
-$\sum_m w_m\varsigma_m^{\,n}=(1,0,\tfrac1{12},0,\tfrac1{80},0)_n$, giving the rows `w6e` (`[C2]`): $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/160)$ for the wall cell and
+$\sum_m w^{\mathrm c}_m\varsigma_m^{\,n}=(1,0,\tfrac1{12},0,\tfrac1{80},0)_n$, giving the rows `w6e` (`[C2]`): $(95/288, 1427/1440, -133/240, 241/720, -173/1440, 3/160)$ for the wall cell and
 $(-3/160, 637/1440, 511/720, -43/240, 77/1440, -11/1440)$ for the next. They keep the sixth order
 of @eq-ch05-refkernel-pref and read no ghost face.
 
@@ -156,6 +165,38 @@ make_fig()
 ```
 
 ### Code
+
+**A minimal input.** The clamp is on by default; this is the one line that names it:
+
+```yaml
+dynamics:
+  wb-wall-clamp: true          # default; false lets the wall rows read the mirrored ghosts
+boundary-condition:
+  external:
+    x1-inner: reflecting       # a physical x1 wall: the clamp acts here
+    x1-outer: reflecting
+forcing:
+  const-gravity: {grav1: -9.8}
+```
+
+**What the parser accepts and refuses.** `wb-wall-clamp` is a boolean under `dynamics:`, default `true`, and an
+unknown key there is refused ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}). The clamp acts
+only on a side that is a physical boundary, so a seam or a periodic side is never clamped. With the clamp off,
+`balance_column` refuses to run, because its ghost-free column and a block would then build different wall rows
+(@sec-ch05-balcol).
+
+**The lines that implement @eq-ch05-wallclamp-cont.** From `hydro_ref_x1_wall_rop`
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}):
+
+```cpp
+T e = r1 > r0 ? r0 * pow(r0 / r1, T(k)) : r0 + T(k) * (r0 - r1);
+return e > T(0) ? e : r0;
+```
+
+`r0` and `r1` are $\chi_0$ and $\chi_1$, and `k` is $\ell$; the first branch is the ln-linear case
+$\chi_1>\chi_0$ and the second the linear case of @eq-ch05-wallclamp-cont. The `return` line is the fallback to
+$\chi_0$. `hydro_ref_x1_rop_smooth` calls it for every stencil index past the owned range when the wall side owns
+two cells (`ext_lo`, `ext_hi`), and repeats the wall cell otherwise.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
@@ -199,6 +240,12 @@ An unknown key in `dynamics` is refused by the key check of the options parser; 
 
 : Tests of the wall clamp and continuation. {#tbl-ch05-wallclamp-tests}
 
+The check's claims for this section:[^ch05-wall-chk] `[C2]` derives the one-sided rows `w6e` in exact rationals, equal to the
+code. `[C4]` gives the repeated wall cell's errors $\tfrac38\alpha_\chi$, $\tfrac1{16}\alpha_\chi$ in cells and
+$\tfrac{23}{32}$, $\tfrac7{32}$, $\tfrac1{32}$, $0$ times $\alpha_\chi$ at faces 0-3. `[C5]` gives the continuation's errors
+zero (linear) and $O(\alpha_\chi^2)$ (ln-linear) at faces 0-2. `[C6]` finds no sample outside the bounds. `[C11]`
+and `[C12]` are discussed below.
+
 ::: {.callout-important title="Test"}
 **Evidence.** At the pin `test_wb_ref_wall.release` prints the face errors of @fig-ch05-wallclamp-order and the
 observed orders 2.02, 2.03, 2.03 (bottom face 1: $\rho_{\mathrm{sf}}$, $\rho_L$, $\rho_R$), 2.03, 2.06, 2.05 (bottom
@@ -216,7 +263,9 @@ face-1 error $2.880\times10^{-3}$, $1.392\times10^{-3}$, $6.840\times10^{-4}$, $
 run (no MPS device; the derivation note says the same); multi-rank only through @sec-ch05-seam.
 :::
 
-[^ch05-wall-chk]: Run: `python3 src/snapy_report/ch05/wbref_check.py`, numpy 2.2.4, sympy 1.14.0, double.
+[^ch05-wall-chk]: [sha: the formulas the check ports, as its header records them from the earlier book pin; deck: the
+    check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6,
+    sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`.
 
 [^ch05-wall-run]: `ctest -V -R 'test_wb_ref_wall|test_face_floor|test_hydro_ref_x1|test_straka_redo'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank;
     deck `tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one pressure scale height.

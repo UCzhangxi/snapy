@@ -19,29 +19,29 @@ The switch converts the inputs of the maps, for the maps only, to plain means wi
 reference on plain means is then the Cartesian one, and the switch implies `SNAP_WB_REF4` so that it is fourth order.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** On spherical-polar blocks, feeds every $x_1$ map (reconstruction, scan, reference) the plain means of
-the cells instead of their $r^2$ means, and replaces the radial pressure source by the $r$-moment of a quintic
-(@eq-ch05-x1cent-source).
+**Purpose.** Feeds every $x_1$ map plain means instead of $r^2$ means, and makes the pressure source exact, @eq-ch05-x1cent-source.
 
-**Data.** In: $r^2$ means of the state; out: plain means for the $x_1$ maps and the radial pressure source $S_i$.
+**Data.** Reads the $r^2$ means and the face pressures; gives plain means to the $x_1$ maps and $S_i$ to the momentum source.
 
-**Placement.** In the $x_1$ sweep of `HydroImpl::forward` and the spherical-polar source, every stage.
+**Placement.** The $x_1$ sweep of `HydroImpl::forward` and `SphericalPolarImpl::forward`, every RK stage.
 
-**Activation.** Environment variable `SNAP_X1_CENTROID_EXACT`, read once per process, default off. Implies
-`SNAP_WB_REF4`. Requires $n_g\ge3$. Acts on `spherical-polar` only; nothing on cubed-sphere grids.
+**Activation.** Environment variable `SNAP_X1_CENTROID_EXACT`, default off; acts on `spherical-polar`; implies `SNAP_WB_REF4`.
 
-**Guarantee / limits.** Conversion exact to degree 4; rest exact for densities of degree $\le4$; the Favre velocity and
-other ratios of means keep an $O(\Delta x_1^2/R)$ remainder (@sec-ch05-oneoverr).
+**Guarantee / limits.** Rest exact for densities of degree $\le4$; ratios of means keep $O(\Delta x_1^2/r)$ (@sec-ch05-oneoverr).
 
-**Evidence.** `test_x1_centroid_rest` and the seam arms pass at the pin (CPU); check claims `[C16]`–`[C18]` of `wbref_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-x1cent-tests.
 :::
+
+Local symbols: $\langle q\rangle_i$ the $r^2$ mean and $\overline q_i$ the plain mean of cell $i$; $r^{\mathrm m}_i$ [m] the
+mid-radius and $\Delta$ [m] the width $\Delta x_{1,i}$; $x$ [-] the local coordinate; $c_{i,l}$ [-] the conversion
+weights and $c^S_{i,l}$ [m$^{-1}$] the source weights over the window starting at cell or face $i_0$, offset $l$;
+$m$ the monomial degree; $\tilde p$ [Pa] the quintic through six face pressures; $S_i$ [Pa m$^{-1}$] the radial
+pressure source. $\delta_i$, $A_{i\pm1/2}$, $V_i$, $p^{*}$ and $\epsilon_{\mathrm m}$ are NOTATION's.
 
 On Cartesian blocks the switch only implies `SNAP_WB_REF4`; on cubed-sphere blocks it does nothing (their $x_{1v}$ is
 the mid-radius). `balance_column` balances only a column declared Cartesian under it.
 
-*Aliases.* "the centroid switch"; legs (i)-(iii) in code comments.[^ch05-x1c-alias]
-
-[^ch05-x1c-alias]: The legs are those of chengcli/snapy#289.
+*Aliases.* "the centroid switch"; legs (i)-(iii) in the comments of `x1_centroid.hpp`.
 
 ### Derivation
 
@@ -89,17 +89,18 @@ For the $x_1$ maps only, each primitive row is replaced by
 
 $$
 \begin{aligned}
-\overline q_i &= \sum_{k=0}^{4} c_{i,k}\,\langle q\rangle_{s_i+k}, \\
-\sum_k c_{i,k}\,\langle x^n\rangle_{s_i+k} &= \overline{x^n}_i = \big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80}\big)_n,
+\overline q_i &= \sum_{l=0}^{4} c_{i,l}\,\langle q\rangle_{i_0+l}, \\
+\sum_l c_{i,l}\,\langle x^m\rangle_{i_0+l} &= \overline{x^m}_i = \big(1,\ 0,\ \tfrac1{12},\ 0,\ \tfrac1{80}\big)_m,
 \end{aligned}
 $$ {#eq-ch05-x1cent-conv}
 
-for the monomials $n=0..4$, window $s_i=\max(\mathrm{lo},\min(\mathrm{hi}-4,i-2))$, centred, inside the owned cells at a physical wall and inside the
-array at a seam. The moments are integrated by four-point Gauss-Legendre, exact for degree 6, and the $5\times5$ system
+for the monomials $m=0..4$, window $i_0=\max(\mathrm{lo},\min(\mathrm{hi}-4,i-2))$, centred, inside the owned cells at a physical wall and inside the
+array at a seam. The moments are integrated by four-point Gauss-Legendre, exact to degree 7 while every integrand has degree at most 6, and the $5\times5$ system
 is solved once per block. The conversion is exact for degree 4 and not 5, on uniform and stretched grids and in the
 wall windows, and its weights sum to 1 (`[C16]`). @eq-ch05-x1cent-conv is `x1_plain_mean_stencils`
 ({{< code src/coord/x1_centroid.cpp x1_plain_mean_stencils >}}).
-Ghosts past a clamped wall get the mirrored correction of the owned cells, odd for the normal velocity, in
+Ghosts past a physical wall get the mirrored correction of the owned cells, odd for the normal velocity unless the
+boundary is `outflow`, in
 `x1_plain_means`
 ({{< code src/coord/x1_centroid.cpp x1_plain_means >}});
 at a seam the outer ghosts' windows are off-centre, so their plain means are replaced by the neighbour's.
@@ -110,7 +111,7 @@ With $\tilde p$ the quintic through the six face pressures nearest cell $i$ (win
 reaching two faces past a seam), the radial pressure source is
 
 $$
-S_i = \frac{2}{V_i}\int_{r_{i-1/2}}^{r_{i+1/2}} r\,\tilde p\,\mathrm{d}r = \sum_{j=0}^{5}w_{i,j}\,p^{*}_{s+j},
+S_i = \frac{2}{V_i}\int_{r_{i-1/2}}^{r_{i+1/2}} r\,\tilde p\,\mathrm{d}r = \sum_{l=0}^{5}c^S_{i,l}\,p^{*}_{i_0+l},
 $$ {#eq-ch05-x1cent-source}
 
 and integration by parts gives the net pressure force. Since $\partial_r(r^2\tilde p)=2r\tilde p+r^2\partial_r\tilde p$,
@@ -143,8 +144,30 @@ is exact and the column is balanced exactly, which is the oracle of the test.
 
 *Exact and truncated.* Exact: the conversion for degree 4, both source identities, rest for degree $\le4$. For a
 smooth column the curvature part of the residual is $O(\Delta x_1^6/r)$; what remains is the truncation of the reference itself.
-Ratios of means (the Favre velocity, $T=p/\rho$, $\chi$ inside $F$) are not made exact (@sec-ch05-oneoverr); for the
+Ratios of means (the Favre velocity, $T=p/\rho$, $\chi$ inside $\mathsf F$) are not made exact (@sec-ch05-oneoverr); for the
 velocity, `SNAP_X1_MASS_COVARIANCE` subtracts the covariance part (@sec-ch04-x1masscov).
+
+*Why a resting column of $r^2$ means stays at rest.* Four steps, each a line of the code.
+
+1. *The maps read plain means.* `HydroImpl::forward` hands `wx1 = x1_plain_means(...)` to `_hydro_ref_x1` and to the
+   reconstruction, and the conserved state keeps its $r^2$ means: `wx1` is a separate tensor.
+2. *The seam ghosts are the neighbour's.* `_x1_ghost_rows(wx1, ...)` replaces the off-centre ghost windows, so a split
+   column converts like one block.
+3. *The source is the exact $r$-moment.* With the face pressures defined, `SphericalPolarImpl::forward` adds
+   `x1_pressure_source` instead of the plain-difference correction, and its weights divide by the cube-form volume
+   `(xf[i+1]^3 - xf[i]^3)/3` that `cell_volume()` uses, so a constant pressure exerts no force.
+4. *The reference is then Cartesian.* On plain means the scan and @sec-ch05-wbref4 are the Cartesian operators, and
+   the net force is the $r^2$ mean of $-(\partial_r\tilde p+g\rho)$, zero for degree $\le4$.
+
+*Round-off.* The conversion is a five-term sum, so by the dot-product bound $\overline q_i$ carries at most
+$5\epsilon_{\mathrm m}\sum_l\lvert c_{i,l}\rvert\max\lvert\langle q\rangle\rvert$ besides the rounding of the weights from
+the $5\times5$ solve, which is not bounded here; for $\Delta\ll r$ the weights approach the plain fourth-order
+ones and $\sum_l\lvert c_{i,l}\rvert$ stays of order 1. The pressure force is a difference of two terms each of size
+about $p/\Delta x_1$ (since $A/V\approx1/\Delta x_1$), so it rounds to a few $\epsilon_{\mathrm m}\,p/\Delta x_1$, which
+is a few $\epsilon_{\mathrm m}H_p/\Delta x_1$ in units of $g\rho$, with $H_p=p/(\rho g)$ the pressure scale height. The
+constant is not derived. The rest test's column ($\rho=1-0.3(r-r_0)$, $g=1$, $\Delta x_1=1/16$) has
+$H_p/\Delta x_1$ between 38 and 40, so $\epsilon_{\mathrm m}H_p/\Delta x_1\approx8.9\times10^{-15}$; its rest forces with the
+switch, $0.9$ to $3.3\times10^{-14}$ (@tbl-ch05-x1cent-rest), are 1 to 4 times that.
 
 ### Numerical method
 
@@ -164,6 +187,52 @@ make_fig()
 ```
 
 ### Code
+
+**A minimal input.** The switch is an environment variable. It acts on a spherical-polar block with gravity along
+$x_1$ and three ghost cells; the geometry of the rest test, trimmed:
+
+```yaml
+geometry:
+  type: spherical-polar
+  bounds: {x1min: 5., x1max: 7., x2min: 1.4, x2max: 1.7, x3min: 0., x3max: 0.3}
+  cells: {nx1: 32, nx2: 4, nx3: 4, nghost: 3}   # three ghost cells: the check of @sec-ch05-wbref4
+boundary-condition:
+  external: {x1-inner: reflecting, x1-outer: reflecting}
+forcing:
+  const-gravity: {grav1: -1.}
+```
+
+run with `SNAP_X1_CENTROID_EXACT=1` in the environment.
+
+**What it refuses, and why.** Since the switch implies `SNAP_WB_REF4`, setup refuses $n_g<3$ with gravity on
+({{< code src/hydro/hydro.cpp HydroImpl::reset >}}), for the seam reason of @sec-ch05-wbref4. `balance_column` refuses
+it with any geometry other than `"cartesian"`
+({{< code src/hydro/balance_column.cpp balance_column >}}), because a ghost-free column does not model the conversion.
+Not refused: on a block with fewer than five cells between its walls, or fewer than six faces for the source, the
+stencils are marked unusable and the plain path runs ({{< code src/coord/x1_centroid.cpp x1_plain_mean_stencils >}}).
+
+**The lines that implement @eq-ch05-x1cent-conv and @eq-ch05-x1cent-source.** In `x1_pressure_source_stencils`
+each source weight is the Gauss sum of $r\,\ell_l$, $\ell_l$ the Lagrange basis of the six faces:
+
+```cpp
+for (int q = 0; q < 4; ++q) {
+  double r = c + 0.5 * h * kGx[q];
+  wt[j] += 0.5 * h * kGw[q] * r * lagrange(X, j, 0.5 * kGx[q]);
+}
+wt[j] *= 2. / vol;
+```
+
+and in `SphericalPolarImpl::forward` the source replaces the plain difference:
+
+```cpp
+if (exact_x1) {
+  src1.slice(-1, si, ei) += x1_pressure_source(*x1src_, face_pressure1);
+} else if (face_pressure1.defined()) {
+```
+
+`wt[j]` is $c^S_{i,l}$ with $l$ = `j`; the loop is the integral $\int r\tilde p\,\mathrm dr$ of @eq-ch05-x1cent-source over
+the cell, and `2. / vol` its prefactor $2/V_i$. The conversion weights $c_{i,l}$ of @eq-ch05-x1cent-conv are the
+solution `wgt = solve(M, rhs)` with `rhs` the plain moments $(1,0,\tfrac1{12},0,\tfrac1{80})$.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
@@ -220,6 +289,15 @@ prints.[^ch05-x1c-tab] {#tbl-ch05-x1cent-rest}
 [^ch05-x1c-tab]: `python tests/test_x1_centroid_rest.py` (from the build's `tests` directory, `PYTHONPATH` set to
     this build's Python package) against a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
 
+`[C16]` confirms that the conversion is exact to degree 4 and not 5 (degree-5 error $0.12$) and that its weights sum to
+1 within $2.2\times10^{-16}$. `[C17]` proves both source identities in exact rationals, the constant-pressure balance
+and the by-parts form of the net force. `[C18]` derives $\delta_i=2h^2r^{\mathrm m}/(h^2+12(r^{\mathrm m})^2)$ and its
+series.[^ch05-x1c-chk]
+
+[^ch05-x1c-chk]: [sha: the formulas the check ports, as its header records them from the earlier book pin; deck: the
+    check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU, double, 1 process; Python 3.11.13, numpy
+    2.4.6, sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`, lines `[C16]`-`[C18]`.
+
 ::: {.callout-important title="Test"}
 **Evidence.** Check numbers come from `wbref_check.py` (`[C16]`–`[C18]`). At the pin
 (@tbl-ch05-x1cent-rest) the rest force with the switch is at round-off in every case and without it the $r_0/H=5$
@@ -239,7 +317,7 @@ The switch does nothing on cubed-sphere grids. Under it `balance_column` balance
 :::
 
 1. **Ratios of means.** The Favre velocity, $T$ and $\chi$ are still treated as means (the velocity's covariance part is
-   subtracted under `SNAP_X1_MASS_COVARIANCE`); the $O(\Delta x_1^2/R)$ remainder
+   subtracted under `SNAP_X1_MASS_COVARIANCE`); the $O(\Delta x_1^2/r)$ remainder
    is @sec-ch05-oneoverr.
 2. **Cubed sphere.** Not implemented: the gnomonic grids store the mid-radius as $x_{1v}$ and would need the
    conversion with their own radial measure.

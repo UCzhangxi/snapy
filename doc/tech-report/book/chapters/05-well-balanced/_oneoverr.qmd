@@ -1,4 +1,4 @@
-## The $1/R$ remainder on spherical-polar grids: what is left after the corrections (no switch) {#sec-ch05-oneoverr}
+## The $1/r$ remainder on spherical-polar grids: what is left after the corrections (no switch) {#sec-ch05-oneoverr}
 
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
@@ -10,7 +10,7 @@ status: draft
 
 ### Summary
 
-On a spherical-polar grid the $r^2$ cell measure adds terms of relative size $\Delta x_1/R$ to every cell-to-face map, and the
+On a spherical-polar grid the $r^2$ cell measure adds terms of relative size $\Delta x_1/r$ to every cell-to-face map, and the
 divergence adds a $2/r$ factor to every flux error. The covariance corrections of @sec-ch04 and the plain-mean maps
 of @sec-ch05-x1cent remove the leading such terms of the face fluxes, the reference and the pressure force. What remains
 is not a defect of any map but of an input: the $x_1$ velocity the maps reconstruct is a ratio of two $r^2$ means, not a
@@ -18,32 +18,32 @@ mean, and the conversion of @eq-ch05-x1cent-conv makes means plain, not ratios e
 remainder, its signature, and what evidence exists for it; it has no code of its own.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** States the part of the $1/R$ error of a spherical column that survives `SNAP_FLUX_COVARIANCE` and
-`SNAP_X1_CENTROID_EXACT`: an $O(\Delta x_1^2/R)$ term from reconstructing the Favre velocity
-$\langle\rho v_1\rangle/\langle\rho\rangle$ as if it were a plain mean (@eq-ch05-oneoverr-favre).
+**Purpose.** States the $O(\Delta x_1^2/r)$ error left once the plain-mean maps are on: a Favre velocity treated as a mean.
 
-**Data.** N/A: a property of the scheme, measured as the $1/R$ content of the one-step effective stratification.
+**Data.** None of its own; measured as the $1/r$ content of the one-step effective stratification.
 
-**Placement.** N/A.
+**Placement.** The $x_1$ reconstruction in `HydroImpl::forward`, through the velocity it is fed.
 
-**Activation.** None of its own; the related switches are `SNAP_FLUX_COVARIANCE` (@sec-ch04), `SNAP_X1_CENTROID_EXACT`
-(@sec-ch05-x1cent), `SNAP_X1_MASS_COVARIANCE` (@sec-ch04-x1masscov, off by default) and
-`SNAP_GRAVITY_WORK_RADIAL_EXACT` (@sec-ch06).
+**Activation.** Always present on spherical-polar grids; `SNAP_X1_MASS_COVARIANCE` subtracts its velocity part.
 
-**Guarantee / limits.** $O(\Delta x_1^2/R)$. `SNAP_X1_MASS_COVARIANCE` subtracts the velocity's covariance term; no
-switch corrects the $T=p/\rho$ and $\chi$ ratios, and the effect of the switch on the measured remainder is not
-measured at the pin.
+**Guarantee / limits.** $O(\Delta x_1^2/r)$; the $T=p/\rho$ and $\chi$ ratios keep it, with no switch.
 
-**Evidence.** The closure run `run_oneoverr_remainder.py` at the pin (CPU); no ctest asserts it; check claim `[C21]` of `wbref_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-oneoverr-tests.
 :::
+
+Local symbols: $\tilde v_{1,i}$ [m s$^{-1}$] the stored Favre velocity $\langle\rho v_1\rangle_i/\langle\rho\rangle_i$;
+$r_0$ [m] the radius of the column's base; $H$ [m] the column depth; $D$ [-] the $1/r$ content defined in the Numerical
+method; $\eta_{\mathrm{ro}}$ [-] the round-off of one value of $\varepsilon_{\mathrm{eff}}n_1^2$. $\langle\cdot\rangle$,
+$\overline{\,\cdot\,}$, $r^{\mathrm m}_i$ and $\delta_i$ are those of @sec-ch05-x1cent; $\varepsilon_{\mathrm{eff}}$ is
+NOTATION's one-step effective onset error.
 
 *Aliases.* "the 1/R term"; "leg (d)" and "hypothesis H1" in the sources.[^ch05-1r-alias]
 
-[^ch05-1r-alias]: Leg (d) of chengcli/snapy#289; hypothesis H1 of `sources/gw__ONEOVERR_split_RESULT.md`.
+[^ch05-1r-alias]: Leg (d) in the comments of `x1_centroid.hpp`; hypothesis H1 of `sources/gw__ONEOVERR_split_RESULT.md`.
 
 ### Derivation
 
-Notation as in @sec-ch05-x1cent; $R$ [m] is the radius of the column. The stored velocity of cell $i$ is the
+Notation as in @sec-ch05-x1cent. The stored velocity of cell $i$ is the
 Favre mean $\tilde v_{1,i}=\langle\rho v_1\rangle_i/\langle\rho\rangle_i$. Expand $\rho$ and $v_1$ about the mid-radius $r^{\mathrm m}_i$, with derivatives there and the moments of
 @eq-ch05-x1cent-defect, $\langle r-r^{\mathrm m}_i\rangle_i=\delta_i$ and $\langle(r-r^{\mathrm m}_i)^2\rangle_i=\Delta x_{1,i}^2/12+O(\Delta x_1^4/r^2)$.
 Then
@@ -72,16 +72,28 @@ unless `SNAP_X1_MASS_COVARIANCE` is set, which subtracts $\tfrac{1}{12}\Delta x_
 from the reconstructed velocity ({{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}},
 @sec-ch04-x1masscov).
 Reconstructing the converted value with weights for plain means therefore leaves an $O(\Delta x_1^2)$ face error,
-which the $2/r$ of the radial divergence turns into an $O(\Delta x_1^2/R)$ tendency. The
+which the $2/r$ of the radial divergence turns into an $O(\Delta x_1^2/r)$ tendency. The
 same holds for $T=p/\rho$ and for $\chi$ inside the reference filter. The remainder shows in the effective
-stratification with the signature $+g/(6c_pR)$, and the face fluxes are complete to $O(\Delta x_1^4)$ including
-$\Delta x_1^2/R$.[^ch05-1r-src]
+stratification with the signature $+g/(6c_pr_0)$, and the face fluxes are complete to $O(\Delta x_1^4)$ including
+$\Delta x_1^2/r$.[^ch05-1r-src]
 
 [^ch05-1r-src]: The expansion follows `docs/derivations/x1-centroid-spherical.md@6fbb39750f62b83df096058a4746e77d0a634bc5` §6; the harness and the
     signature are in `sources/study__next-1overR_README.md` §§0-3; the completeness of the face fluxes is
     `sources/gw__ONEOVERR_split_RESULT.md` §§1-2.
 
-*Exact and truncated.* The remainder is $O(\Delta x_1^2/R)$ and vanishes for $R\to\infty$ (Cartesian).
+*Why it survives the corrections.* Four steps.
+
+1. *The velocity row is a ratio.* The primitive $x_1$ velocity is the conserved $\langle\rho v_1\rangle$ divided by
+   $\langle\rho\rangle$, so the row `w[IVX]` the maps read is $\tilde v_1$, not a mean of $v_1$.
+2. *The conversion removes only the measure part.* `x1_plain_means` treats every row as an $r^2$ mean, so it removes
+   $\delta_i\partial_1v_1$ and leaves the covariance term of @eq-ch05-oneoverr-favre.
+3. *The reconstruction takes it for a plain mean.* WENO5 maps cell values to face values as if they were plain means,
+   so the covariance term reaches the face velocity, and with it the mass flux, at $O(\Delta x_1^2)$.
+4. *The divergence divides by $r$.* The radial flux difference carries the face areas $r^2_{i\pm1/2}$ over $V_i$,
+   which turns that face error into an $O(\Delta x_1^2/r)$ tendency. `SNAP_X1_MASS_COVARIANCE` removes the velocity's
+   share of step 3 only.
+
+*Exact and truncated.* The remainder is $O(\Delta x_1^2/r)$ and vanishes for $r\to\infty$ (Cartesian).
 
 ### Numerical method
 
@@ -100,14 +112,19 @@ make_fig()
 
 The remainder in @fig-ch05-oneoverr-remainder comes from a closure run in snapy at the pin.[^ch05-1r-run] The run is `src/snapy_report/ch05/run_oneoverr_remainder.py`, the
 spherical-polar counterpart of the Cartesian one-step harness `test_horizontal_flux_covariance`. It sets up an
-isentropic column of depth $H$ at radius $R$ with an anelastic roll in the azimuth $\varphi$, runs one RK3 step with cell gravity work
+isentropic column of depth $H$ at radius $r_0$ with an anelastic roll in the azimuth $\varphi$, runs one RK3 step with cell gravity work
 and `SNAP_FLUX_COVARIANCE` on, and projects the entropy tendency on the seeded $v_1$ with unit weight per cell. The quantity
-is $R[\varepsilon n_1^2(R)-\varepsilon n_1^2(\infty)]$, where $\varepsilon n_1^2(\infty)$ is the same column in
+is $D=(r_0/H)[\varepsilon_{\mathrm{eff}} n_1^2(r_0)-\varepsilon_{\mathrm{eff}} n_1^2(\infty)]$, where $\varepsilon_{\mathrm{eff}} n_1^2(\infty)$ is the same column in
 Cartesian geometry with the same switches; the switch implies `SNAP_WB_REF4`, which acts in Cartesian too. With the
-switch on, the $1/R$ content is $+0.0004$ to $+0.0006$ for $R/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is
-constant in $R$, so the remainder is $O(1/R)$, and it changes little with $n_1$, so it is $O(\Delta x_1^2)$; it decreases slowly
-toward $+0.0004$ as $n_1$ grows. With the switch off it is $-0.027$ to $-0.031$ for $R/H \ge 40$ and $n_1 \ge 64$,
-fifty to eighty times larger, and it shrinks at small $R/H$ through a term of higher order in $1/R$.
+switch on, the $1/r$ content is $+0.0004$ to $+0.0006$ for $r_0/H = 5$ to $160$ and $n_1 = 64$ to $256$. It is
+constant in $r_0$, so the remainder is $O(1/r)$, and it changes little with $n_1$, so it is $O(\Delta x_1^2)$; it decreases slowly
+toward $+0.0004$ as $n_1$ grows. With the switch off it is $-0.027$ to $-0.031$ for $r_0/H \ge 40$ and $n_1 \ge 64$,
+fifty to eighty times larger, and it shrinks at small $r_0/H$ through a term of higher order in $1/r$.
+
+*Round-off of $D$.* $D$ is a difference of two values, each carrying a round-off $\eta_{\mathrm{ro}}$, multiplied by
+$r_0/H$, so its round-off is at most $2(r_0/H)\,\eta_{\mathrm{ro}}$. It grows linearly with the radius, while $D$ itself
+does not. The run estimates $\eta_{\mathrm{ro}}$ from the spread over three seed amplitudes, to which the linear response
+is blind, and plots half that spread as the error bar, which is why the $r_0/H=1000$ points are the least certain.
 
 [^ch05-1r-run]: Data `src/snapy_report/ch05/data/oneoverr_remainder.json` from `python3
     src/snapy_report/ch05/run_oneoverr_remainder.py --rh 5 10 20 40 160 1000 --nz 32 64 128 256 --snapy-sha 6fbb39750f62b83df096058a4746e77d0a634bc5
@@ -115,8 +132,8 @@ fifty to eighty times larger, and it shrinks at small $R/H$ through a term of hi
 
 ```{python}
 #| label: fig-ch05-oneoverr-remainder
-#| fig-cap: "The $1/R$ content of the one-step effective stratification, $(R/H)\\,[\\varepsilon n_1^2(R) - \\varepsilon n_1^2(\\infty)]$ [-], against $R/H$ [-], with `SNAP_X1_CENTROID_EXACT` off (a) and on (b), for $n_1$ = 32 to 256. The reference $\\varepsilon n_1^2(\\infty)$ is the same column in Cartesian geometry with the same switches. Error bars: half the spread over seed amplitudes 0.9, 1.0 and 1.1 times $10^{-4}$, the round-off magnified by $R$. One RK3 step of `run_oneoverr_remainder.py` at the pin, CPU, double, one rank."
-#| fig-alt: "Two panels against R/H from 5 to 1000 on a log axis. Left, switch off: four curves for n1 from 32 to 256 fall together from about -0.005 at R/H 5 to about -0.03 at R/H 160 and above. Right, switch on: the curves lie flat between +0.0004 and +0.0011, closer to +0.0004 for larger n1; the R/H 1000 points carry large error bars."
+#| fig-cap: "The $1/r$ content of the one-step effective stratification, $D=(r_0/H)\\,[\\varepsilon_{\\mathrm{eff}} n_1^2(r_0) - \\varepsilon_{\\mathrm{eff}} n_1^2(\\infty)]$ [-], against $r_0/H$ [-], with `SNAP_X1_CENTROID_EXACT` off (a) and on (b), for $n_1$ = 32 to 256. The reference $\\varepsilon_{\\mathrm{eff}} n_1^2(\\infty)$ is the same column in Cartesian geometry with the same switches. Error bars: half the spread over seed amplitudes 0.9, 1.0 and 1.1 times $10^{-4}$, the round-off magnified by $r_0$. One RK3 step of `run_oneoverr_remainder.py` at the pin, CPU, double, one rank."
+#| fig-alt: "Two panels against r0/H from 5 to 1000 on a log axis. Left, switch off: four curves for n1 from 32 to 256 fall together from about -0.005 at r0/H 5 to about -0.03 at r0/H 160 and above. Right, switch on: the curves lie flat between +0.0004 and +0.0011, closer to +0.0004 for larger n1; the r0/H 1000 points carry large error bars."
 #| echo: false
 from snapy_report.ch05.fig_oneoverr_remainder import make_fig
 make_fig()
@@ -126,13 +143,43 @@ make_fig()
 
 No dedicated code. The pieces it depends on are listed in their own sections.
 
+**A minimal input.** The remainder needs a spherical-polar column with gravity along $x_1$. The closure run's card,
+trimmed, at $r_0/H=40$; the environment switch `SNAP_X1_MASS_COVARIANCE=1` removes the velocity part:
+
+```yaml
+geometry:
+  type: spherical-polar
+  bounds: {x1min: 40., x1max: 41., x2min: 1.570601, x2max: 1.570992, x3min: 0., x3max: 0.0707}
+  cells: {nx1: 64, nx2: 1, nx3: 128, nghost: 3}
+forcing:
+  const-gravity: {grav1: -1., gravity-work: cell, gravity-work-fixer: false}
+```
+
+**What it refuses, and why.** With gravity on, setup refuses `SNAP_X1_MASS_COVARIANCE` on a block with fewer than
+three $x_1$ cells ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}): the one-sided density slope at a wall spans
+three cells, and fewer would read the ghost. Nothing else is refused; the remainder itself has no switch.
+
+**The line that implements the velocity part of @eq-ch05-oneoverr-favre.** In `HydroImpl::forward`, before the $x_1$
+reconstruction:
+
+```cpp
+auto rho_1 = d1_centred(density, x1v);
+...
+auto w_1 = d1_centred(velocity, x1v);
+wx1[IVX] -= dx1f * dx1f / 12. * rho_1 * w_1 / density;
+```
+
+`rho_1` and `w_1` are $\partial_1\rho$ and $\partial_1\tilde v_1$ by centred differences (one-sided at a reflecting wall),
+and the subtracted term is $\tfrac1{12}\Delta x_{1,i}^2\,\partial_1\rho\,\partial_1v_1/\rho$, the first term on the right of
+@eq-ch05-oneoverr-favre. The velocity row is restored after the reconstruction, so the state is unchanged.
+
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
 | the plain-mean view the maps read | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_plain_means` | `SNAP_X1_CENTROID_EXACT` |
 | the radial source | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}} | `src1` | |
 | the velocity covariance correction | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `x1_mass_covariance` | `SNAP_X1_MASS_COVARIANCE` |
 
-: Code map of the $1/R$ remainder. {#tbl-ch05-oneoverr-code}
+: Code map of the $1/r$ remainder. {#tbl-ch05-oneoverr-code}
 
 ### Tests
 
@@ -141,30 +188,36 @@ No dedicated code. The pieces it depends on are listed in their own sections.
 | none in ctest | no test asserts the remainder; `test_x1_centroid_rest_python` covers rest only | — | — |
 | this chapter's check, `[C21]` | the Favre-ratio expansion @eq-ch05-oneoverr-favre for linear profiles | exact | sympy |
 
-: Tests of the $1/R$ remainder. {#tbl-ch05-oneoverr-tests}
+: Tests of the $1/r$ remainder. {#tbl-ch05-oneoverr-tests}
+
+`[C21]` expands the Favre ratio of $r^2$ means for linear $\rho$ and $v_1$ in sympy and recovers the $O(\Delta x_1^2)$
+difference to the plain mean that @eq-ch05-oneoverr-favre states.[^ch05-1r-chk]
+
+[^ch05-1r-chk]: [sha: the formulas the check ports, as its header records them from the earlier book pin; deck: the
+    check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU, double, 1 process; Python 3.11.13, numpy
+    2.4.6, sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`, line `[C21]`.
 
 ::: {.callout-important title="Test"}
 **Evidence.** The closure run at the pin, `src/snapy_report/ch05/run_oneoverr_remainder.py`, with its data in
-`data/oneoverr_remainder.json`, gives @fig-ch05-oneoverr-remainder.[^ch05-1r-run] With the switch on, $R/H = 5$ to $160$,
-the $1/R$ content is $+0.00051$ to $+0.00063$ at $n_1 = 64$, $+0.00043$ to $+0.00048$ at $n_1 = 128$ and $+0.00038$ to
+`data/oneoverr_remainder.json`, gives @fig-ch05-oneoverr-remainder.[^ch05-1r-run] With the switch on, $r_0/H = 5$ to $160$,
+the $1/r$ content is $+0.00051$ to $+0.00063$ at $n_1 = 64$, $+0.00043$ to $+0.00048$ at $n_1 = 128$ and $+0.00038$ to
 $+0.00053$ at $n_1 = 256$, where the last value carries a round-off spread of $2\times10^{-4}$. With the switch off it
-reaches $-0.0303$, $-0.0305$ and $-0.0306$ at $R/H = 160$. At $R/H = 1000$ the round-off, magnified by $R$, is
-$5\times10^{-5}$ to $9\times10^{-4}$ for $n_1 \ge 64$. Per ISSUES.md item 5 the derivation note's one-step numbers,
-from commits not in snapy, are not used.
+reaches $-0.0303$, $-0.0305$ and $-0.0306$ at $r_0/H = 160$. At $r_0/H = 1000$ the round-off, magnified by $r_0$, is
+$5\times10^{-5}$ to $9\times10^{-4}$ for $n_1 \ge 64$. The derivation note's one-step numbers were not produced at the pin and are not used (ISSUES.md item 5).
 **Coverage.** The run is not a ctest entry; no test asserts the remainder.
 :::
 
 ### Limits
 
-1. **Removed only in part.** The remainder is a known $O(\Delta x_1^2/R)$ term of the scheme. `SNAP_X1_MASS_COVARIANCE`
+1. **Removed only in part.** The remainder is a known $O(\Delta x_1^2/r)$ term of the scheme. `SNAP_X1_MASS_COVARIANCE`
    (off by default) subtracts the covariance term of the velocity (@eq-ch05-oneoverr-favre); the $T=p/\rho$ and
    $\chi$ ratios have no correction. The closure run leaves the switch off, so how much of the measured remainder
    it removes is not measured at the pin.
 2. **Metric of the harness.** The note reports column means with unit weight per cell; weighted by cell volume the
-   metric carries its own $1/R$ across the column's error profile and does not measure the scheme's term (same note,
+   metric carries its own $1/r$ across the column's error profile and does not measure the scheme's term (same note,
    §6).
 3. **Gravity-work interplay.** The face-form gravity work and its curvature flux on radial grids contribute their own
-   $1/R$ content; that is @sec-ch06.[^ch05-1r-gw]
+   $1/r$ content; that is @sec-ch06.[^ch05-1r-gw]
 4. **Source references.** The file and line references in the study READMEs do not match the pin.
 
 [^ch05-1r-gw]: `sources/study__next-1overR-remainder_README.md` §§0-4.

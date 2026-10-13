@@ -13,22 +13,31 @@ with an isentropic continuation of the wall cell, the other makes the two states
 taken when `wb_x1` is false and gravity is on, a combination no configuration reaches with a pressure row.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Two wall treatments of the non-well-balanced $x_1$ path: an isentropic extrapolation of $p$ and $\rho$
-into the wall ghosts (defined, never called) and a copy of the right state's $p$ and $\rho$ into the left state at
-the wall face (@eq-ch05-legacy-copy).
+**Purpose.** Two wall treatments of the non-well-balanced $x_1$ path: isentropic wall ghosts and a wall-face state copy.
 
-**Data.** In and out: the wall ghosts, or the left and right states at the wall face.
+**Data.** The wall ghosts of $p$ and $\rho$, or the left and right states at the wall face (@eq-ch05-legacy-copy).
 
-**Placement.** The copy would run after the $x_1$ reconstruction, at physical $x_1$ walls; the ghost fill's call is
-commented out.
+**Placement.** `HydroImpl::forward`: the ghost fill's call is commented out; the copy follows the $x_1$ reconstruction.
 
-**Activation.** None. Effectively unreachable: with gravity on and any EOS other than `shallow-water` the
-well-balanced path of @sec-ch05-wbx1 runs instead, and the shallow-water EOS has no pressure row for these routines.
+**Activation.** None in practice: with gravity and a pressure row the path of @sec-ch05-wbx1 runs instead.
 
-**Guarantee / limits.** N/A: not maintained.
+**Guarantee / limits.** None: kept, not maintained, and not tested.
 
-**Evidence.** No test exercises either routine.
+**Evidence.** The Tests layer below, @tbl-ch05-legacy-tests.
 :::
+
+Local symbols: $K_{\mathrm{is}}$ [Pa m$^{3\gamma}$ kg$^{-\gamma}$] the isentrope constant $p/\rho^\gamma$ of the wall cell;
+$\alpha_\gamma=(\gamma-1)/\gamma$ [-]; $g=-g_1>0$; $p^{L}$, $p^{R}$, $\rho^{L}$, $\rho^{R}$ the left and right states at
+a face. $\gamma$ and $\epsilon_{\mathrm m}$ are NOTATION's.
+
+*Why neither routine runs.* Four steps, each a line of `HydroImpl::forward`.
+
+1. *The ghost fill is never called.* Its two calls sit inside a `/* ... */` comment.
+2. *The copy is on the other branch.* It runs in the `else` of `if (wb_x1)`, and only when `grav1` is true.
+3. *That branch needs gravity without a pressure row.* `wb_x1 = grav1 && w.size(0) > IPR && eos type != "shallow-water"`,
+   so with gravity on the `else` is taken only for a state without a pressure row or with `shallow-water`.
+4. *Neither has a pressure row for the copy.* `shallow-water` has `nvar() = 4` and `IPR = 4`, so the copy's `wl[IPR]`
+   has nothing to act on.
 
 ### Derivation
 
@@ -43,9 +52,9 @@ $$ {#eq-ch05-legacy-copy}
 
 in `_revise_x1inner_lr`
 ({{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}}),
-so the Riemann solver sees no pressure jump at the wall. The ghost fill holds the wall cell's ratio of specific heats $\gamma$ (NOTATION.md, `W->A` of that cell) and its
-isentrope constant $K_{\mathrm{is}}=p/\rho^\gamma$ (local symbol) fixed, takes $g=-g_1>0$, and integrates hydrostatic balance
-$\partial_1p=-\rho g$ with $\rho=(p/K_{\mathrm{is}})^{1/\gamma}$. With $\alpha_\gamma=(\gamma-1)/\gamma$ (local symbol),
+so the Riemann solver sees no pressure jump at the wall. The ghost fill holds the wall cell's ratio of specific heats $\gamma$ (`W->A` of that cell) and its
+isentrope constant $K_{\mathrm{is}}$ fixed, and integrates hydrostatic balance
+$\partial_1p=-\rho g$ with $\rho=(p/K_{\mathrm{is}})^{1/\gamma}$. Then
 
 $$
 \frac{\mathrm d(p^{\alpha_\gamma})}{\mathrm dx_1}=\alpha_\gamma\,p^{\alpha_\gamma-1}\,\partial_1p
@@ -55,8 +64,14 @@ $$
 
 since $\alpha_\gamma-1+1/\gamma=0$. So $p^{\alpha_\gamma}$ is linear in $x_1$, and stepping it down by the centre spacing
 cell by cell into the ghosts is exact for the isentropic hydrostatic profile, in `_revise_x1inner_ghost`
-({{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_ghost >}}).
-Neither is used at the pin, so neither has a check.
+({{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_ghost >}}). `[LG-1]` checks the exponent identity.
+
+*Round-off.* The copy is a copy, exact. Each ghost step forms $h=p^{\alpha_\gamma}+\alpha_\gamma g\Delta x_1/K_{\mathrm{is}}^{1/\gamma}$
+with a sum of two positive terms, so taking one rounding each for the power, the product and the sum (a correctly
+rounded `pow` is assumed, not checked), $h$ after $n_g$ steps carries at most $3n_g\epsilon_{\mathrm m}$ relative to first
+order. $p=h^{1/\alpha_\gamma}$ multiplies that by $1/\alpha_\gamma$, giving
+$\lvert\Delta p/p\rvert\le(3n_g/\alpha_\gamma+1)\epsilon_{\mathrm m}$: $32.5\,\epsilon_{\mathrm m}=7.2\times10^{-15}$ for
+$\gamma=1.4$, $n_g=3$.
 
 ### Numerical method
 
@@ -74,6 +89,37 @@ make_fig()
 
 ### Code
 
+**A minimal input.** No key selects either routine, and no deck with a pressure row reaches them. A deck with gravity
+along $x_1$ and an `ideal-gas` state takes the well-balanced path of @sec-ch05-wbx1 instead:
+
+```yaml
+dynamics:
+  equation-of-state: {type: ideal-gas}
+forcing:
+  const-gravity: {grav1: -9.8}   # grav1 != 0 with a pressure row: wb_x1 is true
+```
+
+**What it refuses, and why.** Nothing: the routines have no key and no check. The parser does not see them, and the
+branch choice is made from the state and the EOS type, not from the input.
+
+**The lines that implement @eq-ch05-legacy-copy and the ghost step.** From `_revise_x1inner_lr` and
+`_revise_x1inner_ghost`:
+
+```cpp
+wl[IPR].narrow(-1, is, 1) = wr[IPR].narrow(-1, is, 1);
+wl[IDN].narrow(-1, is, 1) = wr[IDN].narrow(-1, is, 1);
+...
+auto h =
+    w[IPR].narrow(-1, is - n, 1).pow(a) + a * grav * dz / K.pow(1. / gamma);
+w[IPR].narrow(-1, is - n - 1, 1) = h.pow(1. / a);
+w[IDN].narrow(-1, is - n - 1, 1) =
+    (w[IPR].narrow(-1, is - n - 1, 1) / K).pow(1. / gamma);
+```
+
+The first two lines are @eq-ch05-legacy-copy at the lower wall face. In the loop `a` is $\alpha_\gamma$, `grav` is $g$,
+`dz` the centre spacing `dx1v` and `K` is $K_{\mathrm{is}}$: `h` is $p^{\alpha_\gamma}$ one cell further down, the linear
+step of the derivation, and the last line is $\rho=(p/K_{\mathrm{is}})^{1/\gamma}$.
+
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
 | face copy, lower | {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}} | `_revise_x1inner_lr` | |
@@ -87,7 +133,19 @@ make_fig()
 
 ### Tests
 
-No test exercises either routine at the pin; the live call is unreachable in every registered test.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|----------------|-------------|-----|-----|
+| none in ctest | no test exercises either routine; the live call is unreachable in every registered test | — | — |
+| this chapter's check, `derivation_check.py` `[LG-1]` | $p^{\alpha_\gamma}$ is linear in $x_1$ on the isentropic hydrostatic profile | exact | sympy |
+
+: Tests of the legacy wall routines. {#tbl-ch05-legacy-tests}
+
+`[LG-1]` differentiates $p^{\alpha_\gamma}$ with $\rho=(p/K_{\mathrm{is}})^{1/\gamma}$ and hydrostatic balance in sympy and
+gets the constant $-\alpha_\gamma g/K_{\mathrm{is}}^{1/\gamma}$, so the ghost step is exact for that profile.[^ch05-leg-chk]
+
+[^ch05-leg-chk]: [sha: the formulas of the book pin, as the check's header records them; deck: the check itself; run:
+    `python3 src/snapy_report/ch05/derivation_check.py`, CPU, 1 process; Python 3.11.13, sympy 1.14.0]. Output
+    `src/snapy_report/ch05/derivation_check.out`, line `LG-1`.
 
 ### Limits
 

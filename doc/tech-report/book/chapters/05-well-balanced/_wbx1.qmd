@@ -18,25 +18,24 @@ perturbations about it, and restores the reference at the faces. The perturbatio
 which every reconstruction reproduces, so the restored faces carry exactly the balanced pressure difference.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ instead of $p$ and $\rho$, then
-adds the reference face values back, so a discretely hydrostatic column produces no $x_1$ force
-(@eq-ch05-wbx1-split).
+**Purpose.** Reconstructs $p-p_{\mathrm{ref}}$ and $\rho-\rho_{\mathrm{ref}}$ along $x_1$ and adds the reference back, @eq-ch05-wbx1-split.
 
-**Data.** In: cell averages $\overline p$, $\overline\rho$ and the reference of @sec-ch05-refkernel; out: left and right face
-states of $p$ [Pa] and $\rho$ [$\mathrm{kg\,m^{-3}}$] at the $x_1$ faces.
+**Data.** Reads $\overline p$, $\overline\rho$ and the reference of @sec-ch05-refkernel; writes the $x_1$ face states of $p$, $\rho$.
 
 **Placement.** Every RK stage, in the $x_1$ sweep of `HydroImpl::forward`, before the Riemann solve.
 
-**Activation.** No switch: on whenever $g_1\neq0$, the state has a pressure row and the EOS is not `shallow-water`;
-also under an $x_1$ block split.
+**Activation.** No key: on when $g_1\neq0$, the state has a pressure row and the EOS is not `shallow-water`.
 
-**Guarantee / limits.** Exact rest balance for a column at the fixed point @eq-ch05-wbx1-rest. Away from rest the face
-states carry the reconstruction's error on the perturbation plus the density-reference offset, $O(\Delta x_1^2)$ for
-the default reference and $O(\Delta x_1^4)$ with @sec-ch05-wbref4. No well-balanced treatment in $x_2$, $x_3$.
+**Guarantee / limits.** A column at @eq-ch05-wbx1-rest stays at rest to the bound below; nothing in $x_2$, $x_3$.
 
-**Evidence.** `test_face_floor`, `test_wb_wall_corner`, `test_hydrostatic` pass at the pin (CPU); check claims
-`[C14]`, `[C19]` of `wbref_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-wbx1-tests.
 :::
+
+Local symbols: $p'_i$, $\rho'_i$ the perturbations about the reference (NOTATION's prime, "minus the reference");
+$c$ [Pa] the constant of a resting perturbation; $\mathcal W^{L,R}$ the left and right face values of the $x_1$
+reconstruction $\mathcal W$; $p^{*}$ the face pressure of the Riemann solver; $n_w$ the number of cells in the
+reconstruction stencil. $p_{\mathrm{sf}}$, $\rho_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ and $\epsilon_{\mathrm m}$ are
+NOTATION's.
 
 The scheme has no switch and no default to change: it is the $x_1$ path whenever gravity acts in $x_1$. The
 perturbation ghosts at a physical, non-outflow $x_1$ wall are filled with even parity; the reconstruction runs with
@@ -81,11 +80,23 @@ in @eq-ch05-wbx1-split is done by `_hydro_ref_x1` and the two in-place updates t
 and the restore by `psf_lo` added back to both states
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
-Suppose now that $p'_i=c$ in every cell, for one constant $c$, and $v_1=0$. Every reconstruction of snapy returns a
-constant exactly, so $p^{L}=p^{R}=p_{\mathrm{sf}}+c$ at every face, the two states agree, and the Riemann solver
-returns $p^{*}=p_{\mathrm{sf}}+c$ with zero mass and energy flux. The momentum balance above then reads
-$-(p_{\mathrm{sf},i+1/2}-p_{\mathrm{sf},i-1/2})/\Delta x_1+\overline{\rho}_ig_1=0$ by @eq-ch05-refkernel-scan. The
-discrete rest state of the scheme is therefore
+Why a resting column stays at rest takes six steps, each a fact of the code.
+
+1. *The reconstruction sees the perturbation.* `wx1[IPR] -= pref` and `wx1[IDN] -= dref` replace the pressure and
+   density rows by $p'$ and $\rho'$ before `precon1` runs.
+2. *At rest the perturbation is one constant, ghosts included.* Take $p'_i=c$ in every interior cell and $v_1=0$.
+   The even-parity ghosts at a wall copy interior cells, and at a seam the ghosts are the neighbour's cells of the
+   same continuous reference (@sec-ch05-seam), so every stencil cell holds $c$.
+3. *Every reconstruction returns a constant.* Each $x_1$ reconstruction of snapy is a weighted sum whose weights add
+   up to 1, and WENO's smoothness indicators are differences of equal numbers, hence exactly 0, so it uses its
+   linear weights. So $\mathcal W^{L}[p']=\mathcal W^{R}[p']=c$.
+4. *The restore puts the reference back.* `pl = wtmp[ILT][IPR] + psf_lo` and the same for `pr` give
+   $p^{L}=p^{R}=p_{\mathrm{sf}}+c$ at every face; the positivity fallback does not fire because both are positive.
+5. *Equal states give the reference pressure.* With equal left and right states and $v_1=0$ the Riemann solver
+   returns $p^{*}=p_{\mathrm{sf}}+c$ and zero mass and energy flux.
+6. *The scan cancels gravity.* The momentum balance reads
+   $-(p_{\mathrm{sf},i+1/2}-p_{\mathrm{sf},i-1/2})/\Delta x_1+\overline{\rho}_ig_1=0$ by @eq-ch05-refkernel-scan, in every
+   cell. The discrete rest state of the scheme is therefore
 
 $$
 \overline{p}_i = p_{\mathrm{ref},i}(\overline{p},\overline{\rho}) + c \quad\text{in every cell},
@@ -103,6 +114,17 @@ face states carry the reconstruction's truncation error on the perturbation plus
 $\rho_{\mathrm{sf}}-\mathcal W[\rho_{\mathrm{ref}}]$ of the density reference, which is $O(\Delta x_1^2)$ for the
 default reference (`[C14]`) and $O(\Delta x_1^4)$ with @sec-ch05-wbref4. The identity used in the cancellation,
 that the hydrostatic correction and the pressure force cancel at rest, is `[C19]`.
+
+*Round-off bound.* In floating point step 3 holds to rounding. A sum of $n_w$ products returns
+$c(1+\theta)$ with $\lvert\theta\rvert\le2n_w\epsilon_{\mathrm m}$ to first order, one rounding per product and per
+addition. The left and right sums use different weights, so the two states differ by at most
+$4n_w\epsilon_{\mathrm m}\lvert c\rvert$. The restore adds one more rounding of $\lvert p_{\mathrm{sf}}+c\rvert$ to each, and the
+scan of @sec-ch05-refkernel rounds once per face. With $p^{*}$ between the two states, each face pressure is off by
+at most $(4n_w\lvert c\rvert+2\lvert p_{\mathrm{sf}}+c\rvert)\,\epsilon_{\mathrm m}$, and the spurious momentum tendency of a
+resting cell is at most twice that over $\Delta x_1$. For WENO5 ($n_w=5$) in double precision
+($\epsilon_{\mathrm m}=2^{-52}$) and a constant $\lvert c\rvert\ll\lvert p_{\mathrm{sf}}\rvert$ (`balance_column` takes its gauge at the
+top cell, where the pressure is lowest), the bound is
+$4\epsilon_{\mathrm m}\max_f\lvert p_{\mathrm{sf},f}\rvert/\Delta x_1\approx8.9\times10^{-16}\max_f\lvert p_{\mathrm{sf},f}\rvert/\Delta x_1$ [Pa m$^{-1}$].
 
 ### Numerical method
 
@@ -137,6 +159,50 @@ column that is not at the fixed point @eq-ch05-wbx1-rest has a residual force of
 $p'_i-c$, which is what `balance_column` removes.
 
 ### Code
+
+**A minimal input.** Gravity along $x_1$ and an EOS with a pressure row are all it takes; the scheme then runs
+with whatever $x_1$ reconstruction the deck names:
+
+```yaml
+dynamics:
+  equation-of-state:
+    type: ideal-gas            # not shallow-water: the scheme needs a pressure row
+  reconstruct:
+    vertical: {type: weno5}    # any x1 reconstruction; it acts on p' and rho'
+forcing:
+  const-gravity:
+    grav1: -9.8                # m s^-2; g1 != 0 switches the scheme on
+```
+
+**What the parser accepts and refuses.** No key turns the scheme on or off, so there is nothing of its own to
+refuse; it is off only with $g_1=0$ or `shallow-water`. The keys around it are checked:
+`HydroOptionsImpl::from_yaml` refuses an unknown key under `dynamics:`
+({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}), and the reconstruction parser refuses an
+unknown key under `reconstruct:` or inside `vertical:` (only `shock`, `type`, `scale`)
+({{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}}). A misspelt key is therefore an
+error, not a silently different scheme.
+
+**The lines that implement @eq-ch05-wbx1-split.** From `HydroImpl::forward`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), with the lines between them left out:
+
+```cpp
+bool wb_x1 =
+    grav1 && w.size(0) > IPR && options->eos()->type() != "shallow-water";
+auto [psf_lo, pref, dsf, dref] = _hydro_ref_x1(wx1);
+wx1[IPR] -= pref;
+wx1[IDN] -= dref;
+wtmp = precon1->forward(wx1, DIM1, /*floor=*/false);
+auto pl = wtmp[ILT][IPR] + psf_lo;
+auto pr = wtmp[IRT][IPR] + psf_lo;
+wtmp[ILT][IPR].copy_(torch::where(pl > 0., pl, psf_lo));
+wtmp[IRT][IPR].copy_(torch::where(pr > 0., pr, psf_lo));
+```
+
+The first two lines are the activation of the At-a-glance box. `pref` and `dref` are $p_{\mathrm{ref}}$ and
+$\rho_{\mathrm{ref}}$, so the two subtractions form $p'$ and $\rho'$ (first two lines of @eq-ch05-wbx1-split).
+`precon1` returns $\mathcal W^{L,R}$ of both, and `pl`, `pr` are $p^{L,R}=\mathcal W^{L,R}[p']+p_{\mathrm{sf}}$ (third
+line), with `psf_lo` the face pressure $p_{\mathrm{sf}}$. The last two lines are the positivity fallback; the density
+restore with `dsf` follows the same pattern.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
@@ -185,6 +251,13 @@ and @sec-ch05-wbref4.
 | this chapter's check, `wbref_check.py`, `[C14]`, `[C19]` | density-reference offset; cancellation at rest | per claim | stated in the check |
 
 : Tests of the well-balanced $x_1$ reconstruction. {#tbl-ch05-wbx1-tests}
+
+The chapter's check ports the formulas to numpy and sympy.[^ch05-wbx1-check] `[C14]`: the default reference's face-density
+offset divided by @eq-ch05-refkernel-offset is 1.0022, 1.0005, 1.0001 and 1.0000 at $n_1$ = 32 to 256, order 2.00.
+`[C19]`: at rest the hydrostatic-mode correction cancels the pressure force to $0.0$, the identity step 6 uses.
+
+[^ch05-wbx1-check]: [sha: the formulas the check ports, as its header records them from the earlier book pin; deck: the check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU,
+    double, 1 process; Python 3.11.13, numpy 2.4.6, sympy 1.14.0]. Output `wbref_check.out`, lines `[C14]` and `[C19]`.
 
 ::: {.callout-important title="Test"}
 **Evidence.** All entries above pass at the pin.[^ch05-wbx1-run] Printed values: `test_hydrostatic` maximum spurious

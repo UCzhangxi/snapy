@@ -18,24 +18,23 @@ updates. The fixed point is defined only up to a free constant $C$, so the colum
 pressure, column mass) has to be re-pinned by the caller.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Moves a column of cell averages, at fixed $1/\chi=p/\rho$ per cell, to the fixed point
-$\overline p=p_{\mathrm{ref}}(\overline p)+C$ of @eq-ch05-wbx1-rest, so that the solver starts it at rest
-(@eq-ch05-balcol-iter).
+**Purpose.** Moves a column, at fixed $p/\rho$ per cell, to the solver's discrete rest state, @eq-ch05-balcol-iter.
 
-**Data.** In: one column of $\overline p$, $\overline\rho$ and the face positions; out: the projected $\overline p$,
-$\overline\rho$.
+**Data.** Reads one ghost-free column of $\overline p$, $\overline\rho$ and its widths; returns the projected column.
 
-**Placement.** Before the run: an API function, `balance_column` in C++ and in the Python package, called by
-initial-condition builders.
+**Placement.** Before the run: an API function in C++ and Python, called by initial-condition builders.
 
-**Activation.** Called explicitly; requires `wb-wall-clamp` on, at least five cells, positive $p$ and $\rho$.
+**Activation.** Called explicitly; needs the wall clamp on, five cells or more, positive $p$ and $\rho$.
 
-**Guarantee / limits.** Fixed point to a residual below `rtol` (default $10^{-10}$, at most 120 sweeps); the result
-moves by a free constant $C$.
+**Guarantee / limits.** Residual $\varepsilon_{\mathrm{bal}}$ below `rtol` (default $10^{-10}$); the column moves by a free $C$.
 
-**Evidence.** `test_balance_column` (three arms) and `test_bryan_balance_ic` pass at the pin (CPU); check claim
-`[C15]` of `wbref_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-balcol-tests.
 :::
+
+Local symbols: $C$ [Pa] the gauge, the perturbation of the top cell; $\varepsilon_{\mathrm{bal}}$ [-] the stop residual
+(NOTATION keeps bare $\varepsilon$ for the onset error); $\mathrm{rtol}$ [-] its threshold; $a_f$ [m s$^{-2}$] the
+acceleration a leftover face imbalance gives; $g=-g_1>0$ as in @sec-ch05-refkernel. $\chi$, $p'$, $p_{\mathrm{ref}}$ and
+$\epsilon_{\mathrm m}$ are NOTATION's.
 
 Under `SNAP_WB_REF4` on a non-uniform grid it iterates against the switched cell pressure, which is the fixed point
 the solver then enforces. Under `SNAP_X1_CENTROID_EXACT` it balances only a column declared Cartesian.
@@ -73,8 +72,8 @@ residual is checked before the update, so the returned column is the one it desc
 column comes back after zero updates. With $p'_i=\overline p_i-p_{\mathrm{ref},i}-C$ the cell's pressure perturbation at the gauge (NOTATION.md prime: minus
 the reference), the residual says $\lvert p'_i\rvert<\varepsilon_{\mathrm{bal}}\,\overline\rho_i\,g\,\Delta x_{1,i}$ in every cell.
 The face between cells $i$ and $i+1$ is pushed by the difference, an acceleration
-$\lvert a\rvert\approx\lvert p'_{i+1}-p'_i\rvert/(\overline\rho\,\Delta x_1)$, so on a column whose $\overline\rho\Delta x_1$ varies slowly
-from cell to cell $\lvert a\rvert<2\varepsilon_{\mathrm{bal}}\,g$: the residual bounds the acceleration in units of $g$ to
+$\lvert a_f\rvert\approx\lvert p'_{i+1}-p'_i\rvert/(\overline\rho\,\Delta x_1)$, so on a column whose $\overline\rho\Delta x_1$ varies slowly
+from cell to cell $\lvert a_f\rvert<2\varepsilon_{\mathrm{bal}}\,g$: the residual bounds the acceleration in units of $g$ to
 within a factor of 2.
 
 The gauge is read at the top cell, where the pressure is lowest, so the column moves least where it is thinnest; the
@@ -84,12 +83,24 @@ sweep is a contraction in practice, and the check shows it on a column that is n
 (`[C15]` of `wbref_check.py`: a $\beta=0.3$ polytrope with a $10^{-3}$ pressure bump at fixed $p/\rho$, $n_1=64$, residual
 $4.64\times10^{-2}$ to $1.03\times10^{-11}$ in 12 updates, $p/\rho$ unchanged to $1.5\times10^{-16}$).
 
-*Why the result transfers to the blocks.* With the wall clamp on, the reference of a block's interior reads only owned
-cells at a physical wall (@sec-ch05-wallclamp), so a ghost-free column and a block holding the same cells get the same
-$p_{\mathrm{ref}}$, bitwise; that is what the first test below asserts. Without the clamp the wall rows read ghost
-faces that the ghost-free column does not have, and the two disagree, which is why the function refuses to run.
+*Why the result transfers to the blocks.* Three steps.
+
+1. *The column and a block build the same kernel input.* `balance_column` calls `call_hydro_ref_x1` with both ends
+   physical and the caller's `wall_clamp`; a block of the later run calls it with its own physical ends and the deck's
+   clamp.
+2. *With the clamp on, neither reads a ghost at a wall.* The wall rows and the binomial use owned cells only
+   (@sec-ch05-wallclamp), so a ghost-free column and a block holding the same cells get the same $p_{\mathrm{ref}}$,
+   bitwise. That is what the first test below asserts.
+3. *Without the clamp they would differ, so the function refuses.* The block's wall rows would read ghost faces the
+   ghost-free column does not have.
+
 $\rho_{\mathrm{sf}}$ differs at the bottom cell only (its fallback keys on the array index), and it plays no part in
 the fixed point.
+
+*Round-off of the held temperature.* The code stores $p/\rho$ once as `rt` and updates $\rho$ as `prs / rt`, one
+division per sweep. So $\overline p_i/\overline\rho_i$ after any number of sweeps equals the input ratio to within one
+rounding, $\epsilon_{\mathrm m}$ relative ($2.2\times10^{-16}$ in double), and no error accumulates over sweeps. `[C15]`
+measures $1.5\times10^{-16}$, inside it.
 
 *Exact and truncated.* The returned column satisfies @eq-ch05-wbx1-rest to $\varepsilon_{\mathrm{bal}}<\mathrm{rtol}$; nothing is
 truncated beyond that.
@@ -128,6 +139,46 @@ make_fig()
 ```
 
 ### Code
+
+**A minimal input.** The function has no YAML key; an initial-condition builder calls it. The bryan example exposes it
+as a problem key, and from Python it is one call:
+
+```yaml
+problem:
+  balance-ic: true           # bryan: project the initial column before the run
+  balance-ic-passes: 8       # moist case: at most 8 saturation/projection passes
+```
+
+```python
+w_bal, residual, sweeps = snapy.balance_column(w, dx1f, grav=9.8)   # w: (nvar, nc3, nc2, nx1), no ghosts
+```
+
+**What it refuses, and why.** Each refusal is a `TORCH_CHECK` with its own message
+({{< code src/hydro/balance_column.cpp balance_column >}}):
+
+1. `grav` not positive: the kernel takes the downward magnitude $g$.
+2. A `w` that is not four-dimensional, has no pressure row, or has widths of another length: the column cannot be read.
+3. `rtol` or `max_iter` not positive: the loop would have no stop.
+4. `wall_clamp` false: the result would not transfer to the blocks (step 3 above).
+5. `SNAP_X1_CENTROID_EXACT` with a geometry other than `"cartesian"`: the column does not model the plain-mean conversion.
+6. Fewer than five cells, or a non-positive $p$ or $\rho$: the six-face rows and the ratio need them.
+7. A sweep that drives the pressure non-positive: the column is diverging.
+8. No residual below `rtol` after `max_iter` sweeps.
+
+**The lines that implement @eq-ch05-balcol-iter and @eq-ch05-balcol-res.** From the loop of `balance_column`:
+
+```cpp
+auto pp = prs - pref;
+auto c = pp.narrow(-1, nc1 - 1, 1);  // one gauge per column, at its top
+err = ((pp - c).abs() / (rho * wgt)).max().item<double>();
+if (err < rtol || sweeps == max_iter) break;
+prs.copy_(pref + c);
+rho.copy_(prs / rt);
+```
+
+`c` is $C$, the perturbation of the top cell; `err` is $\varepsilon_{\mathrm{bal}}$ of @eq-ch05-balcol-res, with
+`wgt` $=g\Delta x_{1,i}$; the last two lines are the second and third lines of @eq-ch05-balcol-iter, with `rt` the
+stored $1/\chi_i$.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
@@ -177,6 +228,14 @@ later run, the same uniform classification in every block, and the saturation lo
 | `test_bryan_balance_ic` | one allowed pass fails with the cap error; the default converges; the dry case projects once | exit status, output match | contract |
 
 : Tests of `balance_column`. {#tbl-ch05-balcol-tests}
+
+`[C15]` rebuilds the fixed point independently on a $\beta=0.3$ polytrope with a $10^{-3}$ pressure bump, $n_1=64$: the
+residual falls from $4.640\times10^{-2}$ to $1.026\times10^{-11}$ in 12 updates, and $p/\rho$ changes by at most
+$1.5\times10^{-16}$.[^ch05-bal-chk]
+
+[^ch05-bal-chk]: [sha: the formulas the check ports, as its header records them from the earlier book pin; deck: the
+    check itself; run: `python3 src/snapy_report/ch05/wbref_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6,
+    sympy 1.14.0]. Output `src/snapy_report/ch05/wbref_check.out`, line `[C15]`.
 
 ::: {.callout-important title="Test"}
 **Evidence.** All pass at the pin.[^ch05-bal-run] The moist test prints audit residual $3.357\times10^{-1}$ before and

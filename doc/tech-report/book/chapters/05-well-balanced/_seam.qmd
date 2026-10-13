@@ -18,22 +18,23 @@ exchanges the reference's ghost rows, because the block-local quadrature of the 
 $[\min,\max]$ guard) does not reproduce the owner's interior values.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Makes the reference of a column split into several $x_1$ blocks equal to the reference of one block
-(@eq-ch05-seam-relay); the seam workflow itself is @sec-ch03-x1seams.
+**Purpose.** Makes the reference of a column split along $x_1$ equal to that of one block, @eq-ch05-seam-relay.
 
-**Data.** In: the anchor face pressure of the block above and its interior reference rows; out: this block's
-$p_{\mathrm{sf}}$ anchor and the ghost rows of $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$.
+**Data.** Reads the anchor and interior reference rows of the neighbours; writes this block's anchor and ghost rows.
 
-**Placement.** Inside `HydroImpl::_hydro_ref_x1`, top block first, in every stage.
+**Placement.** Inside `HydroImpl::_hydro_ref_x1`, top block first, in every RK stage.
 
-**Activation.** No switch: on whenever the layout splits $x_1$ ($p_z>1$) and $x_1$ is not periodic.
+**Activation.** No key of its own: on when the layout splits $x_1$ (`nb1` > 1) and $x_1$ is not periodic.
 
-**Guarantee / limits.** A split column has the one-block reference up to the round-off of the chained scan; the relay
-is serial down the column.
+**Guarantee / limits.** The split face pressures equal the one-block ones bit for bit; the relay is serial.
 
-**Evidence.** `test_pref_local_seam` and the `test_x1_seam_split` arms (1 and 2 ranks) pass at the pin (CPU); check
-claims `[C1]`, `[C2]` of `seam_check.py`.
+**Evidence.** The Tests layer below, @tbl-ch05-seam-tests.
 :::
+
+Local symbols: $b=1..n_{b1}$ the blocks of one column, numbered from the bottom, with $n_{b1}$ the number of blocks
+along $x_1$; $i^{[b]}_s$, $i^{[b]}_u$ the first and last interior cell of block $b$ (square brackets, because a
+parenthesised superscript is the RK stage in NOTATION). $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$, $\rho_{\mathrm{ref}}$ and
+$p'$, $\rho'$ are NOTATION's.
 
 With both steps, the perturbation field the reconstruction sees is identical on both sides of every seam, so the
 two sides compute the same seam-face states, whether the neighbour runs on another process or on another thread of
@@ -48,12 +49,12 @@ the same one.
 The column-wide $x_1$ seam workflow, the relay of the reference scan from block to block and the exchange of the
 reference ghost rows among the four mechanisms that make a split column match one block, is derived in
 @sec-ch03-x1seams. What the well-balanced reconstruction takes from it is one interface condition. Number the blocks
-of one column $b=1..n_{b1}$ from the bottom, with $i^{(b)}_s$, $i^{(b)}_u$ the first and last interior cell of block
+of one column $b=1..n_{b1}$ from the bottom, with $i^{[b]}_s$, $i^{[b]}_u$ the first and last interior cell of block
 $b$; for $b<n_{b1}$ the scan @eq-ch05-refkernel-scan starts not from @eq-ch05-refkernel-anchor but from the
 bottom-face pressure of the block above,
 
 $$
-p^{(b)}_{\mathrm{sf},\,i^{(b)}_u+1/2} = p^{(b+1)}_{\mathrm{sf},\,i^{(b+1)}_s-1/2},
+p^{[b]}_{\mathrm{sf},\,i^{[b]}_u+1/2} = p^{[b+1]}_{\mathrm{sf},\,i^{[b+1]}_s-1/2},
 $$ {#eq-ch05-seam-relay}
 
 and the ghost rows of $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$ hold the owner's interior rows. With both, $p'$ and
@@ -61,13 +62,25 @@ $\rho'$ agree cell by cell across the seam and the seam-face states agree. @eq-c
 the block below and `pass_x1_anchor` in the block above
 ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 
-*Exact and truncated.* Nothing is truncated: the split reference equals the one-block reference except for the
-summation order of the relayed scan. Where the face density of @sec-ch05-wbref4 is used, its cell part runs before
-this exchange and its face part after it, so the exchanged rows carry the fourth-order cell density and the faces are
-computed from them on both sides. A port of the scan and the relay checks the face pressures. A column split into 2,
-4 or 8 blocks gives the one-block face pressures bit for bit, since the relay continues the same additions in the
-same order [check `src/snapy_report/ch05/seam_check.py`, output `seam_check.out`, `[C1]`]. Each seam face is single
-valued (`[C2]`). The ghost-row exchange is not ported; the split-equals-one-block tests below cover it.
+*Why the split reference equals the one-block reference.* Four steps, each a fact of the code.
+
+1. *The scan of the top block is the one-block scan.* With no block above, `take_x1_anchor` returns an empty tensor
+   and the kernel builds @eq-ch05-refkernel-anchor from the same top cell as a single block would.
+2. *Each lower block starts where the block above stopped.* The block above sends `psf_lo.narrow(-1, is, 1)`, its
+   bottom-face pressure, with `pass_x1_anchor`; the block below receives it as `anchor` and the scan starts from it
+   (@eq-ch05-seam-relay).
+3. *The same additions run in the same order.* The scan step `lo = face + dp` of @sec-ch05-refkernel is applied cell
+   by cell downward in both cases, with the same operands. Floating-point addition is deterministic for equal
+   operands in equal order, so every face pressure of the split column equals the one-block value bit for bit, not
+   only to a round-off bound.
+4. *The ghost rows carry the owner's values.* After the scan the interior rows of $p_{\mathrm{ref}}$ and
+   $\rho_{\mathrm{ref}}$ go up and down (`kWbGhostUpTag`, `kWbGhostDnTag`) and overwrite the ghost rows, so $p'$ and
+   $\rho'$ agree cell by cell across the seam and both sides compute the same seam-face states.
+
+Where the face density of @sec-ch05-wbref4 is used, its cell part runs before this exchange and its face part after
+it, so the exchanged rows carry the fourth-order cell density and the faces are computed from them on both sides.
+A port of the scan and the relay checks step 3 (`[C1]`, `[C2]` below). The ghost-row exchange is not ported; the
+split-equals-one-block tests cover it.
 
 ### Numerical method
 
@@ -91,6 +104,47 @@ Two related seam mechanisms belong to other sections: the single-valued seam flu
 (@sec-ch05-x1cent).
 
 ### Code
+
+**A minimal input.** Split a column into two blocks along $x_1$; the relay then runs by itself:
+
+```yaml
+distribute:
+  layout: cubed              # the slab layout refuses nb1 > 1
+  nb1: 2                     # two blocks along x1
+boundary-condition:
+  external:
+    x1-inner: reflecting     # a non-periodic x1: the relay needs a top and a bottom
+    x1-outer: reflecting
+forcing:
+  const-gravity: {grav1: -9.8}
+```
+
+**What the parser accepts and refuses.** `distribute:` accepts only its listed keys and reads `nb1` as the number of
+blocks along $x_1$ ({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}). The slab layout refuses
+`nb1` other than 1 with "pz must be 1 for slab layout" ({{< code src/layout/slab_layout.cpp SlabLayoutImpl::_initialize >}}),
+so a split $x_1$ needs `layout: cubed`. The relay itself has no key; it is skipped when $x_1$ is periodic, where a
+hydrostatic column has no top. A local anchor that does not arrive within five minutes stops the run with the
+error of `take_x1_anchor` ({{< code src/layout/layout.cpp LayoutImpl::take_x1_anchor >}}).
+
+**The lines that implement @eq-ch05-seam-relay.** From `HydroImpl::_hydro_ref_x1`
+({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}):
+
+```cpp
+bool x1_split =
+    layout && !layout->options->periodic_z() && layout->options->pz() > 1;
+if (x1_split) {
+  ...
+  anchor = layout->take_x1_anchor(
+      above, torch::empty({w.size(1), w.size(2), 1}, w.options()), kWbRefTag);
+}
+...
+if (below >= 0) {
+  layout->pass_x1_anchor(below, psf_lo.narrow(-1, is, 1), kWbRefTag);
+}
+```
+
+`x1_split` is the activation of the box. `take_x1_anchor` gives the left side of @eq-ch05-seam-relay to this block's
+scan, and `pass_x1_anchor` sends its right side, the bottom-face pressure of cell `is`, to the block below.
 
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
@@ -132,6 +186,10 @@ the only error a user can hit here.
 
 : Tests of reference continuity across seams. {#tbl-ch05-seam-tests}
 
+The check ports the scan and the relay.[^ch05-seam-chk] `[C1]`: a column split into 2, 4 or 8 blocks with relayed anchors gives
+the one-block face pressures, maximum difference $0.0$ Pa. `[C2]`: at each of the three seams of the 4-block column
+the top face of the block below equals the bottom face of the block above, maximum difference $0.0$ Pa.
+
 ::: {.callout-important title="Test"}
 **Evidence.** Check numbers come from `seam_check.py`, which ports the relay and the scan.[^ch05-seam-chk] All
 entries pass at the pin.[^ch05-seam-run] Printed gaps: `_x1_centroid` split against one block $0$ (both
@@ -142,7 +200,9 @@ relative differences $4.6\times10^{-15}$ ($\rho$), $1.0\times10^{-15}$ ($p$) and
 ranks along $x_1$ is not tested.
 :::
 
-[^ch05-seam-chk]: Run: `python3 src/snapy_report/ch05/seam_check.py`; output `src/snapy_report/ch05/seam_check.out`.
+[^ch05-seam-chk]: [sha: the scan and relay the check ports, re-read at the code pin; deck: the check itself; run:
+    `python3 src/snapy_report/ch05/seam_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6]. Output
+    `src/snapy_report/ch05/seam_check.out`, identical on the rerun.
 
 [^ch05-seam-run]: `ctest -V -R 'test_pref_local_seam|test_x1_seam_split'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double; 1 rank, the `_mp` entries 2
     ranks.
