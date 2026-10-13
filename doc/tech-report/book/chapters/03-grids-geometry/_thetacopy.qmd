@@ -6,6 +6,13 @@ sources: src/hydro/hydro_forward.cpp, src/scalar/scalar.cpp, sources/canoe__thet
 status: draft
 -->
 
+The tracer flux positivity limiter of @sec-ch08-theta computes, per cell and species, a factor $\Theta\in[0,1]$ and scales
+every face flux that drains the cell by it. The limited flux of a face must be one number on both sides, or the mass
+removed from the donor is not the mass added to the receiver. At a block seam one side's donor is a ghost, so that
+ghost must hold the donor's own $\Theta$. On a cubed sphere an interpolated ghost would be a blend of several cells'
+factors, not the donor's; the exchange therefore uses `interpolate(false)`. The species enthalpy that the withheld
+mass carries is recomputed from the ghost state instead of being exchanged.
+
 Local symbols (flagged to the editor): $\mathcal F_f$ the requested species flux through face $f$ before limiting
 [kg m$^{-2}$ s$^{-1}$]; $d(f)$ the donor cell of face $f$, the upwind cell the flux drains.
 
@@ -30,13 +37,6 @@ covariance row (`cov`), with no species condition.
 **Evidence.** `test_flux_positivity_cubedsphere_python`, `test_flux_positivity_cubedsphere_moist_python`,
 `test_sedimentation_cubed_seam`; check `[C12]`; the ctest entries were not run for this chapter at the pin (missing evidence).
 :::
-
-The tracer flux positivity limiter of @sec-ch08-theta computes, per cell and species, a factor $\Theta\in[0,1]$ and scales
-every face flux that drains the cell by it. The limited flux of a face must be one number on both sides, or the mass
-removed from the donor is not the mass added to the receiver. At a block seam one side's donor is a ghost, so that
-ghost must hold the donor's own $\Theta$. On a cubed sphere an interpolated ghost would be a blend of several cells'
-factors, not the donor's; the exchange therefore uses `interpolate(false)`. The species enthalpy that the withheld
-mass carries is recomputed from the ghost state instead of being exchanged.
 
 ### Derivation
 

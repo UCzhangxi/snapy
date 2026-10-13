@@ -8,6 +8,12 @@ status: draft
 
 ### Summary
 
+The launch settings are not read from the YAML card. `LayoutOptionsImpl`'s constructor reads them from the
+environment that `torchrun` (or `pd-run`) sets for each process. The `distribute` block of the card supplies the layout
+and the block counts (@sec-ch03-layouts). A single process with no `MASTER_PORT` picks a random port and never
+opens a store. A run that implies more than one process and has no `MASTER_PORT` stops in the constructor, because
+the ranks could not find one another.
+
 ::: {.callout-note title="At a glance"}
 **What**: one operating-system process per rank, started by `torchrun` or `api/pd-run`; the processes meet at a
 c10d `TCPStore` on `MASTER_ADDR:MASTER_PORT`, and each holds `blocks_per_process` blocks. **Switch**: environment
@@ -16,12 +22,6 @@ c10d `TCPStore` on `MASTER_ADDR:MASTER_PORT`, and each holds `blocks_per_process
 $[29500, 29600]$. **Requires**: `MASTER_PORT` whenever more than one process is implied. **Order**: n/a.
 **Defining equation**: @eq-ch14-launch-rank.
 :::
-
-The launch settings are not read from the YAML card. `LayoutOptionsImpl`'s constructor reads them from the
-environment that `torchrun` (or `pd-run`) sets for each process. The `distribute` block of the card supplies the layout
-and the block counts (@sec-ch03-layouts). A single process with no `MASTER_PORT` picks a random port and never
-opens a store. A run that implies more than one process and has no `MASTER_PORT` stops in the constructor, because
-the ranks could not find one another.
 
 ### Derivation
 

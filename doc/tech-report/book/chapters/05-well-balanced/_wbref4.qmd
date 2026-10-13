@@ -9,6 +9,14 @@ status: draft
 
 ### Summary
 
+The kernel's density reference is second order: the binomial smoothing biases $\chi=\rho/p$ by $\tfrac{\Delta x_1^2}{2}\partial_1^2\chi$,
+and its face density is not the face value of its own cell density, so the solver's face density carries the
+offset @eq-ch05-refkernel-offset. That offset enters the $x_1$ mass flux at linear order and, through it, the gravity work. The
+switch removes it with two operators: a five-point filter with zero second and third moments, which keeps the
+reference fourth order while still removing the two-cell mode, and a face value taken from the quartic through the
+primitive of the cell reference, so that face and cell are consistent by construction. On a non-uniform grid it also
+replaces the log-mean cell pressure by the average of a cubic through four face pressures.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Replaces the kernel's density reference by $p_{\mathrm{ref}}F(\chi)$ with a fourth-order filter $F$, and
 the face density by the face value of that same cell field (@eq-ch05-wbref4-dref); on non-uniform grids it also
@@ -29,14 +37,6 @@ corrected-PE face work a third-order wall band remains.
 **Evidence.** `test_wb_ref4_order` (fourth order on, second off, at the pin, CPU) and the seam arms pass; check claims
 `[C3]`, `[C7]`, `[C8]`, `[C14]` of `wbref_check.py`.
 :::
-
-The kernel's density reference is second order: the binomial smoothing biases $\chi=\rho/p$ by $\tfrac{\Delta x_1^2}{2}\partial_1^2\chi$,
-and its face density is not the face value of its own cell density, so the solver's face density carries the
-offset @eq-ch05-refkernel-offset. That offset enters the $x_1$ mass flux at linear order and, through it, the gravity work. The
-switch removes it with two operators: a five-point filter with zero second and third moments, which keeps the
-reference fourth order while still removing the two-cell mode, and a face value taken from the quartic through the
-primitive of the cell reference, so that face and cell are consistent by construction. On a non-uniform grid it also
-replaces the log-mean cell pressure by the average of a cubic through four face pressures.
 
 Guards keep the kernel's values wherever the new ones would leave the local range or the column is under-resolved,
 and the cell part runs before the seam exchange of @sec-ch05-seam, the face part after it. With the corrected-PE face

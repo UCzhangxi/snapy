@@ -8,6 +8,17 @@ author: Linfeng Li
 reviewer:
 -->
 
+`const-gravity` is the only gravity snapy has: a constant vector $(g_1, g_2, g_3)$ in m s$^{-2}$, read from the
+`forcing` block. It adds $\rho g_a$ to each momentum and $\rho v_ag_a$ to the total energy, in every cell and at
+every stage. The $x_1$ part is scaled by the non-hydrostatic factor $\alpha_{\mathrm{nh}}$ (key `non-hydrostatic`); the rest of the
+$x_1$ gravity, $(1-\alpha_{\mathrm{nh}})$, is applied through the hydrostatic pressure correction of
+@sec-ch05. With `gravity-work: cell` the energy term stays as it is: the work is booked in the cell where the
+force acts. That is the simplest choice, and it is the one the key selects away from: `gravity-work` defaults to
+`face` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}). It is accurate cell by cell; its cost is that it
+does not conserve total energy plus potential energy, because the work of the mass crossing a face is booked in
+the two neighbouring cells at their own centroids, not where the mass crosses. The gravity-work fixer repairs the
+integral of that defect once per step.
+
 Local symbols: $\rho^{\mathrm{hs}}_i$ is the hydrostatic-correction density of @sec-ch05 (code `rho_grav`).
 Tracked in ISSUES.md.
 
@@ -34,17 +45,6 @@ implies the gravity-work fixer (@sec-ch06-fixer), on by default with it.
 **Evidence.** `cellface_check.py` `[C2]`; the "cell, fixer false" arm of `test_gravity_work_fixer`, read from the
 source, not run here.
 :::
-
-`const-gravity` is the only gravity snapy has: a constant vector $(g_1, g_2, g_3)$ in m s$^{-2}$, read from the
-`forcing` block. It adds $\rho g_a$ to each momentum and $\rho v_ag_a$ to the total energy, in every cell and at
-every stage. The $x_1$ part is scaled by the non-hydrostatic factor $\alpha_{\mathrm{nh}}$ (key `non-hydrostatic`); the rest of the
-$x_1$ gravity, $(1-\alpha_{\mathrm{nh}})$, is applied through the hydrostatic pressure correction of
-@sec-ch05. With `gravity-work: cell` the energy term stays as it is: the work is booked in the cell where the
-force acts. That is the simplest choice, and it is the one the key selects away from: `gravity-work` defaults to
-`face` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}). It is accurate cell by cell; its cost is that it
-does not conserve total energy plus potential energy, because the work of the mass crossing a face is booked in
-the two neighbouring cells at their own centroids, not where the mass crosses. The gravity-work fixer repairs the
-integral of that defect once per step.
 
 `gravity-work` takes `cell`, `face` or `face-wallc`; any other value is refused when the forcing is read and
 again when the hydro module is built from Python. $g_2$ and $g_3$ always book cell work only.

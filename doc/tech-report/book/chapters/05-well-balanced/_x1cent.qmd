@@ -10,6 +10,14 @@ status: draft
 
 ### Summary
 
+A finite-volume cell on a spherical-polar grid holds the $r^2$ mean of a quantity, whose centroid sits
+$\Delta x_1^2/(6\overline r)$ above the mid-radius. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
+scan and the six-face cell pressure, is a formula for plain means. Fed $r^2$ means they are off by $O(\Delta x_1^2/r)$: the face
+values, the scan step, and the pressure force, whose plain difference balances gravity only against the wrong scan.
+The switch converts the inputs of the maps, for the maps only, to plain means with a five-cell stencil exact to degree
+4, and makes the radial pressure force the $r^2$ mean of the gradient of a quintic through six face pressures. The
+reference on plain means is then the Cartesian one, and the switch implies `SNAP_WB_REF4` so that it is fourth order.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** On spherical-polar blocks, feeds every $x_1$ map (reconstruction, scan, reference) the plain means of
 the cells instead of their $r^2$ means, and replaces the radial pressure source by the $r$-moment of a quintic
@@ -27,14 +35,6 @@ other ratios of means keep an $O(\Delta x_1^2/R)$ remainder (@sec-ch05-oneoverr)
 
 **Evidence.** `test_x1_centroid_rest` and the seam arms pass at the pin (CPU); check claims `[C16]`–`[C18]` of `wbref_check.py`.
 :::
-
-A finite-volume cell on a spherical-polar grid holds the $r^2$ mean of a quantity, whose centroid sits
-$\Delta x_1^2/(6\overline r)$ above the mid-radius. Every $x_1$ cell-to-face map of the solver, from the WENO weights to the
-scan and the six-face cell pressure, is a formula for plain means. Fed $r^2$ means they are off by $O(\Delta x_1^2/r)$: the face
-values, the scan step, and the pressure force, whose plain difference balances gravity only against the wrong scan.
-The switch converts the inputs of the maps, for the maps only, to plain means with a five-cell stencil exact to degree
-4, and makes the radial pressure force the $r^2$ mean of the gradient of a quintic through six face pressures. The
-reference on plain means is then the Cartesian one, and the switch implies `SNAP_WB_REF4` so that it is fourth order.
 
 On Cartesian blocks the switch only implies `SNAP_WB_REF4`; on cubed-sphere blocks it does nothing (their $x_{1v}$ is
 the mid-radius). `balance_column` balances only a column declared Cartesian under it.

@@ -9,6 +9,12 @@ status: draft
 
 ### Summary
 
+A reflecting wall fills its ghost cells with the mirror image of the interior. That is the right state for the
+Riemann solver, but the average of a cell and its mirror is the cell's own value, half a cell away from the wall,
+so the face coefficient of a stratified column is off by a factor $e^{\mp h/2H}$ at the walls, an $O(h)$ error.
+The diffusion module therefore extrapolates the coefficient from the two interior cells next to the wall, which
+reads no ghost at all and is exact for a linear profile.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** On an $x_1$ face that is a reflecting wall, takes the diffusion coefficient by linear extrapolation
 from the two nearest interior cells instead of averaging the wall cell with its ghost;
@@ -34,12 +40,6 @@ not depend on the ghost density,
 four names count, {{< code tests/test_diffusion.cpp diffusion_options.wall_names_are_an_exact_whitelist >}} (exact);
 these ctests were not run at the pin. Check: `python3 src/snapy_report/ch09/wallcoef_check.py`, output `wallcoef_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
-
-A reflecting wall fills its ghost cells with the mirror image of the interior. That is the right state for the
-Riemann solver, but the average of a cell and its mirror is the cell's own value, half a cell away from the wall,
-so the face coefficient of a stratified column is off by a factor $e^{\mp h/2H}$ at the walls, an $O(h)$ error.
-The diffusion module therefore extrapolates the coefficient from the two interior cells next to the wall, which
-reads no ghost at all and is exact for a linear profile.
 
 The rule is restricted to $x_1$ and to a list of boundary names. An $x_2$ or $x_3$ reflecting face is as likely to
 be a symmetry plane, where the mirror is exact and the average is the better estimate; and `reflecting` is the

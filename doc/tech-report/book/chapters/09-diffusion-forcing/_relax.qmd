@@ -12,6 +12,14 @@ status: draft
 
 ### Summary
 
+The three modules stand in for a surface layer that the grid does not resolve. Each acts only in the bottom row of
+interior cells and only on the block that owns the physical lower $x_1$ boundary. `relax-bot-temp` adds heat at
+constant volume to bring the temperature toward `btemp`; with `at-face: true` it relaxes the temperature
+extrapolated to the lower face instead of the cell value, because a prescribed surface temperature is a value at
+the face. `relax-bot-velo` adds a momentum drag toward the target velocity, lowered to covariant components on the
+cubed sphere. `relax-bot-comp` exchanges mass between dry air and the named species at fixed density and
+temperature, with the internal-energy change computed by kintera.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Nudges the first interior cell row above the physical lower $x_1$ boundary toward a target
 temperature, velocity, or composition with a time scale $\tau$; @eq-ch09-relax-temp, @eq-ch09-relax-velo and
@@ -38,14 +46,6 @@ $10^{-13}$); the composition swap keeps density and temperature,
 {{< code tests/test_forcing.cpp forcing.relax_bottom_composition_preserves_state >}} ($10^{-8}$ for $T$); these ctests
 were not run at the pin. Check: `python3 src/snapy_report/ch09/relax_check.py`, output `relax_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
 :::
-
-The three modules stand in for a surface layer that the grid does not resolve. Each acts only in the bottom row of
-interior cells and only on the block that owns the physical lower $x_1$ boundary. `relax-bot-temp` adds heat at
-constant volume to bring the temperature toward `btemp`; with `at-face: true` it relaxes the temperature
-extrapolated to the lower face instead of the cell value, because a prescribed surface temperature is a value at
-the face. `relax-bot-velo` adds a momentum drag toward the target velocity, lowered to covariant components on the
-cubed sphere. `relax-bot-comp` exchanges mass between dry air and the named species at fixed density and
-temperature, with the internal-energy change computed by kintera.
 
 `relax-bot-velo` leaves the total energy $E$ untouched, so the kinetic energy it removes becomes internal energy density, as
 for the sponges (@sec-ch09-sponge).

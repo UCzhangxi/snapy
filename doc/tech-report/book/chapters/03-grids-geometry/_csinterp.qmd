@@ -6,6 +6,15 @@ sources: src/coord/cubed_sphere_utils.hpp, src/coord/cubed_sphere_utils.cpp, src
 status: draft
 -->
 
+Across a panel edge the two panels' coordinate lines meet at an angle, so a ghost cannot be a copy of a neighbour's
+cell. snapy fills each ghost by one-dimensional linear interpolation along the shared edge, from a strip of the
+neighbour's cells. The source of a ghost in layer $\ell$ does not sit opposite it: it slides along the edge toward the
+edge midpoint by up to $n_g - \tfrac12$ cells, independently of resolution. So the strip is widened by $n_g$ cells on
+each side, and when a panel is split among blocks the widened strip reaches into the sender's own intra-panel halo,
+which must be current; the sync therefore runs in two phases, intra-panel first. Velocities are rotated from the
+sender's panel frame to the global spherical $(r, \theta, \varphi)$ frame before sending and back into the receiver's
+frame after interpolation.
+
 Local symbols (flagged to the editor): $\ell = 1..n_g$ the ghost layer counted from the panel edge (count);
 $N_{\mathrm{p}}$ the cells along a panel edge, $n_2 p_x$ (count); $\Delta\xi = \pi/(2N_{\mathrm{p}})$ the angular cell
 width [rad]; $u$ the fractional source abscissa along the edge, in cells of the source panel [-]; $\eta'$ the
@@ -32,15 +41,6 @@ the scalar syncs; off for face states and the donor factor. Requires `interp_ord
 **Evidence.** `test_cubed_sphere_exchange`, `test_cubed_sphere_vertical_velocity_exchange_python`, `test_exchange`;
 check `[C11]`; the ctest entries were not run for this chapter at the pin (missing evidence).
 :::
-
-Across a panel edge the two panels' coordinate lines meet at an angle, so a ghost cannot be a copy of a neighbour's
-cell. snapy fills each ghost by one-dimensional linear interpolation along the shared edge, from a strip of the
-neighbour's cells. The source of a ghost in layer $\ell$ does not sit opposite it: it slides along the edge toward the
-edge midpoint by up to $n_g - \tfrac12$ cells, independently of resolution. So the strip is widened by $n_g$ cells on
-each side, and when a panel is split among blocks the widened strip reaches into the sender's own intra-panel halo,
-which must be current; the sync therefore runs in two phases, intra-panel first. Velocities are rotated from the
-sender's panel frame to the global spherical $(r, \theta, \varphi)$ frame before sending and back into the receiver's
-frame after interpolation.
 
 ### Derivation
 

@@ -9,6 +9,14 @@ status: draft
 
 ### Summary
 
+The reference kernel scans each column from an anchor at the top of the block (@sec-ch05-refkernel). On a column
+split into $n_{b1}$ blocks along $x_1$, a block below the top one has no top of the domain to anchor at, and an
+anchor from its own top cell would start a new scan with a different constant: the reference would jump at every
+seam, and that jump would enter $p'=\overline p-p_{\mathrm{ref}}$ as a spurious perturbation every step. The relay
+passes the running face pressure down instead, so the scan is one scan across the whole column. The second step
+exchanges the reference's ghost rows, because the block-local quadrature of the ghost cells (one-sided rows, the
+$[\min,\max]$ guard) does not reproduce the owner's interior values.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Makes the reference of a column split into several $x_1$ blocks equal to the reference of one block
 (@eq-ch05-seam-relay); the seam workflow itself is @sec-ch03-x1seams.
@@ -26,14 +34,6 @@ is serial down the column.
 **Evidence.** `test_pref_local_seam` and the `test_x1_seam_split` arms (1 and 2 ranks) pass at the pin (CPU); check
 claims `[C1]`, `[C2]` of `seam_check.py`.
 :::
-
-The reference kernel scans each column from an anchor at the top of the block (@sec-ch05-refkernel). On a column
-split into $n_{b1}$ blocks along $x_1$, a block below the top one has no top of the domain to anchor at, and an
-anchor from its own top cell would start a new scan with a different constant: the reference would jump at every
-seam, and that jump would enter $p'=\overline p-p_{\mathrm{ref}}$ as a spurious perturbation every step. The relay
-passes the running face pressure down instead, so the scan is one scan across the whole column. The second step
-exchanges the reference's ghost rows, because the block-local quadrature of the ghost cells (one-sided rows, the
-$[\min,\max]$ guard) does not reproduce the owner's interior values.
 
 With both steps, the perturbation field the reconstruction sees is identical on both sides of every seam, so the
 two sides compute the same seam-face states, whether the neighbour runs on another process or on another thread of

@@ -10,6 +10,15 @@ status: draft
 
 ### Summary
 
+The ghost cells of a reflecting wall hold the mirror image of the interior, which is the right input for the
+Riemann solver but not a hydrostatic continuation of the column: a stratified profile mirrored at the wall has a kink.
+Any reference stencil that reads a ghost therefore puts that kink into $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$
+next to the wall. With the clamp on, the cell pressure of the two cells next to a physical wall uses one-sided
+six-face rows, and the binomial of $\chi$ reads no ghosts. What it reads instead is the wall continuation:
+the ratio continued linearly from the two owned cells where it rises towards the wall, and ln-linearly where it
+falls. A plain repetition of the wall cell is exact only for constant $\chi$ and
+leaves the face density reference first order at the three faces next to each wall.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** Keeps every reference stencil inside the owned cells at a physical $x_1$ wall: one-sided six-face
 rows for the two wall cells, and $\chi$ continued past the wall from the two owned cells next to it
@@ -29,15 +38,6 @@ with the wall cell repeated); continuation in cell index, so stretched grids are
 **Evidence.** `test_wb_ref_wall` prints second-order wall faces at the pin (CPU); check claims `[C2]`, `[C4]`–`[C6]`,
 `[C11]`, `[C12]` of `wbref_check.py`.
 :::
-
-The ghost cells of a reflecting wall hold the mirror image of the interior, which is the right input for the
-Riemann solver but not a hydrostatic continuation of the column: a stratified profile mirrored at the wall has a kink.
-Any reference stencil that reads a ghost therefore puts that kink into $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$
-next to the wall. With the clamp on, the cell pressure of the two cells next to a physical wall uses one-sided
-six-face rows, and the binomial of $\chi$ reads no ghosts. What it reads instead is the wall continuation:
-the ratio continued linearly from the two owned cells where it rises towards the wall, and ln-linearly where it
-falls. A plain repetition of the wall cell is exact only for constant $\chi$ and
-leaves the face density reference first order at the three faces next to each wall.
 
 The continuation changes only $\rho_{\mathrm{sf}}$ at faces 0-2 and $\rho_{\mathrm{ref}}$ at cells 0-1 next to each
 clamped wall (and their ghost rows); $p_{\mathrm{sf}}$, $p_{\mathrm{ref}}$ and the rest balance are untouched. It
