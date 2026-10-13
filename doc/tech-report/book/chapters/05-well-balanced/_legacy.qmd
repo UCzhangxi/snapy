@@ -66,12 +66,15 @@ since $\alpha_\gamma-1+1/\gamma=0$. So $p^{\alpha_\gamma}$ is linear in $x_1$, a
 cell by cell into the ghosts is exact for the isentropic hydrostatic profile, in `_revise_x1inner_ghost`
 ({{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_ghost >}}). `[LG-1]` checks the exponent identity.
 
-*Round-off.* The copy is a copy, exact. Each ghost step forms $\Upsilon=p^{\alpha_\gamma}+\alpha_\gamma g\Delta x_1/K_{\mathrm{is}}^{1/\gamma}$
-with a sum of two positive terms, so taking one rounding each for the power, the product and the sum (a correctly
-rounded `pow` is assumed, not checked), $\Upsilon$ after $n_g$ steps carries at most $3n_g\epsilon_{\mathrm m}$ relative to first
-order. $p=\Upsilon^{1/\alpha_\gamma}$ multiplies that by $1/\alpha_\gamma$, giving
-$\lvert\Delta p/p\rvert\le(3n_g/\alpha_\gamma+1)\epsilon_{\mathrm m}$: $32.5\,\epsilon_{\mathrm m}=7.2\times10^{-15}$ for
-$\gamma=1.4$, $n_g=3$.
+*Round-off.* The copy is a copy, exact. Each ghost step forms $\Upsilon=p^{\alpha_\gamma}+\alpha_\gamma g\Delta x_1/K_{\mathrm{is}}^{1/\gamma}$,
+a sum of two positive terms, counting $\epsilon_{\mathrm m}$ per rounding to first order (a correctly rounded `pow` is
+assumed, not checked; the constants $\alpha_\gamma$ and $K_{\mathrm{is}}$ are computed once and not counted). The
+second term rounds four times: two products, $K_{\mathrm{is}}^{1/\gamma}$ and the division. The first term carries
+$\alpha_\gamma$ times the previous step's error $E_{n-1}$ plus its `pow`. The sum adds one, so $\Upsilon$ is off by
+at most $\max(\alpha_\gamma E_{n-1}+1,\,4)+1$, and $p=\Upsilon^{1/\alpha_\gamma}$ multiplies that by $1/\alpha_\gamma$ and
+adds one: $E_n = \bigl(\max(\alpha_\gamma E_{n-1}+1,\,4)+1\bigr)/\alpha_\gamma+1$, $E_0=0$. For $\gamma=1.4$
+($\alpha_\gamma=2/7$) that is $18.5$, $26.5$ and $34.5$ after one, two and three steps, so
+$\lvert\Delta p/p\rvert\le34.5\,\epsilon_{\mathrm m}=7.7\times10^{-15}$ for $n_g=3$ (`[LG-2]`).
 
 ### Numerical method
 
@@ -137,15 +140,17 @@ step of the derivation, and the last line is $\rho=(p/K_{\mathrm{is}})^{1/\gamma
 |----------------|-------------|-----|-----|
 | none in ctest | no test exercises either routine; the live call is unreachable in every registered test | — | — |
 | this chapter's check, `derivation_check.py` `[LG-1]` | $p^{\alpha_\gamma}$ is linear in $x_1$ on the isentropic hydrostatic profile | exact | sympy |
+| same, `[LG-2]` | the ghost-step rounding count, $69/2$ for $\gamma=7/5$, $n_g=3$ | exact | rational arithmetic |
 
 : Tests of the legacy wall routines. {#tbl-ch05-legacy-tests}
 
 `[LG-1]` differentiates $p^{\alpha_\gamma}$ with $\rho=(p/K_{\mathrm{is}})^{1/\gamma}$ and hydrostatic balance in sympy and
-gets the constant $-\alpha_\gamma g/K_{\mathrm{is}}^{1/\gamma}$, so the ghost step is exact for that profile.[^ch05-leg-chk]
+gets the constant $-\alpha_\gamma g/K_{\mathrm{is}}^{1/\gamma}$, so the ghost step is exact for that profile. `[LG-2]` runs the
+rounding recursion in rational arithmetic and gets $69/2$, not the $65/2$ of a count with three roundings per step.[^ch05-leg-chk]
 
 [^ch05-leg-chk]: [sha: the formulas of the book pin, as the check's header records them; deck: the check itself; run:
     `python3 src/snapy_report/ch05/derivation_check.py`, CPU, 1 process; Python 3.11.13, sympy 1.14.0]. Output
-    `src/snapy_report/ch05/derivation_check.out`, line `LG-1`.
+    `src/snapy_report/ch05/derivation_check.out`, lines `LG-1` and `LG-2`.
 
 ### Limits
 

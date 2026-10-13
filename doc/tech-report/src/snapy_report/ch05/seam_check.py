@@ -2,8 +2,8 @@
 
 What is checked: the scan hydro_ref_x1_scan_impl (src/hydro/hydro_ref_x1_impl.h:22-60) with its single-block top
 anchor, and the relay of @eq-ch05-seam-relay, where a block below a seam takes as its top anchor the bottom-face
-pressure of the block above (take_x1_anchor / pass_x1_anchor, src/hydro/hydro.cpp:525-533, 577-579), at
-snapy@e894700ff7aee30b52882e5202b16461413780b0, ported to numpy for one column. Claims C1-C2.
+pressure of the block above (take_x1_anchor / pass_x1_anchor, src/hydro/hydro.cpp:540-548, 591-593), at
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported to numpy for one column. Claims C1-C2.
 
 Run: python3 seam_check.py   (numpy only; exits with the number of failed claims)
 """

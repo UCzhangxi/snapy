@@ -1,4 +1,4 @@
-## `balance_column`: projection of a ghost-free column onto the scheme's discrete balance (C++ and Python API) {#sec-ch05-balcol}
+## `balance_column`: projection of ghost-free columns onto the scheme's discrete balance (C++ and Python API) {#sec-ch05-balcol}
 
 <!-- PROVENANCE
 pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy)
@@ -20,7 +20,7 @@ pressure, column mass) has to be re-pinned by the caller.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Moves a column, at fixed $p/\rho$ per cell, to the solver's discrete rest state, @eq-ch05-balcol-iter.
 
-**Data.** Reads one ghost-free column of $\overline p$, $\overline\rho$ and its widths; returns the projected column.
+**Data.** Reads ghost-free columns of $\overline p$, $\overline\rho$ and their widths; returns the projected columns.
 
 **Placement.** Before the run: an API function in C++ and Python, called by initial-condition builders.
 
@@ -57,13 +57,14 @@ C &= \overline{p}_{n_1-1} - p_{\mathrm{ref},n_1-1}, \\
 \end{aligned}
 $$ {#eq-ch05-balcol-iter}
 
-In the code, @eq-ch05-balcol-iter reads the gauge `c` at the top cell and then updates `prs` and `rho` ({{< code src/hydro/balance_column.cpp balance_column >}}).
-
-and stops when
+In the code, @eq-ch05-balcol-iter reads the gauge `c` at the top cell and then updates `prs` and `rho`
+({{< code src/hydro/balance_column.cpp balance_column >}}). The sweeps stop when
 
 $$
-\varepsilon_{\mathrm{bal}} = \max_i\frac{\lvert \overline{p}_i - p_{\mathrm{ref},i} - C\rvert}{\overline{\rho}_i\,g\,\Delta x_{1,i}} < \mathrm{rtol} .
+\varepsilon_{\mathrm{bal}} = \max_i\frac{\lvert \overline{p}_i - p_{\mathrm{ref},i} - C\rvert}{\overline{\rho}_i\,g\,\Delta x_{1,i}} < \mathrm{rtol} ,
 $$ {#eq-ch05-balcol-res}
+
+which is `err` against `rtol` ({{< code src/hydro/balance_column.cpp balance_column >}}).
 
 The sweep @eq-ch05-balcol-iter and the stop test @eq-ch05-balcol-res are the loop that calls `call_hydro_ref_x1`
 ({{< code src/hydro/balance_column.cpp balance_column >}}).
@@ -153,6 +154,10 @@ problem:
 w_bal, residual, sweeps = snapy.balance_column(w, dx1f, grav=9.8)   # w: (nvar, nc3, nc2, nx1), no ghosts
 ```
 
+`w` holds the primitive rows in the code's order: $\rho$ in row 0 (`IDN`), $v_1, v_2, v_3$ in rows 1 to 3 and $p$ in
+row 4 (`IPR`), then the species; `dx1f` is the $(n_1,)$ tensor of the cell widths $\Delta x_{1,i}$ of the column, in
+the dtype and on the device of `w` ({{< code src/hydro/balance_column.cpp balance_column >}}).
+
 **What it refuses, and why.** Each refusal is a `TORCH_CHECK` with its own message
 ({{< code src/hydro/balance_column.cpp balance_column >}}):
 
@@ -207,8 +212,8 @@ stored $1/\chi_i$.
 5. A residual `err` still above `rtol` raises
    ({{< code src/hydro/balance_column.cpp balance_column >}}).
 
-Errors a user can hit: the clamp off, fewer than five cells, a non-positive input, a spherical-polar geometry under
-`SNAP_X1_CENTROID_EXACT`, a diverging column, and no convergence within `max_iter`. The caller also owns four
+Errors a user can hit: the clamp off, fewer than five cells, a non-positive input, any `geometry` other than
+`"cartesian"` (the empty default included) under `SNAP_X1_CENTROID_EXACT`, a diverging column, and no convergence within `max_iter`. The caller also owns four
 conditions the function cannot check, listed in its header: physical $x_1$ ends, at least five cells per block of the
 later run, the same uniform classification in every block, and the saturation loop for moist columns.
 
@@ -244,7 +249,7 @@ balanced against $2.05\times10^{-2}$ marched, identical in all three arms. The b
 with saturation changes falling from $8.75\times10^{-8}$ to $1.33\times10^{-14}$ (@fig-ch05-balcol-passes). The fixed
 point is checked by `[C15]`.
 **Coverage.** CPU; the `_cuda` cases exist and were not run (**pending: a CUDA run at the pin**); no multi-rank case
-(the function works on one column).
+(the function works on the columns of one block).
 :::
 
 [^ch05-bal-run]: `ctest -V -R 'test_balance_column|test_bryan_balance_ic'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
