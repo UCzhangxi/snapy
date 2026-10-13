@@ -49,7 +49,7 @@ Two other kinds of message share the process group:
 
 1. Block-to-block messages (`send_to_block`, `recv_from_block`), used by the $x_1$ relays of @sec-ch03-x1seams.
    They add $65536\,(\ell_\text{send}\, b + \ell_\text{recv})$ to a caller tag. With $b \le 16$ (checked) the factor is
-   below 256, so the low 16 bits stay the caller's tag (`send_to_block`, [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877)).
+   below 256, so the low 16 bits stay the caller's tag (`send_to_block`, {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}}).
    The comment above `send_to_block` {{< code src/layout/layout.hpp LayoutImpl::send_to_block >}} gives the argument: the hydro relay
    tags (`0x77xx`) are not values of $T_0$ at $b \le 16$, and the total stays below the gather tags.
 2. `gather_x1` uses $2^{24} + \ell_\text{send}\, b + \ell_\text{recv}$
@@ -88,7 +88,7 @@ stream; the copying block waits on all of them and records a completion event th
 the same mutex: the $x_1$ reference anchors (`take_x1_anchor`), per-tag mailboxes (`post_to_local_block`,
 `take_from_local_block`) and the column board of `gather_x1`. The anchor and mailbox waits time out after
 5 minutes with an error that names the cause: local blocks must run concurrently, or from the top of the $x_1$
-column down (`take_x1_anchor`, [`layout.cpp:879-970`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L970)).
+column down (`take_x1_anchor`, {{< code src/layout/layout.cpp LayoutImpl::take_x1_anchor >}}).
 
 **Buffers.** Send and receive buffers are kept per block and reused when the same sync runs again; `test_exchange`
 checks that their data pointers do not change.
@@ -103,9 +103,9 @@ checks that their data pointers do not change.
 | in-memory copies, phase filter | {{< code src/layout/layout.cpp LayoutImpl::_copy_local_exchange_buffers >}} | `_copy_local_exchange_buffers` | none |
 | remote posts, mutex, coalescing | {{< code src/layout/layout.cpp LayoutImpl::exchange_remote >}} | `exchange_remote` | `BACKEND` |
 | one message per variable | {{< code src/layout/layout.cpp exchange_each_var >}} | `exchange_each_var` | none |
-| block-to-block tags | [`layout.cpp:849-877`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L849-L877) | `send_to_block` | none |
+| block-to-block tags | {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}} | `send_to_block` | none |
 | $x_1$ column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | `nb1` |
-| boards with 5-minute waits | [`layout.cpp:879-970`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/layout/layout.cpp#L879-L970) | `take_from_local_block` | none |
+| boards with 5-minute waits | {{< code src/layout/layout.cpp LayoutImpl::take_from_local_block >}} | `take_from_local_block` | none |
 | cubed-sphere remote posts | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::exchange_remote >}} | `g_cubed_sphere_comm_mutex` | `layout: cubed-sphere` |
 
 : Code map of message matching. {#tbl-ch14-msgmatch-code}

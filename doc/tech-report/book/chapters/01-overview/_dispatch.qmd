@@ -12,10 +12,17 @@ Dispatch stubs connect an operation to CPU, CUDA and, where registered, MPS impl
 stub illustrates all three registrations. Tensor operations outside custom kernels follow the tensor device.
 
 ::: {.callout-note title="At a glance"}
-Dispatch stubs connect an operation to CPU, CUDA and, where registered, MPS implementations.
-CMake default OFF; layout DEVICE default cpu.
-Order: code map; no independent measured convergence order.
-No defining equation: this section maps control flow or data ownership.
+**Purpose.** N/A (a code map): dispatch stubs connect an operation to its CPU, CUDA and, where registered, MPS implementations; tensor operations outside custom kernels follow the tensor's device.
+
+**Data.** No physical quantity of its own: tensors on the caller's device go in, the same operation evaluated by the kernel registered for that device comes out, with the same layout and units as the caller's.
+
+**Placement.** At every custom-kernel call; the registrations are made at build and load time.
+
+**Activation.** CMake `CUDA` (default OFF) compiles the CUDA kernels; layout `DEVICE` (default `cpu`) selects the device at run time.
+
+**Guarantee / limits.** A map; no convergence order. A kernel without a registration for the requested device fails at dispatch.
+
+**Evidence.** `test_weno5_cuda_line.release`, registered only in a CUDA build, asserts CUDA and CPU reconstructions agree (absolute $<10^{-12}$); `test_coordinate.release` asserts the device and dtype parameter coverage; no run of these ctest entries is recorded for this chapter at the pin (missing evidence).
 :::
 
 ### Derivation
@@ -51,7 +58,7 @@ make_fig()
 | cudareg | [`hydro_dispatch.cu:61-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cu#L61-L63) | `call_hydro_ref_x1` | API / see Summary |
 | gpu | {{< code src/utils/loops.cuh gpu_kernel >}} | `gpu_kernel` | API / see Summary |
 | stencil | {{< code src/utils/loops.cuh stencil_kernel >}} | `stencil_kernel` | API / see Summary |
-| tiled | [`recon_dispatch.cu:18-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/recon_dispatch.cu#L18-L50) | `recon_tile_width` | API / see Summary |
+| tiled | {{< code src/recon/recon_dispatch.cu recon_tile_width >}} | `recon_tile_width` | API / see Summary |
 | build | [`CMakeLists.txt:7-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L7-L18) | `CUDA` | `CUDA` |
 | cubuild | [`CMakeLists.txt:122-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L122-L155) | `cu_src_files` | API / see Summary |
 | layoutopts | {{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}} | `from_yaml` | API / see Summary |
@@ -64,7 +71,7 @@ make_fig()
 4. Read `call_hydro_ref_x1` for the cudareg part of this path ([`hydro_dispatch.cu:61-63`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/hydro/hydro_dispatch.cu#L61-L63)).
 5. Read `gpu_kernel` for the gpu part of this path ({{< code src/utils/loops.cuh gpu_kernel >}}).
 6. Read `stencil_kernel` for the stencil part of this path ({{< code src/utils/loops.cuh stencil_kernel >}}).
-7. Read `recon_tile_width` for the tiled part of this path ([`recon_dispatch.cu:18-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/recon_dispatch.cu#L18-L50)).
+7. Read `recon_tile_width` for the tiled part of this path ({{< code src/recon/recon_dispatch.cu recon_tile_width >}}).
 8. Read `CUDA` for the build part of this path ([`CMakeLists.txt:7-18`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L7-L18)).
 9. Read `cu_src_files` for the cubuild part of this path ([`CMakeLists.txt:122-155`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L122-L155)).
 10. Read `from_yaml` for the layoutopts part of this path ({{< code src/layout/layout.cpp LayoutOptionsImpl::from_yaml >}}).
@@ -78,9 +85,9 @@ make_fig()
 
 : Source assertions for dispatch. {#tbl-ch01-dispatch-tests}
 
-The assertion anchor `expect_matches_cpu` is in [`test_weno5_cuda_line.cpp:83-121`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/test_weno5_cuda_line.cpp#L83-L121).
+The assertion anchor `expect_matches_cpu` is in {{< code tests/test_weno5_cuda_line.cpp expect_matches_cpu >}}.
 
-The assertion anchor `DeviceTest` is in [`device_testing.hpp:33-50`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/device_testing.hpp#L33-L50).
+The assertion anchor `DeviceTest` is in {{< code tests/device_testing.hpp DeviceTest >}}.
 
 No snapy runtime result is reported by this draft. @sec-ch15-ch01 records the source-defined device and rank coverage,
 the missing runs and the distinction between assertions and observations.

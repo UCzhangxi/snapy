@@ -34,11 +34,11 @@ stays on the CPU and prints nothing; "Running on CUDA" is printed only when the 
 The reconstruction kernels launch one CUDA block per line. A line longer than 1024 cells does not fit in one CUDA
 block, so `recon_tile_width` returns a tile width instead. It starts at 256 and halves until the tile, its
 stencil halo and the weights fit in 48 KiB of shared memory; the caller then runs the tiled kernel
-(`recon_tile_width`, [`recon_dispatch.cu:18-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/recon_dispatch.cu#L18-L46)).
+(`recon_tile_width`, {{< code src/recon/recon_dispatch.cu recon_tile_width >}}).
 
 A CUDA test of snapy runs only when snapy was built with CUDA *and* torch sees a device.
 `snapy_cuda_test_enabled` returns false in a CPU build even when a GPU is visible
-([`cuda_test_gate.hpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/cuda_test_gate.hpp#L1-L15)).
+({{< code tests/cuda_test_gate.hpp snapy_cuda_test_enabled >}}).
 
 Each host read-back (`.item()`) of a device value synchronises the device. Per step, they come from the time-step
 MIN, the redo flags, the signal check, the cycle-line meters and the gravity-work fixer. Issue #291 (open) measured
@@ -50,8 +50,8 @@ MIN, the redo flags, the signal check, the cycle-line meters and the gravity-wor
 |---|---|---|---|
 | device string | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::device_str >}} | `device_str` | `DEVICE`, `DEVICE_ID` |
 | driver device choice | {{< code examples/run_hydro.cpp main >}} | `is_available` | `DEVICE=cuda` |
-| tiling of long lines | [`recon_dispatch.cu:18-46`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/recon/recon_dispatch.cu#L18-L46) | `recon_tile_width` | lines > 1024 |
-| CUDA test gate | [`cuda_test_gate.hpp:1-15`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/tests/cuda_test_gate.hpp#L1-L15) | `snapy_cuda_test_enabled` | `CUDA` build |
+| tiling of long lines | {{< code src/recon/recon_dispatch.cu recon_tile_width >}} | `recon_tile_width` | lines > 1024 |
+| CUDA test gate | {{< code tests/cuda_test_gate.hpp snapy_cuda_test_enabled >}} | `snapy_cuda_test_enabled` | `CUDA` build |
 
 : Code map of GPU execution. {#tbl-ch14-gpu-code}
 

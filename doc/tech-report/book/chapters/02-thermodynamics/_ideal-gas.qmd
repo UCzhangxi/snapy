@@ -12,9 +12,17 @@ status: draft
 The ideal gas maps total energy to pressure after subtracting kinetic energy with the metric contraction. Floors can prevent the reverse map from being an exact inverse. The factory alias is `ideal-gas`.
 
 ::: {.callout-note title="At a glance"}
-Explicit `type: ideal-gas`; default EOS remains `moist-mixture`.
-Constant heat capacity and no reference-energy offset.
-The cell-local algebra is exact before floors, as in @eq-ch02-ideal-gas-pressure.
+**Purpose.** The ideal-gas conversion between conserved and primitive states: pressure from the total energy minus the kinetic energy with the metric contraction (@eq-ch02-ideal-gas-pressure).
+
+**Data.** In: the conserved cell averages `hydro_u`, $\rho$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$] (total mass, no species rows), or the primitive `hydro_w`, $\rho$, $\mathbf v$ [m s$^{-1}$], $p$ [Pa]. Out: the other representation in the same rows, $T$ [K] and $c_s$ [m s$^{-1}$]; constant heat capacity and no reference-energy offset.
+
+**Placement.** At every conserved-to-primitive and primitive-to-conserved conversion of the step.
+
+**Activation.** `type: ideal-gas`; the default EOS stays `moist-mixture`.
+
+**Guarantee / limits.** The cell-local algebra is exact before the floors; a floor can make the reverse map inexact.
+
+**Evidence.** `test_eos.release` asserts the zero internal-energy offset ($10^{-12}$ absolute and relative, prescribed by `allclose`); no run of these ctest entries is recorded for this chapter at the pin (missing evidence). `ideal-gas_check.py` is report-only, run with its committed output `src/snapy_report/ch02/ideal-gas_check.out`.
 :::
 
 ### Derivation
@@ -33,7 +41,7 @@ c_s^2&=\gamma_{\mathrm d}p/\rho.
 \end{aligned}
 $$ {#eq-ch02-ideal-gas-pressure}
 
-@eq-ch02-ideal-gas-pressure is implemented by `_prim2cons` in [`ideal_gas.cpp:67-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_gas.cpp#L67-L118).
+@eq-ch02-ideal-gas-pressure is implemented by `_prim2cons` in {{< code src/eos/ideal_gas.cpp IdealGasImpl::_prim2cons >}}.
 
 The kinetic contraction pairs contravariant velocity with covariant momentum, so a coordinate raise is required
 before computing it from conserved data. Integrating a uniform thermodynamic state over a cell multiplies both
@@ -62,7 +70,7 @@ make_fig()
 | what | code link | symbol | switch |
 |---|---|---|---|
 | conversion keys | {{< code src/eos/ideal_gas.cpp IdealGasImpl::compute >}} | `compute` | `ideal-gas` |
-| metric and energy | [`ideal_gas.cpp:67-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_gas.cpp#L67-L118) | `_prim2cons` | `ideal-gas` |
+| metric and energy | {{< code src/eos/ideal_gas.cpp IdealGasImpl::_prim2cons >}} | `_prim2cons` | `ideal-gas` |
 | fused conversion | {{< code src/eos/ideal_gas_impl.h ideal_gas_cons2prim >}} | `ideal_gas_cons2prim` | `ideal-gas` |
 
 : Code map. {#tbl-ch02-ideal-gas-code}
@@ -71,7 +79,7 @@ make_fig()
 Read the implementation in this order:
 
 1. Conversion keys: `compute` in {{< code src/eos/ideal_gas.cpp IdealGasImpl::compute >}}.
-2. Metric and energy: `_prim2cons` in [`ideal_gas.cpp:67-118`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/ideal_gas.cpp#L67-L118).
+2. Metric and energy: `_prim2cons` in {{< code src/eos/ideal_gas.cpp IdealGasImpl::_prim2cons >}}.
 3. Fused conversion: `ideal_gas_cons2prim` in {{< code src/eos/ideal_gas_impl.h ideal_gas_cons2prim >}}.
 
 ### Tests
@@ -91,7 +99,7 @@ the thermodynamics evidence in the verification catalogue; no multi-rank thermod
 :::
 
 The CPU TensorIterator loop and MPS tensor path are `ideal_gas_cons2prim_cpu` and
-`ideal_gas_cons2prim_mps` in [`eos_dispatch.cpp:21-58`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/eos/eos_dispatch.cpp#L21-L58).
+`ideal_gas_cons2prim_mps` in {{< code src/eos/eos_dispatch.cpp ideal_gas_cons2prim_mps >}}, {{< code src/eos/eos_dispatch.cpp ideal_gas_cons2prim_cpu >}}.
 Neither backend is exercised by the independent formula check.
 
 ### Limits
