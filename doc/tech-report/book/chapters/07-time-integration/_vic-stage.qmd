@@ -17,13 +17,18 @@ the solve and leaves the explicit tendency at the full step.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Hands the VIC the step $\Delta t_c = w_2^{(s)}\Delta t$ of the current Runge-Kutta stage instead of the
 full $\Delta t$, so that the implicit operator matches the increment the stage actually takes; @eq-ch07-vic-stage.
+
 **Data.** In: the explicit increment $\Delta\mathbf U^{(0)}$ of the stage at every cell of the column, in
 the solved variables $(\rho, \rho v_1, E)$ ($N=3$) or $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$ ($N=5$), in [kg m$^{-3}$], [kg m$^{-2}$ s$^{-1}$] and [J m$^{-3}$] (total-mass basis), and the stage weight $w_2^{(s)}$ [-] of the integrator. Out: $\Delta t_c$ [s] handed
 to the solve, one per stage, and the solved increment $\boldsymbol\delta$ per cell, same units. Check cases: rk1,
 rk2, rk3, rk3s4 on a stiff mode $z = 10^8$ and on $z$ from $10^{-3}$ to $10^8$.
+
 **Placement.** Every stage with a VIC, after the explicit increment.
+
 **Activation.** None; it applies when the integrator has three stages (`rk3`).
+
 **Guarantee / limits.** The order is not changed by the weighting; the correction is a linearised backward Euler.
+
 **Evidence.** Test: at every rk3 stage the column's mechanical energy closes with the weighted step,
 {{< code tests/test_forcing.cpp forcing.implicit_gravity_work_holds_under_rk3_stage_weighting >}} (and a CUDA twin;
 $10^{-9}$ absolute); not run at the pin. Check: `python3 src/snapy_report/ch07/vic_stage_check.py`, output `vic_stage_check.out` lines `[C1]`–`[C4]`; the committed output prints PASS and the measured value of each claim, not the threshold it is held to, so the thresholds are **missing evidence** in the output; the check ports the code at the pin.

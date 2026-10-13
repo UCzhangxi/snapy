@@ -18,16 +18,21 @@ accepted step resets the halving. After `max_redo` retries the run stops and exi
 ::: {.callout-note title="At a glance"}
 **Purpose.** After the last stage and any step-end sources, decides whether the step is kept, redone from its start
 at half the step, or the run stops; @eq-ch07-redo-dt.
+
 **Data.** In: per block, the primitives recomputed from `hydro_u` at the interior cell centres, density [kg m$^{-3}$]
 against `density-floor` and pressure [Pa] against `pressure-floor`, and the per-block VIC dry-clamp mark, limiter
 marks, saturation counter and solve latch [flags, count]; `max_redo` and the redo count [count]. Out: one cause
 word [bit mask] for all ranks and the accept, redo or stop decision; on redo every block's restored conserved state
 $\mathbf U$: $\rho_{\mathrm d}$ and $\rho_n$ [kg m$^{-3}$], $m_a$ [kg m$^{-2}$ s$^{-1}$], $E$ [J m$^{-3}$] (total-mass basis) and the passive-scalar densities $\rho_{\mathrm d}r_n$ [kg m$^{-3}$] (dry-mass basis). Check cases: per-rank flag sets, a step that always
 fails, a retry after acceptance.
+
 **Placement.** Once per step, after the stages and any step-end sources, in `check_redo`.
+
 **Activation.** None for the decision; `max_redo` (pyharp, default 5, not a YAML key); the floors
 `equation-of-state/density-floor`, `pressure-floor` feed the first cause.
+
 **Guarantee / limits.** One decision on every rank; a policy, not a discretisation.
+
 **Evidence.** Tests: a floor planted in `hydro_u`, a NaN with the limiter off and one floored block of six each redo,
 {{< code tests/test_check_redo_floor.py main >}} (exact restore; $10^{-12}$ relative on the halving); one decision
 across 2 ranks, {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}} (exact);
