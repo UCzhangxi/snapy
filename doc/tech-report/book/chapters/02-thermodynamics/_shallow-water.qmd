@@ -1,51 +1,66 @@
 ## Shallow-water conversion (`shallow-water`) {#sec-ch02-shallow-water}
 
 <!-- PROVENANCE
-pin: snapy@e894700ff7aee30b52882e5202b16461413780b0 (main)
-sources: OUTLINE.md section 2; code links below
+pin: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (chengcli/snapy, code_pin.yml)
+sources: OUTLINE.md section 2; src/eos/shallow_water.cpp, src/eos/shallow_water.hpp, src/eos/shallow_water_impl.h,
+         src/eos/equation_of_state.cpp at the pin
 status: draft
 -->
 
-The depth-like conserved slot replaces gas density and carries gravity in its units. Momentum conversion remains meaningful, but temperature and internal-energy operations are unavailable. The factory alias is `shallow-water`.
-
-Local symbols: $d_{\mathrm{sw}}$ denotes the depth-like `IDN` slot with gravity absorbed,
-not the volumetric gas density. The local symbol is tracked in ISSUES.md.
-
 ### Summary
 
+The shallow-water EOS lets the same solver advance a thin layer of fluid instead of a gas. The density slot then
+holds the layer depth multiplied by gravity, the three momentum rows hold that slot times velocity, and there is
+no energy row. Gravity waves travel at the square root of the density slot, so the EOS supplies that as its
+"sound speed". Temperature and internal energy do not exist here, and the corresponding questions fail or return
+nothing.
+
 ::: {.callout-note title="At a glance"}
-**Purpose.** The shallow-water conversion: a depth-like density that carries gravity in its units, three momenta and no energy row (@eq-ch02-shallow-water-speed).
+**Purpose.** Converts between $(d_{\mathrm{sw}}, d_{\mathrm{sw}}v_a)$ and $(d_{\mathrm{sw}}, v^a)$ and gives the wave speed $\sqrt{d_{\mathrm{sw}}}$, @eq-ch02-shallow-water-speed.
 
-**Data.** In: the four-row cell averages, the depth-like `IDN` slot $d_{\mathrm{sw}}$ [m$^2$ s$^{-2}$] (depth times gravity) and the three momentum rows $d_{\mathrm{sw}}v_a$ [m$^3$ s$^{-3}$]; no energy row and no species. Out: $d_{\mathrm{sw}}$, $\mathbf v$ [m s$^{-1}$] and the gravity-wave speed $\sqrt{d_{\mathrm{sw}}}$ [m s$^{-1}$]; temperature and internal-energy operations are undefined.
+**Data.** Reads the four rows of `hydro_u` or `hydro_w`; writes the other four and $\sqrt{d_{\mathrm{sw}}}$ [m s$^{-1}$].
 
-**Placement.** At every state conversion of the step.
+**Placement.** At every state conversion of every stage.
 
-**Activation.** `type: shallow-water`; the default EOS stays `moist-mixture`.
+**Activation.** `type: shallow-water`; default EOS `moist-mixture`.
 
-**Guarantee / limits.** Momentum conversion is exact algebra; thermodynamic temperature is undefined and the corresponding keys throw or return undefined tensors (@sec-ch02-interface).
+**Guarantee / limits.** Exact algebra up to one rounding per row; `W->T` and `W->A` return undefined tensors, `W->I` throws.
 
-**Evidence.** `test_shallow_xy`, `test_shallow_splash` are example regressions under `FULL_TESTS`, asserted through their comparison scripts; no run of them is recorded for this chapter at the pin (missing evidence). `shallow-water_check.py` is report-only, run with its committed output `src/snapy_report/ch02/shallow-water_check.out`.
+**Evidence.** @tbl-ch02-shallow-water-tests: two example regressions by source reading, `shallow-water_check.py` `[C1]`–`[C2]`.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $d_{\mathrm{sw}}$ the content of the `IDN` slot, layer depth
+times gravity [m$^2$ s$^{-2}$], not a volumetric gas density; $D_{\mathrm{sw}}$ the layer depth [m]; $g$ the
+gravitational acceleration [m s$^{-2}$].
 
 ### Derivation
 
-No three-dimensional thermodynamic closure applies. The API computes speed from its stored depth-like
-density, with gravity absorbed in that variable:
+1. *The stored variable.* With depth $D_{\mathrm{sw}}$ and gravity $g$, the slot holds $d_{\mathrm{sw}}=gD_{\mathrm{sw}}$;
+   the momentum rows hold $d_{\mathrm{sw}}v_a$.
+2. *The one-dimensional system.* Mass and momentum read $\partial_td_{\mathrm{sw}}+\partial_x(d_{\mathrm{sw}}v)=0$
+   and $\partial_t(d_{\mathrm{sw}}v)+\partial_x(d_{\mathrm{sw}}v^2+\tfrac12d_{\mathrm{sw}}^2)=0$, the usual equations
+   multiplied by $g$.
+3. *Its wave speeds.* The flux Jacobian in $(d_{\mathrm{sw}},d_{\mathrm{sw}}v)$ has eigenvalues
+   $v\mp\sqrt{d_{\mathrm{sw}}}$, so the signal speed relative to the flow is
+
 $$
 c_s^2=d_{\mathrm{sw}}
 $$ {#eq-ch02-shallow-water-speed}
 
 @eq-ch02-shallow-water-speed is implemented by `sqrt` in {{< code src/eos/shallow_water.cpp ShallowWaterImpl::compute >}}.
-Here $d_{\mathrm{sw}}$, the shallow-water use of the `IDN` slot, is not a volumetric gas density; its dimensions are
-$\mathrm{m^2\,s^{-2}}$. This local exception is tracked in ISSUES.md.
-`shallow-water_check.py` checks a depth/momentum round trip on positive states.
-The square-root relation above is a definition, not an independent validation.
+
+4. *No thermodynamics.* There is no energy equation, so no temperature, no internal energy and no adiabatic index.
+
+Round-off is one rounding per row: the division or product of each momentum row by $d_{\mathrm{sw}}$, and the
+square root, each within $\epsilon_{\mathrm m}/2$ relative. On a nonorthogonal grid the raise adds the roundings of
+`coord_vec_raise_impl`.
 
 ### Numerical method
 
-Conserved-to-primitive conversion divides momentum by the depth-like slot and raises horizontal components.
-The inverse multiplies and lowers them. Floors bracket the conversion. Neither temperature nor adiabatic
-index is returned as a defined tensor. There is no EOS neighbour stencil.
+`_cons2prim` applies the conserved floor, copies the slot, divides the momenta by it and raises them;
+`_prim2cons` applies the primitive floors, multiplies and lowers. The Roe average used by the Riemann solver takes
+$\sqrt{\tfrac12(d_{\mathrm{sw,L}}+d_{\mathrm{sw,R}})}$ ({{< code src/eos/shallow_water_impl.h shallow_water_roe_sound_speed >}}).
+There is no neighbour stencil in the EOS.
 
 ```{python}
 #| label: fig-ch02-shallow-water-flow
@@ -58,39 +73,80 @@ make_fig()
 
 ### Code
 
+**A minimal input.**
+
+```yaml
+dynamics:
+  equation-of-state:
+    type: shallow-water
+    density-floor: 1.e-6     # floor on d_sw [m^2 s^-2]; the limiter is off by default
+```
+
+**What is refused, and why.**
+
+1. *An energy question.* `W->I` and `UT->I` throw "Unknown abbreviation: " and the key: there is no energy row.
+2. *A key outside the list*, by `check_keys`, as in @sec-ch02-interface.
+
+Not refused but empty: `W->T` and `W->A` return an undefined tensor. A caller that uses it fails later, at its
+first operation on the tensor.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
-| keys | {{< code src/eos/shallow_water.cpp ShallowWaterImpl::compute >}} | `compute` | `shallow-water` |
-| maps | {{< code src/eos/shallow_water.cpp ShallowWaterImpl::_cons2prim >}} | `_cons2prim` | `shallow-water` |
+| conversion keys | {{< code src/eos/shallow_water.cpp ShallowWaterImpl::compute >}} | `compute` | `shallow-water` |
+| conserved to primitive | {{< code src/eos/shallow_water.cpp ShallowWaterImpl::_cons2prim >}} | `_cons2prim` | `shallow-water` |
+| primitive to conserved | {{< code src/eos/shallow_water.cpp ShallowWaterImpl::_prim2cons >}} | `_prim2cons` | `shallow-water` |
+| four rows | {{< code src/eos/shallow_water.hpp ShallowWaterImpl >}} | `nvar` | `shallow-water` |
+| primitive floors | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `IPR` | `limiter` |
 
-: Code map. {#tbl-ch02-shallow-water-code}
+: Code map of the shallow-water conversion. {#tbl-ch02-shallow-water-code}
 
+**The excerpt.** `ShallowWaterImpl::_cons2prim` and the wave speed in `compute`:
 
-Read the implementation in this order:
+```cpp
+apply_conserved_limiter_(cons);
 
-1. Keys: `compute` in {{< code src/eos/shallow_water.cpp ShallowWaterImpl::compute >}}.
-2. Maps: `_cons2prim` in {{< code src/eos/shallow_water.cpp ShallowWaterImpl::_cons2prim >}}.
+prim[IDN] = cons[IDN];
+
+auto out = prim.narrow(0, IVX, 3);
+torch::div_out(out, cons.narrow(0, IVX, 3), cons[IDN]);
+
+coord_vec_raise_(out, pcoord->cosine_cell_kj);
+
+apply_primitive_limiter_(prim);
+
+// ShallowWaterImpl::compute, key "WA->L"
+return torch::sqrt(w[IDN]);
+```
+
+`div_out` is step 1 inverted, one rounding per row; the raise turns covariant into contravariant velocity; the
+last line is @eq-ch02-shallow-water-speed.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_shallow_xy`, `test_shallow_splash` | example regressions | see their comparison scripts | `FULL_TESTS` registrations |
+| `test_shallow_xy`, `test_shallow_splash` | the example runs match their stored references | the comparison scripts' thresholds | `FULL_TESTS` registrations |
+| `shallow-water_check.py` `[C1]`–`[C2]` (this report) | depth-momentum round trip; symbolic wave speeds | $10^{-12}$; exact | stated in the check |
 
-: Evidence inventory; assertions are read from the pinned source, not rerun results. {#tbl-ch02-shallow-water-tests}
+: Tests of the shallow-water conversion. {#tbl-ch02-shallow-water-tests}
 
-::: {.callout-important title="Check"}
-The independent derivation check is `src/snapy_report/ch02/shallow-water_check.py`;
-its committed output is `src/snapy_report/ch02/shallow-water_check.out`, line `[C1]`.
+The check is independent algebra.[^sw-run] `[C1]`: three positive states survive the round trip with residual 0.
+`[C2]`: sympy confirms step 3.
 
-No compiled snapy test is run for this draft. CPU/CUDA availability is recorded in
-the thermodynamics evidence in the verification catalogue; no multi-rank thermodynamic result is claimed.
-:::
+The example regressions are registered only under `FULL_TESTS` and have not been run for this report at the pin:
+**pending a pinned ctest run**.
+
+[^sw-run]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch02/shallow-water_check.py`,
+    CPU, double, 1 process; Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file].
+    Output `shallow-water_check.out`, lines `[C1]`–`[C2]`.
 
 ### Limits
 
-::: {.callout-warning title="Limits"}
-The hydro forcing loop requests `W->T`; only forcings that tolerate an undefined temperature are usable.
-No gas-EOS conservation statement is transferred to shallow water.
-Switch-combination coverage remains pending in @sec-ch12-matrix.
-:::
+1. **Forcings that need $T$.** The hydro step asks `W->T` before the forcing loop (@sec-ch09); only forcings that
+   do not use the temperature are usable.
+2. **Floors with `limiter: true` (hypothesis, read from the source and not run).**
+   `apply_primitive_limiter_` clamps `prim[IPR]` with no check of the row count, while this class has four rows,
+   so `IPR` (row 4) is out of range. A shallow-water deck with `limiter: true` would then throw at its first
+   conversion. The conserved limiter guards the energy row with `nvar() > IPR`; the primitive one does not.
+3. **No gas-EOS statement** of this chapter transfers to shallow water.
+4. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.

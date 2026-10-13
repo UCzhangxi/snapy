@@ -22,7 +22,7 @@ the $r^2\sin\theta$ metric).
 | $r$ | $x_1$ on a spherical-polar grid (radius) | [m] | @sec-ch01-stage | `x1v`, `x1f` |
 | $\theta$ | $x_2$ on a spherical-polar grid (colatitude) | [rad] | @sec-ch03-sphpolar | x2 |
 | $\varphi$ | $x_3$ on a spherical-polar grid (azimuth); never the potential (source notes: $\phi$ in coord code) | [rad] | @sec-ch03-sphpolar | x3 |
-| $\xi, \eta$ | the two gnomonic-equiangle panel coordinates of a cubed-sphere block ($x_2, x_3$) (source notes: $\alpha,\beta$) | [rad] | @sec-ch03-gnomonic |  |
+| $\xi, \eta$ | the two gnomonic-equiangle panel coordinates of a cubed-sphere block ($x_2, x_3$) (source notes: $\alpha,\beta$) | [rad] | @sec-ch02-moist-mixture |  |
 | $i, j, k$ | cell indices in $x_1, x_2, x_3$ |  | @sec-ch01-stage | `i`, `j`, `k` |
 | $i\pm\tfrac12$ | the $x_1$ faces of cell $i$; also written $f$ for a generic face |  | @sec-ch04-divergence |  |
 | $n_1, n_2, n_3$ | interior cells per block in each direction (source notes: `nz` for $n_1$) |  | @sec-ch04-dc | `nx1`, `nx2`, `nx3` |
@@ -61,10 +61,10 @@ all $N_y$ species and excludes dry air.
 | $\mathcal V, \mathcal C$ | the vapour and condensate index sets; $n\in\mathcal V$ runs $1..N_v$ and $n\in\mathcal C$ runs $N_v+1..N_y$, in that order, as the rows are stored |  | @sec-ch02-ideal-moist | `vapor_ids`, `cloud_ids` |
 | $N_v, N_c, N_y$ | the number of vapours, of condensates, and of species rows, $N_y=N_v+N_c$ | count | — | `nvapor`, `ncloud`, `ny` |
 | $\mathbf v = (v_1,v_2,v_3)$ | velocity (source notes: $u, w$) | [m s$^{-1}$] | @sec-ch01-initialization | `w[IVX]`, `w[IVY]`, `w[IVZ]` |
-| $m_1, m_2, m_3$ | momentum density $\rho v_a$ (source notes: $m$) |  | @sec-ch02-aneos | `u[IVX]`.. |
+| $m_1, m_2, m_3$ | momentum density $\rho v_a$ (source notes: $m$) |  | @sec-ch03-sphpolar | `u[IVX]`.. |
 | $p$ | pressure | [Pa] | @sec-ch02-laws | `w[IPR]` |
 | $T$ | temperature | [K] | @sec-ch02-ideal-moist | `"W->T"` |
-| $e$ | specific internal energy | [J kg$^{-1}$] | @sec-ch02-ideal-gas |  |
+| $e$ | specific internal energy | [J kg$^{-1}$] | @sec-ch02-moist-mixture |  |
 | $u^{\star}_n$ | reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{\star}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$; the energy zero of each species, not a fitted constant. The star, not a superscript $(0)$, because $(0)$ is the explicit RK increment (§7) | [J kg$^{-1}$] | @sec-ch02-ideal-moist | `u0` (`uref_R` $\times$ `Rgas` $\times$ `inv_mu`) |
 | $L_{n\to m}$ | latent heat of the phase change from species $n$ to species $m$ at the reference state, $L_{n\to m} = u^{\star}_n - u^{\star}_m$ (plus the $\mathcal R T/\mu$ term where the vapour side is a gas); snapy stores no latent heat, only the $u^{\star}_n$ it is a difference of | [J kg$^{-1}$] | — | (derived) |
 | $\hat s_n$ | specific entropy of species $n$; the hat distinguishes it from the centroid slope $s_i$ of §4, which is never a thermodynamic quantity | [J kg$^{-1}$ K$^{-1}$] | — |  |
@@ -72,14 +72,14 @@ all $N_y$ species and excludes dry air.
 | $\hat h$ | specific enthalpy $e + p/\rho$ (source notes: $h$ (not used: $h$ is the cell width)) | [J kg$^{-1}$] | @sec-ch02-ideal-moist |  |
 | $E$ | total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$; excludes potential energy (source notes: $E$) | [J m$^{-3}$] | @sec-ch01-initialization | conserved `u[IPR]` |
 | $\mathbf U$ | conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$ | vector | @sec-ch01-stage | `hydro_u`, rows `IDN, IVX, IVY, IVZ, IPR, ICY..` |
-| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch04-framework | `hydro_w` |
+| $\mathbf W$ | primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$ | vector | @sec-ch02-interface | `hydro_w` |
 | $c_{v,n}, c_{p,n}$ | specific heats of species $n$ at constant volume and pressure, **per unit mass of that species**; $c_{v,n} = c^{\mathrm{ref}}_n R_n$ with $c^{\mathrm{ref}}_n$ the dimensionless table value. $n=\mathrm{d}$ is dry air: $c_{v,\mathrm{d}}, c_{p,\mathrm{d}}$ | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `cref_R` |
 | $c_v, c_p$ | mixture specific heats **per unit total mass**, $c_v = \sum_n y_n c_{v,n}$ over dry air and every species; a chapter that needs the per-dry-mass form writes it out and says so | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `"VT->cv"` |
-| $\gamma$ | mixture ratio of specific heats $c_p/c_v$, local, varies with composition; $\gamma_{\mathrm{d}}$ is the dry value | [-] | @sec-ch02-ideal-gas | `gamma`, `"W->A"` |
+| $\gamma$ | mixture ratio of specific heats $c_p/c_v$, local, varies with composition; $\gamma_{\mathrm{d}}$ is the dry value | [-] | @sec-ch02-interface | `gamma`, `"W->A"` |
 | $f_\varepsilon, f_\sigma$ | the ideal-moist mixture factors, $f_\varepsilon = 1+\sum_{n\in\mathcal V}y_n(\mu_{\mathrm{d}}/\mu_n-1)-\sum_{n\in\mathcal C}y_n$ and $f_\sigma = 1+\sum_n y_n(c_{v,n}/c_{v,\mathrm{d}}-1)$, both | [-] | @sec-ch02-ideal-moist | `f_eps`, `f_sig` |
 | $R_{\mathrm{d}}$, $R_n$ | specific gas constants of dry air and species $n$ (source notes: $R$) | [J kg$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-gas |  |
-| $\mathcal R$ | universal gas constant; the only molar quantity in this table | [J mol$^{-1}$ K$^{-1}$] | @sec-ch02-moist-mixture | `Rgas` |
-| $c_s$ | sound speed (source notes: $a$) | [m s$^{-1}$] | @sec-ch02-ideal-gas | `"W->L"` |
+| $\mathcal R$ | universal gas constant; the only molar quantity in this table | [J mol$^{-1}$ K$^{-1}$] | @sec-ch02-ideal-moist | `Rgas` |
+| $c_s$ | sound speed (source notes: $a$) | [m s$^{-1}$] | @sec-ch02-interface | `"W->L"` |
 | $p_{\mathrm{sat},k}(T)$ | saturation vapour pressure of the condensing reaction $k$, valid only on $[T_{\min,k}, T_{\max,k}]$; the code fits $\ln p_{\mathrm{sat},k}$, so a chapter that quotes the fit quotes the logarithm. Never $e_s$: $e$ is the specific internal energy (source notes: $e_s$) | [Pa] | @sec-ch10-kinetics | `logsvp`, `svp_params`, `minT`, `maxT` |
 | $y_{\mathrm{sat},n}$ | the mass fraction of vapour $n$ in equilibrium with its condensate at the cell's $T$ and $\rho$; the target of the saturation adjustment, not a stored variable (source notes: $q_s$) | [-] | — |  |
 | $S_n = y_n/y_{\mathrm{sat},n}$ | saturation ratio of vapour $n$; never $\mathsf S$ (slope matrix, §4) or $\hat s$ (entropy, §2) | [-] | @sec-ch02-saturation |  |
@@ -104,7 +104,7 @@ the symbol in math, and never let the two touch.
 | $T_\star, p_\star$ | the **thermodynamic** reference state: the single temperature and pressure at which $c^{\mathrm{ref}}_n$, $u^{\mathrm{ref}}_n$ and $s^{\mathrm{ref}}_n$ are tabulated (defaults $300$ K and $10^5$ Pa). The star is never used for the hydrostatic reference state of §6, which is a per-cell field written with the subscript $\mathrm{ref}$ | [K], [Pa] | — | kintera `reference-state/{Tref,Pref}` |
 | $\nu_{nk}$ | stoichiometric coefficient of species $n$ in reaction $k$, always with both indices; never bare $\nu$, which is kinematic viscosity (§8) |  | @sec-ch02-saturation | `stoich` |
 | $\mathsf N$ | the stoichiometry matrix, $\mathsf N_{nk} = \nu_{nk}$, species by reaction; never $\mathsf S$, which is the centroid-slope matrix (§4) | matrix | @sec-ch02-saturation | `stoich` |
-| $k = 1..N_r$ | reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so |  | @sec-ch02-saturation | `nreaction` |
+| $k = 1..N_r$ | reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so |  | @sec-ch02-moist-mixture | `nreaction` |
 | $K_k$ | equilibrium constant of reaction $k$; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3) | [units stated per reaction] | @sec-ch10-kinetics |  |
 | $Z_n$ | compressibility factor of gas species $n$, $p_n = Z_n\rho_nR_nT$; $Z_n=1$ at the pin, because kintera's `func2` registry is empty. Capital, because $z$ is the Cartesian height (§1) | [-] | @sec-ch02-moist-mixture | `czh` |
 | $\tilde c_n$ | molar concentration of species $n$; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$ | [mol m$^{-3}$] | @sec-ch02-moist-mixture | kintera state `V` |
@@ -125,7 +125,7 @@ the symbol in math, and never let the two touch.
 | $q^{\pm}$ | upper/lower in $x_1$; used only for faces of one cell, $q_\pm = q_{i\pm1/2}$ |  | — |  |
 | $\mathcal W[\cdot]$ | the reconstruction operator (PLM, WENO5, cp3/cp5...) acting on cell values |  | — | `precon1`.. |
 | $\mathcal K_f$ | the cp3/cp5/weno5 curvature flux, $\mathcal K_{i-1/2} = \tfrac{1}{12}(x_{1,i}-x_{1,i-1})(m_{1,i}-m_{1,i-1})$, zero at physical $x_1$ boundaries |  | — | `curv_flux1` |
-| $\Lambda$ | diagonal matrix of characteristic speeds |  | @sec-ch07-vic-assembly | `Lambda` |
+| $\Lambda$ | diagonal matrix of characteristic speeds |  | @sec-ch02-moist-mixture | `Lambda` |
 | $\mathsf R, \mathsf R^{-1}$ | right eigenvectors and their inverse | matrix | @sec-ch03-synctype | `Rmat`, `Rimat` |
 
 : Fluxes, reconstruction and Riemann solver. {#tbl-appa-3}
@@ -210,9 +210,9 @@ $p_{\mathrm{ref}}$ for $10^5$ Pa.
 | $\partial\mathbf F/\partial\mathbf U$ | flux Jacobian |  | — | `dfdq_*` |
 | $\Phi$ | the gravity source Jacobian; upright, not sans-serif like the other matrices, because the math font has no sans-serif Greek and `\mathsf` drops the glyph in the PDF |  | @sec-ch06-vic | `Phi` |
 | $\omega^{\mathrm{lo}}_i, \omega^{\mathrm{hi}}_i$ | the implicit face-work weights $\tfrac12A_{i\mp1/2}\lvert x_{1,i}-x_{1,i\mp1/2}\rvert/V_i$ |  | @sec-ch06-vic | `work_lo`, `work_hi` |
-| $C$ | Courant number (named: acoustic, advective, vertical acoustic) |  | @sec-ch03-gnomonic | `cfl` |
+| $C$ | Courant number (named: acoustic, advective, vertical acoustic) |  | @sec-ch02-moist-mixture | `cfl` |
 | $\epsilon_{\mathrm{piv}}$ | LU pivot tolerance |  | @sec-ch07 |  |
-| $\epsilon_{\mathrm{m}}$ | machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$) |  | @sec-ch02-saturation |  |
+| $\epsilon_{\mathrm{m}}$ | machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$) |  | @sec-ch02-laws |  |
 | $\mathsf I$ | the identity matrix, sized by context | matrix | @sec-ch02-laws |  |
 
 : Time integration and the implicit solver. {#tbl-appa-7}
