@@ -724,10 +724,21 @@ single-block branch (a split column calls `corrected_pe_work_seam` instead):
 ```cpp
 bool radial_exact = !gw_cell && radial_exact_work();
 if (radial_exact) {
-  auto drho = -dt * vertical_mass_div;      // Delta t rho_dot = -Delta t Delta_i[AF]/V_i
-  face_gravity_work += corrected_pe_work(drho, x1f, x1v, is, ie, grav1, measure, &_pe_work);
-}                                           // += Delta t g1 sigma^2 s[rho_dot] (+ g1 delta rho_dot on radial_mid)
+  auto drho = -dt * vertical_mass_div;
+  auto measure = x1_measure(pmb->pcoord->options->type());
+  auto [below, above] = x1_neighbors();
+  if (below < 0 && above < 0) {
+    face_gravity_work +=
+        corrected_pe_work(drho, pmb->pcoord->x1f, pmb->pcoord->x1v, is, ie,
+                          grav1, measure, &_pe_work);
+  } else {
+    ...   // an x1 seam: the neighbour's row one cell past it, then corrected_pe_work_seam
+  }
+}
 ```
+
+The code comments are left out and the seam branch is elided. `drho` is $\Delta t\,\dot\rho_i=-\Delta t\,\Delta_i[AF]/V_i$,
+and the call adds $\Delta t\,g_1\sigma^2s[\dot\rho]$, plus $g_1\delta\,\dot\rho$ on `radial_mid`.
 
 Every row cites the code at the pin of `code_pin.yml`, except the pyharp row, which is at
 pyharp@4721715855e937c1e8b218e964c0655f46e56e29. The symbol column is the citation's anchor: it is the identifier

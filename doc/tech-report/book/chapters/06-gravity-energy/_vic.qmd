@@ -12,7 +12,7 @@ reviewer:
 
 The VIC solves each $x_1$ column implicitly for the stage's changes of mass, normal momentum and energy (the
 time-integration chapter covers the solve). Gravity enters it twice. The momentum row's mass column and the
-energy row's momentum column hold the gravity source Jacobian $\boldsymbol\Phi$, the linearisation of the body force
+energy row's momentum column hold the gravity source Jacobian $\Phi$, the linearisation of the body force
 $\rho g_1$ and of the cell work $\rho v_1g_1$. With `gravity-work: face` the energy row is changed so that it
 books the face form of the mass the solve itself moves; booked after the solve instead, that work makes a tall
 column blow up at acoustic Courant about 66.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
@@ -23,7 +23,7 @@ energy matches the mass actually moved.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Puts the gravity work into the vertical implicit correction (VIC), @eq-ch06-vic-rows, so the solve books it.
 
-**Data.** The gravity entries of the energy row (and, through $\boldsymbol\Phi$, the momentum row) of each block row.
+**Data.** The gravity entries of the energy row (and, through $\Phi$, the momentum row) of each block row.
 
 **Placement.** Once per stage per column, when the VIC rows are assembled; the work corrections after the solve.
 
@@ -34,8 +34,8 @@ energy matches the mass actually moved.
 **Evidence.** The Tests layer below, @tbl-ch06-vic-tests.
 :::
 
-Local symbols (flagged to the editor, ISSUES.md): $\mathbf e_m$ the unit row vector of the normal-momentum unknown;
-$[\mathsf X]_\rho$ and $[\mathsf X]_E$ the mass and energy rows of a block $\mathsf X$; $m_{1,i}=\mathbf e_m\mathbf q_i$ the
+Local symbols (flagged to the editor, ISSUES.md): $\mathbf e_{m_1}$ the unit row vector of the normal-momentum unknown;
+$[\mathsf X]_\rho$ and $[\mathsf X]_E$ the mass and energy rows of a block $\mathsf X$; $m_{1,i}=\mathbf e_{m_1}\mathbf q_i$ the
 normal momentum of cell $i$ (NOTATION.md $m_1$). $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$, $\mathsf A^\pm$,
 $\omega^{\mathrm{lo}}_i$, $\omega^{\mathrm{hi}}_i$ and $\boldsymbol\delta_i$ are NOTATION.md's.
 
@@ -58,7 +58,7 @@ density, dry air plus every species; the species ride on it and are redistribute
 $\mathsf B_i\boldsymbol\delta_{i-1} + \mathsf A_i\boldsymbol\delta_i + \mathsf C_i\boldsymbol\delta_{i+1} = \mathbf r_i$
 for the stage increment $\boldsymbol\delta$ of $\mathbf q$. Its flux part is the Roe linearisation of @sec-ch07-vic-assembly, with the same blocks
 $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$ and the frozen dissipation matrices $\mathsf A^\pm$ of NOTATION.md §7;
-$[\mathsf A^-]_\rho$ and $[\mathsf A^+]_\rho$ are the mass rows of those two matrices. This section adds only gravity entries: the source Jacobian $\boldsymbol\Phi$ and the energy-row work
+$[\mathsf A^-]_\rho$ and $[\mathsf A^+]_\rho$ are the mass rows of those two matrices. This section adds only gravity entries: the source Jacobian $\Phi$ and the energy-row work
 below. $[\mathsf X]_\rho$ and $[\mathsf X]_E$ are the mass and energy rows of a block $\mathsf X$.
 
 The face form @eq-ch06-dwork-face can be written with the weights
@@ -66,15 +66,15 @@ $\omega^{\mathrm{lo}}_i = \tfrac12A_{i-1/2}(x_{1,i}-x_{1,i-1/2})/V_i$ and
 $\omega^{\mathrm{hi}}_i = \tfrac12A_{i+1/2}(x_{1,i+1/2}-x_{1,i})/V_i$ as
 $W^{\mathrm{face}}_i = 2g_1(\omega^{\mathrm{hi}}_iF_{i+1/2}+\omega^{\mathrm{lo}}_iF_{i-1/2})$. The solve's own
 mass flux, linearised, is $F_{i+1/2} = \tfrac12(m_{1,i}+m_{1,i+1}) - \tfrac12[\mathsf A^+]_\rho(\mathbf q_{i+1}-\mathbf q_i)$
-with $\mathbf q$ the unknowns and $m_1=\mathbf e_m\mathbf q$. Substituting, and moving the work to the left-hand
+with $\mathbf q$ the unknowns and $m_1=\mathbf e_{m_1}\mathbf q$. Substituting, and moving the work to the left-hand
 side, the gravity entries of the energy row of block row $i$ are
 
 $$
 \begin{aligned}
-[\mathsf B_i]_E &= -g_1\,\omega^{\mathrm{lo}}_i\big(\mathbf e_m + [\mathsf A^-]_\rho\big),\\
-[\mathsf A_i]_E &= -g_1\big(\omega^{\mathrm{lo}}_i+\omega^{\mathrm{hi}}_i\big)\mathbf e_m
+[\mathsf B_i]_E &= -g_1\,\omega^{\mathrm{lo}}_i\big(\mathbf e_{m_1} + [\mathsf A^-]_\rho\big),\\
+[\mathsf A_i]_E &= -g_1\big(\omega^{\mathrm{lo}}_i+\omega^{\mathrm{hi}}_i\big)\mathbf e_{m_1}
   - g_1\big(\omega^{\mathrm{hi}}_i[\mathsf A^+]_\rho - \omega^{\mathrm{lo}}_i[\mathsf A^-]_\rho\big),\\
-[\mathsf C_i]_E &= -g_1\,\omega^{\mathrm{hi}}_i\big(\mathbf e_m - [\mathsf A^+]_\rho\big).
+[\mathsf C_i]_E &= -g_1\,\omega^{\mathrm{hi}}_i\big(\mathbf e_{m_1} - [\mathsf A^+]_\rho\big).
 \end{aligned}
 $$ {#eq-ch06-vic-rows}
 
@@ -85,7 +85,7 @@ with the weights `work_lo` and `work_hi`
 `vicwork_check.py` `[C1]` ports the rows and finds them equal to minus the linearised face work to
 $7\times10^{-15}$ over 200 random rows. On a Cartesian column both weights are $\tfrac14$, and the code's Cartesian
 branch writes that value in exactly (`[C2]`). With `gravity-work: cell` the momentum entry stays $-g_1$ from
-$\boldsymbol\Phi$, the cell work, and only the $[\mathsf A^\pm]_\rho$ terms are added (`[C3]`).
+$\Phi$, the cell work, and only the $[\mathsf A^\pm]_\rho$ terms are added (`[C3]`).
 
 After the solve the code books $\phi_i$ times the difference between the raw solved mass change, the explicit
 change and the mass the projection moved, and the potential-energy flux of the mass the availability clamp moved
@@ -161,7 +161,7 @@ The sign of the momentum entry is as written: `Phi(IPR, IVX + dir) = grav`, `Phi
 and the face branch adds $g_1(1-\omega^{\mathrm{lo}}_i-\omega^{\mathrm{hi}}_i)$ with the weights `lower`
 ([`:116`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/implicit/vic_assemble_full_impl.h#L116)),
 so the entry is $-g_1+g_1(1-\omega^{\mathrm{lo}}_i-\omega^{\mathrm{hi}}_i)=-g_1(\omega^{\mathrm{lo}}_i+\omega^{\mathrm{hi}}_i)$, the
-$\mathbf e_m$ coefficient of $[\mathsf A_i]_E$ in @eq-ch06-vic-rows. The rows are also checked by `[C1]` and
+$\mathbf e_{m_1}$ coefficient of $[\mathsf A_i]_E$ in @eq-ch06-vic-rows. The rows are also checked by `[C1]` and
 `[C21]`–`[C23]`.
 
 | what | code link | symbol | switch |
