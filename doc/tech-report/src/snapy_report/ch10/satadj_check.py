@@ -6,13 +6,14 @@ What is checked, at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line 
 The equilibrium solve itself (kintera ThermoYImpl::forward) is replaced by a stand-in that moves mass
 between a vapour and its condensate at fixed sum of the fractions, or, for C2, changes that sum on purpose;
 the solve's own algebra is chapter 2's (src/snapy_report/ch02/saturation_check.py).
-Claims C1-C3.
+Claims C1-C4.
 
 Run: python3 satadj_check.py   (numpy; exits with the number of failed claims)
 """
 import sys
 
 import numpy as np
+import sympy as sp
 
 IDN, IVX, IVY, IVZ, IPR, ICY = 0, 1, 2, 3, 4, 5
 
@@ -91,8 +92,21 @@ def check_C3_untouched_cells_round_trip():
                   "8192 species values: %d not bitwise equal, max change %.2f eps relative" % (changed, ulp))
 
 
+def check_C4_density_kept_iff_sum_kept():  # meshblock.cpp:803-816
+    ny = 4
+    rd, rho = sp.symbols("rho_d rho", positive=True)
+    y = sp.symbols("y0:%d" % ny, positive=True)
+    yp = sp.symbols("yp0:%d" % ny, positive=True)
+    after = rd + sum(rho * v for v in yp)
+    before = rd + sum(rho * v for v in y)
+    ok = sp.simplify((after - before) - rho * (sum(yp) - sum(y))) == 0
+    return report("C4", ok, "rho' - rho = rho (sum y' - sum y), so rho is kept iff the solve keeps sum y",
+                  "identity exact (sympy)")
+
+
 def main():
-    checks = [check_C1_only_species_rows, check_C2_density_follows_sum, check_C3_untouched_cells_round_trip]
+    checks = [check_C1_only_species_rows, check_C2_density_follows_sum, check_C3_untouched_cells_round_trip,
+              check_C4_density_kept_iff_sum_kept]
     return sum(not c() for c in checks)
 
 

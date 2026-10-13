@@ -29,7 +29,7 @@ make_fig()
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
 | Saturation adjustment (@sec-ch10-satadj) | reactions in the thermo | on with reactions | n/a | `test_wall_saturation` |
-| Redo causes (@sec-ch10-redo) | `max_redo` | 5 | n/a | `test_check_redo_saturation` |
+| Redo causes (@sec-ch10-redo) | `max_redo`, from code only | 5 | n/a | `test_check_redo_saturation` |
 | Parent-vapour borrow (@sec-ch10-borrow) | `limiter` | off | n/a | `test_condensate_conservation` |
 | Column vapour repair (@sec-ch10-fixvapor) | `limiter` | off | n/a | `test_fix_vapor_volume` |
 | Driver kinetics (@sec-ch10-kinetics) | driver | driver | 1 in time | `test_uranus_cycle1_abort` |
@@ -40,6 +40,28 @@ make_fig()
 the scheme is in the example drivers, not in the library, and has no library switch. `limiter` defaults to
 false both in the C++ options struct and in YAML. Full ctest names and tolerances are in each scheme's Tests
 layer and in @sec-ch15-ch10-tests. {#tbl-ch10-schemes}
+
+| ctest name | result at the pin |
+|---|---|
+| `test_eos.release`, `test_scalar.release`, `test_forcing.release` | passed |
+| `test_balance_column.release` and its `_wb_ref4`, `_x1_centroid` arms | passed |
+| `test_wall_saturation.release`, `test_check_redo_parallel.release` | passed |
+| `test_condensate_conservation.release`, `test_cloud_parent_slots.release`, `test_diffusion_moist.release`, `test_two_cards_species.release` | passed |
+| `test_fix_vapor_volume.release`, `test_parentless_cloud.release`, `test_parentless_cloud_nb1.release`, `test_vapor_column_nb1.release` | passed |
+| `test_parentless_cloud_nb1_mp.release` (two processes) | passed when run alone; failed under `ctest -j4` beside another two-process test |
+| `test_sedimentation_guards.release`, `test_sedimentation_cubed_seam.release` | passed |
+| `test_uranus_cycle1_abort.release` | passed |
+| `test_fix_vapor_reports_failure_python`, `test_fix_vapor_counts_every_column_python` | passed |
+| `test_check_redo_floor_python`, `test_check_redo_saturation_python` | passed |
+| `test_tracer_dry_convention_python`, `test_stage_forcing_dry_tracer_python`, `test_dry_carry_zero_base_python`, `test_flux_positivity_cubedsphere_python` | passed |
+
+: The ctest entries this chapter cites, run at the pin.[^ch10-ctest] {#tbl-ch10-ctest-run}
+
+[^ch10-ctest]: [sha: the code pin; run: `ctest -R` on a Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5,
+    CPU only (`SNAPY_BUILD_CUDA=0`), double, Intel Xeon E-2236, 6 cores; torch 2.10.0, kintera 2.6.2.dev4+g914389b40,
+    Python 3.12.10]. The build has no CUDA, so `test_vic_moist_device_python`, `test_check_redo_saturation_cuda_python`,
+    `test_fix_vapor_reports_failure_cuda_python` and the Gloo arm `test_sedimentation_cubed_seam_gloo` are not
+    registered and were not run.
 
 {{< include 10-moist-coupling/_satadj.qmd >}}
 

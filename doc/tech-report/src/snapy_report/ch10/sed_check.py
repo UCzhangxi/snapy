@@ -4,7 +4,7 @@ What is checked: SedVelImpl::forward (src/sedimentation/sed_vel.cpp:34-71) and t
 sedimentation_upwind (src/sedimentation/sed_hydro_dispatch.hpp:12-24) at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below, with the YAML defaults of
 src/sedimentation/sed_options.cpp:120-123 and kintera's KBoltz (src/constants.h:9 at
-kintera@c55b13b2204997d2d09e04498558ab9495d8ee77). Claims C1-C5.
+kintera@c55b13b2204997d2d09e04498558ab9495d8ee77). Claims C1-C8.
 Also writes data/sed_vsed.csv for fig_sed_vsed.py.
 
 Run: python3 sed_check.py   (numpy only; exits with the number of failed claims)
@@ -13,6 +13,7 @@ import os
 import sys
 
 import numpy as np
+import sympy as sp
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KBOLTZ = 1.380649e-23  # kintera src/constants.h:9
@@ -98,9 +99,39 @@ def check_C5_sealed_column_conserves():
                   % (face[il + 1], face[iu + 1], interior_sum))
 
 
+def check_C6_stokes_balance():
+    a, rp, rho, g, mu, w = sp.symbols("a rho_p rho g mu w", positive=True)
+    sol = sp.solve(sp.Eq(6 * sp.pi * mu * a * w, sp.Rational(4, 3) * sp.pi * a**3 * (rp - rho) * g), w)[0]
+    return report("C6", sp.simplify(sol - 2 * a**2 * g * (rp - rho) / (9 * mu)) == 0,
+                  "Stokes drag 6 pi mu a w balances (4/3) pi a^3 (rho_p - rho) g",
+                  "w = 2 a^2 g (rho_p - rho) / (9 mu) (exact, sympy)")
+
+
+def check_C7_chapman_enskog_form():  # sed_vel.cpp eta
+    m, k, T, d, eps = sp.symbols("m k_B T d epsilon_LJ", positive=True)
+    om = sp.Rational(122, 100) * (k * T / eps) ** sp.Rational(-16, 100)
+    ce = sp.Rational(5, 16) * sp.sqrt(sp.pi * m * k * T) / (sp.pi * d**2 * om)
+    eqv = (sp.Rational(5, 16) * sp.sqrt(m * k * T / sp.pi) * (k * T / eps) ** sp.Rational(16, 100)
+           / (sp.Rational(122, 100) * d**2))
+    code = (sp.Rational(5, 16) * sp.sqrt(m * k / sp.pi) * sp.sqrt(T) * (k * T / eps) ** sp.Rational(16, 100)
+            / (d * d * sp.Rational(122, 100)))
+    return report("C7", sp.simplify(ce / eqv - 1) == 0 and sp.simplify(code / eqv - 1) == 0,
+                  "the Chapman-Enskog viscosity with Omega_c = 1.22 (kT/eps)^-0.16 is eq-ch10-sed-viscosity and the "
+                  "code's eta", "ratios 1 (exact, sympy)")
+
+
+def check_C8_cunningham_limits_symbolic():
+    kn = sp.Symbol("Kn", positive=True)
+    beta = 1 + kn * (sp.Rational(1256, 1000) + sp.Rational(4, 10) * sp.exp(-sp.Rational(11, 10) / kn))
+    ok = sp.limit(beta, kn, 0, "+") == 1 and sp.limit(beta / kn, kn, sp.oo) == sp.Rational(1656, 1000)
+    return report("C8", ok, "the Cunningham factor tends to 1 as Kn -> 0 and beta/Kn to 1.656 as Kn -> oo",
+                  "limits exact (sympy)")
+
+
 def main():
     checks = [check_C1_sign, check_C2_cunningham_limits, check_C3_viscosity_pressure_free,
-              check_C4_clamp_and_prescribed, check_C5_sealed_column_conserves]
+              check_C4_clamp_and_prescribed, check_C5_sealed_column_conserves,
+              check_C6_stokes_balance, check_C7_chapman_enskog_form, check_C8_cunningham_limits_symbolic]
     return sum(not c() for c in checks)
 
 

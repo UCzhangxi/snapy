@@ -16,6 +16,22 @@ therefore operator-split, first order, and a property of those drivers: a run bu
 kinetics unless its own driver adds the same block. As with the saturation adjustment, latent heat is carried by
 the reference energies, so the energy row is not touched.
 
+### Summary
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Advances the species by one linearised backward-Euler step of kintera's rates between steps; @eq-ch10-kinetics-step.
+
+**Data.** Reads $T$, $p$ and molar concentrations of the post-step state; writes the species rows, ghosts included.
+
+**Placement.** In the example drivers, after all RK stages of a step and before `check_redo`.
+
+**Activation.** No library switch: only drivers that build a kintera `Kinetics` from the card's reactions.
+
+**Guarantee / limits.** First order, operator-split; never overshoots equilibrium for a linear law; no exchange after.
+
+**Evidence.** @tbl-ch10-kinetics-tests; `test_uranus_cycle1_abort.release`, `kinetics_check.py` `[C1]`–`[C12]`.
+:::
+
 Local symbols: $\dot{\boldsymbol\omega}$ is the vector of reaction rates [$\mathrm{mol\,m^{-3}\,s^{-1}}$] and
 $\mathsf J_{\dot\omega}$ its Jacobian with respect to the molar concentrations, at fixed temperature; the subscript
 keeps it apart from the $\mathsf J$ of the phase solve in @sec-ch02-saturation. For an evaporation reaction $k$,
@@ -25,34 +41,15 @@ $\Gamma_k$ [$\mathrm{m^3\,mol^{-1}\,s^{-1}}$] its rate coefficient, $D_k$ [$\mat
 its gases, $V_{\mathrm m,k}$ [$\mathrm{m^3\,mol^{-1}}$] the molar volume of the condensate (roman m, not the cell
 volume $V_i$) and $d_{\mathrm p,k}$ [m] the particle diameter.
 
-### Summary
-
-::: {.callout-note title="At a glance"}
-**Purpose.** Between two steps, advances the species by one linearised backward-Euler step of kintera's reaction
-rates (evaporation, precipitation); @eq-ch10-kinetics-step.
-
-**Data.** In: temperature, pressure and molar concentrations from the post-step state. Out: the species rows of
-`hydro_u`, ghosts included; $E$ is untouched.
-
-**Placement.** In the driver, after all RK stages of a step and before `check_redo`.
-
-**Activation.** No library switch: only drivers that build a kintera `Kinetics` from the card
-(`examples/run_hydro.cpp`, `examples/jupiter_evap_precip_1d.cpp`).
-
-**Guarantee / limits.** First order in time, operator-split; one step never overshoots equilibrium for a linear
-rate law; no exchange after the update.
-
-**Evidence.** `test_uranus_cycle1_abort.release` (exit status) and `kinetics_check.py` `[C1]`–`[C4]`; no snapy test
-of one step's budget; the ctest was not run at the pin.
-:::
-
 ### Derivation
 
-The rates are evaluated once, at the concentrations $\tilde{\mathbf c}$ of the step's end. One backward-Euler step
-of $\mathrm{d}\tilde{\mathbf c}/\mathrm{d}t=\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c})$ is
-$\tilde{\mathbf c}+\Delta\tilde{\mathbf c}=\tilde{\mathbf c}+\Delta t\,\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c}+\Delta\tilde{\mathbf c})$.
-Linearising $\dot{\boldsymbol\omega}(\tilde{\mathbf c}+\Delta\tilde{\mathbf c})\approx\dot{\boldsymbol\omega}+\mathsf J_{\dot\omega}\Delta\tilde{\mathbf c}$
-and dividing by $\Delta t$ gives
+Why the update is one linearised backward-Euler step:
+
+1. *Evaluate once.* The rates are evaluated once, at the concentrations $\tilde{\mathbf c}$ of the step's end.
+2. *Backward Euler.* One step of $\mathrm{d}\tilde{\mathbf c}/\mathrm{d}t=\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c})$ is
+   $\tilde{\mathbf c}+\Delta\tilde{\mathbf c}=\tilde{\mathbf c}+\Delta t\,\mathsf N\dot{\boldsymbol\omega}(\tilde{\mathbf c}+\Delta\tilde{\mathbf c})$.
+3. *Linearise.* $\dot{\boldsymbol\omega}(\tilde{\mathbf c}+\Delta\tilde{\mathbf c})\approx\dot{\boldsymbol\omega}+\mathsf J_{\dot\omega}\Delta\tilde{\mathbf c}$;
+   dividing by $\Delta t$ gives
 
 $$
 \Big(\frac{\mathsf I}{\Delta t}-\mathsf N\mathsf J_{\dot\omega}\Big)\Delta\tilde{\mathbf c} = \mathsf N\dot{\boldsymbol\omega}
@@ -63,12 +60,18 @@ kintera's `evolve_implicit_cell` as the matrix `A`, with `inv_dt` on its diagona
 ([`kintera evolve_implicit_impl.h:66-71`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L66-L71)), and solved by LU with
 partial pivoting, falling back to a minimum-norm least-squares solve for a singular cell, `dsolve_lu`
 ([`kintera evolve_implicit_impl.h:77`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evolve_implicit_impl.h#L77)).
-For a linear rate law the step is exactly backward Euler (`[C2]`).[^kin-c] For the reversible linear reaction
-$A\rightleftharpoons B$ with rate constants $k_{\mathrm f}$, $k_{\mathrm b}$ [s$^{-1}$] it moves the distance to equilibrium by
-the factor $1/(1+\Delta t(k_{\mathrm f}+k_{\mathrm b}))$, which lies in $(0,1]$ for every $\Delta t$: one step never
-overshoots equilibrium, however large the step (`[C3]`). The driver converts the change to partial densities,
-$\Delta\rho_n=\mu_n\Delta\tilde c_n$; for a mass-balanced reaction $\sum_n\mu_n\nu_{nk}=0$, so the update has zero net
-mass (`[C4]`).
+For a linear rate law the step is exactly backward Euler (`[C2]`).[^kin-c]
+
+4. *No overshoot.* For the reversible linear reaction $A\rightleftharpoons B$ with rate constants $k_{\mathrm f}$,
+   $k_{\mathrm b}$ [s$^{-1}$] the step moves the distance to equilibrium by the factor $1/(1+\Delta t(k_{\mathrm f}+k_{\mathrm b}))$,
+   which lies in $(0,1]$ for every $\Delta t$: one step never overshoots equilibrium, however large the step
+   (`[C3]`; `[C10]` derives the factor with sympy).
+5. *Zero net mass.* The driver converts the change to partial densities, $\Delta\rho_n=\mu_n\Delta\tilde c_n$; for a
+   mass-balanced reaction $\sum_n\mu_n\nu_{nk}=0$, so the update has zero net mass (`[C4]`; `[C11]` for
+   $\mathrm{NH_4SH(s)}\to\mathrm{NH_3}+\mathrm{H_2S}$).
+6. *Round-off of the mass.* Each $\Delta\rho_n$ is one division (by the stored inverse molar mass), so the net mass of
+   an update is zero to about $N_y\epsilon_{\mathrm m}\max_n\lvert\mu_n\Delta\tilde c_n\rvert$; `[C4]` measures
+   $2.1\times10^{-15}$ of that maximum over 100 random steps.
 
 An evaporation reaction $k$ has one reactant, its condensate $c(k)$, and one or two gaseous products, all with
 coefficient 1; kintera refuses any other form, and with products counted positive in $\mathsf N$,
@@ -81,17 +84,20 @@ K_k=\frac{K_{p,k}(T)}{(\mathcal RT)^{\nu^{+}_k}}\quad[\mathrm{mol}^{\nu^{+}_k}\,
 $$ {#eq-ch10-kinetics-K}
 
 with $K_{p,k}=p_{\mathrm{sat},k}(T)$ [Pa] for one gas and the equilibrium product of the two partial pressures
-[$\mathrm{Pa^2}$] for two, read from the reaction's saturation function on the card; it depends on $T$ only. It is
+[$\mathrm{Pa^2}$] for two, read from the reaction's saturation function on the card; it depends on $T$ only (`[C6]` checks the form). It is
 `ksat`
 ([`kintera evaporation.cpp:148-154`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L148-L154));
 for $\mathrm{NH_4SH}$ the card's `nh3_h2s_lewis` returns $\ln K_{p,k}$ in $\mathrm{Pa^2}$
 ([`kintera vapor_functions.h:81-82`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/vapors/vapor_functions.h#L81-L82)).
 
-The rate law is the steady diffusion of the gases away from monodisperse particles. A sphere of diameter
-$d_{\mathrm p,k}$ whose surface holds a gas at $\tilde c_{n,s}$, in still gas at $\tilde c_n$, loses
-$2\pi d_{\mathrm p,k}D_k(\tilde c_{n,s}-\tilde c_n)$ moles per second. The condensate fills the volume fraction
-$\tilde c_{c(k)}V_{\mathrm m,k}$, so there are $\tilde c_{c(k)}V_{\mathrm m,k}/(\pi d_{\mathrm p,k}^3/6)$ particles per
-unit volume, and the rate per unit volume is
+Why the rate law has the factor 12:
+
+1. *One particle.* A sphere of diameter $d_{\mathrm p,k}$ whose surface holds a gas at $\tilde c_{n,s}$, in still gas at
+   $\tilde c_n$, loses $2\pi d_{\mathrm p,k}D_k(\tilde c_{n,s}-\tilde c_n)$ moles per second (steady diffusion).
+2. *Number of particles.* The condensate fills the volume fraction $\tilde c_{c(k)}V_{\mathrm m,k}$, so there are
+   $\tilde c_{c(k)}V_{\mathrm m,k}/(\pi d_{\mathrm p,k}^3/6)$ monodisperse particles per unit volume.
+3. *Multiply.* The rate per unit volume is the product, $2\pi d D\cdot6V_{\mathrm m}\tilde c_{c(k)}/(\pi d^3)\,\zeta_k
+   =12DV_{\mathrm m}\tilde c_{c(k)}\zeta_k/d^2$ (`[C5]`, sympy):
 
 $$
 \dot\omega_k=\Gamma_k\,\tilde c_{c(k)}\,\zeta_k,\qquad
@@ -99,11 +105,17 @@ $$
 D_k=D_{0,k}\Big(\frac{T}{T_{\mathrm{ev}}}\Big)^{\alpha_{T,k}}\Big(\frac{p}{p_{\mathrm{ev}}}\Big)^{\alpha_{p,k}},
 $$ {#eq-ch10-kinetics-rate}
 
-where $\zeta_k=\tilde c_{n,s}-\tilde c_n$ is the excess of the gas at the surface over the air far away. With the surface
+@eq-ch10-kinetics-rate is `kappa`
+([`kintera evaporation.cpp:142-145`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L142-L145))
+times the mass-action factor `rate_f`
+([`kintera kinetics.cpp:420-423`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L420-L423));
+`[C5]` re-derives the factor 12 and `[C6]` the form of $K_k$.
+
+Here $\zeta_k=\tilde c_{n,s}-\tilde c_n$ is the excess of the gas at the surface over the air far away. With the surface
 at saturation, one gas gives $\zeta_k=K_k-\tilde c_n$. For two gases, $AB(s)\to A+B$, the solid dissolves congruently, so
 both gases leave at the same molar rate and both carry the same excess $\zeta_k$, and the surface equilibrium
 $(\tilde c_A+\zeta_k)(\tilde c_B+\zeta_k)=K_k$ fixes it: $\zeta_k$ is the root of
-$\zeta_k^2+(\tilde c_A+\tilde c_B)\zeta_k-(K_k-\tilde c_A\tilde c_B)=0$ that keeps both surface concentrations positive.
+$\zeta_k^2+(\tilde c_A+\tilde c_B)\zeta_k-(K_k-\tilde c_A\tilde c_B)=0$ that keeps both surface concentrations positive (`[C7]`).
 Multiplying that root by its conjugate, with
 $(\tilde c_A-\tilde c_B)^2+4K_k-(\tilde c_A+\tilde c_B)^2=4(K_k-\tilde c_A\tilde c_B)$, gives a form without
 cancellation,
@@ -128,21 +140,23 @@ $p_{\mathrm{ev}}=10^5$ Pa is a constant of the evaporation options and not read 
 Ventilation, the Kelvin effect and kinetic corrections to the diffusion flux are not in the law.
 
 The Jacobian of @eq-ch10-kinetics-step holds the temperature fixed:
-$(\mathsf J_{\dot\omega})_{kn}=\tilde c_{c(k)}\,\partial(\Gamma_k\zeta_k)/\partial\tilde c_n+\delta_{n,c(k)}\Gamma_k\zeta_k$,
+$(\mathsf J_{\dot\omega})_{kn}=\tilde c_{c(k)}\,\partial(\Gamma_k\zeta_k)/\partial\tilde c_n+[n=c(k)]\,\Gamma_k\zeta_k$,
+where $[n=c(k)]$ is 1 for the condensate's own column and 0 otherwise (the mass-action term, `[C12]`),
 with $\partial \zeta_k/\partial\tilde c_n=-1$ for one gas and
-$\partial \zeta_k/\partial\tilde c_A=-(\tilde c_B+\zeta_k)/(\tilde c_A+\tilde c_B+2\zeta_k)$ for two (and likewise for $B$), zero
+$\partial \zeta_k/\partial\tilde c_A=-(\tilde c_B+\zeta_k)/(\tilde c_A+\tilde c_B+2\zeta_k)$ (`[C9]`) for two (and likewise for $B$), zero
 where $\zeta_k$ is clamped. kintera forms the first term by automatic differentiation and the second as the mass-action
 term, `jac`
 ([`kintera kinetics.cpp:306-310`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.cpp#L306-L310));
 its temperature term enters only with `evolve_temperature`, false by default and set by neither the card nor the
 drivers
 ([`kintera kinetics.hpp:73`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/kinetics.hpp#L73)).
-`[C1]` shows symbolically that @eq-ch10-kinetics-extent is the positive root.
+`[C1]` and `[C8]` show that @eq-ch10-kinetics-extent is the root that keeps both surface concentrations positive.
 
-[^kin-c]: `python3 src/snapy_report/ch10/kinetics_check.py`, output `kinetics_check.out`, lines `[C1]`–`[C4]`; a
+[^kin-c]: `python3 src/snapy_report/ch10/kinetics_check.py`, output `kinetics_check.out`, lines `[C1]`–`[C12]`; a
     numpy and sympy port of kintera's `evolve_implicit_cell` and `EvaporationImpl::forward` at
     `c55b13b2204997d2d09e04498558ab9495d8ee77` and of the species update of `examples/run_hydro.cpp` at the snapy
     pin, double precision.
+    Run on CPU, one process, with Python 3.12.10, sympy 1.14.0 and numpy 2.5.3; the output matches the committed file.
 
 ### Numerical method
 
@@ -189,13 +203,45 @@ make_fig()
 5. Add to the species rows of `hydro_u` ({{< code examples/run_hydro.cpp main >}}).
 6. Accept, redo or terminate, `check_redo` ({{< code examples/run_hydro.cpp main >}}).
 
+**How to use it.** The library has no switch. A driver that builds kintera's `Kinetics` from the card runs the block,
+and the card lists evaporation reactions with their rate law
+({{< code examples/jupiter_evap_precip_1d.yaml >}}):
+
+```yaml
+reactions:
+  - equation: NH4SH(s,p) => NH3 + H2S
+    type: evaporation
+    rate-constant: {formula: nh3_h2s_lewis, diff_c: 0.2e-4, diff_T: 1.75, diff_P: -1.,
+                    vm: 43.e-6, diameter: 1.0e-4}
+```
+
+Refused: an evaporation reaction that is reversible, or has more than one reactant, or not one or two products, or
+a coefficient other than 1, with "Evaporation reaction '…' must be irreversible with one reactant and one or two
+products, each with stoichiometric coefficient 1", because the rate law of steps 1 to 3 assumes exactly that
+(`unit_reactant`, [`kintera evaporation.cpp:82-96`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/kinetics/evaporation.cpp#L82-L96)).
+The block of @eq-ch10-kinetics-step, with the conversion $\Delta\rho_n=\mu_n\Delta\tilde c_n$, is these lines
+({{< code examples/run_hydro.cpp main >}}):
+
+```cpp
+    auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
+    auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
+    auto del_conc = kintera::evolve_implicit(rate, kinet->stoich, jac, dt);
+    ...
+    auto del_rho = del_conc / thermo_y->inv_mu.narrow(0, 1, ny).view(vec);
+    hydro_u.narrow(0, ICY, ny) += del_rho.permute({3, 0, 1, 2});
+```
+
+`rate` is $\dot{\boldsymbol\omega}$, `jac` is $\mathsf J_{\dot\omega}$, `evolve_implicit` solves @eq-ch10-kinetics-step for
+`del_conc` $=\Delta\tilde{\mathbf c}$, and the last two lines are step 5. A driver of one's own copies these lines
+between the stages and `check_redo`.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_uranus_cycle1_abort.release` | column reaches cycle 40, no redo | exit status | log strings |
 
-: Tests of the driver-level kinetics; assertions read from the test sources at the pin, not run. {#tbl-ch10-kinetics-tests}
+: Tests of the driver-level kinetics; it passes at the pin (@tbl-ch10-ctest-run). {#tbl-ch10-kinetics-tests}
 
 `UranusLate.column_reaches_cycle_40` runs `run_hydro` on a Uranus column and requires exit code 0, no "Redoing the
 step" and no "Terminating abnormally" in the log

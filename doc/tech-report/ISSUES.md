@@ -78,11 +78,16 @@ not measured defects. The source tests and report formula checks are separated i
 
 Owners: chapter 10 / editor. Each scheme file lists its symbols in a "Local symbols" line; remove that line when the
 symbol enters NOTATION.md.
-- `_borrow.qmd`: $\mathcal P_c$, the parent-vapour set of condensate $c$.
-- `_fixvapor.qmd`: $\mathcal M$, the window of $x_1$ cells one scan step of the column repair rewrites.
+- `_borrow.qmd`: $\mathcal V_c\subset\mathcal V$, the parent-vapour set of condensate $c$ ($\mathcal P$ is the potential energy).
+- `_redo.qmd`: $f_\iota$, $\iota=0..5$, the six redo flags, and $c_{\mathrm{redo}}=\sum_\iota2^\iota f_\iota$ the cause word.
+- `_fixvapor.qmd`: $\mathcal M$, the window of $x_1$ cells one scan step of the column repair rewrites; $D$, the
+  deficit of the upward branch.
 - `_kinetics.qmd`: $\dot{\boldsymbol\omega}$, reaction rates; $\mathsf J_{\dot\omega}$, their concentration Jacobian
-  (subscripted to stay apart from chapter 2's $\mathsf J$); $x$, the two-product evaporation extent.
-- `_tracer.qmd`: $b$, the tracer upper bound; $F_n$, $F_{\mathrm d}$, the $x_1$ face fluxes of tracer $n$ and of dry air.
+  (subscripted to stay apart from chapter 2's $\mathsf J$); $\zeta_k$, the evaporation extent; $[n=c(k)]$, the
+  indicator that replaces a Kronecker $\delta$ ($\delta$ is reserved).
+- `_tracer.qmd`: $b$, the tracer upper bound; $F_n$, $F_{\mathrm d}$, the $x_1$ face fluxes of tracer $n$ and of dry air;
+  $F^{\mathrm c}_n$, the complement flux ($G$ is the mass flow); $J^{\mathrm d}_{i-1/2}$, the implicit dry transfer as in
+  chapter 1 ($M$ is the domain mass).
 - `_sed.qmd`: $a_n$ particle radius, $\rho_{\mathrm p,n}$ particle density, $\beta_n$ Cunningham factor, $\lambda$ mean
   free path, $\mathrm{Kn}$ Knudsen number, and $m$, $d$, $\epsilon$ for the background gas's molecular mass, diameter
   and Lennard-Jones well depth ($k_{\mathrm B}$ as in chapter 2).

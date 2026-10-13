@@ -3,7 +3,7 @@
 What is checked, at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below:
 - the complement upper bound of ScalarImpl::forward (src/scalar/scalar.cpp:191-214);
 - the implicit tracer transfer of MeshBlockImpl::advance_local (src/mesh/meshblock.cpp:661-676).
-Claims C1-C3. The donor side and the telescoping of the transfer are chapter 1's
+Claims C1-C5. The donor side and the telescoping of the transfer are chapter 1's
 (src/snapy_report/ch01/stage_check.py, claim C2) and are not repeated here.
 
 Run: python3 tracer_check.py   (numpy and sympy; exits with the number of failed claims)
@@ -72,8 +72,33 @@ def check_C3_uniform_ratio_moves_with_dry_mass():
                   "max |ds - r d(rho_d)| / max |r d(rho_d)| = %.1e" % err)
 
 
+def check_C4_complement_transport():
+    b, dt, sd, s0, dfd, df = sp.symbols("b dt rho_d s divF_d divF_n")
+    cplus = (b * (sd - dt * dfd)) - (s0 - dt * df)
+    return report("C4", sp.simplify(cplus - ((b * sd - s0) - dt * (b * dfd - df))) == 0,
+                  "the complement b rho_d - s is transported by F^c_n = b F_d - F_n when rho_d moves by its "
+                  "divergence alone", "exact (sympy)")
+
+
+def check_C5_bitwise_uniform_input():  # scalar.cpp:207-213, a second input distribution
+    rng = np.random.default_rng(5)
+    fd = rng.uniform(-1, 1, 10000).astype(np.float32)
+    r = rng.uniform(0, 1, 10000).astype(np.float32)
+    f = (fd * r).astype(np.float32)
+    b = np.float32(1.0)
+    g = (b * fd - f).astype(np.float32)
+    h = g.copy()
+    add = (f + (h - g)).astype(np.float32)
+    rec = (b * fd - g).astype(np.float32)
+    n = int((rec != f).sum())
+    return report("C5", np.array_equal(add, f) and n > 0,
+                  "on uniform random fluxes, adding the change is bitwise where Theta = 1; recomputing is not",
+                  "float32, 10000 faces: recomputing changes %d" % n)
+
+
 def main():
-    checks = [check_C1_blend, check_C2_bitwise_where_unlimited, check_C3_uniform_ratio_moves_with_dry_mass]
+    checks = [check_C1_blend, check_C2_bitwise_where_unlimited, check_C3_uniform_ratio_moves_with_dry_mass,
+              check_C4_complement_transport, check_C5_bitwise_uniform_input]
     return sum(not c() for c in checks)
 
 

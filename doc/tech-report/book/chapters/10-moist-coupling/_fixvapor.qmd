@@ -16,29 +16,24 @@ volume changes with height. If nothing below can cover a deficit, the cells abov
 deficit. A vapour column that cannot be repaired at all is an error; a cloud column in net deficit is clamped to
 zero, which creates exactly the missing mass.
 
-Local symbols: $\mathcal M$ is the window of $x_1$ cells one scan step rewrites. Tracked in ISSUES.md.
-
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Removes negative vapour, and negative parentless cloud, along each $x_1$ column by mixing it with the
-cells below at one common ratio to the dry density; @eq-ch10-fixvapor-flatten.
+**Purpose.** Removes negative vapour and parentless cloud along each $x_1$ column at one ratio to $\rho_{\mathrm d}$; @eq-ch10-fixvapor-flatten.
 
-**Data.** In and out: the species densities of each interior $x_1$ column, with the dry density and the cell
-volumes $V_i$ as weights.
+**Data.** Reads and writes the species densities of interior $x_1$ columns, with $\rho_{\mathrm d}$ and $V_i$ as weights.
 
-**Placement.** Inside every call of the conserved limiter, after the parent-vapour borrow; parentless cloud first,
-vapour second.
+**Placement.** Inside every conserved-limiter call, after the borrow; parentless cloud first, vapour second.
 
-**Activation.** EOS `limiter: true`; default false. The gather of a column split over $x_1$ blocks runs only for the
-call from the stage update.
+**Activation.** EOS `limiter: true` (default false); the split-column gather runs only for the stage-update call.
 
-**Guarantee / limits.** Vapour: the column mass $\sum_iV_i\rho_{n,i}$ is kept, and a column that cannot be repaired
-throws. Parentless cloud: a column in net deficit is clamped to zero, which creates exactly the missing mass.
+**Guarantee / limits.** Vapour: $\sum_iV_i\rho_{n,i}$ kept, an unrepairable column throws; cloud in net deficit is clamped.
 
-**Evidence.** `test_eos.release`, `test_fix_vapor_volume.release` ($10^{-12}$) and `fixvapor_check.py`
-`[C1]`–`[C7]`; the ctests were not run at the pin.
+**Evidence.** @tbl-ch10-fixvapor-tests; `test_fix_vapor_volume.release`, `fixvapor_check.py` `[C1]`–`[C8]`.
 :::
+
+Local symbols: $\mathcal M$ is the window of $x_1$ cells one scan step rewrites; $D$ the deficit of the upward
+branch [$\mathrm{kg\,m^{-3}}$, per bottom-cell volume]. Tracked in ISSUES.md.
 
 The repair is on with `limiter: true`.
 
@@ -58,17 +53,25 @@ for $i\in\mathcal M$, and the scan resumes below the window. @eq-ch10-fixvapor-f
 and the common ratio `yfrac` is written to every cell of the window ({{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}).
 The code weights by $V_l/V_0$, the volume relative to the column's bottom cell; the factor cancels in the ratio.
 
-Multiplying @eq-ch10-fixvapor-flatten by $V_i$ and summing over the window gives back
-$\sum_{l\in\mathcal M}V_l\rho_{n,l}$: the window's mass is unchanged, and every rewritten value has the sign of the
-dry density, so it is non-negative. Windows are disjoint and the scan index only decreases, so the scan visits each
-cell at most twice and terminates. If the bottom is passed with the sum still negative, the deficit
-$D=-\sum_{l\le i_0}V_l\rho_{n,l}/V_0$ of the cells from the starting cell $i_0$ down is taken from the cells above,
-in order, each giving at most what it holds; the cells from $i_0$ down are set to zero. Before writing anything this
-branch checks that the cells above hold at least $D$, so it writes nothing when it fails
-(`deficit`, {{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}).
-A window repaired earlier in the same scan stays rewritten, though: a column that fails below an already repaired
-window is returned with that window flattened, mass kept. The kernel fails on a non-positive dry density; otherwise, in every case
-`fixvapor_check.py` tried, only on a column whose total vapour mass is negative.
+Why the repair keeps the column mass and terminates:
+
+1. *The window keeps its mass.* Multiplying @eq-ch10-fixvapor-flatten by $V_i$ and summing over the window gives
+   back $\sum_{l\in\mathcal M}V_l\rho_{n,l}$ (`[C8]`, sympy).
+2. *Every rewritten value is non-negative*, because it has the sign of $\rho_{\mathrm d}>0$ times a non-negative sum.
+3. *The scan terminates.* Windows are disjoint and the scan index only decreases, so each cell is visited at most
+   twice.
+4. *The upward branch.* If the bottom is passed with the sum still negative, the deficit
+   $D=-\sum_{l\le i_0}V_l\rho_{n,l}/V_0$ of the cells from the starting cell $i_0$ down is taken from the cells above,
+   in order, each giving at most what it holds; the cells from $i_0$ down are set to zero. Before writing anything
+   the branch checks that the cells above hold at least $D$, so it writes nothing when it fails
+   (`deficit`, {{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}).
+5. *A failure after a repaired window.* A window repaired earlier in the same scan stays rewritten: a column that
+   fails below it is returned with that window flattened, mass kept (`[C7]`).
+6. *When it fails.* The kernel fails on a non-positive dry density; otherwise, in every case `fixvapor_check.py`
+   tried, only on a column whose total vapour mass is negative (`[C5]`).
+7. *Round-off.* A window of $n_{\mathcal M}$ cells forms two sums of $n_{\mathcal M}$ products, one ratio and
+   $n_{\mathcal M}$ products, so its mass is kept to about $(2n_{\mathcal M}+2)\epsilon_{\mathrm m}$ of
+   $\sum_lV_l\lvert\rho_{n,l}\rvert$; `[C4]` measures $2.2\times10^{-15}$ relative on 1995 random columns of 40 cells.
 
 ::: {.callout-important title="Check"}
 All of this is checked against a line-for-line port of the kernel.[^fix-c] It replays the inputs of the
@@ -78,8 +81,9 @@ repairs an interior and a bottom deficit in one scan (`[C6]`) and confirms the p
 (`[C7]`). The partial rewrite is a property of the port; it has not been reproduced in a snapy run.
 :::
 
-[^fix-c]: `python3 src/snapy_report/ch10/fixvapor_check.py`, output `fixvapor_check.out`, lines `[C1]`–`[C7]`; a
+[^fix-c]: `python3 src/snapy_report/ch10/fixvapor_check.py`, output `fixvapor_check.out`, lines `[C1]`–`[C8]`; a
     numpy port of `fix_vapor_impl` at the pin, double precision.
+    Run on CPU, one process, with Python 3.12.10, sympy 1.14.0 and numpy 2.5.3; the output matches the committed file, except a round-off digit of `[C7]` that differs by host.
 
 ### Numerical method
 
@@ -132,6 +136,19 @@ make_fig()
 
 A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed to fix vapor mass fractions."
 
+**How to use it.** The same card as @sec-ch10-borrow: `limiter: true`. The column gather needs no key; it runs when
+$x_1$ is split over blocks (`distribute/nb1` > 1) and the call comes from the stage update. The vapour call is
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}):
+
+```cpp
+    repair_column(cons.index(interior).narrow(0, ICY, nvapor), true);
+```
+
+where `true` requires success, and @eq-ch10-fixvapor-flatten is `yfrac = sum_vapor / sum_major` written to the
+window ({{< code src/eos/fix_vapor_impl.h fix_vapor_impl >}}). Refused at run time: an unrepairable vapour column,
+with "[EquationOfState] apply_conserved_limiter_: Failed to fix vapor mass fractions.", because a negative column
+total cannot be made non-negative without creating mass.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -142,7 +159,7 @@ A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed 
 | `test_vapor_column_nb1.release` | split column equals one block | bitwise | test threshold |
 | `test_fix_vapor_reports_failure_python` | unrepairable column throws | n/a | message match |
 
-: Tests of the column repair; assertions read from the test sources at the pin, not run. {#tbl-ch10-fixvapor-tests}
+: Tests of the column repair; all pass at the pin (@tbl-ch10-ctest-run). {#tbl-ch10-fixvapor-tests}
 
 The `eos_limiter` cases are the inputs replayed by `fixvapor_check.py`; the bottom-cell case asserts the transfer
 itself to $10^{-25}$ absolute, because a tolerance on the supplier's value would also pass a supplier that gave
@@ -153,8 +170,8 @@ The split-column test requires every vapour cell of a two-block column to equal 
 ({{< code tests/test_vapor_column_nb1.cpp DeviceTest.vapor_repair_keeps_the_mass_with_nb1_2 >}}).
 Also registered: `test_parentless_cloud_nb1.release`, the 2-rank `test_parentless_cloud_nb1_mp` (rain and total
 mass to $10^{-12}$), `test_fix_vapor_counts_every_column_python` (one broken column in 16384 is reported) and the CUDA
-arm `test_fix_vapor_reports_failure_cuda_python`. Measured results at the pin are **missing evidence**
-(@sec-ch15-ch10-tests).
+arm `test_fix_vapor_reports_failure_cuda_python`. Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
+registered in that build and were not run.
 
 ### Limits
 
