@@ -8,10 +8,12 @@ status: draft
 
 ### Summary
 
-snapy builds on three other packages, and a reader who installs or changes it needs to know which are required
-and which versions the build accepts. This appendix lists each package, what snapy uses it for, the version its
-build metadata asks for, and where that metadata leaves a requirement undeclared. The source pins of this report are
-not version constraints, and the table keeps the two apart.
+snapy is built on PyTorch and on three numerical packages from the same group: kintera (thermodynamics and
+chemistry), pyharp (the time integrator) and pydisort (radiative transfer, linked but not called). On Linux it also
+depends on commux, the communication layer of the UCX process group, and on pinc, which locates the parallel NetCDF
+library. A reader who installs or changes snapy needs to know which of these are required, which versions the build
+accepts, and where the build metadata leaves a requirement undeclared. This appendix lists them. The source pins of
+this report are not version constraints, and the table keeps the two apart.
 
 ::: {.callout-note title="At a glance"}
 Kintera supplies thermodynamics and kinetics; pyharp supplies the time integrator.
@@ -21,18 +23,34 @@ radiative-transfer solver call. Dependency availability does not imply active ra
 
 | component | use in snapy | required version at the snapy pin |
 |---|---|---|
-| kintera | moist EOS, saturation adjustment, driver kinetics | at least 2.5.13 in CMake and Python build/runtime metadata |
+| kintera | moist EOS, saturation adjustment, driver kinetics | at least 2.6.2 in CMake (`find_package(Kintera 2.6.2 REQUIRED)`) and in Python build and runtime metadata (`kintera>=2.6.2`) |
 | pyharp / CMake Harp | integrator options, stage weights and stage combination | required by CMake; no version minimum or exact version specified |
 | pydisort / CMake Disort | C++ shared-library link and Python package import | required by CMake; no version minimum or exact version specified |
+| commux | process group over UCX (@sec-ch14-backends) | `commux>=0.1.4` on Linux in Python build and runtime metadata; CMake links `commux::commux` when UCX is found |
+| pinc | locates the PnetCDF headers and library (@sec-ch14-pnetcdf) | `pinc>=0.2.0` on Linux in Python build and runtime metadata |
 
 : Requirements, distinct from source pins and tested compatibility. {#tbl-appe-requirements}
 
-`find_package` declares these CMake requirements ([`CMakeLists.txt:94-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L94-L101)). Python `requires` contains
-`kintera>=2.5.13` ([`pyproject.toml:1-13`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L1-L13)), as does the runtime `dependencies` list ([`pyproject.toml:25-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/pyproject.toml#L25-L31)).
-Neither list declares pyharp or pydisort. Their absence is a packaging gap, not evidence that they are optional:
-`python/__init__.py` imports all three before the extension ([`__init__.py:1-8`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/python/__init__.py#L1-L8)).
-The kintera source pin above fixes this report's API evidence; it is not an exact dependency version constraint.
-No compatible pyharp or pydisort version range is inferred from the unversioned requirement.
+`find_package` declares these CMake requirements: `Disort` and `Harp` with no version, `Kintera 2.6.2`
+({{< code CMakeLists.txt >}}). `FindKintera` enforces the floor at configure time: it reads `kintera.__version__`
+and fails with "snapy requires kintera >= 2.6.2 (…)" below it ({{< code cmake/modules/FindKintera.cmake >}}).
+Python `[build-system] requires` and `[project] dependencies` both contain `kintera>=2.6.2`
+({{< code pyproject.toml >}}).
+Neither Python list declares pyharp or pydisort. They are required all the same, and the version a build accepts is
+not bounded, in four steps:
+
+1. *The Python package imports both.* `python/__init__.py` imports `pydisort`, `pyharp` and `kintera` before it loads
+   the compiled extension, so `import snapy` fails without either ({{< code python/__init__.py >}}).
+2. *The C++ library links both.* `src/CMakeLists.txt` lists `DISORT_LIBRARY`, `HARP_LIBRARY` and `KINTERA_LIBRARY`
+   among the `PUBLIC` link libraries of the `snap` target ({{< code src/CMakeLists.txt >}}), and the top-level
+   `find_package(Disort REQUIRED)`, `find_package(Harp REQUIRED)` stop the configure without them.
+3. *The locators read a version but are given none to compare.* `FindHarp` and `FindDisort` run
+   `import pyharp; print(pyharp.__version__)` (likewise for pydisort) and stop if that fails. They pass the result as
+   `VERSION_VAR`, but `find_package` is called without a version argument, so any found version is accepted
+   ({{< code cmake/modules/FindHarp.cmake >}}, {{< code cmake/modules/FindDisort.cmake >}}).
+4. *Hence* their absence from `pyproject.toml` is a packaging gap, not evidence that they are optional, and no
+   compatible version range can be read from the metadata. The source pins of this report fix the API evidence; they
+   are not version constraints.
 
 ### Derivation
 
@@ -57,7 +75,6 @@ Disort is explicitly in the `PUBLIC` libraries of the `snap` shared target, thro
 ([`CMakeLists.txt:55-75`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/CMakeLists.txt#L55-L75)). `FindDisort` locates `disort_release` ([`FindDisort.cmake:76-97`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindDisort.cmake#L76-L97)) and obtains version information
 by importing pydisort ([`FindDisort.cmake:16-32`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindDisort.cmake#L16-L32)). Harp similarly reads `pyharp.__version__`
 ([`FindHarp.cmake:16-31`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindHarp.cmake#L16-L31)) and requires its headers/library ([`FindHarp.cmake:74-103`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/cmake/modules/FindHarp.cmake#L74-L103)).
-Reading a version does not impose a minimum absent a version argument to `find_package`.
 
 ```{python}
 #| label: fig-appe-components
@@ -70,13 +87,39 @@ make_fig()
 
 ### Code
 
+**What to install.** For a CPU build on Linux: PyTorch 2.10.0, `kintera>=2.6.2`, pyharp, pydisort, and, for the UCX
+process group and PnetCDF output, `commux>=0.1.4` and `pinc>=0.2.0`. The versions are those of the build metadata
+above; for pyharp and pydisort none is declared.
+
+**What the build refuses, and why.** In order, at configure time:
+
+1. *An importable package is missing.* `FindKintera`, `FindHarp` and `FindDisort` each import their Python package
+   to read its version, and stop with "cannot determine PEP 440 version of …" if the import fails. The C++ library
+   is located from the Python package.
+2. *kintera is older than 2.6.2.* `FindKintera` fails with "snapy requires kintera >= 2.6.2 (…), found …". The
+   message names the three kintera features behind the floor.
+3. *A library or its headers is not found.* Each locator's `REQUIRED_VARS` fails the `REQUIRED` `find_package`.
+
+At import time, `import snapy` fails if `pydisort`, `pyharp` or `kintera` cannot be imported (`python/__init__.py`).
+
+**The excerpt.** The requirements as the top-level `CMakeLists.txt` states them:
+
+```cmake
+find_package(Torch REQUIRED)
+find_package(Disort REQUIRED)
+find_package(Harp REQUIRED)
+find_package(Kintera 2.6.2 REQUIRED)
+```
+
+The first three lines are the unversioned requirements of step 3 in E-4; the last is the floor of E-2.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | construct moist EOS | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::reset >}} | `ThermoYImpl` | component API |
 | temperature and pressure | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::_cons2prim >}} | `compute` | component API |
 | mixture heat capacity | {{< code src/eos/moist_mixture.cpp MoistMixtureImpl::specific_heat_cv >}} | `specific_heat_cv` | component API |
 | final-stage saturation | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `pthermo` | component API |
-| redo failure query | [`meshblock.cpp:1222-1235`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/src/mesh/meshblock.cpp#L1222-L1235) | `take_saturation_adjustment_failures` | component API |
+| redo failure query | {{< code src/mesh/meshblock.cpp MeshBlockImpl::saturation_failures >}} | `take_saturation_adjustment_failures` | component API |
 | driver kinetics | {{< code examples/run_hydro.cpp main >}} | `evolve_implicit` | component API |
 | integrator options | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `IntegratorOptionsImpl` | component API |
 | integrator construction | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `IntegratorImpl` | component API |
@@ -87,9 +130,15 @@ make_fig()
 : Representative active call sites and dependency edges. {#tbl-appe-calls}
 
 Read the call chain as options, construction, evaluation, then failure handling.
-The kintera `take_saturation_adjustment_failures` method consumes its accumulated count
-([`kintera thermo_y.cpp:385-390`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L385-L390)); snapy calls it during redo checks. The CMake version-floor comment explicitly
-names this API as the reason for requiring 2.5.13 ([`CMakeLists.txt:94-101`](https://github.com/chengcli/snapy/blob/e894700ff7aee30b52882e5202b16461413780b0/CMakeLists.txt#L94-L101)).
+The kintera `take_saturation_adjustment_failures` method returns the accumulated failure count and clears it
+([`kintera thermo_y.cpp:385-390`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L385-L390)).
+snapy calls it in one place, `saturation_failures`, at stage 0 of every step, so that a failure counted before the
+step is not charged to it ({{< code src/mesh/meshblock.cpp MeshBlockImpl::saturation_failures >}};
+{{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). The redo check does not call it. It reads
+kintera's count `nfail_` on the device and clears it in the same place, so the count is drained once per step without a
+host read (`local_redo_flag_tensor`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). The CMake comment above `find_package(Kintera …)` records three steps of the floor: 2.5.8 for `SpeciesThermo`
+`names()`/`mu()`, 2.5.13 for this method, and 2.6.2 for the `h2o_bryan` liquid beta that `examples/bryan.yaml`
+needs. The floor at the pin is the last, 2.6.2 ({{< code CMakeLists.txt >}}).
 
 ### Tests
 
