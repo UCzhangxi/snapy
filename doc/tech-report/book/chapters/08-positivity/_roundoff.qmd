@@ -9,14 +9,25 @@ status: draft
 ### Summary
 
 A limiter that aims at exactly zero will overshoot, because the target rounds negative. A census that
-counts every such overshoot will report a flood of events that mean nothing. The donor margin and event threshold serve different purposes, especially in float32.
+counts every such overshoot will report a flood of events that mean nothing. Two constants separate a real
+repair from arithmetic: the donor margin and the event threshold, which differ in float32.
 
 ::: {.callout-note title="At a glance"}
-- Two constants decide what counts as a real positivity event rather than arithmetic noise.
-- The donor margin is 4096 ulp of the species mass in both precisions.
-- The event thresholds are fractions of the cell's *total gas mass*, not of the species being limited.
-- The clip itself is always applied; the threshold only decides whether it is reported and marked.
+**Purpose.** Decide what counts as a positivity event rather than arithmetic noise: a donor margin and an event threshold.
+
+**Data.** In: the precision of the state, the factors, the withheld mass, the cell gas mass. Out: the margin, the hit and severe counts.
+
+**Placement.** The margin inside `flux_positivity_theta`; the census in `HydroImpl::forward` after the factors.
+
+**Activation.** Always, with the limiter; the constants are `constexpr` and not configurable.
+
+**Guarantee / limits.** The clip is always applied; the threshold decides only whether it is reported and marked.
+
+**Evidence.** `[C4]` of this chapter's check; the two severity cases of `test_cycle_diagnostics.<b>`.
 :::
+
+Local symbols: $\epsilon$ is the machine epsilon of the working precision; $u$ a species density and $V$ a cell
+volume. The budget $(1 - 4096\epsilon)\max(u, 0)V$ is the mass a donor may give up.
 
 ### Derivation
 
@@ -29,11 +40,10 @@ Event reporting instead uses `positivity_roundoff`: 4096 ulp in float64 and 64 u
 repair as noise ({{< code src/hydro/flux_positivity.cpp positivity_roundoff >}}).
 `[C4]` checks these arithmetic fractions; it does not execute the C++ census.
 
-The threshold is measured against the cell's total gas mass over all species, not against the species
-being limited. That is what makes it robust for a trace species: an almost-empty cell drained by a
-round-off face flux has a factor of zero at any step size, and its withheld mass is around $10^{-20}$ of
-the cell's. Scaled against the trace species itself, that would look like total depletion; scaled
-against the cell's gas mass, it is correctly reported as nothing.
+The threshold is measured against the cell's total gas mass over all species, not against the species being limited.
+That is what makes it robust for a trace species. An almost-empty cell drained by a round-off face flux has a factor
+of zero at any step size, and its withheld mass is around $10^{-20}$ of the cell's. Scaled against the trace species
+itself, that would look like total depletion; scaled against the cell's gas mass, it is correctly reported as nothing.
 
 ### Numerical method
 
@@ -41,11 +51,23 @@ The constants are `constexpr` ({{< code src/hydro/flux_positivity.hpp kPositivit
 {{< code src/hydro/flux_positivity.hpp kPositivityRoundoffUlpFloat >}}), where the comment states both the intent and
 the float32 reasoning. The margin enters the factors at `margin` ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}).
 
-The census is at `cells` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). An event is counted as *severe* only when the
-factor is below $0.9$ **and** the withheld mass is above the threshold times the cell's gas mass, the
-two conditions at {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}. The smallest factor seen is recorded
-separately, so a run can report how hard the limiter worked without that number being distorted by
+The census is at `cells` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). An event is counted as
+*severe* only when the factor is below $0.9$ **and** the withheld mass is above the threshold times the cell's gas
+mass. These are the two conditions at {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}. The smallest factor
+seen is recorded separately, so a run can report how hard the limiter worked without that number being distorted by
 round-off events.
+
+**Why two constants, and what they are worth.** Three facts of the code and the derived fractions.
+
+1. The donor margin is 4096 ulp in both precisions
+   ({{< code src/hydro/flux_positivity.hpp kPositivityRoundoffUlp >}}): with $\epsilon = 2^{-52}$ and $2^{-23}$ the
+   retained fractions are $4096\epsilon = 9.09\times10^{-13}$ and $4.88\times10^{-4}$, the numbers `[C4]` reproduces.
+2. The event threshold is 4096 ulp in double and 64 ulp in single
+   ({{< code src/hydro/flux_positivity.hpp kPositivityRoundoffUlpFloat >}}), $7.63\times10^{-6}$ of the gas mass. So a
+   real float32 repair of $4.9\times10^{-4}$ is not dismissed as noise.
+3. The threshold is measured against the cell's total gas mass, all species. A trace species drained by a round-off
+   face flux (factor 0, withheld mass about $10^{-20}$ of the cell) is reported as nothing
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 ### Code
 
@@ -58,6 +80,28 @@ round-off events.
 
 : Code map of the round-off thresholds. {#tbl-ch08-roundoff-code}
 
+**How to use it.** Nothing is set: the two constants are these lines
+({{< code src/hydro/flux_positivity.hpp kPositivityRoundoffUlp >}}):
+
+```cpp
+constexpr double kPositivityRoundoffUlp = 4096.;
+...
+constexpr double kPositivityRoundoffUlpFloat = 64.;
+```
+
+and the severity census is these lines of the stage ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+    auto above =
+        withheld > positivity_roundoff(u.scalar_type()) *
+                       cell_mass.unsqueeze(0).index(cells).to(torch::kFloat64);
+    _positivity_severe += ((ti < 0.9) & above).sum();
+    _positivity_min.copy_(torch::minimum(_positivity_min, ti.min()));
+```
+
+`withheld` is $(1 - \theta)$ times the unlimited drain, `cell_mass` the total gas mass of the cell, `ti` the
+interior factors, and the three counters are what @sec-ch13 prints.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -69,7 +113,13 @@ round-off events.
 `test_cycle_diagnostics.<b>` ({{< code tests/CMakeLists.txt >}}) contains
 `positivity_severe_needs_more_than_roundoff_withheld` and
 `positivity_severe_float32_needs_more_than_roundoff_withheld`
-({{< code tests/test_cycle_diagnostics.cpp >}}), which exercise the real severity census.
+({{< code tests/test_cycle_diagnostics.cpp >}}), which exercise the real severity census. The chapter's check
+reproduces the fractions from the two epsilons.[^ch08-roundoff-run] `[C4]`: donor fractions $9.09\times10^{-13}$
+and $4.88\times10^{-4}$; event fractions of the gas mass $9.09\times10^{-13}$ and $7.63\times10^{-6}$. The ctest
+has not been run for this report at the pin: **pending a pinned ctest run**.
+
+[^ch08-roundoff-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `positivity_check.out`, line `[C4]`.
 
 ### Limits
 

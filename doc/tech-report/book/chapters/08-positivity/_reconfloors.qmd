@@ -14,10 +14,17 @@ They belong to the reconstruction framework of @sec-ch04-framework and are descr
 are part of the positivity story rather than part of the interpolation.
 
 ::: {.callout-note title="At a glance"}
-- Floors applied to the face states, not to the cell state, right after each reconstruction.
-- Switch: the same limiter switch; the floor values come from the equation of state.
-- Density and pressure take the floors; tracers are clamped at zero.
-- The tracer clamp fires even when the caller asked for no floors, which the well-balanced path does.
+**Purpose.** Clamp the reconstructed face states: density and pressure at the floors, tracers at zero.
+
+**Data.** In: the left and right face states of one direction. Out: the same tensor clamped in place.
+
+**Placement.** At the end of `ReconstructImpl::forward`, before the Riemann solver, every direction and stage.
+
+**Activation.** `equation-of-state/limiter: true`; density and pressure only when the caller passes `floor`, tracers always.
+
+**Guarantee / limits.** None: a clamp at the face invents mass, exactly as the cell floors of @sec-ch08-eoslimiter do.
+
+**Evidence.** `[C2]` of `floors_check` for the invented mass; no ctest isolates the face floors.
 :::
 
 ### Derivation
@@ -42,6 +49,15 @@ The three groups are floored in place as each is reconstructed: density at
 at {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}. The values are read from the equation-of-state options and not
 from the reconstruction options, which carry floor members that `forward` never reads.
 
+**Why at the face, and what it costs.** Three facts of the code.
+
+1. The floor values are read from the equation-of-state options and not from the reconstruction options, so the
+   face and cell floors are the same absolute numbers ({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}).
+2. The tracer clamp is gated on the limiter alone, not on the caller's `floor` argument, so the well-balanced path
+   that passes `floor=false` still has its tracer face states clamped.
+3. A clamp can only add; the mass it invents at a face is bounded by the overshoot it removes, and `[C2]` measures
+   the cell-floor analogue strictly positive.
+
 ### Code
 
 | what | code link | symbol | switch |
@@ -52,9 +68,39 @@ from the reconstruction options, which carry floor members that `forward` never 
 
 : Code map of the reconstruction-stage floors. {#tbl-ch08-reconfloors-code}
 
+**How to use it.** The face floors follow the limiter switch of @sec-ch08-eoslimiter; a caller opts out of the
+density and pressure floors with the third argument of `forward`. The three clamps are these lines
+({{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}}):
+
+```cpp
+  if (eos->limiter() && floor) {
+    result.select(1, IDN).clamp_min_(eos->density_floor());
+  }
+  ...
+  if (eos->limiter() && floor && result.size(1) > IPR) {
+    result.select(1, IPR).clamp_min_(eos->pressure_floor());
+  }
+  ...
+  if (eos->limiter()) {
+    result.narrow(1, ICY, ny).clamp_min_(0.);
+  }
+```
+
+`result` holds the left and right face states, `floor` is the caller's argument, and the last clamp has no
+`floor` test.
+
 ### Tests
 
-No test isolates the face floors. They fire inside every limited deck.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| none | no test isolates the face floors; they fire inside every limited deck | not applicable | **missing evidence** |
+
+: Tests of the reconstruction-stage floors. {#tbl-ch08-reconfloors-tests}
+
+The shared property is measured by `[C2]` of the chapter's check on the cell floors.[^ch08-reconfloors-run]
+
+[^ch08-reconfloors-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/floors_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `floors_check.out`, line `[C2]`.
 
 ### Limits
 

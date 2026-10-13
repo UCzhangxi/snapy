@@ -8,30 +8,35 @@ status: draft
 
 ### Summary
 
-When the borrow of @sec-ch08-borrow cannot cover a deficit from the parent vapour in the same cell, the
-vapour itself goes negative and a local repair has no mass to work with. The column repair is the
-fallback: it looks along the whole $x_1$ column for mass to move.
+When the borrow of @sec-ch08-borrow cannot cover a deficit from the parent vapour in the same cell, the vapour itself
+goes negative. A local repair has no mass to work with. The column repair is the fallback: it looks along the whole
+$x_1$ column for mass to move.
 
 ::: {.callout-note title="At a glance"}
-- A repair along a whole $x_1$ column, not a floor: it moves mass within the column.
-- Switch: part of the conserved limiter, where a vapour row has gone negative.
-- Conserves mass by weighting with cell volumes, so it repairs mass and not density.
-- Gathers the column across ranks when the $x_1$ axis is split.
-- Clouds tolerate an unrepairable column and clamp; vapour must throw instead.
+**Purpose.** Repair a negative vapour by moving mass along the whole $x_1$ column, weighted by cell volume.
+
+**Data.** In: the interior vapour and cloud rows, the dry density, the cell volumes. Out: the rows repaired in place, or an error.
+
+**Placement.** Inside the conserved pass of @sec-ch08-eoslimiter, after the borrow.
+
+**Activation.** With the limiter, where a vapour row is negative, or a parentless cloud after the borrow.
+
+**Guarantee / limits.** Conserves column mass; vapour throws when the column cannot be repaired, clouds clamp instead.
+
+**Evidence.** `test_fix_vapor_volume.<b>` ($10^{-12}$), the two failure-reporting Python ctests; no report check.
 :::
 
 ### Derivation
 
-The scheme is a redistribution, so the thing to establish is what it conserves. It weights by cell
-volume at `cell_volume` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), which is the point recorded in the code comment
-there: a column repair that moved *densities* would not conserve mass on a non-uniform grid, because
-equal densities in unequal cells are unequal masses. Weighting by volume makes the redistribution
-conservative in mass.
+The scheme is a redistribution, so the thing to establish is what it conserves. It weights by cell volume at
+`cell_volume` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), which is the
+point recorded in the code comment there. A column repair that moved *densities* would not conserve mass on a
+non-uniform grid, because equal densities in unequal cells are unequal masses. Weighting by volume makes the
+redistribution conservative in mass.
 
-This chapter does not port the repair, and the reason is worth stating rather than hiding: the search
-itself is a device kernel reached through a dispatch call, so a numpy port would be a reimplementation
-rather than a port, and a check built on it would test my reimplementation and not the code. The
-conservation property above is read from the code and its comment; it is not measured here.
+This chapter does not port the repair. The search is a device kernel reached through a dispatch call, so a numpy port
+would be a reimplementation. A check built on it would test the reimplementation and not the code. The conservation
+property above is read from the code and its comment, and asserted by the ctest of @tbl-ch08-fixvapor-tests.
 
 ### Numerical method
 
@@ -39,11 +44,22 @@ The repair is the lambda at `split` ({{< code src/eos/equation_of_state.cpp Equa
 across ranks it gathers the column first, so the repair sees the whole column rather than one block's
 piece of it.
 
-The two callers are deliberately different, and the comment at
-`repair_column` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) says why: clouds tolerate a column that cannot be repaired and
-fall back to a clamp at `clamp_min_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}), while vapour must throw rather than copy
-a bad gathered column back, which is the check at `err` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). A failure
-in the vapour path is therefore a hard stop, not a silent repair.
+The two callers are deliberately different, and the comment at `repair_column`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) says why. Clouds tolerate a
+column that cannot be repaired and fall back to a clamp at `clamp_min_`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). Vapour must throw rather
+than copy a bad gathered column back, which is the check at `err`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). A failure in the vapour
+path is therefore a hard stop, not a silent repair.
+
+**Why volumes, and why two callers.** Three facts of the code.
+
+1. The redistribution weights by cell volume, so it moves mass and not density; moving densities would not conserve
+   mass on a non-uniform grid
+   ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
+2. When the $x_1$ axis is split across ranks the column is gathered first, so the repair sees the whole column.
+3. Clouds tolerate an unrepairable column and fall back to a clamp. Vapour must not copy a bad column back, so its
+   caller passes `require_success` and the kernel's error becomes a hard stop.
 
 ### Code
 
@@ -57,16 +73,35 @@ in the vapour path is therefore a hard stop, not a silent repair.
 
 : Code map of the vapour column repair. {#tbl-ch08-fixvapor-code}
 
+**How to use it.** There is no switch of its own. The vapour caller is this line, and the check after the
+kernel is the failure a run sees
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}):
+
+```cpp
+      TORCH_CHECK(!require_success || err == 0,
+                  "[EquationOfState] apply_conserved_limiter_: "
+                  "Failed to fix vapor mass fractions.");
+```
+
+```cpp
+    repair_column(cons.index(interior).narrow(0, ICY, nvapor), true);
+```
+
+Refused: a vapour column that cannot be repaired, with the message above; a cloud column in the same state is
+clamped at zero instead.
+
 ### Tests
 
-`test_fix_vapor_reports_failure_python` checks that an unrepairable column raises
-`Failed to fix vapor`; its CUDA arm is `test_fix_vapor_reports_failure_cuda_python`.
-`test_fix_vapor_counts_every_column_python` places a broken column at 32 positions with
-multiple CPU threads and requires every failure to be reported
-({{< code tests/test_fix_vapor_reports_failure.py main >}},
-{{< code tests/test_fix_vapor_counts_every_column.py main >}};
-registrations: {{< code tests/CMakeLists.txt >}}).
-These tests cover failure reporting, not successful repair's volume-weighted conservation.
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `tests/test_fix_vapor_volume.cpp` (`test_fix_vapor_volume.<b>`) | `fix_vapor_keeps_the_column_mass_on_varying_cell_volume`: the repaired vapour is non-negative and the column mass is unchanged on a non-uniform grid | relative $10^{-12}$ in float64, $10^{-6}$ in float32 | set inline in the test ({{< code tests/test_fix_vapor_volume.cpp >}}); the file gives no reason |
+| `tests/test_fix_vapor_reports_failure.py` (`test_fix_vapor_reports_failure_python`, `_cuda_python`) | an unrepairable column raises `Failed to fix vapor` | exact (an exception) | the contract ({{< code tests/test_fix_vapor_reports_failure.py main >}}) |
+| `tests/test_fix_vapor_counts_every_column.py` (`test_fix_vapor_counts_every_column_python`) | a broken column at 32 positions, with several CPU threads, is reported every time | exact | the contract ({{< code tests/test_fix_vapor_counts_every_column.py main >}}) |
+
+: Tests of the vapour column repair. {#tbl-ch08-fixvapor-tests}
+
+The registrations are in {{< code tests/CMakeLists.txt >}}. No report check covers the repair. The ctests have not
+been run for this report at the pin: **pending a pinned ctest run**.
 
 ### Limits
 
@@ -77,7 +112,7 @@ These tests cover failure reporting, not successful repair's volume-weighted con
   collective operation inside what is otherwise a local limiter.
 :::
 
-1. **Not ported, not measured.** The conservation claim is read from the code and its comment. No check
-   in this chapter and no ctest in the repository demonstrates it.
+1. **Not ported.** The conservation claim is read from the code and its comment and asserted by one ctest on
+   one grid; no check in this chapter measures it.
 2. **Cost.** Gathering a column is communication in the middle of the equation-of-state call. Nothing in
    the repository measures how often it fires or what it costs.

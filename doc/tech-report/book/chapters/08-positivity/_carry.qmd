@@ -14,14 +14,21 @@ enthalpy and momentum leave, and the cell loses energy it still holds. This sect
 that keeps the books straight.
 
 ::: {.callout-note title="At a glance"}
-- Mass the limiter withholds must not leave its energy and momentum behind.
-- Switch: the same as the limiter, and only where the equation of state defines a species enthalpy.
-- The withheld mass of a face takes the enthalpy and velocity of that face's donor.
-- The $x_1$ flux is split into an advected and a settling part, each with its own donor.
+**Purpose.** Withhold, with the mass the limiter withholds, the energy and momentum that mass carries, @eq-ch08-carry-dm.
+
+**Data.** In: $\theta$, the species enthalpy, the velocity, the three fluxes, the settling flux. Out: energy and momentum fluxes corrected in place.
+
+**Placement.** In `HydroImpl::forward`, right before `flux_positivity_scale_`, every stage the limiter runs.
+
+**Activation.** With the limiter, and only when the equation of state defines a species enthalpy.
+
+**Guarantee / limits.** The withheld mass keeps its own enthalpy and momentum; nothing is said about its kinetic energy.
+
+**Evidence.** `[C6]` of this chapter's check; `test_flux_positivity_carry.<b>` (relative $10^{-12}$).
 :::
 
-The outline carries this scheme twice, as 8.2 and 8.3, from two inventories. They describe the same
-mechanism and are merged here into one section.
+Local symbols: $F$ is the unscaled species face flux, $\theta_d$ the factor of the face's donor and $\mathrm{d}m$ the
+withheld mass flux. $h_{\mathrm{spec}}$ is the species enthalpy per unit mass and $v$ the velocity, both of the donor.
 
 ### Derivation
 
@@ -37,34 +44,45 @@ $$ {#eq-ch08-carry-dm}
 The energy flux of the face must lose $\mathrm{d}m\,h_{\mathrm{spec}}$ and the momentum flux
 $\mathrm{d}m\,v$, both evaluated **at the donor**, because that is the cell the mass did not leave.
 
-`[C6]` checks precisely that correspondence rather than restating @eq-ch08-carry-dm: it computes the
-energy the withheld mass would have carried as the difference between the unscaled and scaled mass
-flux times the donor's enthalpy, independently of the expression the code uses, and compares. The two
-agree to $1.8\times10^{-15}$ in energy and $8.9\times10^{-16}$ in momentum over two thousand face sets.
+`[C6]` checks precisely that correspondence rather than restating @eq-ch08-carry-dm. It computes the energy the
+withheld mass would have carried as the unscaled-minus-scaled mass flux times the donor's enthalpy, independently of
+the expression the code uses, and compares. The two agree to $1.8\times10^{-15}$ in energy and $8.9\times10^{-16}$ in
+momentum over two thousand face sets.
 
-The donor is chosen per face and per part of the flux, not per cell. In $x_1$ the flux carries two
-physically distinct pieces, an advected part and a settling part from sedimentation, and they need not
-move in the same direction: a species may be advected upward while settling downward through the same
-face. Each part therefore takes its own donor, which is why the code applies the withholding twice in
-$x_1$ and once elsewhere.
+The donor is chosen per face and per part of the flux, not per cell. In $x_1$ the flux carries two physically distinct
+pieces, an advected part and a settling part from sedimentation, and they need not move in the same direction. A
+species may be advected upward while settling downward through the same face. Each part therefore takes its own donor,
+which is why the code applies the withholding twice in $x_1$ and once elsewhere.
 
 ### Numerical method
 
-The carry is `flux_positivity_carry_` at {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}. The withheld share
-is taken from the *net* flux's donor at `theta` ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}), matching the choice
-`flux_positivity_scale_` made, so the mass that was actually withheld is the mass that is accounted
-for. The energy and momentum subtraction is `part` ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}), with the
-enthalpy and velocity taken from the lower or upper cell according to the sign of the part being
-withheld.
+The carry is `flux_positivity_carry_` at {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}. The
+withheld share is taken from the *net* flux's donor at `theta`
+({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}), matching the choice `flux_positivity_scale_`
+made. So the mass that was actually withheld is the mass that is accounted for. The energy and momentum subtraction is
+`part` ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}), with the enthalpy and velocity taken from
+the lower or upper cell according to the sign of the part being withheld.
 
 The $x_1$ split is `sed` ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}): when a sedimentation flux is given, the
 advected part is the net flux minus it, and `withhold` is called once on each. The other two
 directions have no settling flux and take the single branch.
 
-The species enthalpy comes from the equation of state at `species_enthalpy` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}),
-computed on the primitive state with ghosts included. The code comment there records that exchanging
-it alongside the factors changed no bit, so it is not exchanged; that is a measurement someone made,
-not a derivation, and it is recorded as such.
+The species enthalpy comes from the equation of state at `species_enthalpy`
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), computed on the primitive state with ghosts included.
+The code comment there records that exchanging it alongside the factors changed no bit, so it is not exchanged. That
+is a measurement, not a derivation, and it is recorded as such.
+
+**Why the donor's enthalpy, and what it costs.** Three facts of the code and one bound.
+
+1. The share $(1 - \theta_d)$ is taken from the donor of the *net* flux, the same choice `flux_positivity_scale_`
+   makes, so the mass accounted for is the mass actually withheld
+   ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}).
+2. In $x_1$ the species flux is split into an advected part $F - F_{\mathrm{sed}}$ and a settling part
+   $F_{\mathrm{sed}}$, each with its own donor. The two may cross the face in opposite directions.
+3. The enthalpy is computed on the primitive state with ghosts included and is not exchanged; the code comment records
+   that exchanging it changed no bit ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+4. Each correction is a product $\mathrm{d}m\,h_{\mathrm{spec}}$ rounded once and a subtraction rounded once, so its
+   relative error is at most $2\delta_{\mathrm{mach}}$; `[C6]` measures $1.8\times10^{-15}$.
 
 ### Code
 
@@ -78,6 +96,21 @@ not a derivation, and it is recorded as such.
 
 : Code map of the carry. {#tbl-ch08-carry-code}
 
+**How to use it.** There is no switch of its own. The carry runs whenever the limiter runs and the equation of
+state returns a species enthalpy; these are the lines of the stage
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+    if (hspec.defined()) {
+      flux_positivity_carry_(theta, hspec, u.narrow(0, IVX, 3) / w[IDN], _flux1,
+                             _flux2, _flux3, pmb->pcoord, fsed1);
+    }
+    flux_positivity_scale_(theta, f1, f2, f3, pmb->pcoord);
+```
+
+`hspec` is the species enthalpy, the velocity is the momentum over the density, and `fsed1` is the settling part of
+the $x_1$ species flux. The carry runs first because it needs the unscaled fluxes.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -87,6 +120,14 @@ not a derivation, and it is recorded as such.
 
 : Tests of the carry. {#tbl-ch08-carry-tests}
 
+The chapter's check ports the withholding on random face sets.[^ch08-carry-run] `[C6]`: the energy removed equals
+the unscaled-minus-scaled mass flux times the donor's enthalpy to $1.8\times10^{-15}$, and the momentum to
+$8.9\times10^{-16}$, over 2000 face sets. `test_flux_positivity_carry.<b>` has not been run for this report at
+the pin: **pending a pinned ctest run**.
+
+[^ch08-carry-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
+    `positivity_check.out`, line `[C6]`.
+
 ### Limits
 
 ::: {.callout-warning title="Limits"}
@@ -95,10 +136,10 @@ not a derivation, and it is recorded as such.
   mechanisms are not switched together.
 :::
 
-1. **Kinetic energy.** The withheld energy is the species enthalpy times the mass. Whether the kinetic
-   energy of the withheld mass is accounted for consistently with the momentum correction is not
-   something this chapter measures, and no test in the repository isolates it.
-2. **Opposite donors are tested.** `withheld_mixed_flux_keeps_each_parts_energy_and_momentum`
-   and its CUDA variant in `test_flux_positivity_carry.<b>` construct upward net cloud flux
-   with downward settling. They check each part's donor energy and momentum, with relative
-   tolerance $10^{-12}$ ({{< code tests/test_flux_positivity_carry.cpp withheld_mixed_flux_keeps_each_parts_energy_and_momentum >}}).
+1. **Kinetic energy.** The withheld energy is the species enthalpy times the mass. Whether the kinetic energy of the
+   withheld mass is accounted for consistently with the momentum correction is not something this chapter measures. No
+   test in the repository isolates it.
+2. **Opposite donors are tested.** `withheld_mixed_flux_keeps_each_parts_energy_and_momentum` and its CUDA variant in
+   `test_flux_positivity_carry.<b>` construct upward net cloud flux with downward settling. They check each part's
+   donor energy and momentum, with relative tolerance $10^{-12}$
+   ({{< code tests/test_flux_positivity_carry.cpp withheld_mixed_flux_keeps_each_parts_energy_and_momentum >}}).
