@@ -21,7 +21,7 @@ density as the tracer carrier.
 ::: {.callout-note title="At a glance"}
 **Purpose.** Select outgoing perturbations; @eq-ch11-outflow-modes.
 
-**Data.** Primitive state, EOS and saved background; SI units listed below.
+**Data.** Primitive state, EOS and saved background; SI[^rg-55087f577bc7] units listed below.
 
 **Placement.** Physical fill; excluded from tangential corner refresh.
 
@@ -32,7 +32,7 @@ density as the tracer carrier.
 **Evidence.** Report checks and source-test limits are in the Tests layer; solver ctests were not run at the pin.
 :::
 
-Local symbols, with appendix A, notation group 8a: $q_{\mathrm{bg}}$ is the saved initial boundary background of a primitive $q$
+Local symbols, with appendix A, notation group 8a: $q_{\mathrm{bg}}$[^rg-598db203bccb] is the saved initial boundary background of a primitive $q$
 (distinct from the well-balanced reference) and $\mathbf W_{\mathrm{bg}}$ the whole background; $d_q=q-q_{\mathrm{bg}}$ is the
 interior perturbation of $q$, with $d_\rho$ [$\mathrm{kg\,m^{-3}}$], $d_v$ [$\mathrm{m\,s^{-1}}$] for the outward velocity and
 $d_p$ [$\mathrm{Pa}$]; $Z=\rho_{\mathrm{bg}}c_{s,\mathrm{bg}}$ [$\mathrm{kg\,m^{-2}\,s^{-1}}$] is the acoustic impedance and
@@ -42,7 +42,7 @@ $d_{\mathrm{ent}}=d_\rho-d_p/c_{s,\mathrm{bg}}^2$ [$\mathrm{kg\,m^{-3}}$] the ad
 
 ### Derivation
 
-Freeze an admissible background and an outward Cartesian face frame. For the outer $x_1$ face, write the frozen
+Freeze an admissible background and an outward Cartesian face frame. For the outer $x_1$[^rg-ead169ed7570] face, write the frozen
 material derivative as $\mathrm D/\mathrm Dt=\partial_t+v_{\mathrm{out},\mathrm{bg}}\partial_1$. The linearized mass, normal
 momentum and pressure equations of the perturbation are
 
@@ -100,8 +100,8 @@ $q_{\mathrm{bg}}+\alpha_{\mathrm{adm}}d_q\ge q_{\min}$.
 If $d_q<0$, division gives the bound $(q_{\mathrm{bg}}-q_{\min})/(-d_q)$;
 otherwise that component imposes no reduction. Start with one, take the minimum over all bounds, multiply
 each binding bound below one by $0.99$, and clamp the result to $[0,1]$. Apply this to density with the EOS
-density floor, pressure with the pressure floor, every $y_n$ with floor zero, the complement $1-\sum_n y_n$
-with floor zero, and every passive tracer ratio $r_n$ with floor zero. The nonnegative complement enforces
+density floor, pressure with the pressure floor, every $y_n$[^rg-ba8a61c1dc1e] with floor zero, the complement $1-\sum_n y_n$
+with floor zero, and every passive tracer ratio $r_n$[^rg-7187b999100b] with floor zero. The nonnegative complement enforces
 the composition sum. The same factor multiplies every perturbation, including the tracers:
 
 $$
@@ -162,6 +162,7 @@ primitives; the saved background must survive a restart.
 
 This is a configuration fragment, not a standalone simulation deck.
 
+<!-- reader glossary keys -->Keys in this fragment: `forcing`[^rg-c2adbe6bd0b3], `const-gravity`[^rg-07ad360aab23], `gravity-work-fixer`[^rg-33815445b671].
 ```yaml
 boundary-condition:
   external:
@@ -221,7 +222,7 @@ auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 | `test_radiating_boundary.release` | Selected modes on all six faces for three EOS types | float32 $0.03$; float64 $10^{-8}$ | test constants |
 | `test_radiating_boundary.release` | Mixed faces keep the representation and the call order | hydro rtol $10^{-12}$, atol $10^{-9}$ | test constants |
 | `test_radiating_boundary.release` | Tracer ratios ride the dry density, dry and moist | below $10^{-12}$ | test constants |
-| `test_radiating_boundary.release` | PLM and WENO5 pulses of both signs leave through the outflow face | reflected fraction below $0.05$ | test constant |
+| `test_radiating_boundary.release` | PLM[^rg-94bb6a1dab2d] and WENO5[^rg-aeddec0575d5] pulses of both signs leave through the outflow face | reflected fraction below $0.05$ | test constant |
 | `test_radiating_boundary.release` | Joint composition/tracer limiter; restart continuation; missing reference throws | inequalities; exact restart equality | test assertions |
 | `test_radiating_boundary.release` | CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | test constant |
 | `test_radiating_boundary_python` | A manual fill keeps the saved reference and the interior | exact equality | test assertions |
@@ -282,3 +283,25 @@ this callback.
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
 is claimed.
 :::
+
+<!-- reader glossary notes -->
+[^rg-55087f577bc7]: SI — International System of Units
+
+[^rg-598db203bccb]: $q_{\mathrm{bg}}$ — the saved background value of a primitive $q$ at a radiating boundary
+
+[^rg-ead169ed7570]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-ba8a61c1dc1e]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
+
+[^rg-7187b999100b]: $r_n$ — mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1)
+
+[^rg-c2adbe6bd0b3]: forcing — list of forcing components
+
+[^rg-07ad360aab23]: const-gravity — constant-gravity forcing component
+
+[^rg-33815445b671]: gravity-work-fixer — gravity-work correction options
+
+[^rg-94bb6a1dab2d]: PLM — piecewise-linear method
+
+[^rg-aeddec0575d5]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
+<!-- end reader glossary notes -->

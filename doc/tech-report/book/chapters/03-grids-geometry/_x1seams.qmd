@@ -15,7 +15,7 @@ ghost cells and the two face pressures; under the face-flux covariance (on by de
 states one row past the seam, for the hydro and for the scalars; under `SNAP_GRAVITY_WORK_RADIAL_EXACT` the density
 increment one row past it. (d) Across process seams only, the seam-face flux, face pressure
 and reference flux are replaced by the mean of the two sides. Wall reconstructions and wall mirroring are gated on a
-physical face, so they never act at a seam; column-wide EOS repairs gather the whole column.
+physical face, so they never act at a seam; column-wide EOS[^rg-b43b7aad09b4] repairs gather the whole column.
 
 Local symbols: $\mathrm{sm}$ (upright) an $x_1$ seam face shared by the block below ($\mathrm{B}$) and above
 ($\mathrm{T}$); $\mathbf F^{\mathrm{B}}_{\mathrm{sm}}$, $\mathbf F^{\mathrm{T}}_{\mathrm{sm}}$ the $x_1$ fluxes the two blocks compute there;
@@ -49,7 +49,7 @@ on the $x_1$ flux slab, face pressure and `bflux1`, across process seams only.
 **Single-valued seam flux.** Let $V_{\mathrm B}$ and $V_{\mathrm T}$ be the volumes of the two cells that share the
 seam, the top cell of block B and the bottom cell of block T [$\mathrm{m^3}$]. Block B updates its top cell with
 $-A_{\mathrm{sm}}\mathbf F^{\mathrm{B}}_{\mathrm{sm}}/V_{\mathrm B}$ and block T its bottom cell with $+A_{\mathrm{sm}}\mathbf F^{\mathrm{T}}_{\mathrm{sm}}/V_{\mathrm T}$, per
-unit time. Multiplying each update by its own volume and by $\Delta t$ gives the change of the column total at the
+unit time. Multiplying each update by its own volume and by $\Delta t$[^rg-6e5d28d7b425] gives the change of the column total at the
 seam per stage:
 
 $$
@@ -104,7 +104,7 @@ the average. A same-process neighbour is reached through an in-memory board, a r
 copies the neighbour's rows into its ghosts. The message tags are 0x7715 (relay), 0x7717 and 0x7718 (reference ghost
 rows), 0x7720 and 0x7721 (seam flux), 0x7722 to 0x7725 (face-pressure and plain-mean ghost rows), 0x7726 and 0x7727 (the density increment of the
 radial-exact work), 0x7730 to 0x7737 (the covariance face states), and `0x7740 + 4k` to `0x7743 + 4k` for scalar
-row $k$ (the scalar covariance); `_x1_ghost_rows` uses each tag and the next. EOS column repairs
+row $k$[^rg-2dedcdaf1d1e] (the scalar covariance); `_x1_ghost_rows` uses each tag and the next. EOS column repairs
 call `gather_x1`, which joins the column's pieces bottom first. @fig-ch03-x1seams-relay shows a column of three blocks.
 
 ```{python}
@@ -220,3 +220,11 @@ differs from one block on CPU and on GPU is **not measured at the pin**. The hea
 `test_pref_local_seam.cpp` says that `HydroImpl` restarts the scan in a second same-process block and that the test
 does not fix it, while the assertions expect the relay of this section ({{< code tests/test_pref_local_seam.cpp >}});
 the comment is stale against the code it tests. The switch combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-b43b7aad09b4]: EOS — equation of state
+
+[^rg-6e5d28d7b425]: $\Delta t$ — the step
+
+[^rg-2dedcdaf1d1e]: $k = 1..N_r$ — reaction index and the number of reactions; never the $x_3$ cell index $k$ (§1) — a chapter that needs both renames the reaction index to $\varkappa$ and says so
+<!-- end reader glossary notes -->

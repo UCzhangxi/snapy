@@ -19,7 +19,7 @@ The operator is always on; a direction can only be switched off as a whole.
 
 **Data.** Reads $\mathbf F_1, \mathbf F_2, \mathbf F_3$ on faces, $A$ and $V$; writes `_div`, then $\Delta\mathbf U$ on interior cells.
 
-**Placement.** Every RK stage, in `HydroImpl::forward`, after all face fluxes are final.
+**Placement.** Every RK[^rg-8e6b68aec2c7] stage, in `HydroImpl::forward`, after all face fluxes are final.
 
 **Activation.** Always on; `dynamics/disable-flux-x1|x2|x3` drops a direction and its gravity (default false).
 
@@ -28,7 +28,7 @@ The operator is always on; a direction can only be switched off as a whole.
 **Evidence.** @tbl-ch04-divergence-tests; `derivation_check.py` `[C1]`, `operator_check.py` `[C1]`–`[C4]`.
 :::
 
-Local symbols: $\mathbf F_a$ the numerical flux through faces normal to $x_a$ (appendix A, notation group 4); $A_{a,f}$ the area of face $f$ normal to $x_a$ [m$^2$]; $\mathcal Q$ a set of cells and $\partial\mathcal Q$
+Local symbols: $\mathbf F_a$[^rg-ba48791f181f] the numerical flux through faces normal to $x_a$ (appendix A, notation group 4); $A_{a,f}$ the area of face $f$ normal to $x_a$ [m$^2$]; $\mathcal Q$ a set of cells and $\partial\mathcal Q$
 its outer faces; $\epsilon_{\mathrm m}=2^{-52}$ machine epsilon (appendix A, notation group 7), so one rounding errs by at most $\epsilon_{\mathrm m}/2$.
 
 ### Derivation
@@ -36,8 +36,8 @@ its outer faces; $\epsilon_{\mathrm m}=2^{-52}$ machine epsilon (appendix A, not
 #### From the conservation law to the cell update
 
 1. *The law.* snapy advances $\partial_t\mathbf U + \nabla\cdot\mathbf F = \mathbf S$ for the conserved vector
-   $\mathbf U$ of appendix A, notation group 2. The source $\mathbf S$ belongs to other chapters; this section is the flux term.
-2. *Integrate over cell $i$.* The cell does not move, so the time derivative passes through the integral, and the
+   $\mathbf U$[^rg-cf280b68848a] of appendix A, notation group 2. The source $\mathbf S$ belongs to other chapters; this section is the flux term.
+2. *Integrate over cell $i$[^rg-b2e4785cc8b1].* The cell does not move, so the time derivative passes through the integral, and the
    divergence theorem turns the volume integral of $\nabla\cdot\mathbf F$ into the outward flux through the cell's
    faces:
 
@@ -49,19 +49,19 @@ its outer faces; $\epsilon_{\mathrm m}=2^{-52}$ machine epsilon (appendix A, not
 3. *Split the boundary into faces.* A hexahedral cell has two faces per direction. Writing the face integral in
    direction $a$ as the face area times the face average of the normal flux, $\int_f\mathbf F\cdot\hat{\mathbf n}\,
    \mathrm{d}A = A_{a,f}\langle\mathbf F_a\rangle_f$, is exact; it is a definition of the face average.
-4. *Divide by $V_i$.* The left side becomes $\mathrm{d}\langle\mathbf U\rangle_{V_i}/\mathrm{d}t$, the rate of the
+4. *Divide by $V_i$[^rg-7787d026c01f].* The left side becomes $\mathrm{d}\langle\mathbf U\rangle_{V_i}/\mathrm{d}t$, the rate of the
    stored cell average.
 5. *The one approximation.* The scheme replaces each face average $\langle\mathbf F_a\rangle_f$ by the single
    number the Riemann solver returns for that face. Everything that decides the accuracy of that number lives
    in the reconstruction and the solver (@sec-ch04-framework, @sec-ch04-riemann) and in the two face-average
    corrections of section 4B.
-6. *Multiply by the stage step.* One stage takes the right side times $\Delta t$:
+6. *Multiply by the stage step.* One stage takes the right side times $\Delta t$[^rg-0fb11326ca3f]:
 
 $$
 \Delta\mathbf U_i = -\Delta t\sum_{a=1}^{3}\frac{A_{a,i+1/2}\mathbf F_{a,i+1/2} - A_{a,i-1/2}\mathbf F_{a,i-1/2}}{V_i},
 $$ {#eq-ch04-divergence-fv}
 
-with $i\pm\tfrac12$ the two faces of direction $a$. `derivation_check.py` `[C1]` checks step 2 in one dimension,
+with $i\pm\tfrac12$[^rg-5df4aa41a896] the two faces of direction $a$. `derivation_check.py` `[C1]` checks step 2 in one dimension,
 $\int_{x_-}^{x_+}\partial_xF\,\mathrm{d}x = F(x_+) - F(x_-)$, with sympy. In the code, @eq-ch04-divergence-fv is `divergence` times `-dt` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).
 
 #### Why the update conserves, on any grid
@@ -92,7 +92,7 @@ $\int_{x_-}^{x_+}\partial_xF\,\mathrm{d}x = F(x_+) - F(x_-)$, with sympy. In the
    $b = A_{i-1/2}F_{i-1/2}$. Every floating-point operation returns its exact result times $(1+\eta)$ with
    $\lvert\eta\rvert\le\epsilon_{\mathrm m}/2$, $\epsilon_{\mathrm m} = 2^{-52}$. Count the roundings along the longest path: two in the
    area as the coordinate computes it, one in the product $AF$, one in the difference, two in the volume and one in
-   the quotient, so $k = 2+1+1+2+1 = 7$. To first order in $\epsilon_{\mathrm m}$ the computed term differs from the exact one
+   the quotient, so $k = 2+1+1+2+1 = 7$. To first order in $\epsilon_{\mathrm m}$[^rg-e68ce82306ee] the computed term differs from the exact one
    by at most $k\,(\epsilon_{\mathrm m}/2)(\lvert a\rvert+\lvert b\rvert)/V$.
 4. *The bound for the check's field.* For $\mathbf F = r\hat r$ per unit solid angle, $a = r_+^3$, $b = r_-^3$
    and $V = (r_+^3 - r_-^3)/3$, so the bound is $3k\,(\epsilon_{\mathrm m}/2)(r_+^3 + r_-^3)/(r_+^3 - r_-^3)
@@ -140,6 +140,7 @@ approximation of step 5 unless the corrections of section 4B are on.
 
 **A minimal input.** The operator has no switch of its own; three keys drop a direction's flux:
 
+<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-ac6e4d54428b], `disable-flux-x1`[^rg-f69e6424a96a], `disable-flux-x2`[^rg-05a4d6917e1a], `disable-flux-x3`[^rg-907281e50fb9].
 ```yaml
 dynamics:
   disable-flux-x1: false   # default false; true keeps no x1 flux in the update
@@ -151,10 +152,10 @@ dynamics:
 ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}) applies, in order:
 
 1. *`dynamics` must be a map or empty*, else "dynamics must be a map": the keys below are read by name.
-2. *Unknown keys are refused* by `check_keys`; the accepted set is `equation-of-state`, `reconstruct`,
-   `riemann-solver`, `verbose`, `disable-flux-x1|x2|x3` and `wb-wall-clamp`. A misspelt `disable-flux` key is an
+2. *Unknown keys are refused* by `check_keys`; the accepted set is `equation-of-state`[^rg-30f2982a8798], `reconstruct`[^rg-cc724bd015e6],
+   `riemann-solver`[^rg-1b6aaa4be991], `verbose`, `disable-flux-x1|x2|x3` and `wb-wall-clamp`[^rg-350c0bc7486d]. A misspelt `disable-flux` key is an
    error, not a silently kept flux.
-3. *A non-boolean value is refused* by the YAML conversion of `as<bool>`.
+3. *A non-boolean value is refused* by the YAML[^rg-244d79da29f9] conversion of `as<bool>`.
 4. *Disabling a direction also zeroes that gravity component* (`grav1(0.)` and its siblings): with no flux in
    $x_a$ there is no pressure gradient to balance $g_a$, and a kept $g_a$ would accelerate every cell without
    limit.
@@ -223,3 +224,39 @@ CPU, one rank (@tbl-ch04-ctest-run in @sec-ch04-fluxcov).
 3. **One value per face.** The operator conserves only if each face carries one number. Across a process seam
    that is arranged by averaging (@sec-ch04-seam), which hides a disagreement between the two sides rather than
    removing it.
+
+<!-- reader glossary notes -->
+[^rg-8e6b68aec2c7]: RK — Runge–Kutta
+
+[^rg-ba48791f181f]: $\mathbf F_a$ — the numerical flux vector through faces normal to $x_a$
+
+[^rg-cf280b68848a]: $\mathbf U$ — conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$
+
+[^rg-b2e4785cc8b1]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-7787d026c01f]: $V_i$ — cell volume
+
+[^rg-0fb11326ca3f]: $\Delta t$ — the step
+
+[^rg-5df4aa41a896]: $i\pm\tfrac12$ — the $x_1$ faces of cell $i$; also written $f$ for a generic face
+
+[^rg-e68ce82306ee]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-ac6e4d54428b]: dynamics — hydrodynamic options block
+
+[^rg-f69e6424a96a]: disable-flux-x1 — whether the first-coordinate flux is disabled
+
+[^rg-05a4d6917e1a]: disable-flux-x2 — whether the second-coordinate flux is disabled
+
+[^rg-907281e50fb9]: disable-flux-x3 — whether the third-coordinate flux is disabled
+
+[^rg-30f2982a8798]: equation-of-state — equation-of-state options
+
+[^rg-cc724bd015e6]: reconstruct — reconstruction options
+
+[^rg-1b6aaa4be991]: riemann-solver — Riemann-solver options within the enclosing dynamics or scalar block
+
+[^rg-350c0bc7486d]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
+
+[^rg-244d79da29f9]: YAML — YAML Ain't Markup Language, the structured input format used for decks
+<!-- end reader glossary notes -->

@@ -30,7 +30,7 @@ work; the derivation of the corrected potential energy, the centroid slope and t
 :::
 
 Local symbols: $\mathcal E = \sum_i V_i E_i + P$ is the corrected domain-integrated energy budget [J],
-where $E_i$ is gas energy density [J m$^{-3}$], $V_i$ is cell volume [m$^3$] and $P$ is corrected potential
+where $E_i$ is gas energy density [J m$^{-3}$], $V_i$[^rg-861cdfd13eb4] is cell volume [m$^3$] and $P$[^rg-859e2d0bb890] is corrected potential
 energy [J]; $g_1$ is radial acceleration [m s$^{-2}$].
 
 ### Derivation
@@ -74,6 +74,7 @@ make_fig()
 **How to use it.** Set `SNAP_GRAVITY_WORK_RADIAL_EXACT=1` explicitly before launch for a corrected-budget run.
 Merge this fragment into a complete card with non-periodic radial boundaries:
 
+<!-- reader glossary keys -->Keys in this fragment: `gravity-work-fixer`[^rg-a5b993b32d10].
 ```yaml
 geometry:
   type: cartesian
@@ -123,7 +124,7 @@ cancellation for a fixed linear slope operator; it does not execute this C++ bra
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `test_gravity_work_radial_exact_python` (CUDA variant registered) | $\mathcal E$ per step on spherical-polar, Cartesian and gnomonic-equiangle columns, explicit and VIC; the diagnostic budget; the clamp and solid cases; unset equals `1`; the grid and periodic warnings fire where expected | per-step relative change at most $10^{-14}$; printed budget to $10^{-11}$; `torch.equal` | the script's tolerances |
+| `test_gravity_work_radial_exact_python` (CUDA variant registered) | $\mathcal E$[^rg-3ec07417d3f2] per step on spherical-polar, Cartesian and gnomonic-equiangle columns, explicit and VIC[^rg-7da3ad6259c0]; the diagnostic budget; the clamp and solid cases; unset equals `1`; the grid and periodic warnings fire where expected | per-step relative change at most $10^{-14}$; printed budget to $10^{-11}$; `torch.equal` | the script's tolerances |
 | `test_x1_seam_split_radial_exact.<b>`, `_radial_exact_off.<b>` (CUDA and two-rank variants registered) | the split column keeps the one-block state and $\mathcal E$; the off control bounds the gap by round-off | gap exactly 0 on; at most $10^{-13}$ off; drift at most $10^{-13}$ | the test |
 | `test_implicit_face_work_operator_radial_exact_python`, `test_implicit_stratified_solid_radial_exact_python` (`SNAP_GRAVITY_WORK_RADIAL_EXACT=1`) | the implicit budgets with the corrected work | as in those tests | `tests/CMakeLists.txt` |
 | `test_forcing.<b>`, `test_gravity_work_fixer_python`, `test_horizontal_flux_covariance_python`, `test_flux_covariance_rows_python`, `test_implicit_face_work_operator_python`, `test_implicit_stratified_solid_python` (`SNAP_GRAVITY_WORK_RADIAL_EXACT=0`) | the plain face-work invariant, with the switch off by registration | as in those tests | `tests/CMakeLists.txt` |
@@ -158,3 +159,15 @@ the one-sided slope.
 
 The complete switch inventory is @sec-ch12-matrix.
 :::
+
+<!-- reader glossary notes -->
+[^rg-861cdfd13eb4]: $V_i$ — cell volume
+
+[^rg-859e2d0bb890]: $P$ — corrected discrete potential energy $\sum_iV_i[\rho_i\phi_i - g_1\sigma_i^2s_i[\rho]]$, exact to $O(h^4)$
+
+[^rg-a5b993b32d10]: gravity-work-fixer — gravity-work correction options
+
+[^rg-3ec07417d3f2]: $\mathcal E$ — the conserved energy functional of a scheme, named each time ($\mathcal E = \sum_iV_iE_i+P$ under D, $\sum_iV_iE_i+\mathrm{PE}_d$ under the plain face form)
+
+[^rg-7da3ad6259c0]: VIC — vertically implicit correction
+<!-- end reader glossary notes -->

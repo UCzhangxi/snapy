@@ -9,31 +9,31 @@ status: draft
 
 ### Summary
 
-Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK stages. It lets the
+Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK[^rg-fe50358aee8f] stages. It lets the
 stages advect vapour and condensate as tracers that carry their own reference energies, and once per step, after
 the last stage has been averaged, it hands each interior cell to kintera's equilibrium solve at fixed volume and
 fixed internal energy density (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is never a separate source: it is
-the difference of the species reference energies $u^{\star}_n$ (appendix A, notation group 2), so moving mass between
-phases at fixed $\rho e$ changes the temperature and leaves $E$ alone. This section is the snapy side of that solve:
+the difference of the species reference energies $u^{\star}_n$[^rg-065a1207808a] (appendix A, notation group 2), so moving mass between
+phases at fixed $\rho e$ changes the temperature and leaves $E$[^rg-575a594ac1bd] alone. This section is the snapy side of that solve:
 when it runs, what it is handed, what it writes, and what happens when it fails.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Brings each interior cell to phase equilibrium once per step at fixed $\rho$ and $\rho e$; @eq-ch10-satadj-state.
+**Purpose.** Brings each interior cell to phase equilibrium once per step at fixed $\rho$[^rg-a950fb607e0e] and $\rho e$; @eq-ch10-satadj-state.
 
-**Data.** Reads $\rho$, $\rho e$, $y_n$ of interior cells; writes only the species rows $\rho_n=\rho y_n$.
+**Data.** Reads $\rho$, $\rho e$, $y_n$[^rg-3c83350b1237] of interior cells; writes only the species rows $\rho_n=\rho y_n$.
 
 **Placement.** Last RK stage, after the whole-column limiter call and before the boundary fill.
 
-**Activation.** On whenever the thermo lists reactions; kintera's `max-iter`, `ftol`, `uv-solver` tune it.
+**Activation.** On whenever the thermo lists reactions; kintera's `max-iter`[^rg-908ac32cc7ce], `ftol`[^rg-26c129e5de35], `uv-solver`[^rg-1854988f5cbc] tune it.
 
 **Guarantee / limits.** $E$ exact; total water to the solve's tolerance; a failed cell stays put and raises cause 16.
 
 **Evidence.** @tbl-ch10-satadj-tests; `test_wall_saturation.release`, `satadj_check.py` `[C1]`–`[C4]`.
 :::
 
-Local symbols: none beyond appendix A; $\rho$, $\rho e$, $y_n$, $\rho_n$ and $u^{\star}_n$ are its §2 entries.
+Local symbols: none beyond appendix A; $\rho$, $\rho e$, $y_n$, $\rho_n$[^rg-21fe32636c91] and $u^{\star}_n$ are its §2 entries.
 
-The adjustment is on whenever the top-level `reactions` list in the YAML card is nonempty; there is no flag to turn it off
+The adjustment is on whenever the top-level `reactions`[^rg-665fda7973ee] list in the YAML card is nonempty; there is no flag to turn it off
 while keeping the reactions. Its failures do not stop the step: they are counted and turned into redo cause 16
 (@sec-ch10-redo). The ghost cells are not adjusted; the boundary fill that ends the stage refills the physical ghosts
 from the adjusted interior.
@@ -66,7 +66,7 @@ snapy then writes $\rho_n \leftarrow \rho\,y_n$ for every species row, with the 
 Why the write-back changes only the species rows, and what it keeps:
 
 1. *The energy row is not written*, so $E$ is unchanged to the last bit; momentum is not written either.
-2. *The dry row is not written*, so $\rho_{\mathrm d}$ is unchanged.
+2. *The dry row is not written*, so $\rho_{\mathrm d}$[^rg-e117578d9653] is unchanged.
 3. *$\rho$ after the write-back is $\rho_{\mathrm d}+\rho\sum_ny^{\mathrm{new}}_n$*, so $\rho^{\mathrm{new}}-\rho=\rho\,(\sum_ny^{\mathrm{new}}_n-\sum_ny_n)$:
    $\rho$ is kept exactly when the solve keeps $\sum_ny_n$ (`[C4]`, sympy).
 4. *The phase reactions move mass between species rows and never create it*, so kintera returns fractions whose sum
@@ -151,6 +151,7 @@ equation-of-state block, which forwards them to kintera
 ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}). Adapted from the test card of
 @sec-ch10-redo ({{< code tests/test_check_redo_saturation.yaml >}}), which sets `max-iter: 1` on purpose:
 
+<!-- reader glossary keys -->Keys in this fragment: `reference-state`[^rg-ac141bcfb8e8], `Tref`[^rg-1bc2ff8d4c5c], `Pref`[^rg-6e7d59bbb3b8], `type`[^rg-4a5452113597], `rate-constant`[^rg-301500a18640], `formula`[^rg-3f7123a0b7af], `dynamics`[^rg-b1d8bcbda205], `equation-of-state`[^rg-5c01e2c564a7].
 ```yaml
 reference-state: {Tref: 300., Pref: 1.e5}   # without it kintera builds no thermo, and no adjustment runs
 reactions:
@@ -229,3 +230,43 @@ fill sees unadjusted values. A failed cell is left unadjusted for the rest of th
 - The switch coverage matrix (@sec-ch12-matrix) has no row for moist runs; the combinations with `SNAP_WB_REF4` and
   `SNAP_X1_CENTROID_EXACT` are covered only by the moist `test_balance_column` arms
   (`test_balance_column_wb_ref4.release`, `test_balance_column_x1_centroid.release`).
+
+<!-- reader glossary notes -->
+[^rg-fe50358aee8f]: RK — Runge–Kutta
+
+[^rg-065a1207808a]: $u^{\star}_n$ — reference specific internal energy of species $n$ at the thermodynamic reference state, $u^{\star}_n = u^{\mathrm{ref}}_n\mathcal R/\mu_n$ [J kg$^{-1}$]; the energy zero of each species, not a fitted constant. The star, not a superscript $(0)$, because $(0)$ is the explicit RK increment (§7)
+
+[^rg-575a594ac1bd]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-a950fb607e0e]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-3c83350b1237]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
+
+[^rg-908ac32cc7ce]: max-iter — maximum number of iterations
+
+[^rg-26c129e5de35]: ftol — relative convergence tolerance
+
+[^rg-1854988f5cbc]: uv-solver — solver used for fixed-energy saturation adjustment
+
+[^rg-21fe32636c91]: $\rho_n$ — partial density of species $n$, $\rho y_n$ [kg m$^{-3}$]
+
+[^rg-665fda7973ee]: reactions — reaction definitions
+
+[^rg-e117578d9653]: $\rho_{\mathrm{d}}$ — dry-air density [kg m$^{-3}$]
+
+[^rg-ac141bcfb8e8]: reference-state — thermodynamic reference-state options
+
+[^rg-1bc2ff8d4c5c]: Tref — thermodynamic reference temperature
+
+[^rg-6e7d59bbb3b8]: Pref — thermodynamic reference pressure
+
+[^rg-4a5452113597]: type — implementation selector for the enclosing options block
+
+[^rg-301500a18640]: rate-constant — reaction-rate model options
+
+[^rg-3f7123a0b7af]: formula — registered reaction-rate formula
+
+[^rg-b1d8bcbda205]: dynamics — hydrodynamic options block
+
+[^rg-5c01e2c564a7]: equation-of-state — equation-of-state options
+<!-- end reader glossary notes -->

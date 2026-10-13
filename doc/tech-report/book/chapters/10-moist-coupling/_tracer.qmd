@@ -15,13 +15,13 @@ the second limiter that bounds the ratio from above, and the conditions under wh
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Keeps tracers as ratios $r_n$ per dry mass, non-negative and optionally at most $b$; @eq-ch10-tracer-bound.
+**Purpose.** Keeps tracers as ratios $r_n$[^rg-6b0954b378f1] per dry mass, non-negative and optionally at most $b$; @eq-ch10-tracer-bound.
 
 **Data.** Reads $\rho_{\mathrm d}r_n$ and the hydro dry-mass fluxes; writes the tracers' stage tendency on interior cells.
 
 **Placement.** Every RK stage after the hydro fluxes; positivity limiter first, complement bound second.
 
-**Activation.** YAML `scalar` (`nvar` or `names`); `upper-bound` default $-1$ (off), 0 refused, positive needs the limiter.
+**Activation.** YAML `scalar` (`nvar` or `names`[^rg-28a461114d30]); `upper-bound`[^rg-a7c011b0d04d] default $-1$ (off), 0 refused, positive needs the limiter.
 
 **Guarantee / limits.** $r_n\ge0$; $r_n\le b$ while the mass Courant number is below one and $\rho_{\mathrm d}$ moves by transport only.
 
@@ -141,7 +141,7 @@ Refused at setup ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}):
 
 1. A solver other than `upwind` ("[Scalar] Passive scalars currently require the upwind solver"), because the
    tracer flux is the dry-mass flux times the upwind ratio. A `scalar/riemann-solver` block without `type` takes the
-   YAML default `roe` and is refused too; omit the block to get `upwind`.
+   YAML fallback described in @sec-ch04-riemann and is refused too; omit the block to get `upwind`.
 2. `upper-bound: 0` ("[Scalar] upper-bound = 0 pins the tracer to zero and freezes transport; use a negative value to
    disable the bound").
 3. A positive bound without the limiter ("[Scalar] upper-bound needs the eos limiter"), because the bound from above
@@ -197,3 +197,11 @@ below one and the dry density moves by transport alone.
   (`pkinetics`, {{< code src/scalar/scalar.cpp ScalarImpl::reset >}}).
 - A uniform-tracer test cannot detect a wrong donor choice (docstring of `test_tracer_dry_convention.py`).
 - Not in the switch coverage matrix (@sec-ch12-matrix).
+
+<!-- reader glossary notes -->
+[^rg-6b0954b378f1]: $r_n$ — mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, @sec-ch10-tracer). Never written $r$ without its species subscript, because $r$ alone is the radius (§1)
+
+[^rg-28a461114d30]: names — list of species names
+
+[^rg-a7c011b0d04d]: upper-bound — upper bound for the scalar ratio; a negative value disables the bound
+<!-- end reader glossary notes -->

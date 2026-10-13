@@ -53,9 +53,9 @@ were not run at the pin. Check: `python3 src/snapy_report/ch09/x1profile_check.p
 Local symbols: $\varsigma(x_1)$ [-] the $x_1$ profile of a coefficient (`nu_scale_x1`,
 `kappa_scale_x1`; $s$ is the centroid slope of appendix A); $q$ the cell field it multiplies ($\rho$ or $\rho c_v$);
 $c=\varsigma q$ the product; $c^{\mathrm{MP}}$, $c^{\mathrm{PM}}$ the mean-of-products and product-of-means face values;
-$c_0$ a constant product ($C$ is the Courant number); $F_0$ [W m$^{-2}$] the uniform exact flux of a linear
-temperature; $\eta_{i\pm1/2}$ [-] the relative excess of $c^{\mathrm{PM}}$ on a face ($e$ is the specific internal energy);
-$(x^{\mathrm k}_\ell,\varsigma_\ell)$ the knots of a table. $h$, $\rho_{\mathrm{ref}}$ and $\epsilon_{\mathrm m}$ are defined in @sec-appa.
+$c_0$ a constant product ($C$[^rg-3f6709e93486] is the Courant number); $F_0$ [W m$^{-2}$] the uniform exact flux of a linear
+temperature; $\eta_{i\pm1/2}$ [-] the relative excess of $c^{\mathrm{PM}}$ on a face ($e$[^rg-db37875fae93] is the specific internal energy);
+$(x^{\mathrm k}_\ell,\varsigma_\ell)$ the knots of a table. $h$, $\rho_{\mathrm{ref}}$[^rg-bb3732db3865] and $\epsilon_{\mathrm m}$ are defined in @sec-appa.
 
 A profile is given either as a table of knots in $x_1$, linear between knots and held beyond them, or, from
 Python, as one value per $x_1$ cell centre of a block, ghosts included. It is frozen when the block is built.
@@ -118,7 +118,7 @@ two forms differ only where a balance should be exact.
 
 *$x_2$ and $x_3$ faces.* Both cells of such a face share one $x_1$, so the two cells' $\varsigma$ are equal and the
 two forms are equal in exact arithmetic, but not bit for bit (`[C5]`: relative difference $2.1\times10^{-16}$). The
-code keeps the product of means there, `face_average` times `scale`
+code keeps the product of means there, `face_average` times `scale`[^rg-e15bb05fefae]
 ({{< code src/forcing/diffusion.cpp face_scaled_coefficient >}}).
 
 *The table.* `profile_from_table` evaluates a table of knots $(x^{\mathrm{k}}_\ell, \varsigma_\ell)$ at the cell
@@ -157,6 +157,7 @@ changes.
 
 **A minimal input.** A kinematic conduction coefficient whose product with a density falling tenfold is constant:
 
+<!-- reader glossary keys -->Keys in this fragment: `x1`[^rg-5032dfb16748].
 ```yaml
 forcing:
   diffusion:
@@ -242,7 +243,7 @@ ctest to print them and a pinned run, **pending**. ctest cases: **pending a pinn
 ### Limits
 
 1. **Per-cell profiles on one $x_1$ block only.** A per-cell tensor covers one block's cells, so it is refused when
-   $x_1$ is split, `nb1` $>1$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}); use a table.
+   $x_1$ is split, `nb1`[^rg-254203656f50] $>1$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}); use a table.
 2. **Kinematic form only.** A profile is refused with `dynamic: true`, which has no density to balance.
 3. **Frozen.** A profile changed after the block is built is refused, not used.
 4. **The table is linear between knots**; a profile with curvature needs enough knots. Not measured.
@@ -250,3 +251,17 @@ ctest to print them and a pinned run, **pending**. ctest cases: **pending a pinn
 
 
 [^env-x1profile]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
+
+<!-- reader glossary notes -->
+[^rg-3f6709e93486]: $C$ — Courant number (named: acoustic, advective, vertical acoustic)
+
+[^rg-db37875fae93]: $e$ — specific internal energy [J kg$^{-1}$]
+
+[^rg-bb3732db3865]: $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ — cell reference density and pressure of the well-balanced $x_1$ reconstruction
+
+[^rg-e15bb05fefae]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+
+[^rg-5032dfb16748]: x1 — first-coordinate positions of the profile knots
+
+[^rg-254203656f50]: nb1 — number of blocks along the first coordinate direction
+<!-- end reader glossary notes -->

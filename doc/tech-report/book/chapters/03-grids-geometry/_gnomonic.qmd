@@ -15,7 +15,7 @@ $\tfrac13(r_+^3 - r_-^3)$ times the same solid angle, and the $x_2$, $x_3$ face 
 sources are built so that a uniform pressure at rest is in exact discrete balance.
 
 Local symbols: $\xi, \eta \in [-\pi/4, \pi/4]$ the two panel angles [rad]; $X = \tan\xi$, $Y = \tan\eta$ [-]; $C = \sqrt{1+X^2}$, $D = \sqrt{1+Y^2}$,
-$Q = \sqrt{1+X^2+Y^2}$ [-]; $\psi$ the angle between the $\xi$ and $\eta$ coordinate lines on the sphere [rad],
+$Q = \sqrt{1+X^2+Y^2}$ [-]; $\psi$ the angle between the $\xi$[^rg-788c4c144f03] and $\eta$ coordinate lines on the sphere [rad],
 whose cosine is the named panel metric `cosine_cell_kj` at cell centres (`cosine_face2_kj`, `cosine_face3_kj` at
 $x_2$, $x_3$ faces) and whose sine is `sine_cell_kj` (`sine_face2_kj`, `sine_face3_kj`); $\cos\psi$ is a
 geometric quantity only, unrelated to any temperature; $\hat{\mathbf u}$ the unit position vector on the sphere [-];
@@ -45,7 +45,7 @@ entries were not run for this chapter at the pin (missing evidence).
 :::
 
 The type is on when `geometry.type` is `gnomonic-equiangle`. Unlike spherical-polar, the radial cell centre is the
-midpoint, not the volume centroid; the corrected-PE gravity work of @sec-ch06 runs on this grid with a
+midpoint, not the volume centroid; the corrected-PE[^rg-d5e077ac54b1] gravity work of @sec-ch06 runs on this grid with a
 centroid-offset term for that difference (@sec-ch06-dwork). The geometry was set up in the Mathematica notebook
 {{< code src/coord/cubed_sphere6.nb >}},
 which is symbolic and is not a prose derivation.
@@ -234,7 +234,7 @@ $\hat{\mathbf t}_\xi$: $\nabla\cdot\hat{\mathbf u} = 2/r$ and $\mathbf v\cdot(\n
 The code evaluates @eq-ch03-gnomonic-src2 with cell values
 ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::forward >}}). The factor $-X/(rD)$ is the discrete divergence
 $\Delta_j[A\sin\psi]/V_i$ of $\hat{\mathbf t}_\xi$, `x_ov_rD_kji`, so the pressure part is the balance above. The velocity
-part is `x_ov_rD_kji * rho * v3 * v3 * sine2` and `- rho * v1 * v_2 / radius`, with `radius` the midpoint `x1v`.
+part is `x_ov_rD_kji * rho * v3 * v3 * sine2` and `- rho * v1 * v_2 / radius`, with `radius`[^rg-de142f472665] the midpoint `x1v`.
 The radial source is `rho * (v2 * v_2 + v3 * v_3) / radius` plus the pressure term. In the $m_1$ equation the
 face-pressure form of @sec-ch03-sphpolar replaces $2p/r$ whenever face pressures exist. The two velocity identities
 were checked by hand at three panel points (`-(X/D) v3^2 sin^2 psi` for the tangential part,
@@ -313,6 +313,7 @@ following. This card
 is not runnable with the `straka` driver: its initial state treats $x_1$ as height, not radius. The tangential
 faces must be named `custom` (@sec-ch03-physfaces), because the default `reflecting` would act on the panel edges:
 
+<!-- reader glossary keys -->Keys in this fragment: `x3min_pi`[^rg-c95e8cfafdcf], `x3max_pi`[^rg-cb56f7532a92], `external`[^rg-f40f85f87106], `x1-inner`[^rg-daddfd12b96a], `x1-outer`[^rg-60952881820b], `x2-inner`[^rg-c7b5a7d38ab1], `x2-outer`[^rg-a0f53b9518db], `x3-inner`[^rg-235afd2e74d2], `x3-outer`[^rg-dbe77d8a94f1].
 ```yaml
 geometry:
   type: gnomonic-equiangle
@@ -336,7 +337,7 @@ partitioning (6)." Refused, each with its message:
 - `nx2` unequal to `nx3`: "GnomonicEquiangleImpl::reset(): nx2 must equal nx3";
 - `interp_order` other than 2: "Only 2nd order ghost interpolation is supported";
 - `nb1` > 1: "CubedSphereLayoutImpl: pz must be 1 for cubed-sphere layout";
-- `nb2` unequal to `nb3`: "CubedSphereLayoutImpl: px must equal py for cubed-sphere layout".
+- `nb2` unequal to `nb3`[^rg-8393bb768f37]: "CubedSphereLayoutImpl: px must equal py for cubed-sphere layout".
 
 The checks and the exact solid angle @eq-ch03-gnomonic-solidangle are
 ({{< code src/coord/gnomonic_equiangle.cpp GnomonicEquiangleImpl::reset >}}):
@@ -412,3 +413,31 @@ single $x_1$ cell there are no face pressures and the radial pressure source is 
 from $\Delta_i[A]p/V_i = 2p\langle r^{-1}\rangle_{V_i}$ by the relative factor $1/(1 + \Delta x_{1,i}^2/(12(x^{\mathrm{m}}_{1,i})^2))$
 (algebra from @eq-ch03-gnomonic-volume; not measured). The switch
 combinations that are tested are listed in the switch coverage matrix, @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-788c4c144f03]: $\xi, \eta$ — the two gnomonic-equiangle panel coordinates of a cubed-sphere block ($x_2, x_3$) [rad]
+
+[^rg-d5e077ac54b1]: PE — potential energy
+
+[^rg-de142f472665]: radius — particle radii indexed by species
+
+[^rg-c95e8cfafdcf]: x3min_pi — lower bound of the third coordinate in multiples of pi
+
+[^rg-cb56f7532a92]: x3max_pi — upper bound of the third coordinate in multiples of pi
+
+[^rg-f40f85f87106]: external — boundary-function names for external domain faces
+
+[^rg-daddfd12b96a]: x1-inner — boundary name on the inner first-coordinate face
+
+[^rg-60952881820b]: x1-outer — boundary name on the outer first-coordinate face
+
+[^rg-c7b5a7d38ab1]: x2-inner — boundary name on the inner second-coordinate face
+
+[^rg-a0f53b9518db]: x2-outer — boundary name on the outer second-coordinate face
+
+[^rg-235afd2e74d2]: x3-inner — boundary name on the inner third-coordinate face
+
+[^rg-dbe77d8a94f1]: x3-outer — boundary name on the outer third-coordinate face
+
+[^rg-8393bb768f37]: nb3 — number of blocks along the third coordinate direction
+<!-- end reader glossary notes -->

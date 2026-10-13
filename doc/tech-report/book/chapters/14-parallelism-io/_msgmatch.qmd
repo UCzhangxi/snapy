@@ -27,7 +27,7 @@ copied in memory once all $b$ blocks of the process have reached the same sync.
 **Evidence.** The Tests layer below, @tbl-ch14-msgmatch-tests.
 :::
 
-Local symbols, upright because $\phi$, $T$ and $n$ already denote potential,
+Local symbols, upright because $\phi$[^rg-79db5524f820], $T$[^rg-856eb97c6570] and $n$ already denote potential,
 temperature and species index in @sec-appa: $\mathrm{phy}$ the `phyid` of a sync [count]; $\mathrm{loc}$ a local block index
 (@eq-ch14-launch-rank) [count]; $\mathrm{buf}$ a buffer id [count]; $\mathrm{var}$ the index of a variable in an
 exchange [count]; $\mathrm{tag}_0$ the base tag and $\mathrm{tag}$ the message tag [count]; $b$ the blocks per
@@ -67,7 +67,7 @@ output `msgmatch_check.out`, `[C1]`], the bound $2^{31}$ (`[C2]`), and the colli
 
 Two other kinds of message share the process group:
 
-1. Block-to-block messages (`send_to_block`, `recv_from_block`), used by the $x_1$ relays of @sec-ch03-x1seams.
+1. Block-to-block messages (`send_to_block`, `recv_from_block`), used by the $x_1$[^rg-e4c312927e59] relays of @sec-ch03-x1seams.
    They add $65536\,(\mathrm{loc}_\text{send}\, b + \mathrm{loc}_\text{recv})$ to a caller tag. With $b \le 16$ (checked) the factor is
    below 256, so the low 16 bits stay the caller's tag (`send_to_block`, {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}}).
    The comment above `send_to_block` {{< code src/layout/layout.hpp LayoutImpl::send_to_block >}} gives the argument: the hydro relay
@@ -155,7 +155,7 @@ TORCH_CHECK(phyid >= 0 && tag >= 0 && tag < 65536, "comm tag ", tag, ...);
 | remote posts, mutex, coalescing | {{< code src/layout/layout.cpp LayoutImpl::exchange_remote >}} | `exchange_remote` | `BACKEND` |
 | one message per variable | {{< code src/layout/layout.cpp exchange_each_var >}} | `exchange_each_var` | none |
 | block-to-block tags | {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}} | `send_to_block` | none |
-| $x_1$ column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | `nb1` |
+| $x_1$ column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | `nb1`[^rg-3ac9b49e27c2] |
 | boards with 5-minute waits | {{< code src/layout/layout.cpp LayoutImpl::take_from_local_block >}} | `take_from_local_block` | none |
 | cubed-sphere remote posts | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::exchange_remote >}} | `g_cubed_sphere_comm_mutex` | `layout: cubed-sphere` |
 
@@ -195,3 +195,13 @@ processes with tags that would alias if the offset were missing; the argument ab
 - From the 257th variable of one exchange on, exchange tags overlap the `gather_x1` range above $2^{24}$;
   `exchange_each_var` refuses only more than 32768 variables (`msgmatch_check.py` `[C5]`).
 :::
+
+<!-- reader glossary notes -->
+[^rg-79db5524f820]: $\phi$ — gravitational potential, $\phi(x_1) = -g_1x_1$ (increases upward); never an angle
+
+[^rg-856eb97c6570]: $T$ — temperature [K]
+
+[^rg-e4c312927e59]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-3ac9b49e27c2]: nb1 — number of blocks along the first coordinate direction
+<!-- end reader glossary notes -->

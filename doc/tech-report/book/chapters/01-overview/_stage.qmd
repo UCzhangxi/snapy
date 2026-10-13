@@ -21,7 +21,7 @@ combination and the tracer transfer rest on, because later chapters cite them.
 
 **Data.** In: `hydro_u`, `scalar_s`, the stage weights, any user increments. Out: the combined interior state.
 
-**Placement.** Once per RK stage, inside the block's advance, between the exchange and the physical fills.
+**Placement.** Once per RK[^rg-251dacab968c] stage, inside the block's advance, between the exchange and the physical fills.
 
 **Activation.** User increments only with callbacks installed (`user_stage_forcings`); the stages are pyharp's.
 
@@ -37,8 +37,8 @@ These transfer symbols are defined locally above.
 
 ### Derivation
 
-The fields in this section are cell averages. The conserved vector $\mathbf U$ holds densities, momentum
-densities and the energy density with the units of appendix A, and $\Delta t$ is the step [s].
+The fields in this section are cell averages. The conserved vector $\mathbf U$[^rg-879841a906d0] holds densities, momentum
+densities and the energy density with the units of appendix A, and $\Delta t$[^rg-473f42b9b5af] is the step [s].
 
 Write $\Delta\mathbf U$ for the supplied stage increment, in the units of the corresponding conserved
 component. The source comment states the combine as an in-place affine recurrence with the weights
@@ -50,7 +50,7 @@ $$ {#eq-ch01-stage-combine}
 
 @eq-ch01-stage-combine is the recurrence stated in the comment beside `cw` in
 {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}. The increment here includes whichever explicit and
-implicit operations were selected, not only the explicit increment $\Delta\mathbf U^{(0)}$ of appendix A.
+implicit operations were selected, not only the explicit increment $\Delta\mathbf U^{(0)}$[^rg-e6248a941ab9] of appendix A.
 
 Consider a fixed supplied increment in stage $s$, holding the later increments fixed. It enters the combination
 with the coefficient $w_2^{(s)}$. The next combine multiplies this contribution by $w_1^{(s+1)}$, and the saved
@@ -82,7 +82,7 @@ r_{n,i+1}, & J^{\mathrm{d}}_{i+1/2}\le 0,
 $$ {#eq-ch01-stage-upwind}
 
 the upwind tensor `P` of {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}; the increment of a
-cell is the net transfer over its volume $V_i$ [$\mathrm{m^3}$],
+cell is the net transfer over its volume $V_i$[^rg-902e93eb3066] [$\mathrm{m^3}$],
 
 $$
 \Delta\rho_{n,i} = \frac{J^{\mathrm{tr}}_{n,i-1/2}-J^{\mathrm{tr}}_{n,i+1/2}}{V_i},
@@ -217,6 +217,20 @@ has been run for this report at the pin: **pending a pinned ctest run**.
 
 ::: {.callout-warning title="Limits"}
 The stage algebra proves neither positivity after arbitrary user increments nor accuracy after nonlinear
-limiting or phase adjustment. Switch combinations remain subject to @sec-ch12-matrix; no new CPU, CUDA or
+limiting or phase adjustment. Switch combinations remain subject to @sec-ch12-matrix; no new CPU, CUDA[^rg-28386113293d] or
 multi-rank snapy run is claimed.
 :::
+
+<!-- reader glossary notes -->
+[^rg-251dacab968c]: RK — Runge–Kutta
+
+[^rg-879841a906d0]: $\mathbf U$ — conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$
+
+[^rg-473f42b9b5af]: $\Delta t$ — the step
+
+[^rg-e6248a941ab9]: $\Delta\mathbf U^{(0)}$ — the explicit stage increment handed to the implicit solve
+
+[^rg-902e93eb3066]: $V_i$ — cell volume
+
+[^rg-28386113293d]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

@@ -42,7 +42,7 @@ Why the catalogue reads these tests the way it does, each step tied to the sourc
 
 1. *Test preservation before convergence.* `DeviceTest.reconstruct_preserves_a_constant_field`
    ({{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}}) feeds a constant array to
-   the donor-cell, PLM and WENO5 reconstructions in each direction and requires the output to equal that
+   the donor-cell, PLM[^rg-cf6b04bc68b1] and WENO5[^rg-50dd55ea6e88] reconstructions in each direction and requires the output to equal that
    constant by `allclose` at its library defaults, and to have the two-sided face shape.
 2. *Do not read an order from a zero residual on a constant.* Every reconstruction reproduces a constant
    exactly in exact arithmetic, so the row establishes the plumbing, not the order of @sec-ch04.
@@ -131,15 +131,15 @@ EXPECT_TRUE(torch::allclose(result, torch::full_like(result, 2.)))
 | `test_radial_face_moments.release` | curved-face moments match the exact integrals | relative $10^{-14}$ | the test |
 | `test_flux_covariance_rows_python` | rest, uniform-fraction, offset and Cartesian-onset arms | $10^{-9}$, $10^{-13}$, $10^{-10}$, $2\times10^{-3}$ | the script's constants |
 | `test_horizontal_flux_covariance_python` | onset error off in $[-0.32, -0.20]$, on below 0.04; energy drift | `BASE`, `FIXED`, `EPE_TOL` $= 10^{-12}$ | the script's constants |
-| `recon_check.py` (report only) | polynomial and WENO identities, slope bounds, face-order ladders | script assertions | the ported formulas |
+| `recon_check.py` (report only) | polynomial and WENO[^rg-d5c0bdc7b42f] identities, slope bounds, face-order ladders | script assertions | the ported formulas |
 | `covariance_check.py` (report only) | moment identities, centroid correction, rest and wall slope | script assertions | the ported formulas |
-| `operator_check.py` (report only) | divergence, LMARS and species-row bookkeeping | script assertions | the ported formulas |
+| `operator_check.py` (report only) | divergence, LMARS[^rg-c2f0d69d715d] and species-row bookkeeping | script assertions | the ported formulas |
 
 : Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch04-tests-assertions}
 
 The three report checks run through `src/tests/test_checks.py` and import no snapy; their derivations are in
-@sec-ch04. `recon_check.py` covers polynomial reproduction, the linear WENO3 and WENO5 combinations, the face
-orders at smooth and critical points, the harmonic PLM slope, the PPM placeholder and the donor-cell ladder.
+@sec-ch04. `recon_check.py` covers polynomial reproduction, the linear WENO3[^rg-6abe5e01be09] and WENO5 combinations, the face
+orders at smooth and critical points, the harmonic PLM slope, the PPM[^rg-937d74d91431] placeholder and the donor-cell ladder.
 The PPM placeholder it ports is `interp_ppm` ({{< code src/recon/interp_simple.hpp interp_ppm >}}), a
 formula that returns its input and that nothing in the code calls. A deck that selects `type: ppm` does not
 reach it: `InterpImpl::create` ({{< code src/recon/interpolation.cpp InterpImpl::create >}}) builds a
@@ -162,5 +162,21 @@ dispatched kernel.[^ch15-ch04-run]
 
 ### Limits
 
-The selected tests do not establish the end-to-end order of the corrected fluxes, HLLC contact resolution, Roe
+The selected tests do not establish the end-to-end order of the corrected fluxes, HLLC[^rg-af383383cbc0] contact resolution, Roe
 accuracy, plume-Roe coverage, or the error hidden by seam averaging; those need dedicated runs at the pin.
+
+<!-- reader glossary notes -->
+[^rg-cf6b04bc68b1]: PLM — piecewise-linear method
+
+[^rg-50dd55ea6e88]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
+
+[^rg-d5c0bdc7b42f]: WENO — weighted essentially non-oscillatory
+
+[^rg-c2f0d69d715d]: LMARS — low-Mach approximate Riemann solver
+
+[^rg-6abe5e01be09]: WENO3 — third-order weighted essentially non-oscillatory reconstruction
+
+[^rg-937d74d91431]: PPM — piecewise-parabolic method
+
+[^rg-af383383cbc0]: HLLC — Harten–Lax–van Leer solver with the contact restored
+<!-- end reader glossary notes -->

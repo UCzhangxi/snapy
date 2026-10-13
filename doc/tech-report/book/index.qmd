@@ -18,25 +18,22 @@ releases on PyPI (`pip install snapy`) are older than the pin. They lack the env
 switch the code does not know is ignored without a message. Older releases also refuse the `gravity-work` keys of
 chapter 6. So build the pin, as below, before you try any example.
 
-**What you need.** Python 3.10 to 3.13, CMake 3.20 or later, a C++17 compiler, and the NetCDF C library (on macOS,
-`brew install netcdf`; on Debian/Ubuntu, `sudo apt install libnetcdf-dev`). The Python packages are PyTorch 2.10.0 and kintera 2.6.2 or later; configuration stops
-with "Could NOT find Kintera" when kintera is older.
+<!-- generated reader-reference: install -->
+**What you need.** Python `>=3.10` ([`pyproject.toml:24`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/pyproject.toml#L24)), CMake 3.22 or later ([`CMakeLists.txt:1`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/CMakeLists.txt#L1)), a C++17 compiler ([`CMakeLists.txt:3`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/CMakeLists.txt#L3)), and the NetCDF C library. Install the latter with `brew install netcdf` on macOS or `sudo apt install libnetcdf-dev` on Debian/Ubuntu.
 
-**Build.** The pin is the `sha:` line of `code_pin.yml`. It is also the commit in every code link of this book,
-for example {{< code README.md >}}.[^preface-pin] Use any supported Python version (3.10–3.13) for `python3`.
-
-[^preface-pin]: The source commit for this edition is `6fbb39750f62b83df096058a4746e77d0a634bc5`, from
-    `code_pin.yml`; substitute it for `<pin>` below.
+**Build the source pin.** The Python dependencies below follow [`pyproject.toml`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/pyproject.toml); the CMake options explicitly enable the example drivers and disable the optional UCX and parallel-NetCDF backends for this single-machine build.
 
 ```bash
 python3 -m venv snapy-env && source snapy-env/bin/activate
 pip install numpy pyyaml "kintera>=2.6.2" torch==2.10.0
 git clone https://github.com/chengcli/snapy && cd snapy
-git checkout <pin>
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DNETCDF=ON -DUCX=OFF
+git checkout 6fbb39750f62b83df096058a4746e77d0a634bc5
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_EXAMPLES=ON -DNETCDF=ON -DPNETCDF=OFF -DUCX=OFF
 cmake --build build --parallel 6
 pip install .
 ```
+<!-- end reader-reference: install -->
 
 `-DUCX=OFF` builds the Gloo backend only, which is all a single machine needs; @sec-ch14-backends describes UCX.
 The build also compiles the tests (`BUILD_TESTS` is on by default). A test named in a Tests layer runs with

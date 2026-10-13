@@ -26,7 +26,7 @@ $f^{(a)}_{i\pm1/2}$ the $x_1$ face flux of the momentum component $m_a$ (`flux1[
 **Purpose.** The exact $r^2\sin\theta$ measures of a spherical-polar cell (@eq-ch03-sphpolar-metric), volume
 centroids for the cell centres, and the curvature sources of the momentum equations.
 
-**Data.** In: global faces in $r$ [m], $\theta$, $\varphi$ [rad]. Out: areas [m$^2$], volumes [m$^3$], centres
+**Data.** In: global faces in $r$[^rg-8f3539a20049] [m], $\theta$[^rg-f8c6079838f7], $\varphi$[^rg-d44d77aee75f] [rad]. Out: areas [m$^2$], volumes [m$^3$], centres
 `x1v`, `x2v`, source coefficients.
 
 **Placement.** Metric at setup (`reset`); sources in every stage.
@@ -131,7 +131,7 @@ divergence (`div[IVX] -= src1`) before the update $\Delta\mathbf U = -\Delta t\,
 
 To average a source over the cell, the code assumes that each factor of the geometry averages on its own.
 The measure separates as $r^2\,\mathrm{d}r$ times $\sin\theta\,\mathrm{d}\theta$, so the factor $1/r$ is replaced by
-its volume average and the factor $\cot\theta$ by its own, while $\rho$, $\mathbf v$ and $p$ keep their cell values:
+its volume average and the factor $\cot\theta$ by its own, while $\rho$[^rg-9ad8c245b530], $\mathbf v$[^rg-0384f104c8ca] and $p$[^rg-fc67e812a387] keep their cell values:
 
 $$
 \begin{aligned}
@@ -148,7 +148,7 @@ S^{(1)}_i = \langle r^{-1}\rangle_{V_i}\left[\rho_i\left(v_{2,i}^2 + v_{3,i}^2\r
 $$ {#eq-ch03-sphpolar-src1}
 
 computed in `forward` as `src1` ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}), which is subtracted from the divergence
-row of $m_1$. The approximation is the replacement of the cell average of a product by the product of cell values,
+row of $m_1$[^rg-a998e68d3e21]. The approximation is the replacement of the cell average of a product by the product of cell values,
 an error of $O(\Delta x_a^2)$ in each direction $a$.
 
 When the Riemann solver returns the face pressures $p_{i\pm1/2}$ and they are inside the $m_1$ flux, the code
@@ -273,6 +273,7 @@ In step order (@tbl-ch03-sphpolar-code):
 in units of $\pi$. Replace `geometry` in a copy of `straka_single.yaml` saved as `deck.yaml` with the following. This card is
 not runnable with the `straka` driver: its initial state treats $x_1$ as height, not radius.
 
+<!-- reader glossary keys -->Keys in this fragment: `x2max_pi`[^rg-f2733a81186c].
 ```yaml
 geometry:
   type: spherical-polar
@@ -346,9 +347,9 @@ terms. They were not run for this chapter at the pin (missing evidence).
 :::
 
 A hypothesis from reading the code, not measured: the angular-momentum terms of `forward` multiply `coord_src2_i`,
-which divides by the radial factor $V^{(1)}_i$ only, by the full face area `face_area1` $= r_\pm^2\varpi_{jk}$
+which divides by the radial factor $V^{(1)}_i$[^rg-bbe09e4ed06f] only, by the full face area `face_area1` $= r_\pm^2\varpi_{jk}$
 ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}). @eq-ch03-sphpolar-angmom needs $r_\pm^2$ there, so as
-written the term carries an extra factor of the cell's solid angle $\varpi_{jk}$. The $x_2$ term multiplies
+written the term carries an extra factor of the cell's solid angle $\varpi_{jk}$[^rg-3c62fd4496b8]. The $x_2$ term multiplies
 `coord_src1_i` and `coord_src2_j` by the full `face_area2` $= \tfrac12(r_+^2-r_-^2)\lvert\sin\theta_\pm\rvert
 \Delta\varphi$ where the $\sin\theta$ form needs $\lvert\sin\theta_\pm\rvert$ alone
 ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::forward >}}). If this reading is right, the $-\rho v_1v_2/r$ and
@@ -359,3 +360,25 @@ A failing regression test is still needed to establish this behavior.
 
 The `x2` refusal is skipped when there is one $x_2$ cell. The switch combinations that are tested are listed in the
 switch coverage matrix, @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-8f3539a20049]: $r$ — $x_1$ on a spherical-polar grid (radius) [m]
+
+[^rg-f8c6079838f7]: $\theta$ — $x_2$ on a spherical-polar grid (colatitude) [rad]
+
+[^rg-d44d77aee75f]: $\varphi$ — $x_3$ on a spherical-polar grid (azimuth) [rad]; never the potential
+
+[^rg-9ad8c245b530]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-0384f104c8ca]: $\mathbf v = (v_1,v_2,v_3)$ — velocity [m s$^{-1}$]
+
+[^rg-fc67e812a387]: $p$ — pressure [Pa]
+
+[^rg-a998e68d3e21]: $m_1, m_2, m_3$ — momentum density $\rho v_a$
+
+[^rg-f2733a81186c]: x2max_pi — upper bound of the second coordinate in multiples of pi
+
+[^rg-bbe09e4ed06f]: $V^{(1)}_i$ — the $x_1$ factor of the cell volume, $V_{ijk}=\varpi_{jk}V^{(1)}_i$: $\tfrac13(x_{1,i+1/2}^3-x_{1,i-1/2}^3)$ on spherical-polar, $h_i$ on Cartesian
+
+[^rg-3c62fd4496b8]: $\varpi_{jk}$ — horizontal factor of a cell volume, $V_{ijk}=\varpi_{jk}V^{(1)}_i$: the solid angle on spherical-polar ($V^{(1)}_i=\tfrac13(r_{+}^3-r_{-}^3)$), $\Delta x_2\Delta x_3$ on Cartesian ($V^{(1)}_i=h_i$)
+<!-- end reader glossary notes -->

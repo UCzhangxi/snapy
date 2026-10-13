@@ -17,7 +17,7 @@ floors can clip a state, so the two directions of the conversion are exact inver
 ::: {.callout-note title="At a glance"}
 **Purpose.** Converts conserved and primitive states with $p=(\gamma_{\mathrm d}-1)(E-K)$, @eq-ch02-ideal-gas-pressure.
 
-**Data.** Reads `hydro_u` ($\rho$, $m_a$, $E$) or `hydro_w` ($\rho$, $\mathbf v$, $p$); writes the other, $T$ and $c_s$.
+**Data.** Reads `hydro_u` ($\rho$, $m_a$, $E$) or `hydro_w` ($\rho$, $\mathbf v$[^rg-e34067e65a82], $p$[^rg-4a97e2fbfd24]); writes the other, $T$[^rg-a8a15585c552] and $c_s$.
 
 **Placement.** At every conserved-to-primitive and primitive-to-conserved conversion of every stage.
 
@@ -37,7 +37,7 @@ rounding.
 #### From the gas law to the pressure
 
 1. *Two laws for one gas.* A calorically perfect gas has $e=c_{v,\mathrm d}T$ and $p=\rho R_{\mathrm d}T$, with
-   $T$ in K and $c_{v,\mathrm d}$, $R_{\mathrm d}$ in J kg$^{-1}$ K$^{-1}$.
+   $T$ in K and $c_{v,\mathrm d}$, $R_{\mathrm d}$[^rg-5c552fe80570] in J kg$^{-1}$ K$^{-1}$.
 2. *Eliminate $T$.* With $R_{\mathrm d}=(\gamma_{\mathrm d}-1)c_{v,\mathrm d}$ the two laws give
    $p=(\gamma_{\mathrm d}-1)\rho e$.
 3. *Remove the kinetic energy.* The conserved row holds $E=\rho e+K$. The kinetic energy pairs the contravariant
@@ -152,7 +152,7 @@ PRIM(IPR) = (gammad - 1.) * ie;
 ```
 
 The divisions are step 1 of the round-off derivation; the raise is step 3 of the pressure derivation; `ke` is $K$
-and `ie` is $\rho e$ of @eq-ch02-ideal-gas-pressure; the last line is its second row. The CPU and MPS backends of
+and `ie` is $\rho e$ of @eq-ch02-ideal-gas-pressure; the last line is its second row. The CPU and MPS[^rg-eacc0154b64b] backends of
 the kernel are `ideal_gas_cons2prim_cpu` and `ideal_gas_cons2prim_mps`
 ({{< code src/eos/eos_dispatch.cpp ideal_gas_cons2prim_cpu >}}).
 
@@ -168,7 +168,7 @@ the kernel are `ideal_gas_cons2prim_cpu` and `ideal_gas_cons2prim_mps`
 The check is independent algebra and a float64 port of the kernel.[^ig-run] `[C1]`: a state on a nonorthogonal
 metric survives the conserved-primitive round trip with residual 0. `[C2]`: sympy confirms steps 2 and 4.
 `[C3]`: over 2000 random states with $K/\rho e$ up to 279, the measured pressure error is at most 0.724 of the
-derived bound on the recorded run; these digits depend on the NumPy/BLAS reduction order. The check
+derived bound on the recorded run; these digits depend on the NumPy/BLAS[^rg-94c9e8b11c53] reduction order. The check
 requires the measured error to stay within the bound, not to reproduce 0.724 on every host.
 
 No ctest runs a conserved-primitive round trip of the ideal gas: the round-trip case in `tests/test_eos.cpp` is
@@ -186,3 +186,17 @@ not been run for this report at the pin: **pending a pinned ctest run**.
    $\epsilon_{\mathrm m}/\sin^2$ of the axis angle, not derived here.
 3. **No round-trip ctest** of the ideal gas exists at the pin (Tests above).
 4. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-e34067e65a82]: $\mathbf v = (v_1,v_2,v_3)$ — velocity [m s$^{-1}$]
+
+[^rg-4a97e2fbfd24]: $p$ — pressure [Pa]
+
+[^rg-a8a15585c552]: $T$ — temperature [K]
+
+[^rg-5c552fe80570]: $R_{\mathrm{d}}$, $R_n$ — specific gas constants of dry air and species $n$ [J kg$^{-1}$ K$^{-1}$]
+
+[^rg-eacc0154b64b]: MPS — Metal Performance Shaders
+
+[^rg-94c9e8b11c53]: BLAS — Basic Linear Algebra Subprograms
+<!-- end reader glossary notes -->

@@ -52,7 +52,7 @@ neither kind of wall.
 
 A repeated fill must reproduce the same ghost values from the owned slab. This idempotence is a contract on the
 callback, not a property of every tensor map; the registry asks for it because the corner refresh of
-@sec-ch11-timing calls the x1 callbacks a second time on a slab that is only $n_g$ cells wide in the
+@sec-ch11-timing calls the x1 callbacks a second time on a slab that is only $n_g$[^rg-eb437280a055] cells wide in the
 tangential direction. Check C1 exercises the contract for the built-in mirror and copy rules; no spatial order
 is assigned to dispatch [check `src/snapy_report/ch11/boundary_check.py`, output
 `src/snapy_report/ch11/boundary_check.out`]. The checks do not call a snapy kernel.
@@ -62,7 +62,7 @@ is assigned to dispatch [check `src/snapy_report/ch11/boundary_check.py`, output
 The face order is x1 inner, x1 outer, x2 inner, x2 outer, x3 inner, x3 outer (`BoundaryFace`,
 {{< code src/bc/bc.hpp BoundaryFace >}}); in the four-dimensional hydro tensor `(variable, x3, x2, x1)` these
 faces act on dimensions 3, 2 and 1, and a callback receives the dimension it fills. The context
-`BoundaryFuncOptions` ({{< code src/bc/bc.hpp BoundaryFuncOptions >}}) carries a non-owning EOS and coordinate
+`BoundaryFuncOptions` ({{< code src/bc/bc.hpp BoundaryFuncOptions >}}) carries a non-owning EOS[^rg-c1e78441628b] and coordinate
 pointer, the saved backgrounds that outflow needs, the representation (`kConserved`, `kPrimitive` or
 `kScalar`) and the ghost width $n_g$. On a collapsed direction (one cell) the card entry is not read: the
 parser pushes a null callback and an empty name for both faces of that direction whenever a later direction
@@ -92,6 +92,7 @@ make_fig()
 
 This is a configuration fragment, not a standalone simulation deck.
 
+<!-- reader glossary keys -->Keys in this fragment: `boundary-condition`[^rg-0690af43bd09], `external`[^rg-e33572655eb1], `x1-inner`[^rg-2edc7768acef], `x1-outer`[^rg-b83a33b703a1].
 ```yaml
 boundary-condition:
   external:
@@ -160,7 +161,7 @@ Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
 The report-only checks `[C1]` establish that copy, parity, idempotence and corner ownership hold
 exactly.[^ch11-registry-run]
 These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
-assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+assertions and tolerances, not new CPU[^rg-0053a75b1713], CUDA[^rg-df3b18643faf] or multi-rank solver results.
 
 [^ch11-registry-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
     run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
@@ -179,3 +180,21 @@ face that carries a custom callback counts as physical wherever a physical-face 
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
 is claimed.
 :::
+
+<!-- reader glossary notes -->
+[^rg-eb437280a055]: $n_g$ — ghost cells on each side
+
+[^rg-c1e78441628b]: EOS — equation of state
+
+[^rg-0690af43bd09]: boundary-condition — boundary-function names for the domain faces
+
+[^rg-e33572655eb1]: external — boundary-function names for external domain faces
+
+[^rg-2edc7768acef]: x1-inner — boundary name on the inner first-coordinate face
+
+[^rg-b83a33b703a1]: x1-outer — boundary name on the outer first-coordinate face
+
+[^rg-0053a75b1713]: CPU — central processing unit
+
+[^rg-df3b18643faf]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

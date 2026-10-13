@@ -13,8 +13,11 @@ status: draft
 After reconstruction each face has two states, one from each side, and the solver turns them into the one flux
 the face carries. snapy has six solvers behind one interface; the deck picks one for all three directions. The
 solver also returns the face pressure the $x_1$ pressure force and the well-balanced path need, and three of the
-six cannot. Which solver a deck gets when it says nothing is not obvious: no `riemann-solver` block gives `hllc`,
-an empty block gives `roe`. The shipped decks name `lmars` (7), `hllc` (6) or `shallow-roe` (9).
+six cannot. The shipped decks name `lmars` (7), `hllc` (6) or `shallow-roe` (9).
+
+<!-- generated reader-reference: riemann -->
+For hydrodynamics, omitting the `riemann-solver` block preserves `hllc` ([`src/riemann/riemann_solver.hpp:33`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/riemann/riemann_solver.hpp#L33)); a present block without `type` selects `roe` ([`src/riemann/riemann_solver.cpp:27`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/riemann/riemann_solver.cpp#L27)). These are distinct parser paths at source pin `6fbb39750f62b83df096058a4746e77d0a634bc5`.
+<!-- end reader-reference: riemann -->
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** One flux per face from $\mathbf W^{\mathrm L}_f, \mathbf W^{\mathrm R}_f$, rows renamed by @eq-ch04-riemann-frame.
@@ -23,7 +26,7 @@ an empty block gives `roe`. The shipped decks name `lmars` (7), `hllc` (6) or `s
 
 **Placement.** Every RK stage, in `HydroImpl::forward`, once per direction after the reconstruction.
 
-**Activation.** `dynamics/riemann-solver/{type,dir}`; no block: `hllc`, `omni`; block without keys: `roe`, `omni`.
+**Activation.** `dynamics/riemann-solver/{type,dir}`; the generated statement above distinguishes the two parser paths.
 
 **Guarantee / limits.** Consistent solvers; only `lmars`, `hllc`, `roe` write a face pressure.
 
@@ -40,7 +43,7 @@ index, 3 for $x_1$, 2 for $x_2$, 1 for $x_3$.
 #### Why one solver body serves all three directions
 
 1. *The flux through a face depends on the normal velocity.* Mass, energy and every species move with
-   $v_\perp$, the normal momentum also carries $p$, and the tangential momenta move passively.
+   $v_\perp$, the normal momentum also carries $p$[^rg-b356ccc3d610], and the tangential momenta move passively.
 2. *The code renames rows instead of rotating vectors.* For direction `dim` the normal momentum row is
 
    $$
@@ -99,6 +102,7 @@ flux buffer.
 
 **A minimal input.**
 
+<!-- reader glossary keys -->Keys in this fragment: `dir`[^rg-a2031683b1d7].
 ```yaml
 dynamics:
   riemann-solver:
@@ -108,11 +112,11 @@ dynamics:
 
 **What the parser accepts and refuses.** `RiemannSolverOptionsImpl::from_yaml` and the factory apply, in order:
 
-1. *No `riemann-solver` block*: the options object is returned as constructed, `type = "hllc"`, `dir = "omni"`
+1. *No `riemann-solver` block*: the options object is returned as constructed (see the generated defaults above)
    ({{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}}).
 2. *A block takes only `type` and `dir`*; any other key is refused by `check_keys` ("unknown key
    'dynamics/riemann-solver/foo'. Valid keys: type, dir").
-3. *Inside a block a missing key defaults* to `type: roe` and `dir: omni`
+3. *Inside a block a missing key uses the parser fallback*; the type is stated above, and the direction is `omni`
    ({{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}}).
 4. *An unknown type is refused* by `RiemannSolverImpl::create` ("RiemannSolver: unknown type exact").
 5. *`shallow-roe` refuses `dir: omni`* when it runs, and on a gnomonic grid requires `dir: yz` at construction
@@ -144,8 +148,8 @@ cyclic tangential rows.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| defaults with no block | {{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}} | `type` | `hllc`, `omni` |
-| defaults inside a block | {{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | `roe`, `omni` |
+| defaults with no block | {{< code src/riemann/riemann_solver.hpp RiemannSolverOptionsImpl >}} | `type` | `riemann-solver` |
+| defaults inside a block | {{< code src/riemann/riemann_solver.cpp RiemannSolverOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | `type`, `dir` |
 | the factory | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::create >}} | `create` | six types |
 | upwind, and the face-pressure refusal | {{< code src/riemann/riemann_solver.cpp RiemannSolverImpl::forward >}} | `forward` | `type: upwind` |
 | face pressure always requested on $x_1$ | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `_face_pressure1` | $n_{c1}>1$ |
@@ -174,9 +178,15 @@ and 1, 2.[^rs-run] `test_riemann.release` passes at the pin on CPU, one rank (@t
 
 ### Limits
 
-1. **Two defaults.** Omitting the block and writing an empty block give different solvers, `hllc` and `roe`.
+1. **Two parser paths.** Deleting the block and deleting only its type are different operations; see the generated defaults above.
 2. **`roe` is not projected.** On a gnomonic grid it solves in panel components (@sec-ch04-gnomonic); no test
    runs `roe` on a curved grid.
 3. **`upwind` is the scalar solver.** As a hydro solver it is refused wherever $x_1$ is resolved, and elsewhere it
    multiplies by the flux buffer it is handed.
 4. **`dir`** matters only to `shallow-roe`; for the other five it is parsed and unused.
+
+<!-- reader glossary notes -->
+[^rg-b356ccc3d610]: $p$ — pressure [Pa]
+
+[^rg-a2031683b1d7]: dir — direction selector for solvers that use it
+<!-- end reader glossary notes -->

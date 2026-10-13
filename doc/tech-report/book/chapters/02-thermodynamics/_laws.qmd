@@ -18,9 +18,9 @@ the last stage the phase adjustment sits, because that decides what the wall gho
 ::: {.callout-note title="At a glance"}
 **Purpose.** Forms the flux-only stage increment, @eq-ch02-laws-increment, whose volume-weighted sum telescopes.
 
-**Data.** Reads face fluxes, face areas, cell volumes $V_i$ and $\Delta t$; writes the stage increment `du`.
+**Data.** Reads face fluxes, face areas, cell volumes $V_i$[^rg-6dfd3fd44de6] and $\Delta t$[^rg-6e8706cff990]; writes the stage increment `du`.
 
-**Placement.** Every RK stage, in `HydroImpl::forward`; the phase solve and boundary fill end the last stage.
+**Placement.** Every RK[^rg-f31b5cad787a] stage, in `HydroImpl::forward`; the phase solve and boundary fill end the last stage.
 
 **Activation.** Always on; no switch. The integrator sets the number of stages.
 
@@ -30,14 +30,14 @@ the last stage the phase adjustment sits, because that decides what the wall gho
 :::
 
 Local symbols: $\Delta\mathbf U^{\mathrm{flux}}_i$ the flux-only increment of
-cell $i$; $A_{i+1/2}$ the area of face $i+1/2$ [m$^2$]; $[A\mathbf F_1]_{i+1/2}=A_{i+1/2}\mathbf F_{1,i+1/2}$ the face product,
-area times flux [units of $\mathbf U$ times m$^3$ s$^{-1}$]; $\eta_j$ the relative error of one rounding.
+cell $i$[^rg-9fe3deae45f9]; $A_{i+1/2}$ the area of face $i+1/2$ [m$^2$]; $[A\mathbf F_1]_{i+1/2}=A_{i+1/2}\mathbf F_{1,i+1/2}$ the face product,
+area times flux [units of $\mathbf U$[^rg-8ef399e5745d] times m$^3$ s$^{-1}$]; $\eta_j$ the relative error of one rounding.
 
 ### Derivation
 
 #### From the conservation law to the flux-only increment
 
-Density $\rho$ is in kg m$^{-3}$, momentum density $m_a$ in kg m$^{-2}$ s$^{-1}$ and total energy density $E$ in
+Density $\rho$[^rg-549e5380ddb0] is in kg m$^{-3}$, momentum density $m_a$ in kg m$^{-2}$ s$^{-1}$ and total energy density $E$[^rg-360f6f825688] in
 J m$^{-3}$. On the nonorthogonal grid the primitive velocities are contravariant and the conserved momenta
 covariant. Dry density and every species partial density obey their own continuity equation; their sum is total
 continuity. For an inviscid Cartesian cell without phase change,
@@ -61,7 +61,7 @@ The flux-only increment follows in three steps.
 2. *Turn the divergence into faces.* Gauss's theorem makes the volume integral of $\boldsymbol\nabla\cdot\mathbf F$
    the outward flux through the faces. The scheme replaces each face integral by the face area times one numerical
    flux, giving the face product $[A\mathbf F_1]_{i+1/2}$.
-3. *Multiply by $\Delta t$ and divide by $V_i$.* With only the $x_1$ faces written out, this is
+3. *Multiply by $\Delta t$ and divide by $V_i$.* With only the $x_1$[^rg-88d9f77d83d1] faces written out, this is
 
 $$
 \Delta\mathbf U^{\mathrm{flux}}_i=-\frac{\Delta t}{V_i}\Delta_i[A\mathbf F_1]
@@ -147,6 +147,7 @@ make_fig()
 **A minimal input.** The laws have no switch; any deck runs them. This one is the wall-saturation test deck
 without its species, reduced to the keys that set the stage:
 
+<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-e0f7416a96dd], `equation-of-state`[^rg-40c7b90c688a], `reconstruct`[^rg-f601adb778fa], `vertical`[^rg-24c421484b56], `horizontal`[^rg-578716044c42], `riemann-solver`[^rg-b4a63e1af281], `integration`[^rg-db8b48077d05], `cfl`[^rg-7b32cac9c821].
 ```yaml
 dynamics:
   equation-of-state: {type: ideal-gas}
@@ -171,7 +172,7 @@ integration: {type: rk3, cfl: 0.9}   # three stages; the phase solve runs after 
 | face products and divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `dflx` | |
 | face-area slice | {{< code src/coord/coordinate.hpp CoordinateImpl::face_area1 >}} | `face_area1` | |
 | flux-only increment | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `du` | |
-| implicit correction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dt_corr` | `implicit-scheme` |
+| implicit correction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dt_corr` | `implicit-scheme`[^rg-4c9e26614577] |
 | stage order and last stage | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `apply_boundaries` | |
 | row layout | {{< code src/snap.h >}} | `ICY` | |
 
@@ -210,7 +211,7 @@ unequal volumes telescope with residual 0. `[C2]`: sympy confirms the six-cell s
 `[C3]`: over 200 random rows of 32 cells, the exact-arithmetic defect of the float64 increment is at most 0.304
 of the derived bound.
 
-The ctest case runs on CPU and CUDA where available, one rank. It has not been run for this report at the pin:
+The ctest case runs on CPU[^rg-d5c518c05d4f] and CUDA[^rg-6f633b2ccc44] where available, one rank. It has not been run for this report at the pin:
 **pending a pinned ctest run**.
 
 [^laws-run]: [sha: the code pin; deck: the check itself, seed 2; run: `python3 src/snapy_report/ch02/laws_check.py`,
@@ -224,3 +225,43 @@ The ctest case runs on CPU and CUDA where available, one rank. It has not been r
 2. **No measured convergence order** for the complete stage is given here; @sec-ch04 and @sec-ch07 own the
    spatial and temporal orders.
 3. **Untested combinations.** Switch-combination coverage is in @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-6dfd3fd44de6]: $V_i$ — cell volume
+
+[^rg-6e8706cff990]: $\Delta t$ — the step
+
+[^rg-f31b5cad787a]: RK — Runge–Kutta
+
+[^rg-9fe3deae45f9]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-8ef399e5745d]: $\mathbf U$ — conserved state vector $(\rho_d, m_1, m_2, m_3, E, \rho_1..\rho_{N_y})$
+
+[^rg-549e5380ddb0]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-360f6f825688]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-88d9f77d83d1]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-e0f7416a96dd]: dynamics — hydrodynamic options block
+
+[^rg-40c7b90c688a]: equation-of-state — equation-of-state options
+
+[^rg-f601adb778fa]: reconstruct — reconstruction options
+
+[^rg-24c421484b56]: vertical — options for the vertical reconstruction
+
+[^rg-578716044c42]: horizontal — options for the horizontal reconstruction
+
+[^rg-b4a63e1af281]: riemann-solver — Riemann-solver options within the enclosing dynamics or scalar block
+
+[^rg-db8b48077d05]: integration — time-integration options
+
+[^rg-7b32cac9c821]: cfl — Courant-number limit for the time step
+
+[^rg-4c9e26614577]: implicit-scheme — implicit time-integration scheme selector
+
+[^rg-d5c518c05d4f]: CPU — central processing unit
+
+[^rg-6f633b2ccc44]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

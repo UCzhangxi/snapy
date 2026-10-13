@@ -28,18 +28,18 @@ the implicit solver, so a user can see whether they acted.
 :::
 
 Local symbols: $c_{23}$ [-] the cosine of the angle between the $x_2$ and $x_3$
-axes of a cell (code `cosine_cell_kj`); $N$ the number of terms of a sum [count]. $\rho_i$, $m_j$, $V_i$, $g_1$,
-$x_{1,i}$ and $\epsilon_{\mathrm m}$ are defined in @sec-appa.
+axes of a cell (code `cosine_cell_kj`); $N$ the number of terms of a sum [count]. $\rho_i$, $m_j$, $V_i$[^rg-09ff848d8a55], $g_1$[^rg-0b3c8a0e0907],
+$x_{1,i}$[^rg-1443f7d5a753] and $\epsilon_{\mathrm m}$[^rg-3eba0bd97326] are defined in @sec-appa.
 
 `mass0=` is the dry mass, and `masst=` adds every species. `ke=` is the kinetic energy, and `ie=` (block line) or
-`energy=` (Mesh line) is the integrated total energy $E_{\mathrm{tot}}=\sum_iV_iE_i$, with $E$ the total energy
-density. `pe=` is the potential energy in a constant $x_1$ gravity. All are read from the conserved state
+`energy=` (Mesh line) is the integrated total energy $E_{\mathrm{tot}}=\sum_iV_iE_i$, with $E$[^rg-9750bb6bd4f2] the total energy
+density. `pe=` is the potential energy in a constant $x_1$[^rg-27e526b3a6fc] gravity. All are read from the conserved state
 `hydro_u`, never from the primitives, which can be one stage stale when the line is printed.
 
 ### Derivation
 
 Each token is a volume integral over interior cells. Let $\rho_i = \rho_{d,i} + \sum_n \rho_{n,i}$ [kg m$^{-3}$] be
-the total density of cell $i$, dry gas plus every species. Let $m_j$ [kg m$^{-2}$ s$^{-1}$] be the covariant
+the total density of cell $i$[^rg-f3811b39aae0], dry gas plus every species. Let $m_j$ [kg m$^{-2}$ s$^{-1}$] be the covariant
 momentum components, $V_i$ [m$^3$] the cell volume, $g_1$ [m s$^{-2}$] the constant $x_1$ gravity and $x_{1,i}$
 [m] the cell centroid. The two energy integrals, both in J, are
 
@@ -95,11 +95,11 @@ For each local block, `print_cycle_diagnostics` adds the conserved sums, `ke` an
 ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}). The momentum is raised with `coord_vec_raise_` and `cosine_cell_kj`
 before the contraction, and the raise is the closed form above, `coord_vec_raise_impl`
 ({{< code src/coord/coord_utils_impl.h coord_vec_raise_impl >}}). `pe` is
-added only with a constant gravity whose `grav1` is nonzero. Under the `SNAP_GRAVITY_WORK_RADIAL_EXACT` switch it
+added only with a constant gravity whose `grav1`[^rg-a8d4da11e7ca] is nonzero. Under the `SNAP_GRAVITY_WORK_RADIAL_EXACT` switch it
 logs the corrected potential energy of @sec-ch06-dwork instead.
 
 The block sums are then reduced once to the root rank, with `reduce` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}):
-SUM for the integrals and the meter totals, MIN for the smallest limiter factor $\Theta$, MAX for the VIC clamp residual.
+SUM for the integrals and the meter totals, MIN for the smallest limiter factor $\Theta$[^rg-d75103ea3a29], MAX for the VIC clamp residual.
 Summing four blocks locally and then once more gives the whole-domain sums to $10^{-16}$ (`[C4]`). The printing
 follows: `mass0=` always, `masst=` with species, `ke=`, the energy and `pe=` when they exist, then the meter group
 after the literal ` run-to-date:` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).
@@ -113,14 +113,15 @@ from the same function, so the Mesh line carries `ke=`, `pe=` and the meters too
 
 **A minimal input.** One line every ten cycles:
 
+<!-- reader glossary keys -->Keys in this fragment: `integration`[^rg-6d84ed0b7d64], `type`[^rg-f8d0bfb21955].
 ```yaml
 integration:
   type: rk3
   ncycle_out: 10   # 0 turns the line off
 ```
 
-**What is refused, and why.** A key of the `integration` block outside snapy's `implicit-scheme`,
-`implicit-advection-cfl` and `shear-cfl` and pyharp's `type`, `cfl`, `tlim`, `nlim`, `ncycle_out` and `verbose`
+**What is refused, and why.** A key of the `integration` block outside snapy's `implicit-scheme`[^rg-8ddf3a81a6ae],
+`implicit-advection-cfl`[^rg-aa5ff2b9de09] and `shear-cfl`[^rg-f2a74a73cb5e] and pyharp's `type`, `cfl`[^rg-434fbf70c966], `tlim`[^rg-c00e30cda9c7], `nlim`[^rg-9abb24061d8f], `ncycle_out` and `verbose`
 (`check_keys`, {{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). A misspelled
 `ncycle_ot` stops the run at construction with
 
@@ -166,7 +167,7 @@ add(pe_sum, (pe * vol).index(interior).sum({1, 2, 3}));
 | same file, `logged_pe_is_the_column_geopotential` | pe is $2.5\cdot10\sum zV$, the same for a mixed state of equal total density | $10^{-9}$ relative | round-off margin |
 | same file, `meter_group_is_marked_run_to_date`, `mesh_aggregates_all_local_blocks_once` | the meters follow the ` run-to-date:` marker; a Mesh prints one line whose sums are those of all its blocks | token order; $10^{-11}$ | contract; round-off |
 | `tests/test_cycle_diagnostics_parallel.cpp` (`test_cycle_diagnostics_parallel.release`, 2 ranks) | two ranks of two blocks each: the line aggregates the extrema found in the second block of the other rank | see the test | contract |
-| `tests/run_restart_cycle_limit.py` (`test_restart_cycle_limit`) | the first resumed cycle line matches the base run in `time`, `dt`, `mass0`, `energy` | $10^{-12}$ absolute | runner constant |
+| `tests/run_restart_cycle_limit.py` (`test_restart_cycle_limit`) | the first resumed cycle line matches the base run in `time`, `dt`[^rg-546e47e95485], `mass0`, `energy` | $10^{-12}$ absolute | runner constant |
 | this section's check, `cycle_check.py` | `[C1]`–`[C5]` | per claim | stated in the check |
 
 : Tests of the cycle-line budget. {#tbl-ch13-cycle-tests}
@@ -177,7 +178,7 @@ printed decimals of the block and Mesh lines.
 
 ::: {.callout-important title="Check"}
 **Evidence.** Check numbers from `cycle_check.py` (lines `[C1]`–`[C5]`).[^ch13-cycle-chk] ctest cases: **pending: pinned ctest run**.
-**Coverage.** CPU sums; the reductions run over any process group.
+**Coverage.** CPU[^rg-09c7f58a7a6a] sums; the reductions run over any process group.
 :::
 
 [^ch13-cycle-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch13/cycle_check.py`, CPU, double,
@@ -197,3 +198,43 @@ reader or a test that parses the log.
 3. **Start of step.** The line is printed before the step, so the last line of a run does not show the final
    state.
 4. **Untested combinations.** The switch combinations that a test exercises are listed in @sec-ch12-matrix.
+
+<!-- reader glossary notes -->
+[^rg-09ff848d8a55]: $V_i$ — cell volume
+
+[^rg-0b3c8a0e0907]: $g_1, g_2, g_3$ — constant gravity components [m s$^{-2}$]; $g_1<0$ points to decreasing $x_1$
+
+[^rg-1443f7d5a753]: $x_{1,i}$ — cell volume centroid ($r_{c,i}$ on spherical-polar)
+
+[^rg-3eba0bd97326]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-9750bb6bd4f2]: $E$ — total energy density, internal plus kinetic, $\rho e + \tfrac12\rho\lvert\mathbf v\rvert^2$ [J m$^{-3}$]; excludes potential energy
+
+[^rg-27e526b3a6fc]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-f3811b39aae0]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-a8d4da11e7ca]: grav1 — gravity component along the first coordinate
+
+[^rg-d75103ea3a29]: $\Theta$ — the positivity limiter's donor factor in $[0,1]$: the fraction of a requested face flux the limiter allows. Capital, because $\theta$ is the colatitude
+
+[^rg-6d84ed0b7d64]: integration — time-integration options
+
+[^rg-f8d0bfb21955]: type — implementation selector for the enclosing options block
+
+[^rg-8ddf3a81a6ae]: implicit-scheme — implicit time-integration scheme selector
+
+[^rg-aa5ff2b9de09]: implicit-advection-cfl — Courant limit for the implicitly treated advection
+
+[^rg-f2a74a73cb5e]: shear-cfl — Courant limit associated with shear
+
+[^rg-434fbf70c966]: cfl — Courant-number limit for the time step
+
+[^rg-c00e30cda9c7]: tlim — simulation end time
+
+[^rg-9abb24061d8f]: nlim — maximum number of integration cycles
+
+[^rg-546e47e95485]: dt — time-step duration
+
+[^rg-09c7f58a7a6a]: CPU — central processing unit
+<!-- end reader glossary notes -->

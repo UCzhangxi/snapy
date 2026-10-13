@@ -33,14 +33,14 @@ defined, and what a two-grid order estimate can and cannot say.
 Local symbols: $\zeta_{15}$ the dimensionless convergence exponent of a
 two-grid estimate; $\psi_{15} > 0$ its error coefficient [units of the compared quantity per
 $\mathrm{m}^{\zeta_{15}}$]; $\eta$ one rounding error of a floating-point addition [-]; $N$ the number of cells
-in a reduction (count). The rest is appendix A: $V_i$ [$\mathrm{m^3}$], $A_{i\pm1/2}$ [$\mathrm{m^2}$],
+in a reduction (count). The rest is appendix A: $V_i$[^rg-4aba23edcc5a] [$\mathrm{m^3}$], $A_{i\pm1/2}$[^rg-0d95886f5a81] [$\mathrm{m^2}$],
 $\bar\rho_i$ [$\mathrm{kg\,m^{-3}}$], $F_{i\pm1/2}$ [$\mathrm{kg\,m^{-2}\,s^{-1}}$], the face difference
-$\Delta_i[\cdot]$, the oracle $\mathcal O$ in the units of what it is compared with, $\epsilon_{\mathrm m}$ the
-machine epsilon and $h_i$ the cell width [m].
+$\Delta_i[\cdot]$, the oracle $\mathcal O$[^rg-f1bc2f88d9da] in the units of what it is compared with, $\epsilon_{\mathrm m}$[^rg-bc1ae9c40f8b] the
+machine epsilon and $h_i$[^rg-e62a864fa416] the cell width [m].
 
 The catalogue is selective and organised by chapter. The generated test index, @sec-appc, lists every registered
 test with its provenance; a test missing from a catalogue section is not a test that does not exist. No section
-of this chapter adds a compiled CPU, CUDA or multi-rank run at the code pin: each states what the source asserts
+of this chapter adds a compiled CPU[^rg-401f567dfb65], CUDA[^rg-6b3261e5a15a] or multi-rank run at the code pin: each states what the source asserts
 and how to reproduce it.
 
 ### Derivation
@@ -63,7 +63,7 @@ The three subsections derive the identities behind these habits, then bound the 
 
 #### Why a volume-weighted conservation check is necessary
 
-Take a fixed, one-dimensional column with no mass source. Total density is $\rho$ [$\mathrm{kg\,m^{-3}}$],
+Take a fixed, one-dimensional column with no mass source. Total density is $\rho$[^rg-4d53de0c46f0] [$\mathrm{kg\,m^{-3}}$],
 velocity is $v_1$ [$\mathrm{m\,s^{-1}}$], cell volume is $V_i$ [$\mathrm{m^3}$] and face area is $A_{i\pm1/2}$
 [$\mathrm{m^2}$]. With $\mathbf n$ the outward unit normal [-], the continuity equation and its integral over the
 cell are
@@ -77,7 +77,7 @@ $$
 $$
 
 Assume the lateral boundary carries no mass flux. Let $F_{i\pm1/2}$ be the numerical total-mass flux density
-[$\mathrm{kg\,m^{-2}\,s^{-1}}$] through the $x_1$ faces, positive toward increasing $x_1$. Replace each face
+[$\mathrm{kg\,m^{-2}\,s^{-1}}$] through the $x_1$[^rg-7f8e197294fa] faces, positive toward increasing $x_1$. Replace each face
 integral by the face area times the numerical face flux. With fixed volumes, $\bar\rho_i$ is the stored cell
 average and a dot is its semi-discrete time derivative:
 
@@ -94,7 +94,7 @@ The second line is the operator of `CoordinateImpl::divergence`
 ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}): a face difference over a volume. It says
 nothing about the reconstruction that produced $F$.
 
-Now add two neighbouring cells. The upper-face term of cell $i$ and the lower-face term of cell $i+1$ carry the
+Now add two neighbouring cells. The upper-face term of cell $i$[^rg-817326ac21bd] and the lower-face term of cell $i+1$ carry the
 same area and the same flux with opposite signs:
 
 $$
@@ -241,7 +241,7 @@ ctest --test-dir build --output-on-failure -R '^test_wall_saturation\.release$'
 Two outcomes are not evidence. An expression that matches nothing makes `ctest` print "No tests were found!!!"
 and, unless `--no-tests=error` is given, exit 0, so read the `Total Tests:` line of the listing. A test that
 exits with its registered skip code is reported as skipped, not passed; the registrations that declare one (the
-import-path check, the restart runners, the two-rank Gloo arms, the nine Python CUDA arms and the two UCX CUDA arms) use 125
+import-path check, the restart runners, the two-rank Gloo arms, the nine Python CUDA arms and the two UCX[^rg-628a7fb0e13a] CUDA arms) use 125
 ({{< code tests/CMakeLists.txt >}}). Individual `DeviceTest` cases instead report unavailable devices with
 `GTEST_SKIP` inside the test executable; that does not turn the whole executable into an exit-125 skip.
 
@@ -286,3 +286,27 @@ validation; those need a run of the registered tests at the pin, which this chap
 catalogue states selected acceptance contracts, not the full coverage matrix of @sec-ch12-matrix. A stored
 check output can also differ by machine-dependent round-off digits; compare the residual with the bound above
 before reading such a difference as a broken identity.
+
+<!-- reader glossary notes -->
+[^rg-4aba23edcc5a]: $V_i$ — cell volume
+
+[^rg-0d95886f5a81]: $A_{i\pm1/2}$ — $x_1$ face area
+
+[^rg-f1bc2f88d9da]: $\mathcal O$ — an oracle (exact or reference value)
+
+[^rg-bc1ae9c40f8b]: $\epsilon_{\mathrm{m}}$ — machine epsilon of the working precision (never bare $\epsilon$, which is $\epsilon_{\mathrm{piv}}$)
+
+[^rg-e62a864fa416]: $h_i$ — $x_1$ width of cell $i$, $x_{1,i+1/2}-x_{1,i-1/2}$; written $\Delta x_1$ where the direction must be explicit
+
+[^rg-401f567dfb65]: CPU — central processing unit
+
+[^rg-6b3261e5a15a]: CUDA — NVIDIA's parallel computing platform
+
+[^rg-4d53de0c46f0]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
+
+[^rg-7f8e197294fa]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-817326ac21bd]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+
+[^rg-628a7fb0e13a]: UCX — Unified Communication X
+<!-- end reader glossary notes -->

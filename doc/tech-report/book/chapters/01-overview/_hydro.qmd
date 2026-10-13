@@ -68,7 +68,7 @@ make_fig()
 
 **Why the seven sections are in this order.** Each section consumes what the one before it produced.
 
-1. The primitives come first because every later section reads $\mathbf W$, and the solid marking must be in
+1. The primitives come first because every later section reads $\mathbf W$[^rg-76c144a0867d], and the solid marking must be in
    $\mathbf W$ before any reconstruction ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 2. The $x_1$ flux comes before the lateral ones because the lateral covariance of @sec-ch04-fluxcov reads the $x_1$
    differences of the face states. The seam rows must already be single-valued.
@@ -83,7 +83,7 @@ make_fig()
 | pipeline | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `forward` | `dynamics:` |
 | reference | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_hydro_ref_x1` | gravity on |
 | reconstruction | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `precon1` | `reconstruct/vertical` |
-| riemann | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `priemann` | `riemann-solver` |
+| riemann | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `priemann` | `riemann-solver`[^rg-62a1efd6416a] |
 | sedimentation | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `psed` | `sedimentation:` |
 | lateral states | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `sync_opts` | cubed sphere |
 | covariance | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `flux_covariance` | `SNAP_FLUX_COVARIANCE` |
@@ -101,9 +101,10 @@ make_fig()
    accumulated weight `cw` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
 **How to use it.** The `dynamics` block selects the pieces; the keys accepted at this level are
-`equation-of-state`, `reconstruct`, `riemann-solver`, `verbose`, `disable-flux-x1`, `disable-flux-x2`,
-`disable-flux-x3` and `wb-wall-clamp` ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}):
+`equation-of-state`, `reconstruct`[^rg-af5f86077ee8], `riemann-solver`, `verbose`, `disable-flux-x1`[^rg-ae041ae1bceb], `disable-flux-x2`[^rg-80c2fa91bc52],
+`disable-flux-x3`[^rg-7e9816437e3b] and `wb-wall-clamp`[^rg-008bc3db0d40] ({{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}}):
 
+<!-- reader glossary keys -->Keys in this fragment: `vertical`[^rg-febc4357099f], `horizontal`[^rg-9f229b714348].
 ```yaml
 dynamics:
   equation-of-state: {type: ideal-gas}
@@ -136,3 +137,23 @@ The implicit time step is stage-weighted only for an integrator with three stage
 has not published a valid stage receives a one-time warning and uses the full time step. Same-process $x_1$
 seam fluxes are not averaged, by the cited code. Neither case is measured here.
 :::
+
+<!-- reader glossary notes -->
+[^rg-76c144a0867d]: $\mathbf W$ — primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$
+
+[^rg-62a1efd6416a]: riemann-solver — Riemann-solver options within the enclosing dynamics or scalar block
+
+[^rg-af5f86077ee8]: reconstruct — reconstruction options
+
+[^rg-ae041ae1bceb]: disable-flux-x1 — whether the first-coordinate flux is disabled
+
+[^rg-80c2fa91bc52]: disable-flux-x2 — whether the second-coordinate flux is disabled
+
+[^rg-7e9816437e3b]: disable-flux-x3 — whether the third-coordinate flux is disabled
+
+[^rg-008bc3db0d40]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
+
+[^rg-febc4357099f]: vertical — options for the vertical reconstruction
+
+[^rg-9f229b714348]: horizontal — options for the horizontal reconstruction
+<!-- end reader glossary notes -->

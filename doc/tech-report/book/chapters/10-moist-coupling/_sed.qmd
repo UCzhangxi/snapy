@@ -33,7 +33,7 @@ Local symbols: $a_n$ is the particle radius of condensate $n$ [m], $\rho_{\mathr
 [$\mathrm{kg\,m^{-3}}$], $\beta_n$ the Cunningham slip factor [-], $\lambda$ the mean free path of the background gas
 [m], $\mathrm{Kn}=\lambda/a_n$ the Knudsen number [-], and $m_{\mathrm{mol}}$, $d_{\mathrm{mol}}$, $\epsilon_{\mathrm{LJ}}$ the
 molecular mass [kg], molecular diameter [m] and Lennard-Jones well depth [J] of the background gas (YAML `a-mass`,
-`a-diameter`, `a-epsilon-LJ`); $k_{\mathrm B}$ is Boltzmann's constant, as in @sec-ch02, and $\mu$ the dynamic viscosity
+`a-diameter`, `a-epsilon-LJ`); $k_{\mathrm B}$ is Boltzmann's constant, as in @sec-ch02, and $\mu$[^rg-e36e3b696e97] the dynamic viscosity
 of appendix A, notation group 8. Bare $m$ is the momentum, bare $d$ is not used, and bare $\epsilon$ is the pivot tolerance, so all
 three carry a subscript here.
 
@@ -41,6 +41,7 @@ three carry a subscript here.
 ({{< code src/sedimentation/sed_options.cpp SedVelOptionsImpl::from_yaml >}};
 {{< code examples/jupiter_evap_precip_1d.yaml >}}):
 
+<!-- reader glossary keys -->Keys in this fragment: `forcing`[^rg-41e2c46cc4d2], `const-gravity`[^rg-7342e035beb2], `grav1`[^rg-20d0270c17e8], `radius`[^rg-7b9938338dec], `density`[^rg-4e0de53e039d], `const-vsed`[^rg-e24cc2e272ce].
 ```yaml
 forcing:
   const-gravity: {grav1: -22.}
@@ -81,7 +82,7 @@ $$ {#eq-ch10-sed-viscosity}
 
 This is the Chapman-Enskog viscosity $\mu=\tfrac5{16}\sqrt{\pi m_{\mathrm{mol}}k_{\mathrm B}T}\big/\big(\pi d_{\mathrm{mol}}^2\,\Omega_{\mathrm{c}}\big)$
 with the collision integral approximated as $\Omega_{\mathrm{c}}=1.22\,(k_{\mathrm B}T/\epsilon_{\mathrm{LJ}})^{-0.16}$ (local
-symbol; $\Omega$ alone is the rotation rate),
+symbol; $\Omega$[^rg-51287c24f565] alone is the rotation rate),
 with molecular mass $m_{\mathrm{mol}}$,
 diameter $d_{\mathrm{mol}}$ and well depth $\epsilon_{\mathrm{LJ}}$ from the YAML defaults of an $\mathrm{H_2}$ background, and the mean free path
 is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m_{\mathrm{mol}})}$; the code calls $\mu$ `eta`
@@ -112,7 +113,7 @@ With the limiter on and species present its condensate part is saved as `fsed1`,
 carry the right energy and momentum with it ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 With the ideal-moist EOS and contiguous tensors a fused CPU or CUDA kernel computes velocity and flux in one pass;
 otherwise a tensor path does the same in separate operations
-({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}). MPS has its own kernel,
+({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}). MPS[^rg-7722eb7d31ba] has its own kernel,
 `sedimentation_flux_mps`, behind the same dispatch stub
 ({{< code src/sedimentation/sed_hydro_dispatch.cpp sedimentation_flux_mps >}}).
 The wall bounds are set only where the block face is a physical boundary, so seams between blocks stay open.
@@ -169,7 +170,7 @@ Refused at setup, each with its message:
 5. A particle with neither a radius nor a non-zero `const-vsed` ("Sedimentation particle '…' needs radius > 0 or a
    non-zero const-vsed."), because the velocity would be undefined.
 6. A card without constant gravity ("[SedHydro] sedimentation reads grav1; set forcing/const-gravity"), because
-   @eq-ch10-sed-stokes needs $g_1$.
+   @eq-ch10-sed-stokes needs $g_1$[^rg-15271d05a269].
 
 The velocity of @eq-ch10-sed-stokes is these lines ({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}):
 
@@ -208,7 +209,7 @@ A rising cloud must be taken from the cell below, mass and energy fluxes to $10^
 On two ranks of a cubed sphere, the condensate mass is conserved to $10^{-12}$ relative and two seam sums are pinned
 to $10^{-7}$ and $5\times10^{-3}$ absolute
 ({{< code tests/test_sedimentation_cubed_seam.cpp main >}});
-the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX result. Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
+the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX[^rg-b90e03039e3e] result. Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
 registered in that build and were not run.
 
 ### Limits
@@ -228,3 +229,27 @@ settling speed can over-drain a cell, and only the positivity limiter catches it
   carries the sedimentation part of the mass flux (@sec-ch09-framework, @sec-ch06).
 - The default gas constants describe $\mathrm{H_2}$; other backgrounds must set them.
 - Not in the switch coverage matrix (@sec-ch12-matrix).
+
+<!-- reader glossary notes -->
+[^rg-e36e3b696e97]: $\mu$, $\nu$ — dynamic and kinematic viscosity
+
+[^rg-41e2c46cc4d2]: forcing — list of forcing components
+
+[^rg-7342e035beb2]: const-gravity — constant-gravity forcing component
+
+[^rg-20d0270c17e8]: grav1 — gravity component along the first coordinate
+
+[^rg-7b9938338dec]: radius — particle radii indexed by species
+
+[^rg-4e0de53e039d]: density — particle material densities indexed by species
+
+[^rg-e24cc2e272ce]: const-vsed — prescribed sedimentation velocities indexed by species
+
+[^rg-51287c24f565]: $\Omega$ — planetary rotation rate
+
+[^rg-7722eb7d31ba]: MPS — Metal Performance Shaders
+
+[^rg-15271d05a269]: $g_1, g_2, g_3$ — constant gravity components [m s$^{-2}$]; $g_1<0$ points to decreasing $x_1$
+
+[^rg-b90e03039e3e]: UCX — Unified Communication X
+<!-- end reader glossary notes -->
