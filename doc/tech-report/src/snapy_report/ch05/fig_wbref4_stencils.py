@@ -28,7 +28,7 @@ def make_fig():
         fs.face_value(ax, f, 0.5)
     fs.bracket(ax, (0, 0.0), (4, 0.0), label="wall face: cells $i_s \\ldots i_s+3$")
     d.text(ax, 7.2, 0.5, "interior: $(-1, 7, 7, -1)/12$", ha="left")
-    d.text(ax, 7.2, 2.0, "$(F r)_{i_s} = r_{i_s}$", ha="left")
+    d.text(ax, 7.2, 2.0, "$(\\mathsf{F}\\chi)_{i_s} = \\chi_{i_s}$", ha="left")
     ax.set_xlim(-2.4, 10.4)
     ax.set_ylim(-0.75, 3.1)
     return fig
