@@ -15,7 +15,13 @@ of NOTATION.md becomes one row of a five-column table:
 The prose of NOTATION.md (its introduction, section notes and the reserved-letter rules) is kept, with the
 outline's chapter numbers ("chapter 10.7") turned into cross-references, so no chapter number is hand-typed.
 
-    python3 tools/gen_notation_index.py           # rewrite the fragment
+The committed fragment depends on NOTATION.md alone. The two values that the chapters decide, the symbol counts
+and each "first used" cell, are `{{< generated appa ... >}}` shortcodes filled in at render from
+`book/_generated/appa.json` (not committed), which this script writes too; so a chapter edit that changes a
+symbol's first use changes no committed line (tools/generated_values.py; README, "Generated files and
+rebasing").
+
+    python3 tools/gen_notation_index.py           # rewrite the fragment and the values
     python3 tools/gen_notation_index.py --check   # exit 1 if the fragment is not what NOTATION.md gives
     python3 tools/gen_notation_index.py --stats   # rows per section and symbols with no first use
 
