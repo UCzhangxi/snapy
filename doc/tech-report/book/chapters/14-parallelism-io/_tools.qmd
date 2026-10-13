@@ -75,16 +75,21 @@ outputs:
     dt: 300.
 ```
 
-in a copy of `straka_proc2.yaml` saved as `card.yaml` in `build/bin`, run with
-`torchrun --no-python --nproc-per-node=2 --master-port=29573 ./straka.release card.yaml`
-([Install and run](#sec-preface-install)), has NetCDF streams 1 and 2. In that directory, join both streams of
-every case in time and merge them into one file per case, `card-main.nc`, keeping the per-frame files; then list
-the tensors of one restart file:
+has NetCDF streams 1 and 2. `pd-combine` works on every case whose frames are in the directory it is given, and
+it stops when one of them lacks a stream that another has. So run the example in a directory of its own, not in
+`build/bin`, where the runs of [Install and run](#sec-preface-install) leave `straka_proc2.out0.*.nc`; there the
+command stops with `ncrcat: ERROR file "./card.out0.?????.nc" not found`. From `build/bin`:
 
 ```bash
+mkdir -p combine-demo && cd combine-demo
+cp ../straka_proc2.yaml card.yaml      # then replace its outputs: list with the one above
+torchrun --no-python --nproc-per-node=2 --master-port=29573 ../straka.release card.yaml
 pd-combine 1,2 -d . -o main --no-remove
 pd-inspect card.00002.restart
 ```
+
+`pd-combine` joins both streams in time and merges them into one file, `card-main.nc`, keeping the per-frame files;
+`pd-inspect` lists the tensors of one restart file.
 
 **What is refused, and why.** `pd-combine` exits with "Error: output id … not found!" when a requested stream has no
 frame in the directory, before it touches any file (`main`, {{< code python/api/pd_combine.py main >}}). A missing
