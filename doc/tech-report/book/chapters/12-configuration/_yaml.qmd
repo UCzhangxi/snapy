@@ -19,29 +19,17 @@ boundary faces. This section lists those keys with their defaults, and the combi
 they would silently change what it computes or conserves.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A: the YAML card selects the local numerical options of a block; the process-global study
-switches stay in the environment (@sec-ch12-environment).
+**Purpose.** Selects schemes and rejects incompatible configurations.
 
-**Data.** In: the recognized blocks of the card. Out: the component options (gravity, dynamics, EOS,
-reconstruction, Riemann solver, geometry, layout, boundaries, integration) and the guards `HydroImpl::reset`
-applies to them.
+**Data.** YAML blocks in; component options and setup guards out.
 
-**Placement.** Option construction, then the hydro module's reset, before any step.
+**Placement.** Parse recognized keys, then validate again during hydro reset.
 
-**Activation.** Every recognized block rejects an unknown key. Defaults are in the key table; the gravity-work
-mode defaults to `face`.
+**Activation.** Defaults include face work, Cartesian geometry and one ghost cell.
 
-**Guarantee / limits.** Incompatible options do not run silently: the fixer with non-cell work, a fixer with
-lateral gravity or a periodic $x_1$, an implicit CFL control without an implicit scheme, and an unsupported
-implicit scheme are all refused. Direct option construction from Python bypasses the YAML parse; the reset
-guards still apply.
+**Guarantee / limits.** Recognized keys do not guarantee compatible schemes or a supported stencil.
 
-**Evidence.** `test_hydro_options.<b>` and `test_yaml_keys.<b>`: the defaults and the refusals
-({{< code tests/test_hydro_options.cpp hydro_options.wb_wall_clamp_ships_enabled >}},
-{{< code tests/test_yaml_keys.cpp yaml_keys.the_card_itself_loads >}}, exact booleans and exceptions);
-`test_implicit_options_type_python`: the implicit scheme names
-({{< code tests/test_implicit_options_type.py main >}}); check `[C10]` of `configuration_check.py`; the ctests
-were not run at the pin.
+**Evidence.** Tests below, @tbl-ch12-yaml-tests.
 :::
 
 | key | default | coupling |
@@ -109,6 +97,37 @@ make_fig()
 
 ### Code
 
+**How to use it.** Add this gravity block to a complete input card to select plain cell work with its fixer:
+
+```yaml
+forcing:
+  const-gravity:
+    grav1: -9.8     # m s^-2
+    gravity-work: cell
+    gravity-work-fixer: true
+```
+
+Keep radial boundaries non-periodic and lateral gravity zero for this fixer. Changing only the work mode to
+`face` makes the parser refuse the nonzero-gravity combination with
+"forcing/const-gravity/gravity-work-fixer needs gravity-work: cell".
+For face work, set the fixer false and choose RE according to the intended budget (@sec-ch12-radial-exact).
+Unknown keys are refused by each component's key check; recognized keys still pass through reset's guards.
+
+`ConstGravityOptionsImpl::from_yaml` ({{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}}) contains this selection step:
+
+```cpp
+  bool cell = op->gravity_work() == "cell";
+  op->gravity_work_fixer() = node["gravity-work-fixer"].as<bool>(cell);
+  if (op->gravity_work_fixer() && op->grav1() != 0.) {
+    TORCH_CHECK(cell,
+                "forcing/const-gravity/gravity-work-fixer needs gravity-work: "
+                "cell");
+  }
+```
+
+The boolean `cell` supplies the fixer default and the admissibility condition. `[C10]` checks the logical
+accept/reject distinction and the symbolic budget difference; actual parser errors belong to the CTest assertions.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | dynamics, forcing | {{< code src/hydro/hydro_options.cpp HydroOptionsImpl::from_yaml >}} | `check_keys` | YAML keys |
@@ -141,6 +160,7 @@ make_fig()
 | `test_hydro_options.<b>` | `wb-wall-clamp` ships enabled and can be turned off; unsupported implicit schemes, removed and unknown forcing keys and unknown dynamics keys are refused | exact booleans; expected exceptions | the test |
 | `test_yaml_keys.<b>` | the test card loads, and every recognized block refuses an unknown key with the key's path in the message | exact string containment | the test |
 | `test_implicit_options_type_python` | schemes 0, 1 and 9 name `none`, `vic-partial` and `vic-full`; scheme 5 is refused | exact strings; expected error | the script |
+| `configuration_check.py` `[C10]` (report check) | the option-pair validator and budget distinction | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-yaml-tests}
 
@@ -155,6 +175,14 @@ The hydro-options assertions are
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the option-pair validator and budget distinction in `[C10]`.[^ch12-yaml-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-yaml-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C10]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

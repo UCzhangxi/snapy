@@ -17,24 +17,17 @@ entries exist and under which environment, and the CUDA gate says which of them 
 below is read from the CMake sources at the pin ({{< code CMakeLists.txt >}}, {{< code tests/CMakeLists.txt >}}).
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A: the CMake options decide what is compiled, which tests are registered and which of those are
-enabled; no equation.
+**Purpose.** Selects compiled features and registered tests; no numerical equation.
 
-**Data.** In: the cache values of the option table and the Torch ABI probe. Out: `configure.h` (@sec-ch12-macros),
-the compiled library, and the CTest registry with its per-test environment.
+**Data.** CMake cache and Torch ABI in; library, header and test registry out.
 
-**Placement.** Configure time, before any mesh or stage exists: configure, generate, compile, register, then
-execute, in that order.
+**Placement.** Configure, generate, compile, register, then execute.
 
-**Activation.** `-DNAME=value` at configuration. Defaults: `BUILD_TESTS=ON`, `FULL_TESTS=OFF`, `CUDA=OFF`,
-`NETCDF=ON`; `UCX` and `PNETCDF` `ON` except on Apple, `NMASS=0`, `CMAKE_BUILD_TYPE=Release`.
+**Activation.** `BUILD_TESTS=ON`, `FULL_TESTS=OFF`, `CUDA=OFF`; other defaults below.
 
-**Guarantee / limits.** Registration, enablement and execution are separate states: a registered CUDA entry on
-a non-CUDA build is disabled, not run, and is no evidence of a CUDA run. `BUILD_EXAMPLES` has no effect.
+**Guarantee / limits.** A registered or disabled test is not an executed test.
 
-**Evidence.** `test_python_import_path_python` ({{< code tests/test_python_import_path.py >}}): the package
-under `SNAPY_TEST_PYTHONPATH` is the one imported and the caller's path survives (exact; skip code 125 when the
-cache path is unset); check `[C6]` of `configuration_check.py`; no configure or build was run for this chapter.
+**Evidence.** Tests below, @tbl-ch12-build-tests.
 :::
 
 | option or cache value | default | effect and coupling |
@@ -87,6 +80,32 @@ make_fig()
 
 ### Code
 
+**How to use it.** From a source checkout with the README prerequisites installed, configure a CPU build
+and inspect its registered tests. These are shell commands, not YAML options:
+
+```bash
+cmake -S . -B build -DBUILD_TESTS=ON -DFULL_TESTS=OFF -DCUDA=OFF
+cmake --build build
+ctest --test-dir build -N
+```
+
+`-N` lists tests; it does not execute them. Set `SNAPY_TEST_PYTHONPATH` at configure time when testing a Python
+extension from that build. Missing dependencies can stop configuration; a failed Torch ABI probe reports
+"Failed to detect Torch GLIBCXX ABI". YAML cannot change an already compiled feature.
+
+{{< code CMakeLists.txt >}} contains this selection step:
+
+```cmake
+option(BUILD_TESTS "Build tests" ON)
+option(FULL_TESTS "Include additional reference and decomposition tests" OFF)
+option(BUILD_EXAMPLES "Build examples" OFF)
+option(CUDA "Enable CUDA support" OFF)
+option(NETCDF "Build with netcdf support" ON)
+```
+
+`BUILD_TESTS` controls the registration stage of `[C6]`; `CUDA` controls compiled CUDA support, not whether
+a registered arm has executed. The option defaults precede all runtime choices.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | options | {{< code CMakeLists.txt >}} | `BUILD_TESTS` | `cmake -DNAME=value` |
@@ -120,6 +139,7 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_python_import_path_python` | snapy is imported from under the cache path; the caller's `PYTHONPATH` entry is kept | exact path equality; skip 125 when the path is unset | the script's `assert` statements |
+| `configuration_check.py` `[C6]` (report check) | the ordered build and registration predicates | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-build-tests}
 
@@ -128,6 +148,14 @@ registration with `SKIP_RETURN_CODE 125` is in {{< code tests/CMakeLists.txt >}}
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the ordered build and registration predicates in `[C6]`.[^ch12-build-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-build-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C6]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 

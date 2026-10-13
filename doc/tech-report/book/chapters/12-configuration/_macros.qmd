@@ -16,23 +16,17 @@ library: the communication backend, CUDA support and the two NetCDF output paths
 was compiled. This section lists those definitions and what reads each of them.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A: `configure.h` fixes, at configure time, which backend, device and output readers are
-compiled; a run can only select among those.
+**Purpose.** Records the compiled alternatives in `configure.h`.
 
-**Data.** In: the CMake options of @sec-ch12-build. Out: one generated header of macros and two path
-constants, included by every translation unit.
+**Data.** Build options in; macros and path constants out.
 
-**Placement.** Configure time (`configure_file`), before compilation.
+**Placement.** `configure_file`, before compilation.
 
-**Activation.** Always generated; each macro follows its option (`USE_UCX` or `NOT_USE_UCX`, `USE_CUDA` or
-`NOT_USE_CUDA`, `NETCDFOUTPUT` or `NO_NETCDFOUTPUT`, `PNETCDFOUTPUT` or `NO_PNETCDFOUTPUT`, `NMASS`).
+**Activation.** Always generated; feature macros follow the build options.
 
-**Guarantee / limits.** The selectable set at run time is contained in the compiled set; a complement macro
-documents an excluded feature and supplies no fallback.
+**Guarantee / limits.** A run can select only compiled alternatives; no fallback is implied.
 
-**Evidence.** `test_process_group.<b>`: the default backend equals the platform's compiled default
-({{< code tests/test_process_group.cpp LayoutOptions.DefaultsToPlatformCommunicationBackend >}}, exact string);
-check `[C7]` of `configuration_check.py`; no build was run for this chapter.
+**Evidence.** Tests below, @tbl-ch12-macros-tests.
 :::
 
 | definition | producer | reader or role |
@@ -79,6 +73,24 @@ make_fig()
 
 ### Code
 
+**How to use it.** Select features through CMake, then regenerate and rebuild; do not define these names in YAML.
+For example, `cmake -S . -B build -DCUDA=OFF -DUCX=OFF` selects the CPU and non-UCX alternatives.
+Inspect the generated `configure.h` before attributing an unavailable backend to runtime input.
+A runtime selection cannot supply a library excluded at compilation; the template itself performs no input validation.
+
+{{< code configure.h.in >}} contains this selection step:
+
+```cpp
+// UCX
+#define @UCX_OPTION@
+
+// CUDA
+#define @CUDA_OPTION@
+```
+
+CMake substitutes each `@...@` token with its positive or complement macro. This is the compiled-set boundary
+in `[C7]`, not a runtime fallback; `default_backend` reads `USE_UCX` as described above.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | template | {{< code configure.h.in >}} | `DISPATCH_MACRO` | `configure.h` |
@@ -102,6 +114,7 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_process_group.<b>` | with `BACKEND` unset the backend is the platform's compiled default | exact string equality | the test's expected default helper |
+| `configuration_check.py` `[C7]` (report check) | the compiled-alternative containment | exact symbolic or Boolean equality | the independent check |
 
 : Source assertions, not new solver measurements. {#tbl-ch12-macros-tests}
 
@@ -111,6 +124,14 @@ The assertion is `EXPECT_EQ` in
 
 No snapy runtime test is executed for this chapter. CUDA and multi-rank entries describe registration only.
 The independent checks and their outputs are catalogued in @sec-ch15-ch12-tests.
+
+The independent report check verifies the compiled-alternative containment in `[C7]`.[^ch12-macros-run]
+It models the stated contract; it does not execute the compiled solver.
+
+[^ch12-macros-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself;
+    run: `python src/snapy_report/ch12/configuration_check.py`, CPU, one process;
+    Python 3.11.13, SymPy 1.14.0]. Exact symbolic and Boolean assertions; no floating-point tolerance.
+    Output `configuration_check.out`, `[C7]`; reproduced for this edit. Solver CTests are source-inspected only.
 
 ### Limits
 
