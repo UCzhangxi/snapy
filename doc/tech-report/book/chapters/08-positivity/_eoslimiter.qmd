@@ -10,11 +10,12 @@ status: draft
 
 The equation of state floors the state in two passes. The conserved pass zeroes NaNs, floors the dry density
 and floors the total energy at the kinetic energy plus the internal energy of a temperature floor. The
-primitive pass floors density and pressure and clamps the species fractions at zero. A repair in the interior
-sets a mark that the redo detector of @sec-ch08-redo reads.
+primitive pass floors density and pressure and clamps the species fractions at zero. The conserved pass marks every
+repair in the interior for the redo detector of @sec-ch08-redo; the primitive pass marks only a NaN and a negative
+species fraction, and leaves its density and pressure floors to the detector's own floor test.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Clamp the state back into the admissible set: two floor passes and a NaN repair, each setting a mark.
+**Purpose.** Clamp the state back into the admissible set: two floor passes and a NaN repair; the conserved pass marks its repairs.
 
 **Data.** In: `hydro_u` (conserved pass) or `hydro_w` (primitive pass). Out: the same tensor floored in place; two marks.
 
@@ -53,9 +54,11 @@ pressure and clamps species mass fractions at zero; it has no energy row and app
 floor. The conserved pass has no pressure row and floors energy through the temperature floor instead.
 Reading either as the other applied to different variables is wrong.
 
-The marks are the link to the redo machinery. `[C4]` checks the cases that matter. An untouched state marks nothing, a
-density below the floor sets the patch mark, and a NaN sets the NaN mark. The same repair outside the interior marks
-nothing at all, because a repair in a ghost cell must not force a block to redo its step.
+The marks are the link to the redo machinery, and the two passes set them differently. `[C4]` checks the conserved
+pass. An untouched state marks nothing, a density below the floor sets the patch mark, and a NaN sets the NaN mark.
+The same repair outside the interior marks nothing at all, because a repair in a ghost cell must not force a block to
+redo its step. The primitive pass sets no mark for its density and pressure floors: the redo detector tests those
+floors itself (@sec-ch08-redo). It marks only a NaN and a species fraction below the round-off threshold.
 
 ### Numerical method
 
@@ -79,9 +82,12 @@ catastrophic depends on the scaling of the problem.
 
 The marks are a two-element device-side boolean buffer, reset at `reset_limiter_marks`
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::reset_limiter_marks >}}) and read by the redo detector of
-@sec-ch08-redo. Entry one is the NaN mark and entry zero the patch mark, set at `limiter_marks_`
-({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}). They are set by comparing
-the density and energy rows against a copy taken before the floors.
+@sec-ch08-redo. Entry one is the NaN mark and entry zero the patch mark. In the conserved pass they are set at
+`limiter_marks_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}): a NaN sets
+entry one; entry zero is set by comparing the density and energy rows against a copy taken before the floors, and
+again by a species repair larger than the round-off threshold of @sec-ch08-roundoff. In the primitive pass
+`limiter_marks_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}) sets entry
+one for a NaN and entry zero for a species fraction below minus that threshold; its floors mark nothing.
 
 **Why this order, and what a floor costs.** Three facts of the code.
 
@@ -90,8 +96,9 @@ the density and energy rows against a copy taken before the floors.
    floors do not commute; `[C1]` measures the difference.
 2. A clamp can only add: the invented mass is $\sum_i \max(\rho_{\mathrm{fl}} - \rho_i, 0)\,V_i \ge 0$ and likewise for the
    energy; `[C2]` measures both strictly positive and nothing removes them.
-3. The marks compare the interior rows against a copy taken before the floors. A repair in a ghost cell marks nothing
-   and cannot force a block to redo its step.
+3. The conserved pass marks by comparing the interior rows against a copy taken before the floors, and the
+   primitive pass marks only a NaN and a negative species fraction. A repair in a ghost cell marks nothing and cannot
+   force a block to redo its step.
 
 ### Code
 
@@ -125,7 +132,9 @@ dynamics:
 
 An options struct built in C++ without the reader starts at $10^{-10}$ for the density and pressure floors
 ({{< code src/eos/equation_of_state.hpp EquationOfStateOptionsImpl >}}). Refused: any key other than `type`,
-`gammad`, `weight`, `density-floor`, `pressure-floor`, `temperature-floor`, `limiter`, `eos-file` and `verbose`.
+`gammad`, `weight`, `density-floor`, `pressure-floor`, `temperature-floor`, `limiter`, `eos-file` and `verbose`, and
+kintera's `max-iter`, `ftol` and `uv-solver`, which the block shares with kintera and accepts (`check_keys`,
+{{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}).
 The conserved floors are these lines
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}):
 
@@ -144,15 +153,15 @@ the already-floored density.
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| this section's check | `[C1]` the two floors do not commute; `[C2]` the mass and energy a floor invents; `[C4]` the marks and the interior rule; `[C5]` the two passes floor different rows | measured, bitwise | the check's own bounds, all in `floors_check.py`. `check_C1` asserts a non-commutation above $10^{-9}$. `check_C2` asserts only a positive sign on the invented mass and energy. `check_C4` asserts exact equality of the mark booleans against the expected pattern. `check_C5` asserts exact equality against `DENSITY_FLOOR` and `PRESSURE_FLOOR`. |
+| this section's check | `[C1]` the two floors do not commute; `[C2]` the mass and energy a floor invents; `[C4]` the conserved pass's marks and the interior rule; `[C5]` the two passes floor different rows | measured, bitwise | the check's own bounds, all in `floors_check.py`. `check_C1` asserts a non-commutation above $10^{-9}$. `check_C2` asserts only a positive sign on the invented mass and energy. `check_C4` asserts exact equality of the mark booleans against the expected pattern. `check_C5` asserts exact equality against `DENSITY_FLOOR` and `PRESSURE_FLOOR`. |
 
 : Tests of the equation-of-state limiter. {#tbl-ch08-eoslimiter-tests}
 
 The chapter's check ports the two passes on synthetic states; it imports no snapy.[^ch08-floors-run] `[C1]`: reversing
 the two conserved floors changes the energy in 2862 of 3000 random states, by up to $1.33\times10^{4}$. `[C2]`: on
 4000 cells straddling the floors the passes add $4.736\times10^{-4}$ of dry mass and $1.294\times10^{2}$ of total
-energy. `[C4]`: an untouched state marks nothing, a density below the floor sets the patch mark, and a NaN sets the
-NaN mark. The same repair outside the interior marks nothing. `[C5]`: the primitive pass floors density
+energy. `[C4]`, the conserved pass: an untouched state marks nothing, a density below the floor sets the patch mark,
+and a NaN sets the NaN mark. The same repair outside the interior marks nothing. `[C5]`: the primitive pass floors density
 $10^{-9} \to 10^{-6}$ and pressure $10^{-9} \to 10^{-3}$ and clamps a negative fraction to 0, with no temperature
 floor.
 
