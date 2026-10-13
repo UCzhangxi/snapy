@@ -245,7 +245,49 @@ def check_C8():
            f"weights nu mu change it by up to {raw_worst:.2e}")
 
 
-CHECKS = (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8)
+def check_C9():
+    """_reconfloors.qmd. ReconstructOptionsImpl::from_yaml (reconstruct.cpp:14-38) at
+    snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 returns the C++ default, shock = true
+    (reconstruct.hpp:51), unless the deck has dynamics/reconstruct/<section>; only then is
+    shock read, with false as its default. The face floors and tracer clamps run only with
+    shock false (reconstruct.cpp:99-102), so a deck without that section gets none of them."""
+    CXX_DEFAULT = True                                    # reconstruct.hpp:51
+
+    def shock(deck, section):
+        dyn = deck.get("dynamics")
+        if dyn is None or "reconstruct" not in dyn:      # :19-20
+            return CXX_DEFAULT
+        node = dyn["reconstruct"] or {}
+        if section not in node:                          # :29
+            return CXX_DEFAULT
+        return bool((node[section] or {}).get("shock", False))   # :33
+
+    decks = {
+        "no dynamics block": {},
+        "no reconstruct block": {"dynamics": {"equation-of-state": {"limiter": True}}},
+        "vertical only": {"dynamics": {"reconstruct": {"vertical": {"type": "weno5"}}}},
+        "both sections": {"dynamics": {"reconstruct": {"vertical": {"type": "weno5"},
+                                                       "horizontal": {"type": "weno5"}}}},
+        "shock set": {"dynamics": {"reconstruct": {"vertical": {"shock": True}}}},
+    }
+    got = {name: (shock(d, "vertical"), shock(d, "horizontal")) for name, d in decks.items()}
+    want = {"no dynamics block": (True, True), "no reconstruct block": (True, True),
+            "vertical only": (False, True), "both sections": (False, False),
+            "shock set": (True, True)}
+    # the statement "false by default from YAML" predicts False for every direction a deck
+    # does not set explicitly
+    old = {name: (False, False) for name in decks}
+    old["shock set"] = (True, True)
+    old_wrong = sorted(n for n in decks if old[n] != got[n])
+    report("C9", got == want and len(old_wrong) > 0,
+           "shock is false only where the deck has the reconstruct section of that direction; "
+           "otherwise it keeps the C++ default, true, and the face floors do not run",
+           "; ".join(f"{n}: vertical {v}, horizontal {h}" for n, (v, h) in got.items()) +
+           f". A reading of 'false by default from YAML' is wrong for {len(old_wrong)} of "
+           f"{len(decks)} decks ({', '.join(old_wrong)})")
+
+
+CHECKS = (check_C1, check_C2, check_C3, check_C4, check_C5, check_C6, check_C7, check_C8, check_C9)
 for fn in CHECKS:
     fn()
 print(f"{len(CHECKS) - len(FAIL)}/{len(CHECKS)} claims pass")
