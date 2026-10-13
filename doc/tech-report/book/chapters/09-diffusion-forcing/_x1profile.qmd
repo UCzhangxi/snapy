@@ -24,11 +24,7 @@ the top of the column.
 **Purpose.** Multiplies the kinematic `nu_iso` and/or `kappa_iso` by a positive profile in $x_1$, and takes the
 $x_1$ face coefficient as the mean of the two cells' products; @eq-ch09-x1profile-mp.
 
-**Data.** In: a table of knots $(x_1, \varsigma)$ from YAML or Python (at least two, finite, strictly
-increasing $x_1$, positive values), or one float64 value per $x_1$ cell centre of a block, ghosts included; the cell
-field $q$ ($\rho$ or $\rho c_v$). Out: the $x_1$ face coefficients of @sec-ch09-viscosity, and the largest profile
-value for the time-step bound. Check cases: a constant product on $n_1$ = 16 to 128, a smooth profile at $n_1$ = 128
-and 256, the table on knots and between them.
+**Data.** In: finite, increasing $x_1$ knots and scale values; out: scaled face diffusion coefficients.
 
 **Placement.** Built once with the block; read by the diffusion module every stage.
 
@@ -38,13 +34,21 @@ and 256, the table on knots and between them.
 **Guarantee / limits.** Zero tendency for a constant product; second-order face flux; a per-cell profile is refused
 when $x_1$ is split; a profile changed after construction is refused.
 
-**Evidence.** Tests: a constant dynamic coefficient over a stratified column gives no tendency,
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: a table of knots $(x_1, \varsigma)$ from YAML or Python (at least two, finite, strictly
+increasing $x_1$, positive values), or one float64 value per $x_1$ cell centre of a block, ghosts included; the cell
+field $q$ ($\rho$ or $\rho c_v$). Out: the $x_1$ face coefficients of @sec-ch09-viscosity, and the largest profile
+value for the time-step bound. Check cases: a constant product on $n_1$ = 16 to 128, a smooth profile at $n_1$ = 128
+and 256, the table on knots and between them.
+
+**Evidence details.** Tests: a constant dynamic coefficient over a stratified column gives no tendency,
 {{< code tests/test_diffusion_x1_scale.cpp diffusion_x1_scale.constant_dynamic_coefficient_column_has_no_tendency >}}
 ($10^{-12}$); the face flux of a smooth profile converges at order above 1.85,
 {{< code tests/test_diffusion_x1_scale.cpp diffusion_x1_scale.smooth_profile_flux_converges_at_second_order >}}; the
 YAML table equals the per-cell profile bit for bit, {{< code tests/test_diffusion_x1_scale.py main >}}; these ctests
-were not run at the pin. Check: `python3 src/snapy_report/ch09/x1profile_check.py`, output `x1profile_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+were not run at the pin. Check: `python3 src/snapy_report/ch09/x1profile_check.py`, output `x1profile_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical [^env-x1profile].
 
 Local symbols (flagged to the editor, ISSUES.md): $\varsigma(x_1)$ [-] the $x_1$ profile of a coefficient (`nu_scale_x1`,
 `kappa_scale_x1`; $s$ is the centroid slope of NOTATION.md); $q$ the cell field it multiplies ($\rho$ or $\rho c_v$);
@@ -71,6 +75,8 @@ c^{\mathrm{PM}}_{i-1/2} &= \tfrac12(\varsigma_{i-1}+\varsigma_i)\cdot\tfrac12(q_
  &= c^{\mathrm{MP}}_{i-1/2} - \tfrac14(\varsigma_i-\varsigma_{i-1})(q_i-q_{i-1}) .
 \end{aligned}
 $$ {#eq-ch09-x1profile-mp}
+
+<!-- equation-check: eq-ch09-x1profile-mp ch09_dropin_check.py [D6] -->
 
 The second line is an identity (`[C1]`).[^x1p-c] The code uses $c^{\mathrm{MP}}$ on $x_1$ faces:
 `face_scaled_coefficient` multiplies the cell field by the profile and hands the product to `face_coefficient`
@@ -210,7 +216,7 @@ if (idir == 0) {
 
 ### Tests
 
-The derived round-off checks [D6] pass.[^dropin-x1profile]
+The derived round-off checks [D6] pass.[^ch09-roundoff]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -242,8 +248,5 @@ ctest to print them and a pinned run, **pending**. ctest cases: **pending a pinn
 4. **The table is linear between knots**; a profile with curvature needs enough knots. Not measured.
 5. **The wall cell keeps the $O(h)$ error** of the normal-stress kernel (@sec-ch09-viscosity).
 
-[^dropin-x1profile]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
-    [D6]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
-    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
-    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
-    (`--mutate D6`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).
+
+[^env-x1profile]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

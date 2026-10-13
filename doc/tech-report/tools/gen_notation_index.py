@@ -246,11 +246,12 @@ def outputs(notation: str, book: Path) -> tuple[str, dict[str, str]]:
         "the first scheme, in book order, whose maths contains the symbol (an exact match after spaces and one-character "
         "braces are dropped; \"—\" where none does, which a different spelling also gives); \"code\" is the name the "
         "code uses, at "
-        "chengcli/snapy `e894700ff7aee30b52882e5202b16461413780b0` and kintera "
+        "chengcli/snapy `6fbb39750f62b83df096058a4746e77d0a634bc5` and kintera "
         "`c55b13b2204997d2d09e04498558ab9495d8ee77`.",
         "",
     ]
-    lines += [_refs(l) for l in intro]
+    lines += [_refs(l.replace('(the "source letter" column in this source table)',
+                             '(shown as "source notes" in the meaning column)')) for l in intro]
     for s in sections:
         slug = re.sub(r"[^a-z0-9]+", "-", s["num"].lower()).strip("-")
         # unnumbered: NOTATION.md's prose refers to its own numbers (§4), which the heading keeps

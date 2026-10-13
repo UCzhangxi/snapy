@@ -20,10 +20,7 @@ components so that it brakes the wind instead of rotating it.
 **Purpose.** Damps all three velocity components toward zero in a layer of given width at the top or bottom of the
 domain, with a $\sin^2$ ramp; @eq-ch09-sponge-drag.
 
-**Data.** In: the cell density $\rho$ and contravariant velocity of every cell of the boundary block, ghosts
-included, the lower-face position of each cell, `width` [$\mathrm{m}$] and $\tau$ [$\mathrm{s}$]; `cosine_cell_kj` on the
-cubed sphere. Out: the three momentum rows, covariant; the energy row is not touched. Check cases: 20 cells of
-$0.5$ $\mathrm m$ with a width of $2$ $\mathrm m$, and 1000 random draws on a panel corner.
+**Data.** In: density, velocity, layer width and damping time; out: momentum drag with no total-energy increment.
 
 **Placement.** Every RK stage, in the forcing loop, only on the block that owns the physical boundary.
 
@@ -33,11 +30,18 @@ $\mathrm{m}$]. Off unless the key is present.
 **Guarantee / limits.** First order in time; the removed kinetic energy becomes internal energy density; a `width`
 taller than the boundary block is cut off at its other face.
 
-**Evidence.** Test: on six panels the top sponge, the bottom sponge and `relax-bot-velo` give a drag antiparallel to the
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: the cell density $\rho$ and contravariant velocity of every cell of the boundary block, ghosts
+included, the lower-face position of each cell, `width` [$\mathrm{m}$] and $\tau$ [$\mathrm{s}$]; `cosine_cell_kj` on the
+cubed sphere. Out: the three momentum rows, covariant; the energy row is not touched. Check cases: 20 cells of
+$0.5$ $\mathrm m$ with a width of $2$ $\mathrm m$, and 1000 random draws on a panel corner.
+
+**Evidence details.** Test: on six panels the top sponge, the bottom sponge and `relax-bot-velo` give a drag antiparallel to the
 covariant momentum, {{< code tests/test_forcing.cpp forcing.cubed_sphere_sponge_drag_is_covariant >}} ($10^{-12}$ of the
 larger product); the ctest was not run at the pin. No test of the drag magnitude or of the profile. Check:
-`python3 src/snapy_report/ch09/sponge_check.py`, output `sponge_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+`python3 src/snapy_report/ch09/sponge_check.py`, output `sponge_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical [^env-sponge].
 
 Local symbols (flagged to the editor, ISSUES.md): $L_{\mathrm{spg}}$ [m] the layer width `width` ($w$ is a source letter
 of $\mathbf v$ in NOTATION.md); $\tau$ [s] the named relaxation time; $\zeta_i$ [-] the depth fraction of cell $i$ inside the
@@ -67,20 +71,20 @@ to the three momentum rows and nothing to the energy (`force` in `TopSpongeLyrIm
 cell's *lower* face, the bottom cell of a bottom sponge has $\zeta=1$, while the top cell of a top sponge has
 $\zeta = 1 - \Delta x_1/L_{\mathrm{spg}}$, with $\Delta x_1$ the cell's $x_1$ width: scale 0.8536 for $\Delta x_1/L_{\mathrm{spg}}=0.25$.[^spg-c]
 
-*Heating.* With $\alpha_{\mathrm{spg}} = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy density of the cell rises by the
-kinetic energy removed, $\tfrac12\rho|\mathbf v|^2[1-(1-\alpha_{\mathrm{spg}})^2]$, which is positive for $0<\alpha_{\mathrm{spg}}<2$ (`[C2]`). The sponge
-is therefore an energy-conserving drag with frictional heating, not a sink of total energy.
+1. *Heating.* With $\alpha_{\mathrm{spg}} = \Delta t\sin^2(\pi\zeta/2)/\tau$ and $E$ unchanged, the internal energy density of the cell rises by the
+   kinetic energy removed, $\tfrac12\rho|\mathbf v|^2[1-(1-\alpha_{\mathrm{spg}})^2]$, which is positive for $0<\alpha_{\mathrm{spg}}<2$ (`[C2]`). The sponge
+   is therefore an energy-conserving drag with frictional heating, not a sink of total energy.
 
-*Covariant lowering.* The primitive velocities $v^b$ are contravariant and the stored momenta $m_a$ covariant. On
-the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\psi\ne0$, with $\psi$ the angle between the panel axes (`cosine_cell_kj`, @sec-ch03-gnomonic), and
-`coord_vec_lower_impl` forms $f_2 = f^2 + \cos\psi\,f^3$, $f_3 = f^3 + \cos\psi\,f^2$
-({{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The lowered drag is antiparallel to the covariant
-momentum and its power $v^af_a = -\rho\alpha_{\mathrm{spg}}\,g_{ab}v^av^b$ is negative for $|\cos\psi|<1$ (`[C3]`). Without the
-lowering the cross product of force and covariant momentum is $\cos\psi\,(v_3^2-v_2^2)$ per unit $\rho\alpha_{\mathrm{spg}}$,
-non-zero away from the panel centres: 0.455 at a corner with $\cos\psi=-\tfrac12$, $\mathbf v=(1, 0.3)$ (`[C4]`).
-On an orthogonal grid $\cos\psi=0$ and the lowering is the identity bit for bit.
+2. *Covariant lowering.* The primitive velocities $v^b$ are contravariant and the stored momenta $m_a$ covariant. On
+   the cubed sphere the horizontal metric has $g_{22}=g_{33}=1$ and $g_{23}=\cos\psi\ne0$, with $\psi$ the angle between the panel axes (`cosine_cell_kj`, @sec-ch03-gnomonic), and
+   `coord_vec_lower_impl` forms $f_2 = f^2 + \cos\psi\,f^3$, $f_3 = f^3 + \cos\psi\,f^2$
+   ({{< code src/coord/coord_utils_impl.h coord_vec_lower_impl >}}). The lowered drag is antiparallel to the covariant
+   momentum and its power $v^af_a = -\rho\alpha_{\mathrm{spg}}\,g_{ab}v^av^b$ is negative for $|\cos\psi|<1$ (`[C3]`). Without the
+   lowering the cross product of force and covariant momentum is $\cos\psi\,(v_3^2-v_2^2)$ per unit $\rho\alpha_{\mathrm{spg}}$,
+   non-zero away from the panel centres: 0.455 at a corner with $\cos\psi=-\tfrac12$, $\mathbf v=(1, 0.3)$ (`[C4]`).
+   On an orthogonal grid $\cos\psi=0$ and the lowering is the identity bit for bit.
 
-*Exact and truncated.* The profile is exact as defined; the drag is explicit, first order in $\Delta t/\tau$.
+3. *Exact and truncated.* The profile is exact as defined; the drag is explicit, first order in $\Delta t/\tau$.
 
 [^spg-c]: `python3 src/snapy_report/ch09/sponge_check.py`, output `sponge_check.out`, lines `[C1]`–`[C4]`; a numpy
     port of the two `forward` functions and of `coord_vec_lower_impl` at the pin, double precision.
@@ -178,3 +182,5 @@ of the profile** (a gap; `[C1]` and `[C2]` cover the formulas only).
 4. **Not run at scale on the cubed sphere.** No deck or test at the pin runs a sponge through the solver on the
    cubed sphere; not measured.
 5. **Leftover file.** `src/forcing/sponge_lyr.cpp_` is not compiled (wrong extension).
+
+[^env-sponge]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

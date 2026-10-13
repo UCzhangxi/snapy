@@ -22,12 +22,7 @@ in the interior and at the walls (Limits).
 **Purpose.** Adds the Newtonian viscous stress, its work, and a Fourier heat flux as face fluxes whose divergence
 enters the stage increment; @eq-ch09-viscosity-flux.
 
-**Data.** In: the cell-centre velocity $\mathbf v$ [$\mathrm{m\,s^{-1}}$], temperature $T$ [$\mathrm{K}$],
-density $\rho$ and mixture $c_v$ of the stage, ghosts included ($n_{\mathrm{ghost}}\ge2$ for viscosity), and the
-coefficients `nu_iso`, `kappa_iso` [$\mathrm{m^2\,s^{-1}}$, or $\mathrm{Pa\,s}$ and $\mathrm{W\,m^{-1}\,K^{-1}}$ with
-`dynamic: true`]. Out: face fluxes of momentum [$\mathrm{Pa}$] and energy [$\mathrm{W\,m^{-2}}$] on every active
-direction, and their divergence in the momentum and energy rows. Check cases: transverse and normal modes at
-$n_1 = 64$, a random shear at $n_1 = 48$, a resting dry adiabat at $n_1$ = 64, 128, 256.
+**Data.** In: cell velocity, temperature and diffusion coefficients; out: momentum and energy tendencies from face fluxes.
 
 **Placement.** Every RK stage, third in the forcing loop; its time-step bound joins the hyperbolic one.
 
@@ -38,13 +33,22 @@ $n_{\mathrm{ghost}}\ge2$ for viscosity, and a positive reference $c_v$ for condu
 **Guarantee / limits.** Momentum and total energy conserved; second order in the interior, first order in the wall
 normal-stress kernel; conduction acts on $T$, not on the potential temperature.
 
-**Evidence.** Tests: a transverse $v_2=x_1^2$ gives the uniform viscous Laplacian,
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: the cell-centre velocity $\mathbf v$ [$\mathrm{m\,s^{-1}}$], temperature $T$ [$\mathrm{K}$],
+density $\rho$ and mixture $c_v$ of the stage, ghosts included ($n_{\mathrm{ghost}}\ge2$ for viscosity), and the
+coefficients `nu_iso`, `kappa_iso` [$\mathrm{m^2\,s^{-1}}$, or $\mathrm{Pa\,s}$ and $\mathrm{W\,m^{-1}\,K^{-1}}$ with
+`dynamic: true`]. Out: face fluxes of momentum [$\mathrm{Pa}$] and energy [$\mathrm{W\,m^{-2}}$] on every active
+direction, and their divergence in the momentum and energy rows. Check cases: transverse and normal modes at
+$n_1 = 64$, a random shear at $n_1 = 48$, a resting dry adiabat at $n_1$ = 64, 128, 256.
+
+**Evidence details.** Tests: a transverse $v_2=x_1^2$ gives the uniform viscous Laplacian,
 {{< code tests/test_diffusion.cpp DeviceTest.transverse_velocity_uses_viscous_laplacian >}} ($10^{-5}$); a sine mode
 decays as $e^{-\nu t}$ over 100 steps, {{< code tests/test_diffusion.cpp DeviceTest.viscous_sine_mode_matches_analytic_decay >}}
 ($3\times10^{-4}$); the bound uses the larger coefficient,
 {{< code tests/test_diffusion.cpp DeviceTest.timestep_uses_largest_diffusivity >}} ($10^{-12}$); these ctests were not
-run at the pin. Check: `python3 src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out` lines `[C1]`–`[C8]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+run at the pin. Check: `python3 src/snapy_report/ch09/viscosity_check.py`, output `viscosity_check.out` lines `[C1]`–`[C8]`, re-run at the pin: all PASS, output identical [^env-viscosity].
 
 Local symbols (flagged to the editor, ISSUES.md): $\boldsymbol\Pi$ [Pa] the viscous stress tensor ($\tau$ is a named relaxation
 time in NOTATION.md); $F^{(m_b)}_a$ [Pa] and $F^{(E)}_a$ [W m$^{-2}$] the momentum and energy fluxes through a face normal to
@@ -78,6 +82,8 @@ F^{(E)}_a &= \sum_b v_b\,F^{(m_b)}_a - \kappa\rho c_v\,\partial_aT ,
 \end{aligned}
 $$ {#eq-ch09-viscosity-flux}
 
+<!-- equation-check: eq-ch09-viscosity-flux ch09_dropin_check.py [D4] -->
+
 and the stage adds $-\Delta t\,\nabla\cdot\mathbf F$ to momentum and energy. With `dynamic: true`, $\nu\rho$ is
 replaced by $\mu$ and $\kappa\rho c_v$ by the conductivity $\kappa$.
 
@@ -95,6 +101,8 @@ $$
 \overline{q}_{i-1/2} &= \tfrac12(q_{i-1}+q_i) ,
 \end{aligned}
 $$ {#eq-ch09-viscosity-stencil}
+
+<!-- equation-check: eq-ch09-viscosity-stencil ch09_dropin_check.py [D6] -->
 
 the face-normal difference over the centre distance, the average of the two cell-centred tangential differences,
 and the two-cell face average, in `face_normal_derivative`
@@ -167,6 +175,8 @@ On a resting dry adiabat with $z=x_1$, the interior heating rate follows in four
 $$
 \partial_tT = \frac{\kappa \lvert g_1\rvert^2c_{v,\mathrm d}}{R_{\mathrm d}\,c_{p,\mathrm d}^2\,T},
 $$ {#eq-ch09-viscosity-adiabat}
+
+<!-- equation-check: eq-ch09-viscosity-adiabat ch09_dropin_check.py [D5] -->
 
 $7.93\times10^{-7}$ $\mathrm{K\,s^{-1}}$ per unit $\kappa$ at $T=300$ $\mathrm{K}$ for dry air
 ($R_{\mathrm d}=287$, $c_{p,\mathrm d}=1004.5$ $\mathrm{J\,kg^{-1}\,K^{-1}}$, $\lvert g_1\rvert=9.8$ $\mathrm{m\,s^{-2}}$). The discrete operator
@@ -275,7 +285,7 @@ du -= dt * coord->divergence(fluxes[0], fluxes[1], fluxes[2]);
 
 ### Tests
 
-The derived round-off checks [D4, D5, D5n] pass.[^dropin-viscosity]
+The derived round-off checks [D4, D5, D5n] pass.[^ch09-roundoff]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -322,8 +332,5 @@ coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer 
 6. **Untested combinations.** Diffusion with an implicit scheme, with sedimentation, or on several ranks is not run
    by any ctest listed here. See the switch coverage matrix, @sec-ch12-matrix.
 
-[^dropin-viscosity]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
-    [D4, D5, D5n]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
-    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
-    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
-    (`--mutate D4`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).
+
+[^env-viscosity]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

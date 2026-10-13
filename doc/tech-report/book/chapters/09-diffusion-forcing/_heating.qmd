@@ -19,10 +19,7 @@ domain, applied only by the block that owns that physical $x_1$ boundary.
 change at constant volume; `top-cool` and `bot-heat` remove or add a fixed energy flux, spread evenly over the top
 or bottom `depth` cells; @eq-ch09-heating-body and @eq-ch09-heating-flux.
 
-**Data.** In: the interior density $\rho$, pressure $p$ [$\mathrm{Pa}$] and mixture $c_v$ (`body-heat`); the
-flux $F$ [$\mathrm{W\,m^{-2}}$], `depth` and the $x_1$ width `dz` of the boundary cell (`top-cool`, `bot-heat`); $\Delta t$.
-Out: the energy row of the increment, per unit volume [$\mathrm{J\,m^{-3}}$]. Check cases: $F=-30$
-$\mathrm{W\,m^{-2}}$ with `depth` 4 on uniform cells and on cells growing upward by 10 %.
+**Data.** In: density, pressure, $c_v$, heat rate or boundary flux and depth; out: the stage energy increment.
 
 **Placement.** Every RK stage, in the forcing loop; `top-cool` and `bot-heat` only on the block that owns the
 physical $x_1$ boundary.
@@ -34,12 +31,19 @@ $\ge0$, defaults 0 and 1 [$\mathrm{W\,m^{-2}}$, cells]. Each off unless its key 
 **Guarantee / limits.** Exact pointwise sources; the column receives exactly $F$ only on uniform cells and not on
 curved grids; the default `pmax` of 1 $\mathrm{Pa}$ heats almost nothing.
 
-**Evidence.** Tests: heating only inside the pressure band with the mixture $c_v$,
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: the interior density $\rho$, pressure $p$ [$\mathrm{Pa}$] and mixture $c_v$ (`body-heat`); the
+flux $F$ [$\mathrm{W\,m^{-2}}$], `depth` and the $x_1$ width `dz` of the boundary cell (`top-cool`, `bot-heat`); $\Delta t$.
+Out: the energy row of the increment, per unit volume [$\mathrm{J\,m^{-3}}$]. Check cases: $F=-30$
+$\mathrm{W\,m^{-2}}$ with `depth` 4 on uniform cells and on cells growing upward by 10 %.
+
+**Evidence details.** Tests: heating only inside the pressure band with the mixture $c_v$,
 {{< code tests/test_forcing.cpp forcing.body_heat_uses_pressure_mask_and_mixture_cv >}}; linearity of the boundary
 fluxes in $\Delta t$, {{< code tests/test_forcing.cpp forcing.boundary_fluxes_scale_with_timestep >}} (both
 `allclose` defaults); these ctests were not run at the pin. No test of the delivered column total. Check:
-`python3 src/snapy_report/ch09/heating_check.py`, output `heating_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+`python3 src/snapy_report/ch09/heating_check.py`, output `heating_check.out` lines `[C1]`–`[C3]`, re-run at the pin: all PASS, output identical [^env-heating].
 
 Local symbols (flagged to the editor, ISSUES.md): $\dot T$ [K s$^{-1}$] the heating rate `dTdt`; $p_{\min}$, $p_{\max}$ [Pa]
 the pressure band; $F$ [W m$^{-2}$] the boundary flux `flux`; $n_{\mathrm{dep}}$ the number of cells `depth` it is spread
@@ -69,6 +73,8 @@ each of those cells as a uniform volumetric rate
 $$
 \Delta E_i = \Delta t\,\frac{F}{\Delta x_{1,\mathrm b}\,n_{\mathrm{dep}}} ,
 $$ {#eq-ch09-heating-flux}
+
+<!-- equation-check: eq-ch09-heating-flux ch09_dropin_check.py [D2] -->
 
 with $\Delta x_{1,\mathrm b}$ the $x_1$ width of the boundary cell, `dz`, in `TopCoolImpl::forward`
 ({{< code src/forcing/top_cool.cpp TopCoolImpl::forward >}}) and `BotHeatImpl::forward`
@@ -176,7 +182,7 @@ and the last line @eq-ch09-heating-flux on the top $n_{\mathrm{dep}}$ cells. `Bo
 
 ### Tests
 
-The derived round-off checks [D2] pass.[^dropin-heating]
+The derived round-off checks [D2] pass.[^ch09-roundoff]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -202,12 +208,9 @@ $x_1$ split.
 2. **Curved grids.** No correction for the cell volume of spherical-polar or cubed-sphere grids; not measured.
 3. **`depth` against the block.** `depth` is checked to be positive but not against the block's $x_1$ cell count;
    the `depth` cells are taken in the block that owns the boundary, and no other block applies the flux, so under
-   an $x_1$ split a `depth` that reaches past that block is not continued into the next. What a `depth` beyond the
-   block's interior cells does is not tested.
+   an $x_1$ split a `depth` that reaches past that block is not continued into the next. A `depth` beyond the interior can select ghost cells with `top-cool`;
+   `bot-heat` throws when its `narrow` extends beyond the allocated tensor. Keep `depth` within the interior.
 4. **`body-heat` default band** `pmax` = 1 $\mathrm{Pa}$ (above).
 
-[^dropin-heating]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
-    [D2]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
-    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
-    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
-    (`--mutate D2`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).
+
+[^env-heating]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

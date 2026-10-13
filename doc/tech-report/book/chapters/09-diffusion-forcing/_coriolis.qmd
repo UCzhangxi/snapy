@@ -20,13 +20,9 @@ of $\boldsymbol\Omega$ there, and the shallow-water equation of state turns it o
 **Purpose.** Adds the Coriolis force $-2\boldsymbol\Omega\times\rho\mathbf v$ to the momentum;
 @eq-ch09-coriolis-force.
 
-**Data.** In: the cell-centre density $\rho$ [$\mathrm{kg\,m^{-3}}$] and velocity $\mathbf v$
-[$\mathrm{m\,s^{-1}}$] of the stage, $\Delta t$, and $\boldsymbol\Omega$ [$\mathrm{s^{-1}}$] from `omega1..3`, used in
-the cell frame (`123`) or projected once from a Cartesian vector onto Cartesian, cylindrical, spherical-polar or
-gnomonic cells (`xyz`). Out: the three momentum rows of the increment, covariant on the cubed sphere; the energy row is
-not touched. Check cases: random orthogonal frames, a $z$ rotation at colatitude 0.7, a two-dimensional `123` case.
+**Data.** In: cell density $\rho$, velocity $\mathbf v$, rotation $\boldsymbol\Omega$ and $\Delta t$; out: covariant momentum increments, no energy increment.
 
-**Placement.** Every RK stage, second in the forcing loop (@sec-ch09-framework).
+**Placement.** Every RK stage, after `const-gravity` when it is present in the forcing loop (@sec-ch09-framework).
 
 **Activation.** `forcing/coriolis: {type, omega1, omega2, omega3, traditional}`; defaults `xyz`, 0, 0, 0, `false`.
 Off unless the key is present.
@@ -34,13 +30,21 @@ Off unless the key is present.
 **Guarantee / limits.** Exact pointwise for the cell-centre state; no work on an orthogonal frame; `123` with
 $n_3 = 1$ drops the $x_3$ row; `traditional` acts only on the cubed sphere.
 
-**Evidence.** Tests: on all six cubed-sphere panels the force equals the Cartesian one mapped to the panel,
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: the cell-centre density $\rho$ [$\mathrm{kg\,m^{-3}}$] and velocity $\mathbf v$
+[$\mathrm{m\,s^{-1}}$] of the stage, $\Delta t$, and $\boldsymbol\Omega$ [$\mathrm{s^{-1}}$] from `omega1..3`, used in
+the cell frame (`123`) or projected once from a Cartesian vector onto Cartesian, cylindrical, spherical-polar or
+gnomonic cells (`xyz`). Out: the three momentum rows of the increment, covariant on the cubed sphere; the energy row is
+not touched. Check cases: random orthogonal frames, a $z$ rotation at colatitude 0.7, a two-dimensional `123` case.
+
+**Evidence details.** Tests: on all six cubed-sphere panels the force equals the Cartesian one mapped to the panel,
 {{< code tests/test_forcing.cpp forcing.cubed_sphere_coriolis_uses_cartesian_rotation_vector >}} (rtol and atol
 $10^{-12}$), with and without `traditional`
 ({{< code tests/test_forcing.cpp forcing.cubed_sphere_coriolis_supports_traditional_approximation >}}); these ctests
 were not run at the pin. The Cartesian, cylindrical and spherical-polar branches have no ctest. Check:
-`python3 src/snapy_report/ch09/coriolis_check.py`, output `coriolis_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+`python3 src/snapy_report/ch09/coriolis_check.py`, output `coriolis_check.out` lines `[C1]`–`[C5]`, re-run at the pin: all PASS, output identical [^env-coriolis].
 
 Local symbols (flagged to the editor, ISSUES.md): $\boldsymbol\Omega=(\Omega_1,\Omega_2,\Omega_3)$ [s$^{-1}$] the rotation
 vector in the cell's frame, `omega1..3` of the module; $(\Omega_x,\Omega_y,\Omega_z)$ [s$^{-1}$] the same vector in the fixed
@@ -56,6 +60,8 @@ With $\mathbf m = \rho\mathbf v$ in an orthonormal frame, one stage adds
 $$
 \Delta\mathbf m = -2\Delta t\,\boldsymbol\Omega\times\mathbf m ,
 $$ {#eq-ch09-coriolis-force}
+
+<!-- equation-check: eq-ch09-coriolis-force ch09_dropin_check.py [D1] -->
 
 computed component by component in `CoriolisXYZImpl::forward`
 ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::forward >}}) and, for `type: 123`, in `Coriolis123Impl::forward`
@@ -76,7 +82,7 @@ $$
 \lvert\mathbf m\cdot\widehat{\Delta\mathbf m}\rvert\le3\sqrt3\,\epsilon_{\mathrm m}\,\Delta t\,\lvert\boldsymbol\Omega\rvert\,\lvert\mathbf m\rvert^2 .
 $$
 
-The check finds at most 0.279 of this bound over 20000 draws.[^dropin-coriolis] On the cubed sphere the two
+The check finds at most 0.279 of this bound over 20000 draws.[^ch09-roundoff] On the cubed sphere the two
 $3\times3$ transforms add their own roundings; the bound above is for the orthonormal branches (Cartesian, spherical-polar,
 cylindrical, and `123` in three dimensions).
 
@@ -118,7 +124,7 @@ grid.
 ### Numerical method
 
 @fig-ch09-coriolis-projection shows the projection of @eq-ch09-coriolis-sph for a rotation about $z$. The force is
-a pointwise source at the cell centre: no stencil, no ghosts. It runs in every stage, explicit, second in the
+a pointwise source at the cell centre: no stencil, no ghosts. It runs in every stage, explicit, after `const-gravity` when present in the
 forcing loop, after `const-gravity` and before the diffusion module (@sec-ch09-framework). The projected components
 are computed once, when the module is built, and stored with `register_buffer`
 ({{< code src/forcing/coriolis.cpp CoriolisXYZImpl::reset >}}), so they move with the block between devices.
@@ -192,7 +198,7 @@ $(\boldsymbol\Omega\times\mathbf m)_1=\Omega_2m_3-\Omega_3m_2$; `omega1..3` are 
 
 ### Tests
 
-The derived round-off check [D1] passes.[^dropin-coriolis] The original orthogonality check [C2] also passes.[^cor-c2]
+The derived round-off check [D1] passes.[^ch09-roundoff] The original orthogonality check [C2] also passes.[^cor-c2]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -228,8 +234,5 @@ form through the solver; the check covers their formulas.
 [^cor-c5]: `python3 src/snapy_report/ch09/coriolis_check.py`, line `[C5]`: the dropped component would have been
     $-0.20$, and $\mathbf m\cdot\Delta\mathbf m = 0.60$ in the two-dimensional case of the check.
 
-[^dropin-coriolis]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
-    [D1]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
-    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
-    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
-    (`--mutate D1`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).
+
+[^env-coriolis]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

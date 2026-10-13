@@ -23,11 +23,7 @@ temperature, with the internal-energy change computed by kintera.
 temperature, velocity, or composition with a time scale $\tau$; @eq-ch09-relax-temp, @eq-ch09-relax-velo and
 @eq-ch09-relax-comp.
 
-**Data.** In: the bottom interior row's density, temperature, mixture $c_v$, velocity and mass fractions, and
-for `at-face` the row above and the $x_1$ centres and lower face; the targets `btemp` [$\mathrm{K}$], `bvx..bvz`
-[$\mathrm{m\,s^{-1}}$] or `species`/`xfrac` (mole fractions); $\tau$ [$\mathrm{s}$]. Out: the energy, momentum, or dry and
-species rows of the bottom row. Check cases: 100 random spacings for the face target, uniform cells, one composition
-swap.
+**Data.** In: bottom-cell state, relaxation targets and time scales; out: energy, momentum and species increments.
 
 **Placement.** Every RK stage, in the forcing loop, only on the block that owns the physical lower $x_1$ boundary.
 
@@ -38,12 +34,20 @@ swap.
 **Guarantee / limits.** First order in time; the at-face target is exact for a linear $T$; `relax-bot-comp` keeps
 the total density.
 
-**Evidence.** Tests: the cell form, {{< code tests/test_forcing.cpp forcing.relax_bottom_temperature >}} (`allclose` defaults);
+**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+:::
+
+**Data details.** In: the bottom interior row's density, temperature, mixture $c_v$, velocity and mass fractions, and
+for `at-face` the row above and the $x_1$ centres and lower face; the targets `btemp` [$\mathrm{K}$], `bvx..bvz`
+[$\mathrm{m\,s^{-1}}$] or `species`/`xfrac` (mole fractions); $\tau$ [$\mathrm{s}$]. Out: the energy, momentum, or dry and
+species rows of the bottom row. Check cases: 100 random spacings for the face target, uniform cells, one composition
+swap.
+
+**Evidence details.** Tests: the cell form, {{< code tests/test_forcing.cpp forcing.relax_bottom_temperature >}} (`allclose` defaults);
 the at-face target, {{< code tests/test_forcing.cpp forcing.relax_bottom_temperature_at_face >}} (exact; rtol
 $10^{-13}$); the composition swap keeps density and temperature,
 {{< code tests/test_forcing.cpp forcing.relax_bottom_composition_preserves_state >}} ($10^{-8}$ for $T$); these ctests
-were not run at the pin. Check: `python3 src/snapy_report/ch09/relax_check.py`, output `relax_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical (Python 3.11.13, numpy 2.4.6, sympy 1.14.0).
-:::
+were not run at the pin. Check: `python3 src/snapy_report/ch09/relax_check.py`, output `relax_check.out` lines `[C1]`–`[C4]`, re-run at the pin: all PASS, output identical [^env-relax].
 
 Local symbols (flagged to the editor, ISSUES.md): $\tau$ [s] the named relaxation time of each module; $T_{\mathrm b}$ [K]
 the target `btemp`; $T^{\mathrm{tgt}}$ [K] the temperature that is relaxed (the cell value, or the face value with
@@ -77,6 +81,8 @@ T^{\mathrm{tgt}} &= (1+\alpha_{\mathrm f})\,T_0 - \alpha_{\mathrm f}\,T_1, \\
 \alpha_{\mathrm f} &= \frac{x_{1,0} - x_{1,-1/2}}{x_{1,1} - x_{1,0}},
 \end{aligned}
 $$ {#eq-ch09-relax-face}
+
+<!-- equation-check: eq-ch09-relax-face ch09_dropin_check.py [D3a] -->
 
 and the increment is multiplied by the gain $1/(1+\alpha_{\mathrm f})$, `gain`
 ({{< code src/forcing/relax_bot_temp.cpp RelaxBotTempImpl::forward >}}). Why, in four steps.
@@ -170,7 +176,7 @@ every stage, explicit, in the forcing loop (@sec-ch09-framework).
 
 ### Code
 
-**A minimal input.** A surface layer at 300 K, a drag toward rest and a water-vapour source:
+**A minimal input.** Allow about 20 minutes for the supplied `bryan.yaml` run (the newcomer read-through timing, not a portable performance bound). A surface layer at 300 K, a drag toward rest and a water-vapour source:
 
 ```yaml
 forcing:
@@ -241,7 +247,7 @@ rows of @eq-ch09-relax-comp ({{< code src/forcing/relax_bot_comp.cpp >}}).
 
 ### Tests
 
-The derived round-off checks [D3a] pass.[^dropin-relax]
+The derived round-off checks [D3a] pass.[^ch09-roundoff]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
@@ -282,8 +288,5 @@ run**.
    for a drag, but not stated in the code.
 6. **Solids.** The modules read the solid placeholder state if a solid cell sits in the bottom row. Not tested.
 
-[^dropin-relax]: `python src/snapy_report/ch09/ch09_dropin_check.py`, output `ch09_dropin_check.out`,
-    [D3a]; float64 ports compared with exact rational arithmetic on the stored inputs (symbolic differentiation
-    for D5), seed 9. Python 3.11.13, numpy 2.4.6, sympy 1.14.0. D6 covers the interior faces; the wall
-    extrapolation bound is checked separately by D3b. Each claim also fails its deliberate operator mutation
-    (`--mutate D3a`; all eight variants are exercised by `src/tests/test_ch09_dropins.py`).
+
+[^env-relax]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.

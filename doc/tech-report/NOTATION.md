@@ -2,10 +2,10 @@
 
 One symbol, one meaning, across all chapters. A chapter that needs a symbol not listed here defines it at first use
 and flags it to the editor, who adds it here or picks another. Where a source note uses a different letter, the
-chapter translates to this table; the "source letter" column records the common translations.
+chapter translates to this table; the source notes record the common translations (the "source letter" column in this source table).
 
 Units are SI and every dimensional symbol carries them in its row; a dimensionless symbol is marked [-] and a
-count is marked "count", so that an empty unit cell always means the row is unfinished. $\mathcal R$ is the
+count is marked "count", an empty unit cell means that no unit or shape is specified here. $\mathcal R$ is the
 only molar quantity in the table (J mol$^{-1}$ K$^{-1}$); every other thermodynamic quantity is specific, per
 kilogram. "per unit volume" means per m$^3$ of the cell's own measure (on spherical-polar grids that includes
 the $r^2\sin\theta$ metric).
@@ -15,6 +15,7 @@ the $r^2\sin\theta$ metric).
 | symbol | meaning | code | source letter |
 |---|---|---|---|
 | $x_1, x_2, x_3$ | the three coordinate directions; $x_1$ is always the vertical (radial) direction | x1, x2, x3 | |
+| $g_{ab}$ | covariant panel metric, mapping contravariant velocity to covariant momentum per density [-] | `coord_vec_lower_impl` | |
 | $z$ | $x_1$ on a Cartesian grid (height) [m] | `x1v`, `x1f` | |
 | $r$ | $x_1$ on a spherical-polar grid (radius) [m] | `x1v`, `x1f` | |
 | $\theta$ | $x_2$ on a spherical-polar grid (colatitude) [rad] | x2 | |
@@ -101,6 +102,7 @@ the symbol in math, and never let the two touch.
 | $K_k$ | equilibrium constant of reaction $k$ [units stated per reaction]; never $K_f$, a face diffusion coefficient (§8), and never $\mathcal K$, the curvature flux (§3) | |
 | $Z_n$ | compressibility factor of gas species $n$, $p_n = Z_n\rho_nR_nT$, dimensionless [-]; $Z_n=1$ at the pin, because kintera's `func2` registry is empty. Capital, because $z$ is the Cartesian height (§1) | `czh` |
 | $\tilde c_n$ | molar concentration of species $n$ [mol m$^{-3}$]; the tilde separates it from the specific heats $c_{v,n}, c_{p,n}$ and the sound speed $c_s$ | kintera state `V` |
+| $\zeta_k$ | equilibrium concentration shift for reaction $k$, distinct from local sponge/profile coordinates [mol m$^{-3}$] | evaporation extent |
 | $\hat h_n$ | specific enthalpy of species $n$ [J kg$^{-1}$], $\hat h_n = u^{\star}_n + c_{p,n}T$ for a gas and without the $R_nT$ term for a condensate; always with the hat, because $h$ is the cell width (§1) | `species_enthalpy` |
 | $c_T$ | isothermal sound speed [m s$^{-1}$], $c_s = \sqrt{\gamma}\,c_T$ | `_isothermal_sound_speed` |
 
