@@ -30,7 +30,7 @@ def make_fig():
     ax.semilogx(d["dt"], [100. * f for f in d["limited_fraction"]], "-^",
                 color=fs.ORANGE, mfc="white")
     ax.set_xlabel("$\\Delta t$ [-]")
-    ax.set_ylabel("cells with $\\theta<1$ [%]")
+    ax.set_ylabel("cells with $\\Theta<1$ [%]")
     ax.set_title("(b) how hard it works", loc="left")
     ax.grid(True, which="major", color="#DDDDDD", lw=0.5)
     return fig
