@@ -1,6 +1,7 @@
 """Registration order of the native forcings and where their tendency enters a stage.
 
-Drawn from src/hydro/register_forcing_modules.cpp:6-84 and src/hydro/hydro_forward.cpp:869-880
+Drawn from HydroImpl::_register_forcings_module (src/hydro/register_forcing_modules.cpp) and the block
+"(6) Calculate external forcing" of HydroImpl::forward (src/hydro/hydro_forward.cpp)
 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5. A cartoon; it reads no data.
 """
 from matplotlib.patches import FancyBboxPatch

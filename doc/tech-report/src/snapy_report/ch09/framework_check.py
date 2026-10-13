@@ -1,6 +1,7 @@
 """Executable check of the stage increment of the forcing framework (chapter 9, _framework.qmd).
 
-What is checked: the assembly of the stage increment in HydroImpl::forward (src/hydro/hydro_forward.cpp:869-880)
+What is checked: the assembly of the stage increment in HydroImpl::forward (src/hydro/hydro_forward.cpp, block
+"(6) Calculate external forcing")
 at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported on numpy arrays: the divergence term on interior cells,
 then each registered module adding dt times its source evaluated on the same W and T, and the dry-density
 increment of the forcings kept only when the block carries tracers. Three toy source terms stand in for the
@@ -32,11 +33,11 @@ MODULES = [lambda w, t: np.stack([0.1 * w[0], -w[1], np.zeros(NC), np.zeros(NC),
 
 def stage_increment(dt, order, track_dry):
     du = np.zeros((NV, NC))
-    du[:, 1:-1] = -dt * DIV[:, 1:-1]                 # hydro_forward.cpp:870-872, interior only
-    dry_before = du[0].copy() if track_dry else None  # :761-763
-    for m in order:                                   # :764, each module adds dt * S(w, temp)
+    du[:, 1:-1] = -dt * DIV[:, 1:-1]                 # du.index(interior) = -dt * _div, interior only
+    dry_before = du[0].copy() if track_dry else None  # dry_before = du[IDN].clone()
+    for m in order:                                   # for (f : forcings) f.forward(du, w, temp, dt)
         du += dt * MODULES[m](W, T)
-    dry = du[0] - dry_before if track_dry else None   # :765
+    dry = du[0] - dry_before if track_dry else None   # _forcing_dry = du[IDN] - dry_before
     return du, dry
 
 
