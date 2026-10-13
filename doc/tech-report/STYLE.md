@@ -69,6 +69,15 @@ These rules help the reader follow each section and use the code. Readability is
   symbols, and unclear prose. Cite the paragraph for a `changes` verdict. Box order and box length do not
   block chapter-PR reviews; section 10.7 assigns their mechanical check and readability pass.
 
+The exemplar is the chapter 9 forcing-loop section, `book/chapters/09-diffusion-forcing/_framework.qmd`. Every
+chapter copies its five choices:
+
+- A plain opening paragraph before a box of at most six one-line fields.
+- Local symbols listed after the box, none clashing with NOTATION.md.
+- Every "why" as numbered steps tied to code facts, with round-off given as a derived bound.
+- A how-to-use block: the YAML, what is refused and why, and a code excerpt mapped to the equations.
+- Tests in the section 10.5 table plus `[Cn]` prose, with the run provenance in a footnote.
+
 ## 2. The six-layer scheme template
 
 Every scheme is one file `book/chapters/NN-slug/_<scheme>.qmd`, included into its chapter file (section 10.1), with
