@@ -22,13 +22,20 @@ A scheme whose Derivation layer labels no equation gets one row with its first s
 so every written scheme appears once at least, as OUTLINE asks (one row per scheme). Appendix files and the
 generated fragment itself are not scanned.
 
-book/_quarto.yml runs this script as its pre-render step, so every render (local or CI) writes the fragment
-from the chapters as they are. The fragment is also committed, because Quarto reads every chapter's includes
-before the pre-render step runs; tools/tests fails when the committed copy differs from a fresh generation. The
-script needs only the Python standard library, and finishes in well under a second.
+The output is one file per chapter, `17-appendices/_appb-chNN.qmd` with that chapter's rows, and the parent
+`_appb-derivation-index.qmd`, which holds the introduction, the summary table and the includes of the chapter
+files. No committed file holds a count over several chapters: the totals and the summary counts are
+`{{< generated appb ... >}}` shortcodes, filled in at render from `book/_generated/appb.json` (not committed),
+which this script writes too. So a pull request that edits one chapter changes only that chapter's file, and two
+that edit different chapters merge cleanly (tools/generated_values.py; README, "Generated files and rebasing").
 
-    python3 tools/gen_derivation_index.py           # rewrite the fragment (what the pre-render step runs)
-    python3 tools/gen_derivation_index.py --check   # exit 1 if the fragment is not what the sources give
+book/_quarto.yml runs this script as its pre-render step, so every render (local or CI) writes the files from
+the chapters as they are. The files are also committed, because Quarto fails on an include whose file does not
+exist before the pre-render step runs; tools/tests fails when a committed copy differs from a fresh generation.
+The script needs only the Python standard library, and finishes in well under a second.
+
+    python3 tools/gen_derivation_index.py           # rewrite the files and values (the pre-render step)
+    python3 tools/gen_derivation_index.py --check   # exit 1 if a committed file is not what the sources give
     python3 tools/gen_derivation_index.py --stats   # counts per chapter, to stdout
     python3 tools/gen_derivation_index.py --book <dir> --fragment <file>   # another tree (e.g. a draft branch)
 

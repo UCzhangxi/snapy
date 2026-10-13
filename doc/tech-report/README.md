@@ -64,6 +64,19 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
   cmake -S snapy-pin -B snapy-pin/build -DCMAKE_BUILD_TYPE=Release -DNETCDF=ON
   python3 tools/gen_test_index.py --refresh snapy-pin/build
   ```
+- **Generated files and rebasing.** Appendix A (`tools/gen_notation_index.py`) and Appendix B
+  (`tools/gen_derivation_index.py`) are committed only in pieces that one chapter owns: Appendix B is one file per
+  chapter (`book/chapters/17-appendices/_appb-chNN.qmd`) under a parent that holds no counts, and Appendix A
+  depends on `NOTATION.md` alone. Every value that several chapters decide (the totals, the per-chapter counts of
+  the summary, the symbol counts, the "first used" column) is a `{{< generated ... >}}` shortcode, filled in at
+  render from `book/_generated/*.json`, which the generators write in the pre-render step and which is not
+  committed. So two pull requests that edit different chapters touch different lines and git merges them
+  (`tools/tests/test_chapter_prs_merge.py`). After a rebase or a merge of the target branch, never hand-merge a
+  generated file: take either side, run `python3 tools/gen_derivation_index.py`, `python3
+  tools/gen_notation_index.py` and, if your chapter's counts changed, `python3 tools/ratchet_gate.py update`, and
+  commit what they change; `--check` on each generator and `ratchet_gate.py check` then pass. A change to
+  `NOTATION.md` itself still rewrites `_appa-notation.qmd`, so two pull requests that both edit `NOTATION.md` can
+  still conflict there.
 - `book/_quarto.yml`, `book/index.qmd`: the Quarto book (STYLE 8, 10): KOMA `scrbook` PDF through LuaLaTeX, MathML in the HTML (no math macros), `freeze: auto`, `toc-depth: 2`. It includes `book/_tex/inline-code-breaks.tex`, which lets inline code break after `_`, `/`, `:` (after `::`) and `@` in the PDF, shows only the chapter title in running heads and lets long hex strings (shas) break inside; in the HTML it wraps code blocks (`code-overflow: wrap`) and inline code (`book/report.css`: `code { overflow-wrap: anywhere; }`).
 - `tools/book_chapters.py`: writes the chapter list of `book/_quarto.yml` from OUTLINE.md's chapter ids and the chapter files that exist (`NN-slug.qmd`, `appX-slug.qmd`), in OUTLINE order; the render gate fails when the list is out of date. Run `python3 tools/book_chapters.py` after adding a chapter file.
 - Planned: `reviews/`, `build/render_figures.sh`, the test-index generator, the PDF/HTML build.
