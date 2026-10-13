@@ -36,7 +36,7 @@ by this work; no code pin changed.
 | Moist | Parent tolerances easy to read as dtype alternatives | Mass and parent checks apply in the same case; net-deficit return is code 1, not a boolean success |
 | Boundaries | Mixed-pin curved-energy discussion | Both current curved geometries; explicit distinction between measured quantity and top-level acceptance |
 | Configuration | Duplicated historical numerical rows | Package origin, option guards and nonempty seam-filter checks; numerical rows live with their mechanism |
-| Symbols | No verification-metric definitions | Flag local `C_{15}`, `\nu_{15}`, and outward unit normal `\mathbf n` in ISSUES; existing meanings retained |
+| Symbols | No verification-metric definitions | Flag local `\psi_{15}`, `\zeta_{15}`, and outward unit normal `\mathbf n` in ISSUES; existing meanings retained |
 | Generated notation | No first-use entries for interior set/oracle | Generator updates two first-use cells; no hand edit |
 
 No new compiled snapy execution is claimed. No installed snapy package was used and no source build was made.

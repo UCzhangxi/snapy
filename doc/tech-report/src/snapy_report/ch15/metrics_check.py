@@ -22,7 +22,7 @@ def main():
     oracle = s.Symbol('oracle', positive=True)
     assert s.simplify(s.Abs(total / oracle - 1) - s.Abs(total - oracle) / oracle) == 0
     print('[C2] PASS relative-drift identity for a nonzero positive oracle')
-    coefficient, width, order = s.symbols('C h nu', positive=True)
+    coefficient, width, order = s.symbols('psi h zeta', positive=True)
     ratio = s.simplify(coefficient * width**order / (coefficient * (width / 2)**order))
     assert s.simplify(ratio - 2**order) == 0
     assert s.simplify(s.log(ratio) / s.log(2) - order) == 0

@@ -94,5 +94,5 @@ symbol enters NOTATION.md.
   sans capital Phi (U+1D6F7): the render drops the glyph. `_vic.qmd` writes it $\boldsymbol\Phi$ (STYLE 5, bold
   Greek); the editor should change the NOTATION entry to match.
 
-- ch15 notation proposal: `\nu_{15}` is a dimensionless convergence exponent and `C_{15}` its positive error coefficient (density units / m^exponent) in the verification-metric derivation. Both are local pending editor registration; no reserved symbol is reassigned.
+- ch15 notation proposal: `\zeta_{15}` is a dimensionless convergence exponent and `\psi_{15}` its positive error coefficient (density units / m^exponent) in the verification-metric derivation. Both are local pending editor registration; neither $\zeta$ nor $\psi$ appears in NOTATION. They replace the conflicting convergence symbols: $\nu$ is kinematic viscosity, $\nu_{nk}$ a stoichiometric coefficient, and $C$ the Courant number.
 - ch15 also uses `\mathbf n` for the dimensionless outward unit normal in the divergence theorem; proposed notation entry, defined locally and not used as a species index.
