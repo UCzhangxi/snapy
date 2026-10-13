@@ -13,6 +13,22 @@ returns. The velocity is the slip-corrected Stokes velocity of a sphere in the b
 constant. The flux is donor-cell, sealed at physical $x_1$ walls and open at internal block seams. Dry air does not
 move, so the dry-air tracers of @sec-ch10-tracer are unaffected.
 
+### Summary
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Lets each listed condensate settle at a terminal velocity, as a donor-cell $x_1$ flux; @eq-ch10-sed-stokes.
+
+**Data.** Reads the cell primitives and each condensate's radius and density; adds to the $x_1$ face fluxes `flux1`.
+
+**Placement.** Every RK stage, after the $x_1$ Riemann solve and before the seam average.
+
+**Activation.** Top-level YAML `sedimentation` (off when absent); requires `forcing/const-gravity`.
+
+**Guarantee / limits.** First order in space; sealed at physical $x_1$ walls, open at seams; no time-step bound.
+
+**Evidence.** @tbl-ch10-sed-tests; `test_sedimentation_guards.release`, `test_forcing.release`, `sed_check.py` `[C1]`–`[C8]`.
+:::
+
 Local symbols: $a_n$ is the particle radius of condensate $n$ [m], $\rho_{\mathrm p,n}$ its material density
 [$\mathrm{kg\,m^{-3}}$], $\beta_n$ the Cunningham slip factor [-], $\lambda$ the mean free path of the background gas
 [m], $\mathrm{Kn}=\lambda/a_n$ the Knudsen number [-], and $m_{\mathrm{mol}}$, $d_{\mathrm{mol}}$, $\epsilon_{\mathrm{LJ}}$ the
@@ -21,37 +37,34 @@ molecular mass [kg], molecular diameter [m] and Lennard-Jones well depth [J] of 
 of NOTATION.md §8. Bare $m$ is the momentum, bare $d$ is not used, and bare $\epsilon$ is the pivot tolerance, so all
 three carry a subscript here.
 
-### Summary
+**How to use it.** A top-level `sedimentation` block lists cloud species by name, and the card needs constant gravity
+({{< code src/sedimentation/sed_options.cpp SedVelOptionsImpl::from_yaml >}};
+{{< code examples/jupiter_evap_precip_1d.yaml >}}):
 
-::: {.callout-note title="At a glance"}
-**Purpose.** Lets each listed condensate settle at a terminal velocity, as a donor-cell $x_1$ flux of mass, momentum
-and energy; @eq-ch10-sed-stokes.
+```yaml
+forcing:
+  const-gravity: {grav1: -22.}
+sedimentation:
+  radius:  {H2O(l,p): 1.0e-10}     # a_n [m]
+  density: {H2O(l,p): 1000.}       # rho_p,n [kg m^-3]
+  const-vsed: {H2O(l,p): -1.0}     # optional: replaces eq-ch10-sed-stokes, still clamped
+  # a-diameter, a-epsilon-LJ, a-mass, upper-limit: H2 defaults 2.827e-10, 8.24e-22, 3.34e-27, 5e3
+```
 
-**Data.** In: the primitives of the cell and the particle radius and density per condensate. Out: added to the
-$x_1$ face fluxes `flux1`.
-
-**Placement.** Every RK stage, after the $x_1$ Riemann solve.
-
-**Activation.** Top-level YAML `sedimentation`; off when absent. Requires `forcing/const-gravity`; inactive when
-$g_1=0$ or the $x_1$ flux is off.
-
-**Guarantee / limits.** First order in space; sealed at physical $x_1$ walls, open at block seams; no time-step
-bound from the settling speed.
-
-**Evidence.** `test_forcing.release`, `test_sedimentation_guards.release` ($10^{-9}$) and `sed_check.py`
-`[C1]`–`[C5]`; the ctests were not run at the pin.
-:::
-
-It is on when the YAML card has a top-level `sedimentation` block listing cloud species, and the block refuses to
-build without `forcing/const-gravity`.
+The refusals are listed in the Code layer below.
 
 ### Derivation
 
-Stokes drag on a sphere of radius $a_n$ moving slowly at velocity $w$ through a gas of viscosity $\mu$ is
-$6\pi\mu a_nw$; balancing it against the buoyant weight $\tfrac43\pi a_n^3(\rho_{\mathrm p,n}-\rho)g_1$ gives
-$w=2a_n^2g_1(\rho_{\mathrm p,n}-\rho)/(9\mu)$. When the mean free path of the gas is not small compared
-with the particle, the drag is reduced by the Cunningham factor $\beta_n=1+\mathrm{Kn}\,(1.256+0.4\,e^{-1.1/\mathrm{Kn}})$.
-Unless a non-zero `const-vsed` replaces it, the terminal velocity is
+Why the terminal velocity has this form:
+
+1. *Stokes drag.* A sphere of radius $a_n$ moving slowly at velocity $w$ through a gas of viscosity $\mu$ feels
+   $6\pi\mu a_nw$.
+2. *Balance.* Setting it equal to the buoyant weight $\tfrac43\pi a_n^3(\rho_{\mathrm p,n}-\rho)g_1$ gives
+   $w=2a_n^2g_1(\rho_{\mathrm p,n}-\rho)/(9\mu)$ (`[C6]`, sympy).
+3. *Slip.* When the mean free path is not small compared with the particle, the drag is reduced by the Cunningham
+   factor $\beta_n=1+\mathrm{Kn}\,(1.256+0.4\,e^{-1.1/\mathrm{Kn}})$, which tends to 1 in the continuum and to
+   $1.656\,\mathrm{Kn}$ in the free-molecular limit (`[C2]`, `[C8]`).
+4. *Hence*, unless a non-zero `const-vsed` replaces it,
 
 $$
 w_{\mathrm{s},n} = \frac{2\beta_n\,a_n^2\,g_1\,(\rho_{\mathrm{p},n}-\rho)}{9\,\mu}.
@@ -75,7 +88,8 @@ is $\lambda=(\mu/p)\sqrt{\pi k_{\mathrm B}T/(2m_{\mathrm{mol}})}$; the code call
 ({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}).
 The port confirms the sign convention ($g_1<0$ and a dense particle settle, `[C1]`), the two limits of
 $\beta_n$ (1 in the continuum, $1.656\,\mathrm{Kn}$ in the free-molecular limit, `[C2]`), that $\mu$ depends on $T$
-only (`[C3]`), and the clamp and the prescribed velocity (`[C4]`).[^sed-c]
+only (`[C3]`), the clamp and the prescribed velocity (`[C4]`), and the Chapman-Enskog form against the code's `eta`
+(`[C7]`).[^sed-c]
 
 The flux through the face below cell $i$ takes its donor from cell $i$ when $w_{\mathrm s,n}<0$ and from cell $i-1$
 when $w_{\mathrm s,n}>0$; faces at or beyond a physical $x_1$ wall carry nothing, `sedimentation_upwind`
@@ -86,9 +100,10 @@ specific internal energy plus specific kinetic energy, with no $R_nT$ share, bec
 `species_energy` ({{< code src/sedimentation/sed_hydro_impl.h sedimentation_donor_impl >}}).
 With both walls sealed the column's condensate mass changes only by what the advective flux does (`[C5]`).
 
-[^sed-c]: `python3 src/snapy_report/ch10/sed_check.py`, output `sed_check.out`, lines `[C1]`–`[C5]`; a numpy port
+[^sed-c]: `python3 src/snapy_report/ch10/sed_check.py`, output `sed_check.out`, lines `[C1]`–`[C8]`; a numpy port
     of `SedVelImpl::forward` and `sedimentation_upwind` at the pin with the Boltzmann constant of kintera at
     `c55b13b2204997d2d09e04498558ab9495d8ee77`, double precision.
+    Run on CPU, one process, with Python 3.12.10, sympy 1.14.0 and numpy 2.5.3; the output matches the committed file.
 
 ### Numerical method
 
@@ -143,8 +158,37 @@ make_fig()
    ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}).
 6. Add to `flux1` and save the condensate part, `psed` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
-Setup messages: "[SedHydro] sedimentation reads grav1; set forcing/const-gravity", "Missing sedimentation particles
-in the clouds.", "Sedimentation radius must be positive." and "Sedimentation density must be positive."
+Refused at setup, each with its message:
+
+1. A key outside `radius`, `density`, `const-vsed`, `a-diameter`, `a-epsilon-LJ`, `a-mass`, `upper-limit`
+   ("unknown key 'sedimentation/…'").
+2. A name that is not a species ("Sedimentation particle '…' is not a valid species.").
+3. A species that is not a cloud ("Missing sedimentation particles in the clouds.").
+4. A non-positive radius or density ("Sedimentation radius must be positive.", "Sedimentation density must be
+   positive.").
+5. A particle with neither a radius nor a non-zero `const-vsed` ("Sedimentation particle '…' needs radius > 0 or a
+   non-zero const-vsed."), because the velocity would be undefined.
+6. A card without constant gravity ("[SedHydro] sedimentation reads grav1; set forcing/const-gravity"), because
+   @eq-ch10-sed-stokes needs $g_1$.
+
+The velocity of @eq-ch10-sed-stokes is these lines ({{< code src/sedimentation/sed_vel.cpp SedVelImpl::forward >}}):
+
+```cpp
+  auto eta = (5.0 / 16.0) * std::sqrt(m * KBoltz / M_PI) * torch::sqrt(temp) *
+             torch::pow(reduced_temp, 0.16) / (d * d * 1.22);
+  ...
+  auto beta = 1.0 + Kn * (1.256 + 0.4 * torch::exp(-1.1 / Kn));
+  ...
+  auto stokes =
+      beta / (9.0 * eta) *
+      (2.0 * sqr(radius.view(vec)) * grav * (density.view(vec) - dens));
+  ...
+  auto vel = torch::where(cvsed != 0.0, cvsed, stokes);
+  return vel.clamp(-options->upper_limit(), options->upper_limit());
+```
+
+`eta` is @eq-ch10-sed-viscosity, `beta` the Cunningham factor of step 3, `stokes` @eq-ch10-sed-stokes, and the last two
+lines the prescribed velocity and the clamp.
 
 ### Tests
 
@@ -155,7 +199,7 @@ in the clouds.", "Sedimentation radius must be positive." and "Sedimentation den
 | `test_sedimentation_cubed_seam.release` | 2-rank seam, mass conserved | $10^{-12}$ rel. | test threshold |
 | `test_two_cards_species.release` | velocity after a second card | $10^{-10}$ (f64) | test threshold |
 
-: Tests of sedimentation; assertions read from the test sources at the pin, not run. {#tbl-ch10-sed-tests}
+: Tests of sedimentation; all pass at the pin (@tbl-ch10-ctest-run). {#tbl-ch10-sed-tests}
 
 The fused kernel must equal the tensor path to $10^{-10}$ relative and settle (negative flux) inside the column
 ({{< code tests/test_forcing.cpp forcing.fused_sedimentation_matches_tensor_path >}}).
@@ -164,8 +208,8 @@ A rising cloud must be taken from the cell below, mass and energy fluxes to $10^
 On two ranks of a cubed sphere, the condensate mass is conserved to $10^{-12}$ relative and two seam sums are pinned
 to $10^{-7}$ and $5\times10^{-3}$ absolute
 ({{< code tests/test_sedimentation_cubed_seam.cpp main >}});
-the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX result. Measured results at the pin are
-**missing evidence** (@sec-ch15-ch10-tests).
+the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX result. Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
+registered in that build and were not run.
 
 ### Limits
 

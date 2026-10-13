@@ -18,39 +18,49 @@ parts of the rule that matter to them. A species repair by the conserved limiter
 cause 16. Either one, on any rank, rejects the step everywhere.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** The two moist causes of a step rejection: a limiter species repair above round-off (cause 4) and a cell
-the saturation adjustment left unadjusted (cause 16). The general decision rule is @sec-ch07-redo; N/A here.
+**Purpose.** Rejects a step for a limiter species repair above round-off (cause 4) or a failed saturation cell (cause 16).
 
-**Data.** In: the limiter marks and kintera's failure count of the block. Out: their two bits in the cause word.
+**Data.** Reads the block's limiter marks and kintera's failure count; writes their two bits of the cause word.
 
-**Placement.** The saturation counter is drained at stage 0 and again once after the step, in `check_redo`.
+**Placement.** Counter drained at stage 0 and once more after the step, in `check_redo`; rule in @sec-ch07-redo.
 
-**Activation.** Cause 4 with `limiter: true`; cause 16 whenever the thermo has a ThermoY. Integrator `max_redo`,
-default 5.
+**Activation.** Cause 4 with `limiter: true`; cause 16 with a ThermoY; `max_redo` (default 5) is set from code only.
 
-**Guarantee / limits.** Either cause on any rank rejects the step everywhere; past `max_redo` a moist failure ends
-the run without restoring.
+**Guarantee / limits.** Either cause on any rank rejects the step everywhere; past `max_redo` the run ends unrestored.
 
-**Evidence.** `test_check_redo_saturation_python`, `test_forcing.release` and `redo_check.py` `[C1]`–`[C3]`; the
-ctests were not run at the pin.
+**Evidence.** @tbl-ch10-redo-tests; `test_check_redo_saturation_python`, `test_forcing.release`, `redo_check.py` `[C1]`–`[C3]`.
 :::
+
+Local symbols: $f_\iota$, $\iota=0..5$, the six redo flags of a rank, each 0 or 1, and
+$c_{\mathrm{redo}}=\sum_\iota2^\iota f_\iota$ the cause word ($\iota$ is the bit index: $r$, $i$, $j$, $k$ are reserved).
 
 The saturation cause is always on when the thermo has a ThermoY; the limiter cause is on with `limiter: true`.
 What a redo restores, and how the step is retried, is @sec-ch07-redo.
 
 ### Derivation
 
-No derivation: the scheme is a decision rule, not a discretization.
+The scheme is a decision rule, not a discretization; its why-steps are:
+
+1. *Six flags, one bit each.* `local_redo_flag_tensor` forms six 0/1 flags $f_\iota$; `reduce_redo_flags` packs them as
+   $c_{\mathrm{redo}}=\sum_\iota2^\iota f_\iota$, so the limiter repair is bit 4 ($\iota=2$) and the saturation failure bit 16 ($\iota=4$) (`[C1]`).
+2. *One rank's failure is every rank's.* The flags are reduced with MAX over ranks before packing. For 0/1 values
+   MAX is OR, so the packed word is the bitwise OR of every rank's word, and every rank takes the same decision
+   (`[C2]`, all 4096 two-rank combinations).
+3. *A redo restores and retries with a smaller step* (@sec-ch07-redo). `apply_redo` restores the saved state unless the attempt count exceeds
+   `max_redo`; past it, a step with a moist cause terminates with the rejected state in memory, and only the
+   VIC cause 32 restores first (`[C3]`).
+4. *No round-off enters the decision.* The flags are integers compared and OR-ed exactly; the only rounded quantity
+   is the limiter's repair size, which is compared with a round-off threshold of `kPositivityRoundoffUlp` ulp of the
+   gas density before it can set flag 2 (@sec-ch10-fixvapor).
 
 ::: {.callout-important title="Check"}
-The rule, its six flags and their reduction over ranks are @sec-ch07-redo. A line-for-line port of the rule checks
-the three points the moist causes rely on:[^redo-c] the limiter and saturation flags are bits 4 and 16 of the cause
-word (`[C1]`); one rank's moist failure is every rank's (`[C2]`, all 4096 two-rank combinations); and past
-`max_redo` a step with a moist cause terminates without restoring (`[C3]`).
+A line-for-line port of the rule checks steps 1 to 3:[^redo-c] bits 4 and 16 (`[C1]`); MAX is OR over two ranks
+(`[C2]`); termination without restore past `max_redo` (`[C3]`).
 :::
 
 [^redo-c]: `python3 src/snapy_report/ch10/redo_check.py`, output `redo_check.out`, lines `[C1]`–`[C3]`; a numpy
     port of `MeshBlockImpl::reduce_redo_flags` and `MeshBlockImpl::apply_redo` at the pin, double precision.
+    Run on CPU, one process, with Python 3.12.10, sympy 1.14.0 and numpy 2.5.3; the output matches the committed file.
 
 ### Numerical method
 
@@ -98,6 +108,28 @@ make_fig()
 The user-visible messages are the log line "Redoing the step with smaller dt (causes: ...)" and "Maximum number of
 redo attempts exceeded. Terminating.", both in `apply_redo`.
 
+**How to use it.** The two causes need no key of their own: cause 4 comes with `limiter: true`, cause 16 with
+a reactions list in the card. The retry limit is the integrator's `max_redo`, default 5, which the YAML card cannot
+set: `integration` accepts only `implicit-scheme`, `implicit-advection-cfl`, `shear-cfl` and pyharp's `type`, `cfl`,
+`tlim`, `nlim`, `ncycle_out`, `verbose`, so a `max_redo` key is refused with "unknown key 'integration/max_redo'"
+({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}). A Python driver sets it on the
+options before building the block:
+
+```python
+from snapy import MeshBlock, MeshBlockOptions
+op = MeshBlockOptions.from_yaml("deck.yaml")
+op.intg().max_redo(2)        # default 5
+block = MeshBlock(op)
+```
+
+The decision of steps 2 and 3 is these lines ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}}):
+
+```cpp
+    if (pintg->current_redo > pintg->options->max_redo() && !(causes & 32)) {
+```
+
+`causes` is the packed word $c_{\mathrm{redo}}$ of step 1; the comparison is the termination of step 3, skipped for the VIC cause.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -107,7 +139,7 @@ redo attempts exceeded. Terminating.", both in `apply_redo`.
 | `test_forcing.release` | species repair redoes; round-off does not | ulp bound | `kPositivityRoundoffUlp` |
 | `test_uranus_cycle1_abort.release` | column survives; abort exits nonzero | exit status | log strings |
 
-: Tests of the moist redo causes; assertions read from the test sources at the pin, not run. {#tbl-ch10-redo-tests}
+: Tests of the moist redo causes; all pass at the pin (@tbl-ch10-ctest-run). {#tbl-ch10-redo-tests}
 
 `test_check_redo_saturation` starts from one $\mathrm{NH_4SH}$ cell 150 times supersaturated. With `max-iter: 1` at
 least one cell is left unadjusted, and the step must be redone with the saturation cause alone and then accepted; a
@@ -118,7 +150,8 @@ and require cause 4; a repair below `kPositivityRoundoffUlp` ulp of the gas dens
 ({{< code tests/test_forcing.cpp forcing.limiter_species_repair_redoes_the_step >}},
 {{< code tests/test_forcing.cpp forcing.limiter_roundoff_species_repair_is_not_redone >}}). The CUDA arm
 `test_check_redo_saturation_cuda_python` exists only in CUDA builds; the 2-rank test is the only multi-rank evidence.
-Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
+Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
+registered in that build and were not run.
 
 ### Limits
 

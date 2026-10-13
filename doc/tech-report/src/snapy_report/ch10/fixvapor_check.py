@@ -1,7 +1,7 @@
 """Executable check of the column vapour and cloud repair (chapter 10, _fixvapor.qmd).
 
 What is checked: fix_vapor_impl (src/eos/fix_vapor_impl.h:9-79) at
-snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C7.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C8.
 C1-C3 replay the inputs of the eos_limiter gtests (tests/test_eos.cpp:40-120 at the same sha)
 through the port; C4-C6 check the claims of the Derivation layer on random columns.
 Also writes data/fixvapor_column.csv for fig_fixvapor_column.py.
@@ -12,6 +12,7 @@ import os
 import sys
 
 import numpy as np
+import sympy as sp
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -174,10 +175,26 @@ def check_C7_failure_after_a_window():
                   % (err, rewritten, sum(vapor) - sum(copy)))
 
 
+def check_C8_window_algebra():  # fix_vapor_impl.h: sum_vapor, sum_major with V_l/V_0 weights
+    n = 4
+    V = sp.symbols("V0:%d" % n, positive=True)
+    rn = sp.symbols("r0:%d" % n)
+    rd = sp.symbols("q0:%d" % n, positive=True)
+    sn = sum(V[i] * rn[i] for i in range(n))
+    sd = sum(V[i] * rd[i] for i in range(n))
+    new = [rd[i] * sn / sd for i in range(n)]
+    sn0 = sum((V[i] / V[0]) * rn[i] for i in range(n))
+    sd0 = sum((V[i] / V[0]) * rd[i] for i in range(n))
+    ok = sp.simplify(sum(V[i] * new[i] for i in range(n)) - sn) == 0 and sp.simplify(sn0 / sd0 - sn / sd) == 0
+    return report("C8", ok, "the flattened window keeps sum V rho_n, and the V_l/V_0 weights give the same ratio",
+                  "both identities exact (sympy)")
+
+
 def main():
     checks = [check_C1_downward_flatten, check_C2_upward_fallback, check_C3_net_deficit_untouched,
               check_C4_volume_weighted_mass, check_C5_failure_writes_nothing, check_C6_scan_terminates,
-              check_C7_failure_after_a_window]
+              check_C7_failure_after_a_window,
+              check_C8_window_algebra]
     return sum(not c() for c in checks)
 
 

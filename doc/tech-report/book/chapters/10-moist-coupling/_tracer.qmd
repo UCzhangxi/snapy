@@ -12,31 +12,26 @@ dry-density sources (@sec-ch01-scalar, @sec-ch01-stage, @eq-ch01-stage-upwind, @
 adds what makes those tracers part of the moist coupling: why the reference mass is dry air and not total mass,
 the second limiter that bounds the ratio from above, and the conditions under which that bound holds.
 
-Local symbols: $b$ is the upper bound of a tracer's mixing ratio (YAML `scalar/upper-bound`); $F_{n}$ and
-$F_{\mathrm d}$ are the $x_1$ face fluxes of tracer $n$ and of dry air. Tracked in ISSUES.md.
-
 ### Summary
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Keeps passive tracers as mixing ratios $r_n$ per unit dry mass, so they move with the dry air under
-every operator that moves dry air; keeps them non-negative and, optionally, at or below a bound $b$;
-@eq-ch10-tracer-bound.
+**Purpose.** Keeps tracers as ratios $r_n$ per dry mass, non-negative and optionally at most $b$; @eq-ch10-tracer-bound.
 
-**Data.** In: the tracer densities $\rho_{\mathrm d}r_n$ and the hydro dry-mass fluxes. Out: the stage tendency of
-the tracers on interior cells.
+**Data.** Reads $\rho_{\mathrm d}r_n$ and the hydro dry-mass fluxes; writes the tracers' stage tendency on interior cells.
 
-**Placement.** Every RK stage, after the hydro fluxes; positivity limiter first, complement bound second.
+**Placement.** Every RK stage after the hydro fluxes; positivity limiter first, complement bound second.
 
-**Activation.** YAML `scalar` (`nvar` or `names`); `upper-bound` default $-1$ (off), $0$ refused, needs the EOS
-limiter.
+**Activation.** YAML `scalar` (`nvar` or `names`); `upper-bound` default $-1$ (off), 0 refused, positive needs the limiter.
 
-**Guarantee / limits.** Non-negativity from the positivity limiter. The upper bound holds only while the mass
-Courant number stays below one and $\rho_{\mathrm d}$ changes only by the transport divergence; the implicit
-vertical correction and a forcing that writes the dry row break that premise.
+**Guarantee / limits.** $r_n\ge0$; $r_n\le b$ while the mass Courant number is below one and $\rho_{\mathrm d}$ moves by transport only.
 
-**Evidence.** `test_scalar.release` ($10^{-12}$; $10^{-5}$ in float32), `test_tracer_dry_convention_python` and
-`tracer_check.py` `[C1]`–`[C3]`; the ctests were not run at the pin.
+**Evidence.** @tbl-ch10-tracer-tests; `test_scalar.release`, `test_tracer_dry_convention_python`, `tracer_check.py` `[C1]`–`[C5]`.
 :::
+
+Local symbols: $b$ is the upper bound of a tracer's mixing ratio (YAML `scalar/upper-bound`); $F_n$ and
+$F_{\mathrm d}$ are the $x_1$ face fluxes of tracer $n$ and of dry air, and $F^{\mathrm c}_n=bF_{\mathrm d}-F_n$ the flux of
+the complement $b\rho_{\mathrm d}-\rho_{\mathrm d}r_n$; $J^{\mathrm d}_{i-1/2}$ [kg] is the implicit dry-air transfer through
+a face, positive upward, as in @sec-ch01-stage. Tracked in ISSUES.md.
 
 A tracer measured per unit total mass would change its ratio whenever water condenses, evaporates or settles out of
 a cell, although no tracer moved. Per unit dry mass the ratio changes only when dry air moves, which every moist
@@ -54,33 +49,40 @@ upwinded with the dry-mass flux less its covariance row and adds its own tracer 
 the same mass fraction, `scalar_flux_covariance`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::scalar_flux_covariance >}}; @sec-ch04-fluxcov).
 
-The upper bound uses the complement. If $r_n\le b$ then $b\rho_{\mathrm d}-\rho_{\mathrm d}r_n\ge0$, and that
-quantity is transported by the flux $G=bF_{\mathrm d}-F_n$. Its non-negativity is exactly what the positivity limiter
-already enforces for a density, so the code applies the same limiter to $G$, which returns a factor $\Theta\in[0,1]$
-per face, and puts back only the change:
+Why the complement limiter bounds $r_n$ from above:
+
+1. *The complement.* If $r_n\le b$ then $b\rho_{\mathrm d}-\rho_{\mathrm d}r_n\ge0$.
+2. *Its flux.* When $\rho_{\mathrm d}$ moves only by its own divergence, the complement is transported by
+   $F^{\mathrm c}_n=bF_{\mathrm d}-F_n$ (`[C4]`, sympy).
+3. *The same limiter.* Non-negativity of a transported density is what the positivity limiter enforces, so the code
+   applies it to $F^{\mathrm c}_n$, which returns a factor $\Theta\in[0,1]$ per face.
+4. *Put back only the change:*
 
 $$
 F_n \leftarrow F_n + (1-\Theta)\,\big(bF_{\mathrm d}-F_n\big) = \Theta F_n + (1-\Theta)\,bF_{\mathrm d}.
 $$ {#eq-ch10-tracer-bound}
 
-@eq-ch10-tracer-bound is applied as `h - g` in `ScalarImpl::forward` when `upper_bound` is positive
-({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). This section is the home of that bound's derivation;
-@sec-ch08-scalar covers the call of the positivity limiter it reuses.
-The second form shows the limited flux is a blend between the tracer's own flux and the flux of a tracer sitting
-at the bound, so a plateau at $b$ keeps advecting (`[C1]`, symbolic). Adding the change rather than recomputing
-$bF_{\mathrm d}-G$ leaves $F_n$ bitwise unchanged on every face where $\Theta=1$; recomputing perturbs nearly every
-face by round-off, 9994 of 10000 in a float32 test (`[C2]`). The bound inherits the positivity limiter's premise:
-it holds while the mass Courant number stays below one and $\rho_{\mathrm d}$ changes only by the transport
-divergence. The implicit vertical correction and any forcing that writes the dry row break that premise, as the code
-comment states.
+5. *A blend.* The second form of @eq-ch10-tracer-bound is a blend between the tracer's own flux and the flux of a
+   tracer sitting at the bound, so a plateau at $b$ keeps advecting (`[C1]`, symbolic). It is applied as `h - g` in
+   `ScalarImpl::forward` when `upper_bound` is positive ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+   This section is the home of that bound's derivation; @sec-ch08-scalar covers the call of the positivity limiter
+   it reuses.
+6. *Round-off.* Adding the change leaves $F_n$ bitwise unchanged on every face where $\Theta=1$, because
+   $h-g$ is then an exact zero. Recomputing $bF_{\mathrm d}-F^{\mathrm c}_n$ instead rounds twice and perturbs many faces
+   by up to an ulp of $bF_{\mathrm d}$: 9994 of 10000 in a float32 test (`[C2]`) and 3039 of 10000 on uniform random
+   fluxes (`[C5]`). The count depends on the input; the bitwise result where $\Theta=1$ does not.
+7. *The premise.* The bound inherits the positivity limiter's premise: it holds while the mass Courant number stays
+   below one and $\rho_{\mathrm d}$ changes only by the transport divergence. The implicit vertical correction and any
+   forcing that writes the dry row break that premise, as the code comment states.
 
-[^trc-c]: `python3 src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out`, lines `[C1]`–`[C3]`; a numpy
+[^trc-c]: `python3 src/snapy_report/ch10/tracer_check.py`, output `tracer_check.out`, lines `[C1]`–`[C5]`; a numpy
     and sympy port of the complement bound in `ScalarImpl::forward` and of the implicit tracer transfer in
     `MeshBlockImpl::advance_local` at the pin, double and float32.
+    Run on CPU, one process, with Python 3.12.10, sympy 1.14.0 and numpy 2.5.3; the output matches the committed file.
 
 ### Numerical method
 
-The ratio is reconstructed with the scalar block's own `reconstruct` and upwinded with the hydro dry-mass flux
+The ratio is reconstructed with the scalar block's `reconstruct`, or the hydro's horizontal one when the card omits it, and upwinded with the hydro dry-mass flux
 `flux1[IDN]` (and `flux2`, `flux3`, with the covariance rows above); the Riemann solver must be `upwind`. With the
 EOS limiter on, or whenever the scalar carries its covariance row, the positivity limiter scales the tracer fluxes
 first; the complement limiter, if `upper-bound` > 0, scales them second. The `divergence` then gives the stage
@@ -90,7 +92,7 @@ donor choice of that transfer.
 
 ```{python}
 #| label: fig-ch10-tracer-face
-#| fig-cap: "Donor choice of the implicit tracer transfer $M$ at one $x_1$ face, between cells $i-1$ and $i$. Sky-blue dots are the cell ratios, the orange triangle the face, the orange arrow the direction of the dry transfer. (a) An upward transfer carries the ratio of the cell below; (b) a downward transfer carries the ratio of the cell above."
+#| fig-cap: "Donor choice of the implicit dry transfer $J^{\\mathrm d}_{i-1/2}$ at one $x_1$ face, between cells $i-1$ and $i$. Sky-blue dots are the cell ratios, the orange triangle the face, the orange arrow the direction of the dry transfer. (a) An upward transfer carries the ratio of the cell below; (b) a downward transfer carries the ratio of the cell above."
 #| fig-alt: "Two panels, each with two stacked cells and a face between them; an arrow points up in (a) and down in (b), with the transported ratio written beside it."
 #| echo: false
 from snapy_report.ch10.fig_tracer_face import make_fig
@@ -119,8 +121,44 @@ path (@tbl-ch01-scalar-code). {#tbl-ch10-tracer-code}
    ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 6. Take the `divergence` on interior cells ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
-Setup messages a user can hit: "[Scalar] Passive scalars currently require the upwind solver", the refusal of
-`upper-bound: 0`, and "[Scalar] upper-bound needs the eos limiter".
+The setup refusals are listed with the card above.
+
+**How to use it.** A `scalar` block names the tracers; the bound needs the EOS limiter
+({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}):
+
+```yaml
+dynamics:
+  equation-of-state:
+    limiter: true          # required by upper-bound > 0
+scalar:
+  names: [dye]             # sets nvar = 1
+  upper-bound: 1.0         # default -1: no bound
+  # reconstruct omitted: the hydro's horizontal reconstruction is used
+  # riemann-solver omitted: upwind
+```
+
+Refused at setup ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}):
+
+1. A solver other than `upwind` ("[Scalar] Passive scalars currently require the upwind solver"), because the
+   tracer flux is the dry-mass flux times the upwind ratio. A `scalar/riemann-solver` block without `type` takes the
+   YAML default `roe` and is refused too; omit the block to get `upwind`.
+2. `upper-bound: 0` ("[Scalar] upper-bound = 0 pins the tracer to zero and freezes transport; use a negative value to
+   disable the bound").
+3. A positive bound without the limiter ("[Scalar] upper-bound needs the eos limiter"), because the bound from above
+   is the positivity of the complement, and enforcing one side alone leaves the other unbounded.
+
+The bound of @eq-ch10-tracer-bound is these lines ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
+
+```cpp
+    auto theta = flux_positivity_theta(b * rho - u, g1, g2, g3, pcoord, dt);
+    ...
+    flux_positivity_scale_(sync_theta(theta), g1, g2, g3, pcoord);
+    ...
+    if (_flux1.defined()) _flux1.add_(h1 - g1);
+```
+
+with `b * rho - u` the complement of step 1, `g1` $=F^{\mathrm c}_n$ before scaling (kept as `h1`) and $\Theta F^{\mathrm c}_n$
+after, so the last line adds $(1-\Theta)F^{\mathrm c}_n$ as in step 4.
 
 ### Tests
 
@@ -131,7 +169,7 @@ Setup messages a user can hit: "[Scalar] Passive scalars currently require the u
 | `test_forcing.release` | dry source keeps scalar bounds | $10^{-12}$ | test threshold |
 | `test_dry_carry_zero_base_python` | the 0/0 guard of the carry | $10^{-12}$ abs. | test threshold |
 
-: Tests of the dry-air tracers; assertions read from the test sources at the pin, not run. {#tbl-ch10-tracer-tests}
+: Tests of the dry-air tracers; all pass at the pin (@tbl-ch10-ctest-run). {#tbl-ch10-tracer-tests}
 
 `scalar_upper_bound_holds_both_sides` advects 12 steps with the bound at 1 and requires
 $r_n\le1+10^{-12}$ and $\rho_{\mathrm d}r_n\ge-10^{-12}$ in float64 ($10^{-5}$ in float32)
@@ -143,12 +181,14 @@ two to agree to `TOL` $=10^{-12}$ relative after 10 steps, with the covariance o
 ({{< code tests/test_scalar_flux_covariance.py >}}); `test_scalar_cov_x1_split_python` requires four in-process
 $x_1$ blocks to match one block to $10^{-13}$ ({{< code tests/test_scalar_cov_x1_split.py >}}).
 `test_stage_forcing_dry_tracer_python` and `test_flux_positivity_cubedsphere_python` (seams) are also registered.
-Measured results at the pin are **missing evidence** (@sec-ch15-ch10-tests).
+Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
+registered in that build and were not run.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-In practice `reconstruct` is mandatory when `nvar` > 0. The upper bound holds only while the mass Courant number is
+When the card omits `scalar/reconstruct`, the scalars use the horizontal reconstruction of the hydro block; an
+options object built in code without one has no such default. The upper bound holds only while the mass Courant number is
 below one and the dry density moves by transport alone.
 :::
 

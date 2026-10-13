@@ -2,7 +2,7 @@
 
 What is checked: EquationOfStateImpl::cache_cloud_parents_ (src/eos/equation_of_state.cpp:110-163)
 and the borrow in apply_conserved_limiter_ (:262-268) at
-snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C4.
+snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported line for line below. Claims C1-C5.
 Also writes data/borrow_bars.csv for fig_borrow_bars.py.
 
 Run: python3 borrow_check.py   (numpy and sympy; exits with the number of failed claims)
@@ -101,9 +101,20 @@ def check_C4_dry_never_parent_and_parentless():
                   % ([(p, s) for p, s in cache["NH4SH(s)"]], rain["rain"]))
 
 
+def check_C5_shares_sum_to_one_symbolic():  # equation_of_state.cpp:136-161
+    nu = sp.symbols("nu1:3", positive=True)
+    mm = sp.symbols("mu1:3", positive=True)
+    d = sp.Symbol("d", negative=True)
+    share = [nu[i] * mm[i] / sum(nu[j] * mm[j] for j in range(2)) for i in range(2)]
+    return report("C5", sp.simplify(sum(s * d for s in share) - d) == 0,
+                  "the shares |nu| mu / sum |nu| mu sum to one, so the parents lose exactly the deficit",
+                  "sum_m share_m d - d = 0 (exact, sympy)")
+
+
 def main():
     checks = [check_C1_cell_mass, check_C2_elements, check_C3_first_reaction_only,
-              check_C4_dry_never_parent_and_parentless]
+              check_C4_dry_never_parent_and_parentless,
+              check_C5_shares_sum_to_one_symbolic]
     return sum(not c() for c in checks)
 
 
