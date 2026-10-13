@@ -1,7 +1,7 @@
 """Executable check of the stage operator, the geometry and the Riemann fluxes
 (chapter 4, _divergence.qmd, _sphsrc.qmd, _gnomonic.qmd, _riemann.qmd, _lmars.qmd).
 
-Ports of snapy@e894700ff7aee30b52882e5202b16461413780b0: CoordinateImpl::divergence
+Ports of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5: CoordinateImpl::divergence
 (src/coord/coordinate.cpp:509-553), the spherical-polar areas and volume
 (src/coord/spherical_polar.cpp:178-211), lmars_impl (src/riemann/lmars_impl.h:17-78)
 and the face-local index map at :20-22. Claims C1-C8.

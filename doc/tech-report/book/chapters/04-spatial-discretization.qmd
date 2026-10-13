@@ -13,6 +13,11 @@ process seam, takes its divergence, and adds the part of the curvature that is n
 integration belongs to @sec-ch07, the well-balanced treatment of the vertical to @sec-ch05, and the positivity
 limiter that runs between the Riemann solve and the divergence to @sec-ch08.
 
+Acronyms used throughout: PLM, piecewise-linear method; PPM, piecewise-parabolic method; WENO, weighted
+essentially non-oscillatory; LMARS, low-Mach approximate Riemann solver; HLLC, Harten–Lax–van Leer with the contact
+restored; LLF, local Lax–Friedrichs; PVRS, primitive-variable Riemann solver, the linear-acoustics pressure estimate of
+@sec-ch04-hllc; TVD, total-variation diminishing; MC, the monotonised-central limiter.
+
 Section 4A is the operator and its interchangeable parts: the divergence, the reconstruction framework with its
 interpolants, the Riemann framework with its six solvers, seam averaging and the placement of the geometric
 sources, whose derivation lives with the grids in @sec-ch03. Section 4B is one idea applied twice: a
@@ -32,7 +37,7 @@ make_fig()
 | scheme | switch | default | order | main test |
 |---|---|---|---|---|
 | Finite-volume update (@sec-ch04-divergence) | `disable-flux-x1\|x2\|x3` | all on | exact in flux form | `test_cubed_sphere_cell_volume_python` |
-| Reconstruction framework (@sec-ch04-framework) | `reconstruct/{type,scale,shock}` | block present: `dc`, false, false; no block: `dc`, false, true | set by the interpolant | `test_plm` |
+| Reconstruction framework (@sec-ch04-framework) | `reconstruct/{type,scale,shock}` | sub-block of the direction present: `dc`, false, false; absent: `dc`, false, true | set by the interpolant | `test_plm` |
 | Donor cell (@sec-ch04-dc) | `type: dc` | the default type | 1 | `test_plm` |
 | PLM (@sec-ch04-plm) | `type: plm` | off | 2, 1 at an extremum | `test_plm` |
 | Centred cp3, cp5 (@sec-ch04-cp) | `type: cp3`, `cp5` | off | 3, 5 | `test_weno` |
@@ -79,7 +84,8 @@ the Riemann solvers are characterised by their wave structure instead. {#tbl-ch0
 
 [^ch04-ctest]: [sha: the code pin; run: `ctest -R` on a Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5,
     CPU only (`SNAPY_BUILD_CUDA=0`), double, Intel Xeon E-2236, 6 cores, `-j4` for the first seventeen entries;
-    torch 2.10.0, kintera 2.6.2.dev4+g914389b40, Python 3.12.10]. The build was configured without `FULL_TESTS`, so
+    torch 2.10.0, kintera 2.6.2.dev4+g914389b40
+    (a development build four commits past v2.6.1; the kintera pin c55b13b2 is tag v2.6.2), Python 3.12.10]. The build was configured without `FULL_TESTS`, so
     the shallow-water reference decks are not registered; no CUDA arm and no `test_straka` run was made.
 
 ## 4A. Reconstruction, Riemann solvers, divergence and sources {.unnumbered .unlisted}

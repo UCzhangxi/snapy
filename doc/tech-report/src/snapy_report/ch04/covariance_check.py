@@ -1,11 +1,13 @@
 """Executable check of the O(dx1^2) face-average corrections (chapter 4B,
 _fluxcov.qmd and _x1masscov.qmd).
 
-Ports, line for line, of snapy@e894700ff7aee30b52882e5202b16461413780b0:
-HydroImpl::_flux_covariance (src/hydro/hydro_forward.cpp:54-150, the two-term
-correction stated at :63) and the x1 mass-flux covariance block
-(src/hydro/hydro_forward.cpp:314-344, the correction at :334, the one-sided wall
-density slope at :322-332), with d1_centred at :40-52. Claims C1-C6.
+Ports, line for line, of HydroImpl::_flux_covariance at
+snapy@e894700ff7aee30b52882e5202b16461413780b0 (src/hydro/hydro_forward.cpp:54-150, the two-term
+correction stated at :63), and at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 of the x1 mass-flux
+covariance block (src/hydro/hydro_forward.cpp:397-427, the correction at :417, the one-sided wall density
+slope at :405-415) with d1_centred at :40-52, which are unchanged between the two. At 6fbb3975
+_flux_covariance skips its centroid parts where the face-centroid shift is identically zero
+(face_centroid_shift_zero); the parts it keeps are the ported ones. Claims C1-C6.
 
 Run: python3 covariance_check.py   (numpy and sympy; exits with the number of failed claims)
 """

@@ -69,11 +69,15 @@ $\int_{x_-}^{x_+}\partial_xF\,\mathrm{d}x = F(x_+) - F(x_-)$, with sympy. In the
 
 1. *Each interior face appears twice.* Face $f$ between cells $i$ and $i+1$ enters $V_i\Delta\mathbf U_i$ with
    $-\Delta t A_f\mathbf F_f$ and $V_{i+1}\Delta\mathbf U_{i+1}$ with $+\Delta t A_f\mathbf F_f$.
-2. *The same number both times.* The divergence reads one array element `flux1[f]` for both cells, so the two
-   terms are the same floating-point number with opposite signs.
+2. *The same number both times.* The divergence forms the face product twice, once as the upper face of cell $i$
+   and once as the lower face of cell $i+1$: `face_area1` slices one element-wise formula on the same grid tensors
+   ({{< code src/coord/coordinate.hpp CoordinateImpl::face_area1 >}}) and both flux slices read the one element
+   `flux1[f]` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}). IEEE multiplication is correctly
+   rounded, so identical operands give identical products, and the two terms are the same floating-point number
+   with opposite signs.
 3. *Sum over any set of cells.* For a set $\mathcal Q$ the sum $\sum_{i\in\mathcal Q}V_i\Delta\mathbf U_i$
    telescopes: only the faces of $\partial\mathcal Q$ survive. `derivation_check.py` `[C1]` sums six cells
-   symbolically and gets $G_{6} - G_{0}$; `operator_check.py` `[C4]` does it for random fluxes on a block.
+   symbolically and gets $A_6\mathbf F_6 - A_0\mathbf F_0$, the two outer faces of the six cells; `operator_check.py` `[C4]` does it for random fluxes on a block.
 4. *No geometric assumption.* Steps 1 to 3 never used the shape of the cell, so the update conserves on the
    Cartesian, spherical-polar and cubed-sphere grids alike. What breaks it is a face that carries two numbers,
    one per side; @sec-ch04-seam is the one place the code has to arrange the single value by hand.

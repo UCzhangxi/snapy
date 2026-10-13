@@ -23,7 +23,7 @@ WENO type. The framework is always on; with no `reconstruct` block a deck gets d
 
 **Placement.** Every RK stage, in `HydroImpl::forward`, before the Riemann solver of each direction.
 
-**Activation.** `dynamics/reconstruct/{vertical,horizontal}/{type,scale,shock}`; block present: `dc`, false, false.
+**Activation.** `dynamics/reconstruct/{vertical,horizontal}/{type,scale,shock}`; with that sub-block `dc`, false, false; without, `shock` true.
 
 **Guarantee / limits.** The order of the interpolant; uniform-grid weights; floors from the equation of state.
 
@@ -95,7 +95,8 @@ With the equation of state's `limiter` on and the caller's `floor` argument true
 `density_floor` and the pressure row to `pressure_floor`; the species rows are clamped at zero whenever the
 limiter is on, whatever `floor` says. The well-balanced $x_1$ path calls `forward` with `floor = false`, because
 it reconstructs perturbations that may be negative (@sec-ch05-wbx1). The `shock: true` branch returns before
-any floor.
+any floor. The passive-scalar reconstruction, which has no hydro parent, clamps every row at zero whatever the
+limiter (@sec-ch08-reconfloors).
 
 **Order.** The framework adds no error of its own: the face value has the order of the interpolant
 (@sec-ch04-dc to @sec-ch04-weno), measured on a uniform grid. On a stretched $x_1$ grid the same uniform weights
@@ -188,7 +189,8 @@ caught only by an accuracy test.
 [^fw4-probe]: [sha: the code pin; deck: the Cartesian column of `tests/test_scalar_flux_covariance.py` with its
     `dynamics` block edited per case; run: a Python probe that builds `MeshBlock(MeshBlockOptions.from_yaml(...))`
     and runs one stage, CPU, double, 1 process; snapy 2.11.10.dev1+g6fbb397 Release, torch 2.10.0, kintera
-    2.6.2.dev4+g914389b40, Python 3.12.10]. The probe is not committed: it imports snapy, which a report check may
+    2.6.2.dev4+g914389b40
+    (a development build four commits past v2.6.1; the kintera pin c55b13b2 is tag v2.6.2), Python 3.12.10]. The probe is not committed: it imports snapy, which a report check may
     not (STYLE §7.1).
 
 ### Limits
