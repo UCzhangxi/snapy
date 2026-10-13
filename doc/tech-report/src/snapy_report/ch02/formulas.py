@@ -92,7 +92,7 @@ def check_C1_moist_mixture():
     cp = a[0]/t**2+a[1]/t+a[2]+a[3]*t+a[4]*t**2+a[5]*t**3+a[6]*t**4
     enthalpy = -a[0]/t+a[1]*sp.log(t)+a[2]*t+a[3]*t**2/2+a[4]*t**3/3+a[5]*t**4/4+a[6]*t**5/5+a[7]
     exact = sp.simplify(sp.diff(enthalpy-t,t)-(cp-1)) == 0
-    print(f'[C1] {"PASS" if exact else "FAIL"} NASA polynomial derivative exact={exact}')
+    print(f'[C1] {"PASS" if exact else "FAIL"} nine-coefficient polynomial derivative exact={exact}')
     return exact
 
 
