@@ -60,16 +60,19 @@ unset and only in a build with UCX; they are listed because they change the proc
 ### Code
 
 **How to set a switch.** The switches are environment variables of the process that runs snapy, set before it
-starts; there is no YAML key for them. For example, the fourth-order reference with the corrected-PE work off:
+starts; there is no YAML key for them. For example, the fourth-order reference with the corrected-PE work off, on
+the Straka deck, in `build/bin` of a build at the pin ([Install and run](#sec-preface-install)):
 
 ```sh
-SNAP_WB_REF4=1 SNAP_GRAVITY_WORK_RADIAL_EXACT=0 ./run_hydro -i column.yaml
+SNAP_WB_REF4=1 SNAP_GRAVITY_WORK_RADIAL_EXACT=0 ./straka.release straka_single.yaml
 ```
 
-A run with several processes needs a common rendezvous port, `MASTER_PORT=29500 torchrun --nproc-per-node=2 …`.
+The deck has `nghost: 3`, which refusal 1 below needs. A run with several processes needs a common rendezvous
+port, which `torchrun` sets from `--master-port`:
+`torchrun --no-python --nproc-per-node=2 --master-port=29573 ./straka.release straka_proc2.yaml`.
 
 **What is refused, and why.** Nothing in the parse refuses a value: an unrecognised value turns a switch on
-(D-5, step 3). Setup refuses three combinations:
+(step 3 of the Numerical method above). Setup refuses three combinations:
 
 1. *`SNAP_WB_REF4` (or `SNAP_X1_CENTROID_EXACT`) with nonzero gravity and `nghost` < 3*: the resolution flag reads
    scan pressures three cells away, so both sides of an $x_1$ seam agree only with three ghost cells
@@ -79,7 +82,8 @@ A run with several processes needs a common rendezvous port, `MASTER_PORT=29500 
 3. *An unset `MASTER_PORT` with either world size above 1*: the processes could not meet on one port
    ({{< code src/layout/layout.cpp LayoutOptionsImpl::LayoutOptionsImpl >}}).
 
-**The code, mapped to the five steps of D-5** ({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}):
+**The code, mapped to the five steps of the Numerical method above**
+({{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}}):
 
 ```cpp
 bool wb_ref4_enabled() {
