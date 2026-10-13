@@ -10,6 +10,8 @@ author: Jiheng Hu
 reviewer:
 -->
 
+### Summary
+
 An immersed solid is a set of cells, not a surface: the mask says which cells are solid, and the solver
 closes every face between a fluid cell and a solid cell as if it were a reflecting wall. Two things make
 that work. The mask must not contain runs that are thinner than the reconstruction stencil can close, which
@@ -17,34 +19,26 @@ is what the rectification guarantees along every grid line; and the solid cells 
 reconstruction and the implicit solve can read without producing a flux, which is what the placeholder fill,
 the face mirror and the masked rows provide.
 
+::: {.callout-note title="At a glance"}
+**Purpose.** Repair mask runs and close solid faces; @eq-ch11-solids-dp.
+
+**Data.** Boolean cell mask and placeholder hydro state.
+
+**Placement.** Rectify before stepping; refill solids after RK combination.
+
+**Activation.** Supply `vars["solid"]`; internal `max-iter` defaults to 5.
+
+**Guarantee / limits.** Exact line optimum; no global multidimensional optimum claimed.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
+:::
+
 Local symbols: $D_i(b,\ell)$ is the minimum flip count after processing $i$ mask entries, ending with bit $b$ and capped
 run length $\ell$; $\ell^{\min}_b$ is the required run length of bit $b$ (counts): $\ell^{\min}_0=3$ for fluid, $\ell^{\min}_1=2$
 for solid. ($l$ is NOTATION's stencil offset and $m_1$ its momentum component, so neither is used here.)
 Bits and $\mathrm{cost}_i(b)$, the candidate flip cost at position $i$, are dimensionless.
 $\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$.
 These symbols are proposed in the notation issue.
-
-### Summary
-
-::: {.callout-note title="At a glance"}
-**What it does.** A static Boolean mask marks solid cells. Rectification repairs runs that are too thin by
-flipping fluid cells to solid along each line; during a stage the face states at a fluid-solid interface are
-mirrored, the solid cells carry placeholder primitives, the implicit system gets a reflecting closure at
-every fluid-solid face and an identity row in every solid cell, and the solid conserved cells are refilled
-after each RK combination.
-
-**Switch.** `vars["solid"]` supplied at initialization; `boundary-condition/internal/max-iter` (default 5),
-`solid-density` ($10^3\ \mathrm{kg\,m^{-3}}$) and `solid-pressure` ($10^9\ \mathrm{Pa}$).
-
-**Requires / implies / turns off.** The implicit solve requires both x1 faces physical (no x1 decomposition).
-Solid cells are excluded from the gravity-work fixer's mass and get a sound speed of
-$10^{-8}\ \mathrm{m\,s^{-1}}$ in the time-step bound.
-
-**Order.** The line optimum of the flips is exact; the closure is exact; the geometry is a cell-aligned
-staircase with no measured convergence order.
-
-**Defining equation.** @eq-ch11-solids-dp and @eq-ch11-solids-closure.
-:::
 
 ### Derivation
 
@@ -150,6 +144,36 @@ make_fig()
 
 ### Code
 
+**How to use.** Supply the cell mask in `vars["solid"]` at initialization; this YAML only sets rectification and
+placeholder parameters. Density is in kilograms per cubic metre and pressure in pascals. Rectify the mask before
+stepping and retain the driver solid refill.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  internal:
+    max-iter: 5
+    solid-density: 1.0e3
+    solid-pressure: 1.0e9
+```
+
+**Refusals and prerequisites.** Unknown internal keys are refused by `InternalBoundaryOptionsImpl::from_yaml`.
+Exhausting the sweep budget throws "rectify_solid did not converge after 5 iterations" for this fragment.
+Increasing the budget does not turn the line optimum into a global geometric optimum. The implicit masked solve
+additionally needs physical x1 ends.
+
+**Read the implementation.** `InternalBoundaryImpl::rectify_solid` ({{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}) contains:
+
+```cpp
+if (num_flips == 0) break;
+
+total_num_flips += num_flips;
+dir *= -1;
+```
+
+Each directional sweep uses @eq-ch11-solids-dp. A sweep with no flips terminates; otherwise the next sweep reverses direction. The implicit face substitution is separately mapped by @eq-ch11-solids-closure.
+
 The stage sweep calls `mark_prim_solid_` and the `pib` face mirror of the x1, x2 and x3 face states in
 `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 
@@ -194,8 +218,9 @@ The stage sweep calls `mark_prim_solid_` and the `pib` face mirror of the x1, x2
 | `test_rectify.release` | Every outer and inner ghost slab of a rectified mask is solid | exact equality | test fixture |
 | `test_flip_zero_count.release` | The flip count on eight threads equals the serial count over twenty repeats | exact integer equality | test fixture |
 | `test_implicit_stratified_solid_python` | A column with a solid segment or strided solids keeps the fluid mass of each segment and stays finite | mass error below $10^{-12}$ | script threshold |
+| `boundary_check.py` (report only) | `[C5]`, `[C6]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for solids; no runtime results. {#tbl-ch11-solids-tests}
+: Source-test assertions and report-only checks for solids. {#tbl-ch11-solids-tests}
 
 The ghost-slab assertion is in `test2` ({{< code tests/test_rectify.cpp test2 >}}).
 
@@ -208,6 +233,16 @@ which reports the mass error of the fluid segments; the threshold is applied in 
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C5]`, `[C6]` establish that all 508 binary inputs match exhaustive line minimization;
+three block-substitution residuals vanish and reflection squared is identity.[^ch11-solids-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-solids-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C5]`, `[C6]`.
 
 ### Limits
 

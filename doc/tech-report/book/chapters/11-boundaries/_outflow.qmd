@@ -9,12 +9,28 @@ author: Jiheng Hu
 reviewer:
 -->
 
+### Summary
+
 The outflow callback is the radiating boundary of the solver. It freezes the state the block was initialized
 with, ghosts included, as the exterior background, and lets only the characteristics that leave the domain
 carry information into the ghosts. Everything the callback needs beyond the tensor it fills travels in the
 context: the EOS for the sound speed, the coordinate for the face-normal frame, and the two saved
 backgrounds. The conserved-variable driver converts to primitives for it, and converts back with the dry
 density as the tracer carrier.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Select outgoing perturbations; @eq-ch11-outflow-modes.
+
+**Data.** Primitive state, EOS and saved background; SI units listed below.
+
+**Placement.** Physical fill; excluded from tangential corner refresh.
+
+**Activation.** Set `outflow` on an external face; default off.
+
+**Guarantee / limits.** Joint admissibility scaling; no measured reflection result here.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
+:::
 
 Local symbols, with NOTATION.md §8a: $q_{\mathrm{bg}}$ is the saved initial boundary background of a primitive $q$
 (distinct from the well-balanced reference) and $\mathbf W_{\mathrm{bg}}$ the whole background; $d_q=q-q_{\mathrm{bg}}$ is the
@@ -23,28 +39,6 @@ $d_p$ [$\mathrm{Pa}$]; $Z=\rho_{\mathrm{bg}}c_{s,\mathrm{bg}}$ [$\mathrm{kg\,m^{
 $\alpha_{\mathrm{adm}}\in[0,1]$ the admissibility factor. New here: $v_{\mathrm{out}}$ the outward normal velocity
 [$\mathrm{m\,s^{-1}}$]; $\mathcal J_\pm=d_v\pm d_p/Z$ [$\mathrm{m\,s^{-1}}$] the two acoustic mode amplitudes; and
 $d_{\mathrm{ent}}=d_\rho-d_p/c_{s,\mathrm{bg}}^2$ [$\mathrm{kg\,m^{-3}}$] the advected (entropy) combination.
-
-### Summary
-
-::: {.callout-note title="At a glance"}
-**What it does.** Builds primitive ghosts from the background saved at initialization plus the interior
-perturbation projected on the outgoing characteristics; one factor per ghost scales that perturbation so
-that density, pressure, composition and tracers stay admissible.
-
-**Switch.** Face name `outflow`; off by default.
-
-**Requires / implies / turns off.** Requires an EOS of type `ideal-gas`, `ideal-moist` or `moist-mixture`, a
-coordinate, and the saved background `boundary_reference_w` (and `boundary_reference_r` with tracers); for
-`kScalar` input or a shallow-water EOS it falls back to @sec-ch11-extrapolation. Excluded from the corner
-refresh of @sec-ch11-timing and from the WB perturbation mirror of @sec-ch11-wb; the gravity-work fixer
-refuses a step that moves mass through it.
-
-**Order.** A locally linear characteristic prescription; the pulse test bounds the reflected fraction below
-$0.05$.
-
-**Defining equation.** @eq-ch11-outflow-modes, inverted by @eq-ch11-outflow-inverse and limited by
-@eq-ch11-outflow-admissible.
-:::
 
 ### Derivation
 
@@ -162,6 +156,37 @@ make_fig()
 
 ### Code
 
+**How to use.** Initialize admissible hydro values in owned cells and ghosts before block initialization captures
+the background. Include nonnegative tracer ratios when transporting tracers. Use `apply_boundaries` to prepare
+primitives; the saved background must survive a restart.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: outflow
+    x1-outer: outflow
+dynamics:
+  gravity-work-fixer: false
+```
+
+**Refusals and prerequisites.** `radiating` refuses missing context with "outflow requires EOS, coordinate and
+saved initial background" and unsupported EOS types with "Unsupported outflow EOS: ". It refuses a direct
+non-primitive call with "outflow: prepare primitive context with apply_boundaries". Shape mismatch, nonfinite
+inputs and invalid background density, pressure or composition are also checked there. Disabling the gravity-work
+fixer avoids using a closed-column energy correction on open x1 faces.
+
+**Read the implementation.** `radiating` ({{< code src/bc/bc_func.cpp radiating >}}) contains:
+
+```cpp
+auto plus = torch::where(un + c >= 0, sign * d[vn] + d[IPR] / impedance, 0.);
+auto minus = torch::where(un - c >= 0, sign * d[vn] - d[IPR] / impedance, 0.);
+auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
+```
+
+`plus`, `minus` and `entropy` are the selected $\mathcal J_+$, $\mathcal J_-$ and $d_{\mathrm{ent}}$ of @eq-ch11-outflow-modes. The following inverse gives @eq-ch11-outflow-inverse; the shared limiter gives @eq-ch11-outflow-admissible.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | init | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize_local >}} | `boundary_reference_w` | `outflow` |
@@ -199,8 +224,9 @@ make_fig()
 | `test_radiating_boundary.release` | Joint composition/tracer limiter; restart continuation; missing reference throws | inequalities; exact restart equality | test assertions |
 | `test_radiating_boundary.release` | CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | test constant |
 | `test_radiating_boundary_python` | A manual fill keeps the saved reference and the interior | exact equality | test assertions |
+| `boundary_check.py` (report only) | `[C2]`, `[C3]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for outflow; no runtime results. {#tbl-ch11-outflow-tests}
+: Source-test assertions and report-only checks for outflow. {#tbl-ch11-outflow-tests}
 
 The all-face assertions are `EXPECT_LT` and `EXPECT_TRUE` in
 {{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}}.
@@ -228,6 +254,16 @@ The Python assertions are the top-level `assert` statements of
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C2]`, `[C3]` establish that the inverse and five sonic selectors are exact; six rational
+limiter fixtures satisfy the independent bounds with one shared scale.[^ch11-outflow-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-outflow-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C2]`, `[C3]`.
 
 ### Limits
 

@@ -18,20 +18,17 @@ column, after which the x1 wall of that column has to be re-imposed. This scheme
 the two fillers run and the refresh that keeps the overlap consistent.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Fixes who writes a ghost and when: the physical callbacks run in `apply_boundaries` at
-initialization and at the end of every stage; the layout exchange runs in `exchange_ghost_zones`, which then
-re-applies the non-outflow x1 callbacks on the tangential ghost slabs the exchange owns, so a wall corner
-matches the column it was just given.
+**Purpose.** Order physical fills and exchanged-corner refresh.
 
-**Switch.** None; the order is fixed by the driver (`MeshBlockImpl::forward` exchanges before the stage,
-`MeshImpl::forward` after it).
+**Data.** Hydro state and tracers in their current representation.
 
-**Requires / implies / turns off.** The corner refresh needs the idempotence contract of @sec-ch11-registry.
-Outflow faces are excluded from the refresh.
+**Placement.** Driver order differs between block and mesh stepping.
 
-**Order.** An exact ownership rule; no order of accuracy.
+**Activation.** Automatic with the driver; no independent YAML switch.
 
-**Defining equation.** None; the ownership statement is in the Derivation layer.
+**Guarantee / limits.** Refresh requires idempotent callbacks and excludes outflow.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -88,6 +85,32 @@ make_fig()
 
 ### Code
 
+**How to use.** This fragment selects the physical callback, not the schedule. Initialize through the driver and
+retain its stage loop. Changes between block `forward` calls reach the next reconstruction through its leading
+exchange.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+```
+
+**Refusals and prerequisites.** There is no timing YAML switch and no independent schedule validator. The callback
+contract forbids dependence on the full tangential extent. Outflow is deliberately excluded from corner refresh
+because it needs full-size saved backgrounds.
+
+**Read the implementation.** `MeshBlockImpl::forward` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::forward >}}) contains:
+
+```cpp
+exchange_ghost_zones(vars);
+advance_local(vars, dt, stage);
+```
+
+These lines implement the block-driver ownership order in the Derivation layer. The mesh driver has the different order documented above; this excerpt is not its schedule.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | init | {{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize >}} | `exchange` | none |
@@ -122,8 +145,9 @@ make_fig()
 |---|---|---|---|
 | `test_wb_wall_corner.release` | A resting column survives the wall/exchange overlap on one block and on an x2 split; the split matches one block exactly | Mach at most $10^{-12}$; exact equality for the split | test constants |
 | `test_wall_saturation.release` | Boundary phase change conserves energy and water | relative error below $10^{-12}$ | test constant |
+| `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for timing; no runtime results. {#tbl-ch11-timing-tests}
+: Source-test assertions and report-only checks for timing. {#tbl-ch11-timing-tests}
 
 The rest assertions are in {{< code tests/test_wb_wall_corner.cpp WallCorner.x2_uniform_rest_keeps_u2_zero >}};
 the split comparison is {{< code tests/test_wb_wall_corner.cpp WallCorner.x2_split_matches_one_block_exactly >}},
@@ -135,6 +159,16 @@ The conservation assertions are in
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C1]` establish that copy, parity, idempotence and corner ownership hold
+exactly.[^ch11-timing-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-timing-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
 ### Limits
 

@@ -17,17 +17,17 @@ the supplied tensor; whether that mirror is a good continuation of a stratified 
 @sec-ch11-wb answers.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Copies the $n_g$ owned cells next to the wall into the ghosts in reversed order and negates
-the normal momentum or velocity row; every other row keeps even parity.
+**Purpose.** Mirror owned cells with normal odd parity; @eq-ch11-reflecting-parity.
 
-**Switch.** Face name `reflecting`; the default of every external face.
+**Data.** Cell averages in the supplied representation; units unchanged.
 
-**Requires / implies / turns off.** Nothing. The WB wall treatment of @sec-ch11-wb and the corner refresh of
-@sec-ch11-timing both act on faces that carry this callback.
+**Placement.** Physical fill before reconstruction; corner refresh after exchange.
 
-**Order.** Exact for data that is even (odd) about the wall; no wall convergence order is measured.
+**Activation.** `reflecting` is the default external face name.
 
-**Defining equation.** @eq-ch11-reflecting-parity.
+**Guarantee / limits.** Exact parity map; no measured wall convergence order.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -79,6 +79,29 @@ make_fig()
 
 ### Code
 
+**How to use.** Use an active x1 direction and initialize the owned state. Let the driver fill ghosts in the
+correct representation; a scalar fill mirrors without negating a row.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: reflecting
+    x1-outer: reflecting
+```
+
+**Refusals and prerequisites.** The callback has no wall-specific setup refusal and returns immediately in a
+collapsed direction. Name and key errors are refused by the parser in @sec-ch11-registry.
+
+**Read the implementation.** `reflecting_inner` ({{< code src/bc/bc_func.cpp >}}) contains:
+
+```cpp
+var.narrow(dim, 0, nghost) = var.narrow(dim, nghost, nghost).flip(dim);
+```
+
+The reversed donor slab implements the even row of @eq-ch11-reflecting-parity. The subsequent normal-row multiplication by minus one implements the odd row.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | reflect | [`bc_func.cpp:10-34`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/bc/bc_func.cpp#L10-L34) | `reflecting_inner` | `reflecting` |
@@ -102,8 +125,9 @@ make_fig()
 |---|---|---|---|
 | `test_wb_wall_corner.release` | A resting stratified column stays at rest at stock and user-named walls, including the corners | Mach at most $10^{-12}$ | test constant |
 | `test_wall_saturation.release` | Energy and water are conserved through a phase change in the cell next to a wall | relative error below $10^{-12}$ | test constant |
+| `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for reflecting; no runtime results. {#tbl-ch11-reflecting-tests}
+: Source-test assertions and report-only checks for reflecting. {#tbl-ch11-reflecting-tests}
 
 The rest assertions are `EXPECT_LE` on the Mach number in
 {{< code tests/test_wb_wall_corner.cpp WallCorner.x2_uniform_rest_keeps_u2_zero >}} and
@@ -114,6 +138,16 @@ The conservation assertions are `EXPECT_LT` on `de` and `dw` in
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C1]` establish that copy, parity, idempotence and corner ownership hold
+exactly.[^ch11-reflecting-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-reflecting-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
 ### Limits
 

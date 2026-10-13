@@ -17,19 +17,17 @@ the layout itself implements, the corner synthesis, together with the ownership 
 relies on: which exchanges interpolate, which do not, and when the corners are filled.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** Fills the ghosts of a layout-owned face from the neighbouring block: a raw copy on a slab
-layout, and on the cubed sphere an optional interpolation of the received strip followed by a rotation of
-the vector components into the receiving panel's frame; corners are synthesized from the edge strips.
+**Purpose.** Supply layout-owned ghosts; @eq-ch11-exchange-corner.
 
-**Switch.** `SyncOptions`: `interpolate` (default off), `skip_corner` (default on), `type`, `dim`,
-`intra_panel_only`, `cross_panel_only`.
+**Data.** Neighbour strips in the receiving frame; units unchanged.
 
-**Requires / implies / turns off.** The hydro and scalar state exchanges set `interpolate` on; the donor
-factor of the positivity limiter is exchanged raw.
+**Placement.** Deserialize before synthesizing tangential corners.
 
-**Order.** An exact copy on matched cells; the corner average preserves constants; no seam order is measured.
+**Activation.** State exchanges enable interpolation; `SyncOptions` defaults do not.
 
-**Defining equation.** @eq-ch11-exchange-corner.
+**Guarantee / limits.** Slab copy is exact; corner averaging preserves constants.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -80,6 +78,33 @@ make_fig()
 
 ### Code
 
+**How to use.** For a deck with an active x2 direction, choose the x2 periodic names below to exercise layout-owned
+slab exchange. No YAML key directly sets `SyncOptions.interpolate`: the state driver sets it. A panel layout also
+needs the geometry and decomposition of @sec-ch03.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x2-inner: periodic
+    x2-outer: periodic
+```
+
+**Refusals and prerequisites.** This corner operation adds no configuration refusal. Layout compatibility is
+checked during construction (@sec-ch12-layout); unknown boundary keys are rejected by the parser. Do not enable
+interpolation for a donor-cell limiter factor: it must retain its donor identity.
+
+**Read the implementation.** `LayoutImpl::fill_corners` ({{< code src/layout/layout.cpp LayoutImpl::fill_corners >}}) contains:
+
+```cpp
+auto var_left = var.index(sub_left).select(-3, 0).unsqueeze(-3);
+auto var_bot = var.index(sub_bot).select(-2, 0).unsqueeze(-2);
+var.index_put_(sub, 0.5 * (var_left + var_bot));
+```
+
+The two end strips are the edge values of @eq-ch11-exchange-corner; the last line forms their arithmetic mean.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | sync | {{< code src/layout/layout.hpp SyncOptions >}} | `skip_corner` | `SyncOptions` |
@@ -111,8 +136,9 @@ make_fig()
 |---|---|---|---|
 | `test_cubed_sphere_exchange.release` | A panel subdivided into blocks exchanges to the same coordinates and density as one block per panel | exact equality | test assertion |
 | `test_mesh_exchange_python` | A received scalar ghost strip identifies its neighbour block | exact equality | test assertion |
+| `boundary_check.py` (report only) | `[C4]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for exchange; no runtime results. {#tbl-ch11-exchange-tests}
+: Source-test assertions and report-only checks for exchange. {#tbl-ch11-exchange-tests}
 
 The panel assertions are `torch::equal` in
 {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}.
@@ -121,6 +147,16 @@ The neighbour assertion is the top-level `assert` in {{< code tests/test_mesh_ex
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C4]` establish that the constant residual is zero, while an affine counterexample rules
+out a general corner reconstruction claim.[^ch11-exchange-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-exchange-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C4]`.
 
 ### Limits
 

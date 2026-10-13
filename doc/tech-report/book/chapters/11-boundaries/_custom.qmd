@@ -17,17 +17,17 @@ mask-fill primitive: on a Boolean mask, one means solid, and the rectification o
 callback to declare every ghost slab solid before it sweeps.
 
 ::: {.callout-note title="At a glance"}
-**What it does.** `custom` leaves the tensor unchanged and only keeps the face physical; `solid` writes the
-literal value one into the ghost slab of whatever tensor it is given.
+**Purpose.** Reserve a callback or fill a mask with ones.
 
-**Switch.** Face names `custom` and `solid`; off by default.
+**Data.** Supplied tensor; Boolean one denotes solid only on a mask.
 
-**Requires / implies / turns off.** `solid` is the fill the mask rectification of @sec-ch11-solids applies to
-its own mask; neither name is a diffusion wall for `is_wall_boundary`.
+**Placement.** Physical fill; solid callbacks also prepare mask rectification.
 
-**Order.** Exact identity and exact constant fill; no order of accuracy.
+**Activation.** `custom` and `solid` are explicit face names; default off.
 
-**Defining equation.** None; both maps are stated in the Derivation layer.
+**Guarantee / limits.** Custom is identity; solid is constant fill, not a hydro wall.
+
+**Evidence.** Report checks and source-test limits are in the Tests layer.
 :::
 
 ### Derivation
@@ -66,6 +66,31 @@ make_fig()
 
 ### Code
 
+**How to use.** Install the user ghost fill before reconstruction consumes it. The YAML name reserves a physical
+face but does not install a user algorithm. Use the `solid` callback on the rectification mask, not as a physical
+hydro state.
+
+This is a configuration fragment, not a standalone simulation deck.
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: custom
+    x1-outer: custom
+```
+
+**Refusals and prerequisites.** Neither callback checks whether the supplied tensor has a physical interpretation.
+Custom silently preserves stale ghosts if the caller fails to fill them; parser name/key refusals remain those of
+@sec-ch11-registry.
+
+**Read the implementation.** `solid_inner` ({{< code src/bc/bc_func.cpp >}}) contains:
+
+```cpp
+var.narrow(dim, 0, nghost) = 1;
+```
+
+The assignment is the constant map in the Derivation layer. On a Boolean mask it declares the whole ghost slab solid; the empty custom body is the identity map.
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | custom | [`bc_func.cpp:7-8`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/bc/bc_func.cpp#L7-L8) | `custom_inner` | `custom` |
@@ -87,13 +112,24 @@ make_fig()
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_rectify.release` | After rectification of an $8^3$ mask with two solid cells, every inner and outer ghost slab is solid | exact equality to one | test fixture (`nghost` 1 without a block) |
+| `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-defined assertions for custom; no runtime results. {#tbl-ch11-custom-tests}
+: Source-test assertions and report-only checks for custom. {#tbl-ch11-custom-tests}
 
 The assertion is the ghost-slab loop of `test2` ({{< code tests/test_rectify.cpp test2 >}}).
 
 Numeric tolerances above are the source test constants; a round-off derivation is not documented for each.
 Device/rank distinctions and missing runs are recorded in @sec-ch15-ch11.
+
+The report-only checks `[C1]` establish that copy, parity, idempotence and corner ownership hold
+exactly.[^ch11-custom-run]
+These checks exercise report formulas, not the compiled boundary kernels. The source-test table records
+assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
+
+[^ch11-custom-run]: [sha: the code pin; deck: the deterministic fixtures in the check;
+    run: `python src/snapy_report/ch11/boundary_check.py`, CPU, one process;
+    Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
+    7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
 ### Limits
 
