@@ -6,24 +6,30 @@ sources: OUTLINE.md 13.6; src/output/load_diag_output_data.cpp; src/output/outpu
 status: draft
 -->
 
+### Summary
+
 An output file can carry extra fields that help a user inspect a run. These fields are not budgets, and nothing
 in the run reads them back. They are there so that an output file can be checked by eye or by a script: a
 divergence field to look for spurious sources, the VIC correction to see where the implicit solve acts, and a
 column path to follow a species. No potential-energy or budget field is written.
 
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**What it does.** Adds derived fields to an output file when the output block lists their names. The groups are
-thermodynamic fields, the velocity divergence and curl, the last VIC correction, species column paths, and
-horizontal means.
+**Purpose.** Adds derived fields to an output file when its `variables` list names them; nothing in the run reads them.
 
-**Switch.** The `variables` list of an `outputs` block.
+**Data.** Reads the primitives, the conserved state and the last VIC correction; writes thermo, `div`/`curl`, `ic_*`, paths, means.
 
-**Order.** The divergence and curl use face values that are plain two-cell means.
+**Placement.** `OutputType::loadDiagOutputData`, called by every output after the hydro fields.
 
-**Defining equation.** @eq-ch13-div-face.
+**Activation.** The `variables` list of an `outputs` block: `thermo`, `diagnostics`, `div`, `div_h`, `curl`, `implicit`, `path`, `avg`.
+
+**Guarantee / limits.** Face values are two-cell means, @eq-ch13-div-face; a diagnostic of the cell velocities, not of the scheme.
+
+**Evidence.** The Tests layer below, @tbl-ch13-output-diag-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $R_{\mathrm{mix}}$ [J kg$^{-1}$ K$^{-1}$] the gas constant of the
+mixture; $A_{\mathrm{bottom}}$ [m$^2$] the area of a column's bottom face. $\theta_p$, $\theta_v$, $R_{\mathrm d}$, $p$, $\rho$,
+$T$, $\rho_{y,i}$, $V_i$, $v_{1,i}$, $\Delta x_1$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
 
 ### Derivation
 
@@ -38,12 +44,24 @@ $$ {#eq-ch13-div-face}
 and the sums for $x_2$ and $x_3$ are similar. A linear field is exact on every face but the first [check
 `src/snapy_report/ch13/output_diag_check.py`, output `output_diag_check.out`, `[C1]`]. The divergence of a uniform
 velocity is zero, and that of $v_1 = 2.5\,x_1$ is 2.5 in the interior (`[C2]`). The virtual potential
-temperature [K] is $\theta_v = \theta\,p/(\rho R_dT)$, with $\theta$ [K] the potential temperature, $p$ [Pa]
-the pressure, $\rho$ [kg m$^{-3}$] the density, $T$ [K] the temperature and $R_d$ [J kg$^{-1}$ K$^{-1}$] the dry
-gas constant. It equals $\theta$ for dry air and $\theta\,R/R_d$ otherwise, with $R$ the gas constant of the
-mixture (`[C3]`). `path_<species>` is $\sum_i\rho_{y,i}V_i/A_{\mathrm{bottom}}$ [kg m$^{-2}$], with
+temperature [K] is $\theta_v = \theta_p\,p/(\rho R_{\mathrm d}T)$, with $\theta_p$ [K] the potential temperature, $p$ [Pa]
+the pressure, $\rho$ [kg m$^{-3}$] the density, $T$ [K] the temperature and $R_{\mathrm d}$ [J kg$^{-1}$ K$^{-1}$] the
+dry gas constant. It equals $\theta_p$ for dry air and $\theta_p\,R_{\mathrm{mix}}/R_{\mathrm d}$ otherwise (`[C3]`). `path_<species>` is $\sum_i\rho_{y,i}V_i/A_{\mathrm{bottom}}$ [kg m$^{-2}$], with
 $\rho_{y,i}$ [kg m$^{-3}$] the species density, $V_i$ [m$^3$] the cell volume and $A_{\mathrm{bottom}}$ [m$^2$] the
 area of the bottom face. It is the column mass per unit area on a Cartesian column (`[C4]`).
+
+Why a linear field is exact everywhere but on the first face, in three steps:
+
+1. *A face value is the mean of its two cells.* `interp_to_face` writes `0.5 * (value[lo] + value[hi])` on faces
+   $1..n-1$, which is exact for a linear field.
+2. *The first face copies its cell.* Index 0, in the ghost layer, takes `value[0]` alone, so for a linear field it is
+   off by half a cell's change (`[C1]`).
+3. *The difference is the coordinate divergence of those faces*, which for a uniform or linear $v_1$ on a Cartesian
+   grid gives 0 and the slope (`[C2]`).
+
+*Round-off.* The mean rounds once (the factor $\tfrac12$ is exact), the difference once and the division once, so
+$(\nabla\cdot\mathbf v)_i$ is off by at most about $2\epsilon_{\mathrm m}\max\lvert v_1\rvert/\Delta x_1$, to first
+order. `[C2]` reads exactly 0 on its fields, whose values are exact in binary.
 
 In the code, @eq-ch13-div-face is `interp_to_face` ({{< code src/output/load_diag_output_data.cpp interp_to_face >}}) followed by the
 coordinate `divergence` of the face values ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}).
@@ -77,6 +95,29 @@ are as follows.
 
 ### Code
 
+**A minimal input.** One NetCDF stream with the diagnostics, the VIC correction and the column paths:
+
+```yaml
+outputs:
+  - type: netcdf
+    variables: [prim, diagnostics, implicit, path]
+    dt: 100.
+```
+
+**What is refused, and why.** Nothing in `variables`: each group is written only when `ContainVariable` finds its
+name, and a name that matches no group is ignored without a message
+({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}). `implicit` writes nothing without
+an implicit solver. The output-entry refusals are those of @sec-ch14-netcdf.
+
+**The code, mapped to @eq-ch13-div-face** ({{< code src/output/load_diag_output_data.cpp interp_to_face >}}):
+
+```cpp
+dst[dim] = 0; lo[dim] = 0;
+face.index_put_(dst, value.index(lo));                                // face 0 copies its cell
+dst[dim] = Slice(1, n); lo[dim] = Slice(0, n - 1); hi[dim] = Slice(1, n);
+face.index_put_(dst, 0.5 * (value.index(lo) + value.index(hi)));      // v_{i-1/2} = (v_{i-1} + v_i)/2
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | face mean | {{< code src/output/load_diag_output_data.cpp interp_to_face >}} | `interp_to_face` | |
@@ -102,12 +143,18 @@ are as follows.
 
 : Tests of the output-field diagnostics. {#tbl-ch13-output-diag-tests}
 
+`[C1]` of `output_diag_check.py` shows the exact interior faces and the copied first face; `[C2]` the divergence of a
+uniform and a linear velocity; `[C3]` $\theta_v$ for dry air and a mixture with $R_{\mathrm{mix}}=1.02\,R_{\mathrm d}$; `[C4]` the
+column path.
+
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [code: the formulas of `loadDiagOutputData` at the code pin, ported to numpy
-on a Cartesian grid; deck: the check itself; run: `python3 output_diag_check.py`, numpy 2.4.6]. ctest cases:
+**Evidence.** Check numbers from `output_diag_check.py` (lines `[C1]`–`[C4]`).[^ch13-out-chk] ctest cases:
 **pending: pinned ctest run**.
 **Coverage.** Cartesian only; curved and gnomonic grids use the coordinate operators of @sec-ch03.
 :::
+
+[^ch13-out-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch13/output_diag_check.py`, CPU, double,
+    1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `output_diag_check.out`, lines `[C1]`–`[C4]`.
 
 ### Limits
 

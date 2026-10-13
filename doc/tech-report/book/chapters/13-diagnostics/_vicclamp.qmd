@@ -7,23 +7,31 @@ sources: OUTLINE.md 13.3; src/implicit/implicit_hydro.cpp; src/implicit/implicit
 status: draft
 -->
 
+### Summary
+
 The implicit solver moves gas and species between neighbouring cells, but never more than a cell holds. When it
 has to hold back, the cells no longer gain exactly what the faces deliver. This meter reports how large that
 mismatch ever got in the run, so a user can see whether the limit on the transfers acted. It reads 0 when nothing
 was held back.
 
-### Summary
-
 ::: {.callout-note title="At a glance"}
-**What it does.** Records the largest per-cell relative break, over the run, between a cell's total constituent
-change after the VIC redistribution and the face transfers $M_{i-1/2} - M_{i+1/2}$ that should produce it.
+**Purpose.** Records the largest per-cell break, over the run, between a cell's VIC change and its face transfers, @eq-ch13-vicclamp.
 
-**Switch.** Printed whenever an implicit scheme is active (`integration/implicit-scheme` 1 or 9).
+**Data.** Reads the redistribution buffer `_mass_corr` after each VIC solve; keeps the running maximum `_clamp_residual`.
 
-**Order.** Not a discretisation.
+**Placement.** In `ImplicitHydroImpl::forward_masked` after each redistribution; printed in the run-to-date group.
 
-**Defining equation.** @eq-ch13-vicclamp.
+**Activation.** Printed whenever an implicit scheme is active (`integration/implicit-scheme` 1 or 9).
+
+**Guarantee / limits.** 0 to round-off without a clamp; a run maximum, not a per-step or located value.
+
+**Evidence.** The Tests layer below, @tbl-ch13-vicclamp-tests.
 :::
+
+Local symbols (flagged to the editor, ISSUES.md): $\Delta^{\mathrm{rd}}\rho_i$ [kg m$^{-3}$] the density change the
+redistribution books in cell $i$, dry plus all species; $M_{\mathrm{fl}}$ [kg] the floor of the scale against empty
+faces; $n_y$ the number of species rows [count]. $M_{i\mp1/2}$ are the face transfers of @eq-ch07-vic-faces;
+$y_n$, $V_i$ and $\epsilon_{\mathrm m}$ are NOTATION.md's.
 
 The redistribution is @sec-ch07-vic-redistribute. Without a clamp, every cell's total change equals its face
 divergence exactly. When every species of a donor is starved, the meter reads the donor's species mass fraction.
@@ -37,16 +45,31 @@ Let $M_{i\mp1/2}$ [kg] be the face transfers of @eq-ch07-vic-faces, positive upw
 written by its log name, is
 
 $$
-\mathrm{vicclamp} = \max_i \frac{\big|\Delta^{\mathrm{rd}}\rho_iV_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, f\big)} ,
+\mathrm{vicclamp} = \max_i \frac{\big|\Delta^{\mathrm{rd}}\rho_iV_i - (M_{i-1/2} - M_{i+1/2})\big|}{\max\big(|M_{i-1/2}|, |M_{i+1/2}|, M_{\mathrm{fl}}\big)} ,
 $$ {#eq-ch13-vicclamp}
 
-maximised over the run, with $f$ [kg] a floor against empty faces. Without a clamp, $\mathrm{vicclamp}$ is zero to
+maximised over the run, with $M_{\mathrm{fl}}$ the floor against empty faces. Without a clamp, $\mathrm{vicclamp}$ is zero to
 round-off [check
 `src/snapy_report/ch13/vicclamp_check.py`, output `vicclamp_check.out`, `[C1]`]. If the species of a donor are
 starved, its species transfer is clamped to zero. With $y_n$ [-] the species mass fractions of the donor, only the
 dry part $M_{i+1/2}(1-\sum_ny_n)$ of a transfer $M_{i+1/2}$ moves. Each of the two cells then misses
 $M_{i+1/2}\sum_ny_n$, and $\mathrm{vicclamp} = \sum_ny_n$. That is 0.03 for $(y_1, y_2) = (0.01, 0.02)$ (`[C2]`). The floor is the smallest
 normal float in float32, where $10^{-300}$ rounds to zero, and $10^{-300}$ in float64 (`[C3]`).
+
+Why a starved donor reads $\sum_ny_n$, in three steps:
+
+1. *The face transfer is split by composition.* A transfer $M_{i+1/2}$ out of a donor carries the dry fraction
+   $1-\sum_ny_n$ and the species fractions $y_n$ of that donor.
+2. *A starved species moves nothing.* The redistribution clamps each species transfer to what the donor holds, so
+   with all species starved only $M_{i+1/2}(1-\sum_ny_n)$ moves.
+3. *Each of the two cells misses the rest.* Their change differs from $M_{i-1/2}-M_{i+1/2}$ by $M_{i+1/2}\sum_ny_n$, and
+   dividing by $\lvert M_{i+1/2}\rvert$ gives $\sum_ny_n$ (`[C2]`).
+
+*Round-off.* Without a clamp the residual is a difference of two equal quantities, each rounded: the cell side sums
+$n_y+1$ rows and multiplies by $V_i$, $n_y+1$ roundings of terms bounded by $\lvert M\rvert$; the face side subtracts
+once. So the reading is at most $(n_y+3)\,\tfrac12\epsilon_{\mathrm m}$ times the ratio of the larger term to the scale,
+of order $\epsilon_{\mathrm m}$, $10^{-15}$ for a few species in float64; `[C1]` reads exactly 0 on the two-cell column.
+A reading well above that is a clamp, not round-off.
 
 In the code, @eq-ch13-vicclamp is the update of `_clamp_residual` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}).
 
@@ -73,6 +96,28 @@ blocks into `vic_max` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >
 
 ### Code
 
+**A minimal input.**
+
+```yaml
+integration:
+  implicit-scheme: 9   # 1 = vic-partial, 9 = vic-full; vicclamp= appears on the cycle line
+```
+
+**What is refused, and why.** An `implicit-scheme` other than 0, 1 or 9 is refused ("Unsupported implicit
+scheme"), since there are only two solvers ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::type >}}).
+The meter itself has no option.
+
+**The code, mapped to @eq-ch13-vicclamp** ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}):
+
+```cpp
+auto lhs = (cell * pcoord->cell_volume()).slice(-1, is, ie);       // Delta^rd rho V
+auto rhs = Ml - Mu;                                                 // M_{i-1/2} - M_{i+1/2}
+const double floor = Ml.scalar_type() == torch::kFloat32
+                         ? std::numeric_limits<float>::min() : 1.e-300;   // M_fl
+auto scale = torch::maximum(Ml.abs(), Mu.abs()).clamp_min(floor);
+_clamp_residual.copy_(torch::maximum(_clamp_residual, ((lhs - rhs).abs() / scale).max().detach()));
+```
+
 | what | code link | symbol | switch |
 |---|---|---|---|
 | residual and running maximum | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `_clamp_residual` | `integration/implicit-scheme` |
@@ -93,12 +138,16 @@ blocks into `vic_max` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >
 
 : Tests of the VIC clamp meter. {#tbl-ch13-vicclamp-tests}
 
+`[C1]` of `vicclamp_check.py` reads 0 with no clamp; `[C2]` reads 0.03 for $(y_1,y_2)=(0.01,0.02)$ with the species
+starved; `[C3]` confirms the float32 floor, where $10^{-300}$ rounds to zero.
+
 ::: {.callout-important title="Check"}
-**Evidence.** Check numbers: [code: the residual of `forward_masked` at the code pin, ported to numpy
-on the port of the redistribution in @sec-ch07-vic-redistribute; deck: a two-cell column, the check itself; run:
-`python3 vicclamp_check.py`, numpy 2.4.6]. ctest cases: **pending: pinned ctest run**.
+**Evidence.** Check numbers from `vicclamp_check.py` (lines `[C1]`–`[C3]`).[^ch13-vic-chk] ctest cases: **pending: pinned ctest run**.
 **Coverage.** CPU port; the code runs on any device.
 :::
+
+[^ch13-vic-chk]: [sha: the code pin; deck: the check itself; run: `python3 src/snapy_report/ch13/vicclamp_check.py`, CPU, double,
+    1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output `vicclamp_check.out`, lines `[C1]`–`[C3]`.
 
 ### Limits
 
