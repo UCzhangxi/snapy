@@ -71,6 +71,8 @@ import sys
 TOOLS = pathlib.Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 CHECKS = ("history", "offpin", "status", "xref")
+# generated navigation, not prose: its citations do not make a section cited from another chapter (xref)
+NAVIGATION = {"appf"}
 RECORD_HEAD = ("file", "kind", "reviewer", "author", "pin", "sha256", "date", "note")
 
 # Change history in body text. Built from STYLE.md (sections 1 and 3.2) and the phrases the Q1 re-read and the
@@ -315,7 +317,9 @@ def xref_counts(book: pathlib.Path) -> tuple[dict[str, int], list[str]]:
         for lab in re.findall(r"\{#(sec-[\w-]+)\}", q.read_text()):
             home[lab] = chapter_of(rel)
     for lab, ch in sorted(home.items()):
-        outside = {chapter_of(f) for f in used.get(lab, ())} - {ch}
+        # the topic index (appendix F) cites every section by construction; a section counts as cited only when
+        # prose of another chapter cites it
+        outside = {chapter_of(f) for f in used.get(lab, ())} - {ch} - NAVIGATION
         if not outside:
             counts[ch] = counts.get(ch, 0) + 1
             detail.append(f"{ch}: section {lab} is not cited from another chapter")
