@@ -25,10 +25,16 @@ status: draft
 **Evidence.** The Tests layer distinguishes report checks from solver tests.
 :::
 
+Local symbols: the order estimate is the dimensionless exponent defined in @eq-ch15-order; the rest residual is the diagnostic used by the cited test. No new state variable is introduced.
+
 ### Derivation
 
 The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
 these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+
+1. A small rest residual alone could pass when the reference switch is ignored. `main` in {{< code tests/test_wb_ref4_order.py main >}} therefore runs both enabled and unset arms.
+2. Successive residual ratios give the exponent in @eq-ch15-order. The enabled arm checks every adjacent order against `ORDER_ON`; the unset arm checks the last against `ORDER_OFF` ({{< code tests/test_wb_ref4_order.py main >}}).
+3. The two thresholds test separation of behaviors, not a floating-point error bound. Near round-off, ratios cease to measure truncation order; use the summation bound in @sec-ch15 and inspect raw residuals before interpreting an order.
 
 ### Numerical method
 
@@ -55,6 +61,25 @@ come from `setup_test`, `snapy_add_python_test` and the explicit entries in
 other configurations use their build suffix through `setup_test`
 ({{< code cmake/macros/macro_setup_test.cmake >}}).
 
+#### How to use
+
+No user YAML is required for this assertion: `main` constructs the test runs and chooses both switch arms
+({{< code tests/test_wb_ref4_order.py main >}}). From a configured build at the code pin, select:
+
+```bash
+ctest --output-on-failure -R '^test_wb_ref4_order_python$'
+```
+
+The `main` entry point refuses an unavailable CUDA device by returning 125; that is not evidence of a CPU or CUDA pass.
+The same entry point implements @eq-ch15-order with:
+
+```python
+order = [math.log2(abs(v[i]) / abs(v[i + 1])) for i in range(len(v) - 1)]
+```
+
+Here `v` holds the diagnostic residuals over successive resolutions. The absolute-value ratio removes the residual sign;
+a zero residual makes the logarithmic interpretation invalid. Do not substitute a different YAML deck and retain the same claim.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -75,6 +100,12 @@ The centroid-rest thresholds are $10^{-10}$ and $10^{-8}$
 These are source thresholds. The earlier run record is not evidence of execution at the current pin.
 `src/snapy_report/ch05/wbref_check.py` retains the independent rational-weight, wall-continuation,
 pressure-source, centroid and balance-iteration checks.
+
+[C1] The enabled/unset comparison tests whether the convergence oracle distinguishes the reference paths.
+[C2] The wall, centroid and seam rows test separate contracts; passing one does not establish the others.
+These statements describe source assertions, not new executions.[^ch15-ch05-provenance]
+
+[^ch15-ch05-provenance]: Source read at `6fbb39750f62b83df096058a4746e77d0a634bc5`; no compiled solver run was performed for this rewrite. The command above is a reproduction instruction, not a run record. Existing report-check provenance remains in `reviews/ch15-verification-evidence.md`.
 
 ### Limits
 

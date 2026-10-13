@@ -30,7 +30,15 @@ This is a selected catalogue, organized by the existing chapter entries. The gen
 @sec-appc provides a broader historical inventory; read its recorded provenance before using it at a new pin. A missing row here does not mean a test is absent.
 The chapter adds no compiled CPU, CUDA or multi-rank results at the code pin.
 
+Local symbols: $V_i$ is cell volume in $\mathrm{m^3}$, $A_{i\pm1/2}$ is face area in $\mathrm{m^2}$,
+$\bar\rho_i$ is total density in $\mathrm{kg\,m^{-3}}$ and $F_{i\pm1/2}$ is mass flux density in $\mathrm{kg\,m^{-2}\,s^{-1}}$.
+The oracle $\mathcal O$ has the units of the quantity being compared. The proposed local order symbols are defined below.
+
 ### Derivation
+
+1. Multiply the divergence by cell volume before summing; otherwise adjacent face contributions do not cancel on unequal cells ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).
+2. Normalize by a nonzero reference only; the wall-saturation assertion uses initial energy and water totals ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
+3. Infer order from a residual ratio only while the leading truncation term dominates; the wall test uses `log2(a / b)` ({{< code tests/test_wb_ref_wall.cpp faces_next_to_the_walls_are_second_order >}}).
 
 #### Why a volume-weighted conservation check is necessary
 
@@ -90,6 +98,31 @@ Thus the right-hand side is zero at closed walls. The identity is exact in real 
 the same face transfer. It does not hold by cancellation when the two blocks use different seam fluxes.
 Floating-point sums can leave a residual. Summing density without volumes tests a different quantity on
 an unequal-volume grid. The algebra check uses unequal volumes to expose that mistake.
+
+#### A bound for the summation contribution
+
+Assume round-to-nearest arithmetic, no overflow or underflow, and exact supplied cell masses.
+Write the unit round-off as $\epsilon_{\mathrm{fp}}$ (dimensionless, local to this bound),
+and the number of supplied masses as $N$. Each addition perturbs its exact result by a factor
+$1+\delta$, with $|\delta|\leq\epsilon_{\mathrm{fp}}$. Expanding a sequential reduction gives:
+
+$$
+\begin{aligned}
+\left|\operatorname{fl}\!\left(\sum_i V_i\bar\rho_i\right)-\sum_i V_i\bar\rho_i\right|
+&\leq \left[(1+\epsilon_{\mathrm{fp}})^{N-1}-1\right]\sum_i|V_i\bar\rho_i|,\\
+&\leq \frac{(N-1)\epsilon_{\mathrm{fp}}}{1-(N-1)\epsilon_{\mathrm{fp}}}\sum_i|V_i\bar\rho_i|,
+\qquad (N-1)\epsilon_{\mathrm{fp}}<1.
+\end{aligned}
+$$
+
+For the second inequality, expand the product and bound each binomial coefficient by $(N-1)^k$;
+the resulting geometric series sums to the displayed fraction. Dividing this absolute bound by
+$|\mathcal O|$ bounds the reduction's contribution to relative drift. Rounded products and an independently
+rounded oracle add their own errors; flux evolution and division are not included in this reduction-only bound.
+The `total` reduction in `WallSaturation.phase_change_preserves_energy_and_water`
+({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}})
+need not use sequential order, so this conservative bound is not a prediction of its observed residual.
+It does not derive or replace the test's acceptance threshold.
 
 #### Relative drift and a zero reference
 
@@ -165,6 +198,27 @@ make_fig()
 
 : Definitions for interpreting the catalogue. {#tbl-ch15-metrics-code}
 
+#### How to use
+
+There is no simulation YAML for the symbolic metrics check. From the report directory, run:
+
+```bash
+PYTHONPATH=src python src/snapy_report/ch15/metrics_check.py
+```
+
+For solver evidence, use the named CTest registration in each catalogue section and record the build pin.
+A zero oracle refuses a meaningful relative-drift interpretation; this is a mathematical precondition,
+not a claim that the solver implements a new guard. In
+`WallSaturation.phase_change_preserves_energy_and_water`
+({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}),
+the mapping to the relative-drift identity is:
+
+```cpp
+double de = std::abs(total(IPR) / e0 - 1.);
+```
+
+Here `total(IPR)` is the volume-weighted energy and `e0` its initial reference.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -178,6 +232,13 @@ make_fig()
 Run `PYTHONPATH=src python src/snapy_report/ch15/metrics_check.py` from the report directory.
 The sibling output records the checks; the run environment and command are recorded in
 `reviews/ch15-verification-evidence.md`. These checks import SymPy, not snapy.
+
+[C1] Weighted telescoping and its unweighted counterexample distinguish mass conservation from a sum of densities.
+[C2] The relative-drift identity assumes a nonzero positive oracle in the symbolic check.
+[C3] The logarithmic order identity assumes a single nonzero power of grid width.
+The new reduction bound is an analytic estimate, not an additional executed claim.[^ch15-metrics-run]
+
+[^ch15-metrics-run]: `PYTHONPATH=src python src/snapy_report/ch15/metrics_check.py` is run on base and head for this PR. The three exact SymPy assertions pass; the PR evidence records versions and outcomes. No compiled snapy execution is claimed.
 
 ### Limits
 

@@ -25,10 +25,16 @@ status: draft
 **Evidence.** The Tests layer distinguishes report checks from solver tests.
 :::
 
+Local symbols: total energy and total water mass use the volume-weighted sums defined in @sec-ch15. The code names `de` and `dw` denote dimensionless relative drifts, not changes with energy or mass units.
+
 ### Derivation
 
 The numerical derivations remain in the linked chapter. The error and conservation identities for interpreting
 these tests are written out in the opening section of @sec-ch15; this inventory introduces no additional update equation.
+
+1. Phase change can redistribute water while preserving its total. `WallSaturation.phase_change_preserves_energy_and_water` sums both vapor and cloud slots with cell volumes ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
+2. The same test separately checks that cloud mass changes in the expected direction. A conserved but inactive phase-change path would not satisfy that control ({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
+3. Its relative drift uses a nonzero initial total, as derived in @sec-ch15. The prescribed tolerance includes more than summation round-off; the bound in @sec-ch15 explains why a reduction residual alone cannot measure coupling accuracy.
 
 ### Numerical method
 
@@ -55,6 +61,28 @@ come from `setup_test`, `snapy_add_python_test` and the explicit entries in
 other configurations use their build suffix through `setup_test`
 ({{< code cmake/macros/macro_setup_test.cmake >}}).
 
+#### How to use
+
+This test builds its state in C++; it has no user YAML activation. The CTest registration is
+{{< code tests/CMakeLists.txt >}}. From a configured Release build at the pin, select:
+
+```bash
+ctest --output-on-failure -R '^test_wall_saturation.release$'
+```
+
+`WallSaturation.phase_change_preserves_energy_and_water` asserts a positive finite timestep and fewer than 10000 steps
+before advancing; failure of these checks invalidates the setup, not merely the reported drift
+({{< code tests/test_wall_saturation.cpp WallSaturation.phase_change_preserves_energy_and_water >}}).
+That definition maps the relative-drift identity in @sec-ch15 to:
+
+```cpp
+double de = std::abs(total(IPR) / e0 - 1.);
+double dw = std::abs((total(ICY) + total(ICY + 1)) / water0 - 1.);
+```
+
+`total` is the interior volume-weighted reduction; `e0` and `water0` are its initial reference totals.
+The two expressions measure different conserved quantities and require separate assertions.
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -72,6 +100,12 @@ The parent-debit tolerances above distinguish conserved total mass from the indi
 are not float64/float32 alternatives. The test uses both tolerances in each device/dtype case.
 The existing `src/snapy_report/ch10/{fixvapor,borrow,kinetics,tracer,sed,redo}_check.py` scripts
 check ported formulas. Their fixture comparison is separate from a tolerance test of physical quantities.
+
+[C1] Energy and total-water conservation are checked separately from the cloud-change control.
+[C2] Species repair, transport and collective retry rows retain distinct tolerances and failure contracts.
+No single row establishes a complete coupled kinetics budget.[^ch15-ch10-provenance]
+
+[^ch15-ch10-provenance]: Source read at `6fbb39750f62b83df096058a4746e77d0a634bc5`; no compiled CPU, CUDA or distributed test was run for this rewrite. The command is an instruction for a future pinned build. Independent formula checks are not substituted for that execution.
 
 ### Limits
 
