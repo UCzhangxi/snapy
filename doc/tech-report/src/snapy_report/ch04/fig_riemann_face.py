@@ -18,12 +18,12 @@ def make_fig():
     ax.text(0.5, 1.33, "cell $i-1$", ha="center", fontsize=7)
     ax.text(1.5, 1.33, "cell $i$", ha="center", fontsize=7)
     ax.plot(0.88, 0.6, ">", color=fs.GREEN, ms=7, mec=fs.BLACK, mew=0.4)
-    ax.text(0.80, 0.78, "$w_L$", fontsize=8, color=fs.GREEN, ha="right")
+    ax.text(0.80, 0.78, "$\\mathbf{W}^{\\mathrm{L}}$", fontsize=8, color=fs.GREEN, ha="right")
     ax.plot(1.12, 0.6, "<", color=fs.BLUE, ms=7, mec=fs.BLACK, mew=0.4)
-    ax.text(1.20, 0.78, "$w_R$", fontsize=8, color=fs.BLUE)
+    ax.text(1.20, 0.78, "$\\mathbf{W}^{\\mathrm{R}}$", fontsize=8, color=fs.BLUE)
     ax.annotate("", xy=(1.0, -0.42), xytext=(1.0, -0.05),
                 arrowprops=dict(arrowstyle="-", color=fs.ORANGE, lw=1.0))
-    ax.text(1.0, -0.62, "$\\bar u$, $\\bar p$ at the face", ha="center",
+    ax.text(1.0, -0.62, "$v_f$, $p_f$ at the face", ha="center",
             fontsize=7, color=fs.ORANGE)
     ax.annotate("", xy=(1.42, 0.25), xytext=(1.0, 0.25),
                 arrowprops=dict(arrowstyle="->", color=fs.BLACK, lw=1.1))
