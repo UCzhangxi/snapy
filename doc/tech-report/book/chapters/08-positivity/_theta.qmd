@@ -69,7 +69,7 @@ donor rule is what buys positivity, and `[C7]` checks that rule separately on fo
 
 The step is limited at the full $\Delta t$ even inside a multi-stage integrator, and that is sound because of how the
 shipped integrators are built. `[C5]` reads their weights rather than assuming them. Each stage is
-$w_0 U^n + w_1(U + \alpha\,\Delta U)$ with $w_0 + w_1 = 1$ and $\alpha = w_2/w_1 \le 1$, a convex combination of a
+$w_0 U^n + w_1(U + \alpha_{\mathrm{st}}\,\Delta U)$ with $w_0 + w_1 = 1$ and $\alpha_{\mathrm{st}} = w_2/w_1 \le 1$, a convex combination of a
 state already known non-negative and a damped full-step Euler update.
 
 ### Numerical method
@@ -128,11 +128,11 @@ the gate.[^ch08-gate-numbers]
 1. The outgoing sum is accumulated over exactly the faces the divergence consumes, as a rectified pair per direction
    ({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}). So the limiter and the divergence agree about
    which face drains which cell.
-2. The available mass is $(1 - 4096\,\epsilon)\,\max(u_i, 0)\,V_i$, not $u_i V_i$: an exact-zero target rounds
+2. The available mass is $(1 - 4096\,\epsilon_{\mathrm m})\,\max(u_i, 0)\,V_i$, not $u_i V_i$: an exact-zero target rounds
    negative, so a margin of 4096 ulp is kept (@sec-ch08-roundoff). The fraction left behind is $9.1\times10^{-13}$ in
    double precision and $4.9\times10^{-4}$ in single.
 3. Both cells of a face use one factor, so the scaled flux telescopes when the divergence is summed. The only error is
-   the rounding of that sum, at most $(n_f - 1)\,\delta_{\mathrm{mach}}$ times the sum of the face magnitudes over
+   the rounding of that sum, at most $(n_f - 1)\,\tfrac12\epsilon_{\mathrm m}$ times the sum of the face magnitudes over
    $n_f$ faces; `[C3]` measures $1.7\times10^{-16}$ of the flux scale.
 4. The ghost factors are a raw copy, never interpolated ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
    the donor of a seam face is the neighbour's edge cell, and an interpolated ghost is not its factor.
@@ -209,8 +209,8 @@ snapy.[^ch08-theta-run] `[C1]`: over 4000 random fields the unlimited update goe
 $-5.879$, and the limited update never does, worst exactly $0$. `[C2]`: all $25\,974$ cells that can afford
 their outflow keep $\Theta = 1$ bitwise, and no cell that cannot was left unlimited. `[C3]`: on a closed block
 the limited tendency sums to $1.7\times10^{-16}$ of the flux scale, while a per-cell limiter leaks
-$8.5\times10^{-1}$. `[C5]`: every shipped integrator forms a stage as $w_0 U^n + w_1(U + \alpha\,\Delta U)$
-with $\alpha \le 1$. `[C7]`: $46\,000$ interior faces follow the donor rule with no mismatch. The ctests named
+$8.5\times10^{-1}$. `[C5]`: every shipped integrator forms a stage as $w_0 U^n + w_1(U + \alpha_{\mathrm{st}}\,\Delta U)$
+with $\alpha_{\mathrm{st}} \le 1$. `[C7]`: $46\,000$ interior faces follow the donor rule with no mismatch. The ctests named
 above have not been run for this report at the pin: **pending a pinned ctest run**.
 
 [^ch08-theta-run]: [sha: the code pin; deck: the check itself, synthetic numpy states; run: `python3 src/snapy_report/ch08/positivity_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output

@@ -13,7 +13,7 @@ section exists because the call is a separate one, in a separate module, with it
 it in the hydro path will not find it.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Apply the limiter of @sec-ch08-theta to the passive scalars, and optionally to the complement $b\rho_d - s$.
+**Purpose.** Apply the limiter of @sec-ch08-theta to the passive scalars, and optionally to the complement $b\rho_{\mathrm d} - \rho_n$.
 
 **Data.** In: `scalar_s`, its three fluxes, the hydro dry-mass flux, $\Delta t$. Out: the scalar fluxes scaled in place, a hit count.
 
@@ -26,17 +26,17 @@ it in the hydro path will not find it.
 **Evidence.** `test_scalar.<b>` (`scalar_upper_bound_holds_both_sides`, $10^{-12}$ in float64); no report check.
 :::
 
-Local symbols: $s$ is a scalar density; $\rho_d$ the dry density; $b$ the configured bound; $r = s/\rho_d$ the
-ratio; $F_s$ and $F_{\mathrm{dry}}$ the scalar and dry-mass face fluxes.
+Local symbols: $b$ is the configured bound; $F_n$ and $F_{\mathrm{dry}}$ the scalar and dry-mass face fluxes. The scalar
+density $\rho_n$, the dry density $\rho_{\mathrm d}$ and the ratio $r_n = \rho_n/\rho_{\mathrm d}$ are NOTATION.md's.
 
 ### Derivation
 
 The first pass uses @sec-ch08-theta to keep scalar density non-negative. The optional second pass applies the same operator to a different conserved quantity.
 
-For a scalar density $s$, dry density $\rho_d$, and configured bound $b>0$, the ratio
-$r=s/\rho_d$ satisfies $r\le b$ when the complement $b\rho_d-s$ stays non-negative.
-Its flux is $bF_{\mathrm{dry}}-F_s$. The code limits this complement with a second factor,
-then adds the change in complement flux back to $F_s$. Thus it blends toward the
+For a scalar density $\rho_n$, dry density $\rho_{\mathrm d}$, and configured bound $b>0$, the ratio
+$r_n=\rho_n/\rho_{\mathrm d}$ satisfies $r_n\le b$ when the complement $b\rho_{\mathrm d}-\rho_n$ stays non-negative.
+Its flux is $bF_{\mathrm{dry}}-F_n$. The code limits this complement with a second factor,
+then adds the change in complement flux back to $F_n$. Thus it blends toward the
 bound's advecting flux, rather than stopping a plateau at the bound
 ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
@@ -64,7 +64,7 @@ because that row can export tracer a cell does not hold, as for the hydro specie
    with its bound ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 2. The factors are exchanged with interpolation off and then passed through the boundary functions, which is the ghost
    fill the limiter's contract requires. An interpolated ghost is not the neighbour's factor.
-3. The complement $b\rho_d - s$ has the flux $bF_{\mathrm{dry}} - F_s$. Limiting it keeps $r \le b$ only when the dry
+3. The complement $b\rho_{\mathrm d} - \rho_n$ has the flux $bF_{\mathrm{dry}} - F_n$. Limiting it keeps $r_n \le b$ only when the dry
    density is updated by the same explicit mass-flux divergence; the code excludes implicit corrections and dry-mass
    forcing from that premise.
 
