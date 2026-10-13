@@ -58,14 +58,16 @@ notation, 6 figures, 7 executable checks, 8 directory layout, 9 review checklist
 These rules help the reader follow each section and use the code. Readability is checked in every review.
 
 - Each section opens with a plain-language paragraph explaining what the piece does and why, before any symbol.
+  The "At a glance" box and any local-symbols note come after this first prose paragraph (section 10.7).
 - Write derivations out in full, with every intermediate step on its own numbered or aligned line.
   Never write "it follows that" or "one can show" without the steps. State each assumption where it is used.
 - Define every symbol at first use in the section, with units.
 - Keep "At a glance" box fields short. Put long evidence (test names, check commands, versions) in the section's
   Evidence/Verification subsection, and keep one line in the box pointing there.
 - Keep sentences under about 30 words, with one idea per paragraph.
-- Readability is a review gate with the same weight as correctness. A hard-to-read section, a skipped derivation
-  step or an undefined symbol is a `changes` verdict, with the paragraph cited.
+- Chapter-PR reviews block only on content: wrong claims, skipped derivation steps, undefined or clashing
+  symbols, and unclear prose. Cite the paragraph for a `changes` verdict. Box order and box length do not
+  block chapter-PR reviews; section 10.7 assigns their mechanical check and readability pass.
 
 ## 2. The six-layer scheme template
 
@@ -85,6 +87,8 @@ reviewer: <name>
 -->
 
 ### Summary
+Open with a plain-language paragraph: what it does and why it is there (the error or failure it removes).
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** What it does (one line); the one equation that defines it (a reference to the labelled equation).
 
@@ -102,9 +106,9 @@ reviewer: <name>
 Each field label starts its own paragraph: a blank line before every `**Label.**` line after the first
 (`python3 tools/check_glance_boxes.py` is the gate; `python3 tools/fix_glance_boxes.py` inserts the blank lines).
 
-Then one to three paragraphs of prose: what it does, why it is there (the error or failure it removes, with its
-order), and when it is on. Bullets only for the list of switch couplings. Aliases (PR numbers, leg names, option
-letters a reader will meet in the code and history) in the last sentence.
+Any local-symbols note follows the opening paragraph too. Use at most three prose paragraphs in all, giving
+the error order and when the scheme is on. Bullets only for the list of switch couplings. Aliases (PR numbers,
+leg names, option letters a reader will meet in the code and history) in the last sentence.
 
 ### Derivation
 Continuous equation -> integral form over a cell -> discrete form, every step written. Each numbered equation that
@@ -767,8 +771,13 @@ files, so every construct below must work in both. When in doubt, render both an
   (section 3.2): `[chengcli/snapy#296](https://github.com/chengcli/snapy/issues/296)`.
 
 ### 10.7 Callouts and boxes
-- The Summary layer opens with one `::: {.callout-note title="At a glance"}` box: what the scheme does, the switch,
-  the default and the couplings, in at most 6 short lines. The rest of the Summary is prose.
+- The Summary layer opens with plain prose. One `::: {.callout-note title="At a glance"}` box follows the first
+  prose paragraph: what the scheme does, the switch, the default and the couplings. Any local-symbols note
+  also follows the first prose paragraph. This order applies to every section (section 1.1).
+- Order is enforced mechanically by the `tools/fix_glance_order.py` gate, being added separately. The rule
+  applies before the script lands; box order does not block chapter-PR reviews.
+- Keep the box to at most 6 short lines. Longer boxes go on a report-only list for the owner to trim in the
+  readability pass; box length is not a gate failure and does not block chapter-PR reviews.
 - The Limits layer may use one `::: {.callout-warning title="Limits"}` box for the limits a user can hit by
   configuration.
 - Four callout kinds, and no others. Each is a Quarto callout with a short title; the PDF theme (section 10.10)
