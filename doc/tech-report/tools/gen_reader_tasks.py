@@ -10,15 +10,15 @@ checks the list against the book and writes one line per task, grouped by status
     anchored bank row (Q-...) keeps the status of its question in tools/task-map.yaml, the lookup grade; any
     anchored row whose note says "partly" or flags PARTIAL is at most partly documented. A pointer is not by
     itself evidence that a task is answered.
-  * an anchor is a label of a heading of the book and not a chapter or appendix heading (a roll-up). A row that
-    still points at a roll-up because the answering section has no label is a finding: it is listed in
-    tools/reader-tasks-findings.json, printed on every run, and the list may only shrink.
+  * an anchor is a label of a heading of the book and never a chapter or appendix heading (a roll-up), with no
+    exemption: a task whose answering section has no label needs one. An exemption list next to the data
+    (tools/reader-tasks-findings.json) is itself a failure.
   * a not-provided row names a reason. The appendix prints the reason without the reviewer's evidence (lookup
     counts, source line numbers, review history in parentheses); bare `sec-` labels become references.
 
 After a render, the rendered gate (`--rendered`) reads book/index.aux and book/index.toc: every anchor resolves to
-a `\\newlabel` whose destination is a section, not a chapter or an appendix, unless it is a recorded finding, and
-every not-provided row prints a reason.
+a `\\newlabel` whose destination is a section, not a chapter or an appendix; and the text of the rendered PDF
+(pdftotext) holds "Not provided:" followed by the reason of every not-provided row.
 
     python3 tools/gen_reader_tasks.py              # check, then rewrite the fragment
     python3 tools/gen_reader_tasks.py --check      # exit 1 on a problem or if the fragment is stale
@@ -29,7 +29,6 @@ every not-provided row prints a reason.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
@@ -93,10 +92,6 @@ def bank_records(report: Path) -> dict[str, dict]:
     return {t["id"]: t for t in gtm.load(path.read_text(encoding="utf-8"))["tasks"]} if path.exists() else {}
 
 
-def findings(path: Path = FINDINGS) -> dict[str, str]:
-    return json.loads(path.read_text(encoding="utf-8")).get("roll-up", {}) if path.exists() else {}
-
-
 def rollup(label: str, labs: dict[str, dict], book: Path) -> bool:
     """A chapter or appendix heading (`# ...`), whose section is the whole chapter."""
     h = labs.get(label)
@@ -110,9 +105,10 @@ def rollup(label: str, labs: dict[str, dict], book: Path) -> bool:
 
 # --- checks -----------------------------------------------------------------------------------------------------
 
-def problems(rows: list[dict], labs: dict[str, dict], book: Path, bank: dict[str, dict],
-             known: dict[str, str]) -> list[str]:
+def problems(rows: list[dict], labs: dict[str, dict], book: Path, bank: dict[str, dict]) -> list[str]:
     out = []
+    if (Path(book).absolute().parent / "tools" / FINDINGS.name).exists():
+        out.append(f"{FINDINGS.name}: roll-up targets have no exemption; label the answering sections and delete it")
     ids = [r["id"] for r in rows]
     for i in sorted({i for i in ids if ids.count(i) > 1}):
         out.append(f"{i}: listed {ids.count(i)} times")
@@ -129,13 +125,9 @@ def problems(rows: list[dict], labs: dict[str, dict], book: Path, bank: dict[str
             out.append(f"{r['id']}: column 4 is neither a label nor `not provided: ...`")
         elif r["where"] not in labs:
             out.append(f"{r['id']}: anchor {r['where']} is not a label of the book")
-        elif rollup(r["where"], labs, book) and known.get(r["id"]) != r["where"]:
+        elif rollup(r["where"], labs, book):
             out.append(f"{r['id']}: anchor {r['where']} is a chapter or appendix roll-up; label the answering "
                        "section and anchor the row there")
-    for i, lab in known.items():
-        r = next((r for r in rows if r["id"] == i), None)
-        if not r or r["where"] != lab or not rollup(lab, labs, book):
-            out.append(f"finding {i} -> {lab} no longer holds; remove it from {FINDINGS.name}")
     return out
 
 
@@ -181,22 +173,43 @@ def aux_destinations(aux: Path) -> dict[str, str]:
     return out
 
 
-def rendered_problems(book: Path, rows: list[dict], bank: dict[str, dict], known: dict[str, str],
-                      fragment: Path | None = None) -> tuple[list[str], dict]:
+def _letters(text: str) -> str:
+    """Lower-case letters and digits only, so line breaks and hyphenation of the PDF text do not matter."""
+    return re.sub(r"[^0-9a-z]+", "", text.lower())
+
+
+def pdf_text(book: Path) -> str | None:
+    """The text of the rendered PDF (book/_book/*.pdf, pdftotext), or None when there is none."""
+    import shutil
+    import subprocess
+    pdfs = sorted((book / "_book").glob("*.pdf"))
+    if not pdfs or not shutil.which("pdftotext"):
+        return None
+    return subprocess.run(["pdftotext", str(pdfs[0]), "-"], capture_output=True, text=True, check=True).stdout
+
+
+def printed_reason(r: dict) -> str:
+    """What the PDF must show for a not-provided row: "Not provided:" and its reason up to the first reference,
+    code or maths, whose rendered form differs from the source."""
+    return _letters("Not provided: " + re.split(r"[@`$]", reason(r))[0])
+
+
+def rendered_problems(book: Path, rows: list[dict], bank: dict[str, dict],
+                      text: str | None = None) -> tuple[list[str], dict]:
     aux, toc = book / "index.aux", book / "index.toc"
-    missing = [p.name for p in (aux, toc) if not p.exists()]
+    text = pdf_text(book) if text is None else text
+    missing = [p.name for p in (aux, toc) if not p.exists()] + ([] if text is not None else ["the PDF (pdftotext)"])
     if missing:
         return [f"{', '.join(missing)} not found: the rendered gate needs a PDF render that keeps them"], {}
     dest = aux_destinations(aux)
     toc_text = toc.read_text(encoding="utf-8", errors="replace")
-    fragment = fragment or book / "chapters" / "17-appendices" / FRAGMENT.name
-    printed = fragment.read_text(encoding="utf-8") if fragment.exists() else ""
-    out, stats = [], dict(rows=len(rows), anchored=0, not_provided=0, in_toc=0, rollup_findings=0, unresolved=0)
+    printed = _letters(text)
+    out, stats = [], dict(rows=len(rows), anchored=0, not_provided=0, in_toc=0, roll_ups=0, unresolved=0)
     for r in rows:
         if r["where"].startswith("not provided"):
             stats["not_provided"] += 1
-            if not reason(r) or f"- {r['task'].rstrip('.')}. Not provided: {reason(r)}." not in printed:
-                out.append(f"{r['id']}: not provided, but the appendix prints no reason")
+            if not reason(r) or printed_reason(r) not in printed:
+                out.append(f"{r['id']}: not provided, but the rendered PDF prints no reason")
             continue
         stats["anchored"] += 1
         lab = r["where"]
@@ -204,13 +217,16 @@ def rendered_problems(book: Path, rows: list[dict], bank: dict[str, dict], known
             stats["unresolved"] += 1
             out.append(f"{r['id']}: anchor {lab} does not resolve in index.aux")
         elif _ROLLUP_AUX.match(dest[lab]):
-            if known.get(r["id"]) == lab:
-                stats["rollup_findings"] += 1
-            else:
-                out.append(f"{r['id']}: anchor {lab} lands on {dest[lab]}, a chapter or appendix roll-up")
+            stats["roll_ups"] += 1
+            out.append(f"{r['id']}: anchor {lab} lands on {dest[lab]}, a chapter or appendix roll-up")
         elif "{%s}" % dest[lab] in toc_text:
             stats["in_toc"] += 1
     return out, stats
+
+
+def subprocess_error():
+    import subprocess
+    return subprocess.CalledProcessError
 
 
 def check_rendered(book: Path = BOOK, report: Path = REPORT) -> int:
@@ -219,11 +235,11 @@ def check_rendered(book: Path = BOOK, report: Path = REPORT) -> int:
         return 0
     try:
         rows = load((report / "tools" / DATA.name).read_text(encoding="utf-8"))
-        bad, stats = rendered_problems(book, rows, bank_records(report), findings(report / "tools" / FINDINGS.name))
-    except (OSError, ValueError, KeyError) as exc:
+        bad, stats = rendered_problems(book, rows, bank_records(report))
+    except (OSError, ValueError, KeyError, subprocess_error()) as exc:
         bad, stats = [str(exc)], {}
     detail = (f"; {stats['rows']} tasks, {stats['anchored']} anchored ({stats['in_toc']} in the table of contents, "
-              f"{stats['rollup_findings']} recorded roll-up findings), {stats['not_provided']} not provided, "
+              f"{stats['roll_ups']} roll-ups), {stats['not_provided']} not provided with a printed reason, "
               f"{stats['unresolved']} unresolved") if stats else ""
     print(f"[N2 rendered task map] {len(bad)} problem(s){detail}")
     for p in bad[:20]:
@@ -232,22 +248,21 @@ def check_rendered(book: Path = BOOK, report: Path = REPORT) -> int:
 
 
 def check(report: Path = REPORT, book: Path | None = None) -> int:
-    """The source gate: the list against the book, the findings, and a fresh fragment."""
+    """The source gate: the list against the book, no exemption list, and a fresh fragment."""
     book = book or report / "book"
     if not (report / "tools" / DATA.name).exists():
         print(f"[N2 reader tasks] no tools/{DATA.name} next to the book: skipped")
         return 0
     try:
         rows = load((report / "tools" / DATA.name).read_text(encoding="utf-8"))
-        bank, known, labs = bank_records(report), findings(report / "tools" / FINDINGS.name), gtm.labels(book)
-        bad = problems(rows, labs, book, bank, known)
+        bank, labs = bank_records(report), gtm.labels(book)
+        bad = problems(rows, labs, book, bank)
         frag = book / "chapters" / "17-appendices" / FRAGMENT.name
         if not bad and (not frag.exists() or frag.read_text(encoding="utf-8") != render(rows, labs, bank)):
             bad.append(f"{frag.name} is stale; run python3 tools/gen_reader_tasks.py")
     except (OSError, ValueError, KeyError) as exc:
-        bad, rows, known = [str(exc)], [], {}
-    print(f"[N2 reader tasks] {len(bad)} problem(s); {len(rows)} tasks"
-          + "".join(f"\n  finding: {i} -> {lab}, a roll-up: the answering section has no label" for i, lab in known.items()))
+        bad, rows = [str(exc)], []
+    print(f"[N2 reader tasks] {len(bad)} problem(s); {len(rows)} tasks")
     for p in bad:
         print("  " + p)
     return int(bool(bad))
@@ -272,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{sum(r['where'].startswith('not provided') for r in rows)} not provided")
         return 0
     labs = gtm.labels(BOOK)
-    bad = problems(rows, labs, BOOK, bank, findings())
+    bad = problems(rows, labs, BOOK, bank)
     for p in bad:
         print(f"gen_reader_tasks: {p}", file=sys.stderr)
     if bad:
