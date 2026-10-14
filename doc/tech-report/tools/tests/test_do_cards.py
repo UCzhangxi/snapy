@@ -7,8 +7,12 @@ failure on a two-card book; the last tests run the check on the real book and da
 Run from the report directory: `python3 -m pytest tools/tests`.
 """
 
+import os
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 TOOLS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOLS))
@@ -124,6 +128,47 @@ def test_the_runner_skips_with_a_reason_when_the_build_lacks_the_option():
     assert unset == "ch14-pnetcdf needs build option PNETCDF=ON; this build does not set PNETCDF (CMakeCache.txt)"
     assert c.missing_build_option(rec, "PNETCDF:BOOL=ON\n") is None          # the option is on: the card runs
     assert c.missing_build_option({"id": "x", "class": "CPU-seconds"}, "") is None
+
+
+# CMake's if(): a cached value is true unless it is a false constant (0, OFF, NO, FALSE, N, IGNORE, NOTFOUND, the empty
+# string, a *-NOTFOUND or a zero number), case-insensitively.
+CMAKE_TRUE = ["ON", "on", "1", "TRUE", "true", "YES", "yes", "Y", "y", "2", "0.5"]
+CMAKE_FALSE = ["OFF", "off", "0", "FALSE", "false", "NO", "no", "N", "n", "IGNORE", "NOTFOUND", "PNETCDF-NOTFOUND",
+               "pnetcdf-notfound", "", "0.0"]
+
+
+@pytest.mark.parametrize("cached", CMAKE_TRUE)
+def test_every_cmake_true_value_counts_as_on(cached):
+    rec = {"id": "ch14-pnetcdf", "class": "needs-build-option", "build_option": {"name": "PNETCDF", "value": "ON"}}
+    assert c.missing_build_option(rec, f"PNETCDF:BOOL={cached}\n") is None
+    off = dict(rec, build_option={"name": "PNETCDF", "value": "OFF"})
+    assert c.missing_build_option(off, f"PNETCDF:BOOL={cached}\n") is not None
+
+
+@pytest.mark.parametrize("cached", CMAKE_FALSE)
+def test_every_cmake_false_value_counts_as_off(cached):
+    rec = {"id": "ch14-pnetcdf", "class": "needs-build-option", "build_option": {"name": "PNETCDF", "value": "ON"}}
+    why = c.missing_build_option(rec, f"PNETCDF:BOOL={cached}\n")
+    assert why == f"ch14-pnetcdf needs build option PNETCDF=ON; this build has PNETCDF={cached} (CMakeCache.txt)"
+    off = dict(rec, build_option={"name": "PNETCDF", "value": "OFF"})
+    assert c.missing_build_option(off, f"PNETCDF:BOOL={cached}\n") is None
+
+
+def test_a_build_with_the_option_runs_the_card_and_reports_its_failure(tmp_path):
+    """PNETCDF:BOOL=1 is on: the runner must run the card, so a driver that always fails fails the card (no skip)."""
+    pytest.importorskip("yaml")
+    build = tmp_path / "build"
+    (build / "bin").mkdir(parents=True)
+    (build / "CMakeCache.txt").write_text("CMAKE_HOME_DIRECTORY:INTERNAL=/nonexistent\nPNETCDF:BOOL=1\n")
+    driver = build / "bin" / "straka.release"
+    driver.write_text("#!/bin/sh\necho the fixture driver always fails\nexit 3\n")
+    driver.chmod(0o755)
+    env = dict(os.environ, SNAP_PIN_BUILD=str(build), PYTHONPATH=os.pathsep.join(p for p in sys.path if p))
+    out = subprocess.run([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider",
+                          str(TOOLS / "tests" / "test_do_cards_run.py"), "-k", "ch14-pnetcdf"],
+                         cwd=tmp_path, env=env, capture_output=True, text=True).stdout
+    assert "1 failed" in out and "skipped" not in out, out[-600:]
+    assert "the fixture driver always fails" in out
 
 
 def test_ch14_pnetcdf_is_a_needs_build_option_card():

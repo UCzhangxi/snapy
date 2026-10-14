@@ -395,4 +395,7 @@ from test_do_cards import (  # noqa: E402,F401
     test_the_build_option_must_be_an_option_of_the_cmake_files,
     test_the_build_option_value_is_on_or_off,
     test_the_runner_skips_with_a_reason_when_the_build_lacks_the_option,
+    test_every_cmake_true_value_counts_as_on,
+    test_every_cmake_false_value_counts_as_off,
+    test_a_build_with_the_option_runs_the_card_and_reports_its_failure,
 )
