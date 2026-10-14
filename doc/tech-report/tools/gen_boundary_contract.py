@@ -42,11 +42,22 @@ def generate(report):
         r'using bcfunc_t =\n[^;]+;')
     ghosts, ghosts_cite = excerpt('src/coord/coordinate.hpp',
         r'  int nc1\(\) const[^\n]+\n  int nc2\(\) const[^\n]+\n  int nc3\(\) const[^\n]+')
+    inner_lookup, inner_lookup_cite = excerpt('src/mesh/meshblock_options.cpp',
+        r'    ix1 \+= "_inner";.*?op->bfuncs\(\).push_back\(get_bc_func\(\)\[ix1\]\);')
+    outer_lookup, outer_lookup_cite = excerpt('src/mesh/meshblock_options.cpp',
+        r'    ox1 \+= "_outer";.*?op->bfuncs\(\).push_back\(get_bc_func\(\)\[ox1\]\);')
+    bc_glob, bc_glob_cite = excerpt('src/CMakeLists.txt',
+        r'file\(GLOB src_files\n    #\*\.cpp\n    bc/\*\.cpp')
+    # Join the source's error-string pieces around the selected example key.
+    error_parts = re.findall(r'"([^"\n]*)"', inner_lookup)
+    inner_error = error_parts[1] + 'zero_gradient' + error_parts[0] + error_parts[2]
     replacements = locals()
     text = TEMPLATE
     for key in ('signature', 'signature_cite', 'registration', 'registration_cite',
                 'arguments', 'arguments_cite', 'callback', 'callback_cite',
-                'native', 'native_cite', 'ghosts', 'ghosts_cite'):
+                'native', 'native_cite', 'ghosts', 'ghosts_cite',
+                'inner_lookup', 'inner_lookup_cite', 'outer_lookup',
+                'outer_lookup_cite', 'bc_glob', 'bc_glob_cite', 'inner_error'):
         text = text.replace('@' + key + '@', replacements[key])
     return text.replace('@url@', f'https://github.com/{repo}/blob/{sha}')
 
@@ -120,8 +131,8 @@ def zero_gradient(face):
 
 ```python
 opts = snapy.MeshBlockOptions.from_yaml("tiny-boundary.yaml")
-opts.set_bfunc(0, 0, -1, zero_gradient(0))
-opts.set_bfunc(0, 0, 1, zero_gradient(1))
+opts.set_bfunc(0, 0, -1, zero_gradient(0), name="zero_gradient_inner")
+opts.set_bfunc(0, 0, 1, zero_gradient(1), name="zero_gradient_outer")
 block = snapy.MeshBlock(opts)
 block.to(torch.device("cpu"), torch.float64)
 ```
@@ -178,7 +189,7 @@ print("N6 boundary: both x1 faces filled at initialization and after RK1")
   `[nscalar, nc3, nc2, nc1]` ([shape checks](@url@/src/mesh/meshblock.cpp#L412)).
   The extents below include ghosts only on non-singleton axes (@ghosts_cite@).
   After exchange, an x1 callback can receive a view whose tangential extent is
-  only `nghost`; use the supplied sizes, not cached block sizes
+  `min(nghost, n/2)` for tangential size `n`; use the supplied sizes, not cached block sizes
   ([slab dispatch](@url@/src/mesh/meshblock.cpp#L955)).
 - Faces and timing: offsets `(dx3, dx2, dx1)` select inner/outer x1 with
   `(0,0,-1)` / `(0,0,1)`, x2 with `(0,-1,0)` / `(0,1,0)` and x3 with
@@ -207,7 +218,8 @@ print("N6 boundary: both x1 faces filled at initialization and after RK1")
   registration replaces the previous name. Declare a reflecting name only for
   a matching wall callback, because names participate in the wall coefficient
   ([name handling](@url@/python/csrc/pymesh.cpp#L87)). This zero-gradient recipe
-  leaves that name empty.
+  uses the descriptive names `zero_gradient_inner` and `zero_gradient_outer`;
+  these labels do not add functions to the native registry.
 
 The generated ghost extents and binding registration facts are:
 
@@ -225,10 +237,60 @@ CI checks source-contract drift; the pin-build runtime check covers CPU fills, n
 @native@
 ```
 
-Use `BC_FUNCTION(name, var, dim, op)` to register the function in the native
-name map ([macro and registrar](@url@/src/bc/bc_func.hpp#L17)); it must obey the
-same in-place and repeat-call contract. The captured Python wrapper above is
-unnecessary on this route.
+1. Add `src/bc/zero_gradient.cpp` with a suffixed pair. The macro registers
+   its exact function name ([macro and registrar](@url@/src/bc/bc_func.hpp#L17)).
+   For example, the same nearest-interior fill is:
+
+```cpp
+#include "bc_func.hpp"
+
+namespace snap {
+BC_FUNCTION(zero_gradient_inner, var, dim, op) {
+  int ng = op.nghost();
+  auto dst = var.narrow(dim, 0, ng);
+  dst.copy_(var.narrow(dim, ng, 1).expand_as(dst));
+}
+BC_FUNCTION(zero_gradient_outer, var, dim, op) {
+  int ng = op.nghost();
+  int n = var.size(dim);
+  auto dst = var.narrow(dim, n - ng, ng);
+  dst.copy_(var.narrow(dim, n - ng - 1, 1).expand_as(dst));
+}
+}  // namespace snap
+```
+
+2. Re-run CMake configuration so the new file is picked up by the boundary
+   source glob (@bc_glob_cite@), then rebuild the library and use that rebuilt
+   package. The generated glob excerpt is:
+
+```cmake
+@bc_glob@
+```
+
+3. Set the unsuffixed key in YAML:
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: zero_gradient
+    x1-outer: zero_gradient
+```
+
+The parser appends `_inner` or `_outer` to each face value, checks the registry,
+then installs the function (@inner_lookup_cite@; @outer_lookup_cite@).
+See the existing registry explanation in @sec-ch11-registry. The generated
+lookup and refusal facts are:
+
+```cpp
+@inner_lookup@
+@outer_lookup@
+```
+
+For the missing inner function, the error text is
+`@inner_error@` (the outer lookup reports the `_outer` name).
+Both callbacks must obey the same in-place and repeat-call contract. This
+native example is source-derived but was not compiled as part of the Python
+card's runtime check. The captured Python wrapper is unnecessary on this route.
 <!-- end reader-reference: boundary-contract -->
 '''
 

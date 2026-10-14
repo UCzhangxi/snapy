@@ -54,8 +54,8 @@ def zero_gradient(face):
 
 ```python
 opts = snapy.MeshBlockOptions.from_yaml("tiny-boundary.yaml")
-opts.set_bfunc(0, 0, -1, zero_gradient(0))
-opts.set_bfunc(0, 0, 1, zero_gradient(1))
+opts.set_bfunc(0, 0, -1, zero_gradient(0), name="zero_gradient_inner")
+opts.set_bfunc(0, 0, 1, zero_gradient(1), name="zero_gradient_outer")
 block = snapy.MeshBlock(opts)
 block.to(torch.device("cpu"), torch.float64)
 ```
@@ -113,7 +113,7 @@ print("N6 boundary: both x1 faces filled at initialization and after RK1")
   `[nscalar, nc3, nc2, nc1]` ([shape checks](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/mesh/meshblock.cpp#L412)).
   The extents below include ghosts only on non-singleton axes ([src/coord/coordinate.hpp:59](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/coord/coordinate.hpp#L59)).
   After exchange, an x1 callback can receive a view whose tangential extent is
-  only `nghost`; use the supplied sizes, not cached block sizes
+  `min(nghost, n/2)` for tangential size `n`; use the supplied sizes, not cached block sizes
   ([slab dispatch](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/mesh/meshblock.cpp#L955)).
 - Faces and timing: offsets `(dx3, dx2, dx1)` select inner/outer x1 with
   `(0,0,-1)` / `(0,0,1)`, x2 with `(0,-1,0)` / `(0,1,0)` and x3 with
@@ -142,7 +142,8 @@ print("N6 boundary: both x1 faces filled at initialization and after RK1")
   registration replaces the previous name. Declare a reflecting name only for
   a matching wall callback, because names participate in the wall coefficient
   ([name handling](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/python/csrc/pymesh.cpp#L87)). This zero-gradient recipe
-  leaves that name empty.
+  uses the descriptive names `zero_gradient_inner` and `zero_gradient_outer`;
+  these labels do not add functions to the native registry.
 
 The generated ghost extents and binding registration facts are:
 
@@ -164,8 +165,68 @@ using bcfunc_t =
     std::function<void(torch::Tensor const&, int, snap::BoundaryFuncOptions)>;
 ```
 
-Use `BC_FUNCTION(name, var, dim, op)` to register the function in the native
-name map ([macro and registrar](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/bc/bc_func.hpp#L17)); it must obey the
-same in-place and repeat-call contract. The captured Python wrapper above is
-unnecessary on this route.
+1. Add `src/bc/zero_gradient.cpp` with a suffixed pair. The macro registers
+   its exact function name ([macro and registrar](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/bc/bc_func.hpp#L17)).
+   For example, the same nearest-interior fill is:
+
+```cpp
+#include "bc_func.hpp"
+
+namespace snap {
+BC_FUNCTION(zero_gradient_inner, var, dim, op) {
+  int ng = op.nghost();
+  auto dst = var.narrow(dim, 0, ng);
+  dst.copy_(var.narrow(dim, ng, 1).expand_as(dst));
+}
+BC_FUNCTION(zero_gradient_outer, var, dim, op) {
+  int ng = op.nghost();
+  int n = var.size(dim);
+  auto dst = var.narrow(dim, n - ng, ng);
+  dst.copy_(var.narrow(dim, n - ng - 1, 1).expand_as(dst));
+}
+}  // namespace snap
+```
+
+2. Re-run CMake configuration so the new file is picked up by the boundary
+   source glob ([src/CMakeLists.txt:35](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/CMakeLists.txt#L35)), then rebuild the library and use that rebuilt
+   package. The generated glob excerpt is:
+
+```cmake
+file(GLOB src_files
+    #*.cpp
+    bc/*.cpp
+```
+
+3. Set the unsuffixed key in YAML:
+
+```yaml
+boundary-condition:
+  external:
+    x1-inner: zero_gradient
+    x1-outer: zero_gradient
+```
+
+The parser appends `_inner` or `_outer` to each face value, checks the registry,
+then installs the function ([src/mesh/meshblock_options.cpp:105](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/mesh/meshblock_options.cpp#L105); [src/mesh/meshblock_options.cpp:122](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/mesh/meshblock_options.cpp#L122)).
+See the existing registry explanation in @sec-ch11-registry. The generated
+lookup and refusal facts are:
+
+```cpp
+ix1 += "_inner";
+    TORCH_CHECK(get_bc_func().find(ix1) != get_bc_func().end(),
+                "Boundary function '", ix1, "' is not defined.");
+
+    op->bfuncs().push_back(get_bc_func()[ix1]);
+ox1 += "_outer";
+    TORCH_CHECK(get_bc_func().find(ox1) != get_bc_func().end(),
+                "Boundary function '", ox1, "' is not defined.");
+
+    op->bfuncs().push_back(get_bc_func()[ox1]);
+```
+
+For the missing inner function, the error text is
+`Boundary function 'zero_gradient_inner' is not defined.` (the outer lookup reports the `_outer` name).
+Both callbacks must obey the same in-place and repeat-call contract. This
+native example is source-derived but was not compiled as part of the Python
+card's runtime check. The captured Python wrapper is unnecessary on this route.
 <!-- end reader-reference: boundary-contract -->

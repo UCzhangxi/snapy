@@ -16,6 +16,8 @@ def test_clean_boundary_contract():
     ("dx1: int", "dx1: float"),
     ("self->bfuncs()[face] = func;", "self->bfuncs()[face] = nullptr;"),
     ("nx1() + 2 * nghost()", "nx1() + nghost()"),
+    ('ix1 += "_inner";', 'ix1 += "_bad";'),
+    ("bc/*.cpp", "bc/*.cc"),
 ])
 def test_boundary_source_drift(monkeypatch, capsys, old, new):
     read = c.read_source
@@ -42,3 +44,16 @@ def test_boundary_recipe_drift(tmp_path):
     assert c.check(tmp_path) == 1
     target.write_text(clean)
     assert c.check(tmp_path) == 0
+
+
+@pytest.mark.parametrize("required", [
+    'BC_FUNCTION(zero_gradient_inner, var, dim, op)',
+    'BC_FUNCTION(zero_gradient_outer, var, dim, op)',
+    "Boundary function 'zero_gradient_inner' is not defined.",
+    'src/CMakeLists.txt#L35',
+    'x1-inner: zero_gradient',
+    'name="zero_gradient_inner"',
+    '@sec-ch11-registry',
+])
+def test_native_selection_contract(required):
+    assert required in c.generate(c.REPORT)
