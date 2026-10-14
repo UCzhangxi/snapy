@@ -162,6 +162,18 @@ def glossary_entries(report):
                 or not (report / 'book' / path).is_file()
                 for path, value in local.items()):
             raise ValueError(f'invalid local glossary meanings for {term}')
+        source = item.get('source')
+        notation_only = item.get('notation_only', False)
+        if source is not None and (notation_only or not isinstance(source, str) or not re.fullmatch(
+                r'https://github\.com/chengcli/(?:snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5|'
+                r'kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77)/[^\s#]+#L\d+(?:-L\d+)?', source)):
+            raise ValueError(f'invalid pinned glossary source for {term}')
+        if not isinstance(notation_only, bool):
+            raise ValueError(f'invalid notation-only marker for {term}')
+        suffix = ('; [source](' + source + ')') if source else (
+            '; notation only; see @sec-appa' if notation_only else '')
+        meaning += suffix
+        local = {path: value + suffix for path, value in local.items()}
         entries.append(dict(kind=kind, term=term, key=key, meaning=meaning,
                             meaning_by_file=local))
     if {e['kind'] for e in entries} != {'acronym', 'key', 'symbol'}:
