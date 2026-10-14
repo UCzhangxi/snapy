@@ -182,8 +182,11 @@ int main(int argc, char **argv) {
 
     // auto conc_kinet = kinet->options.narrow_copy(conc, thermo_y->options);
     auto conc_kinet = conc.slice(-1, 1, conc.size(-1));
-    auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
-    auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
+    // jacobian needs kf at zero solid abundance (kintera >= #145)
+    auto [rate, rc_ddC, rc_ddT, kf] =
+        kinet->forward_with_rate_constants(temp, pres, conc_kinet);
+    auto jac =
+        kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT, kf);
     auto del_conc = kintera::evolve_implicit(rate, kinet->stoich, jac, dt);
     std::vector<int64_t> vec(del_conc.dim(), 1);
     vec[del_conc.dim() - 1] = -1;
