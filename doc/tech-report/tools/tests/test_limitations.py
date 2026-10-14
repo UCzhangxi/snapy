@@ -96,6 +96,7 @@ AUDITED_NOTES.update({
     "04-spatial-discretization/_fluxcov.qmd": 1,
     "05-well-balanced/_x1cent.qmd": 1,
     "07-time-integration/_cfl.qmd": 1,
+    "07-time-integration/_split.qmd": 1,
     "08-positivity/_theta.qmd": 1,
     "08-positivity/_borrow.qmd": 1,
 })
