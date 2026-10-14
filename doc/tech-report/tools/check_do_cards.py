@@ -1,6 +1,6 @@
 """Static check of the runnable cards (N8): tools/do-cards.yaml against the chapter sources.
 
-A card is the Code layer's "**A minimal input**" paragraph of a section, with its fenced blocks. The data file holds
+A card is the Code layer's "**A minimal input**" or "**Construction fragment.**" paragraph, with its fenced blocks. The data file holds
 one record per card (section anchor, deck, class, trim, time, expected outcome); the card text stays in the chapter.
 
 The check fails when
@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 CLASSES = ("CPU-seconds", "CPU-minutes+", "multi-rank", "GPU", "not runnable")
-CARD_LEAD = "**A minimal input"
+CARD_LEAD = ("**A minimal input", "**Construction fragment.")
 _INCLUDE = re.compile(r"\{\{< include (\S+) >\}\}")
 _ANCHOR = re.compile(r"^#{1,2} .*\{#(sec-[A-Za-z0-9_-]+)")
 

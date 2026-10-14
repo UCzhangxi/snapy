@@ -154,7 +154,16 @@ def glossary_entries(report):
             meaning, key = item.get('meaning', ''), term
         if not isinstance(meaning, str) or not meaning.strip():
             raise ValueError(f'glossary has no definition for {kind} {term}')
-        entries.append(dict(kind=kind, term=term, key=key, meaning=meaning))
+        # Inline code can name a C++ local or an output field, not only a YAML key.
+        # Explicit file-local senses keep first-use annotations tied to their context.
+        local = item.get('meaning_by_file', {})
+        if not isinstance(local, dict) or any(
+                not isinstance(value, str) or not value.strip()
+                or not (report / 'book' / path).is_file()
+                for path, value in local.items()):
+            raise ValueError(f'invalid local glossary meanings for {term}')
+        entries.append(dict(kind=kind, term=term, key=key, meaning=meaning,
+                            meaning_by_file=local))
     if {e['kind'] for e in entries} != {'acronym', 'key', 'symbol'}:
         raise ValueError('glossary must cover acronyms, YAML keys and symbols')
     return entries
@@ -201,7 +210,7 @@ def glossary_outputs(report):
             used.add(identity)
             ident = hashlib.sha256((chapter + ':' + repr(identity)).encode()).hexdigest()[:12]
             note = f'rg-{ident}'
-            notes.append(f'[^' + note + ']: ' + entry['term'] + ' — ' + entry['meaning'])
+            notes.append(f'[^' + note + ']: ' + entry['term'] + ' — ' + entry['meaning_by_file'].get(rel, entry['meaning']))
             uses += 1
             return word + '[^' + note + ']'
 

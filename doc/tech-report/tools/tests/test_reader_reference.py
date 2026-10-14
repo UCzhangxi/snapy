@@ -98,3 +98,15 @@ def test_glossary_rejects_empty_definitions(tmp_path, capsys):
     p.write_text(p.read_text().replace('central processing unit', ''))
     assert g.check_glossary(tmp_path) == 1
     assert 'no definition for acronym CPU' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('relative, expected, wrong', [
+    ('12-configuration/_opening.qmd', 'MC — mass covariance', 'MC — monotonised-central'),
+    ('07-time-integration/_cfl.qmd', 'scale — ratio of the shallow-water CFL bound to the selected CFL number', 'scale — scaling in the enclosing component'),
+    ('14-parallelism-io.qmd', 'dt — output interval', 'dt — time-step duration'),
+])
+def test_first_use_uses_the_local_meaning(relative, expected, wrong):
+    outputs, _, _ = g.glossary_outputs(g.REPORT)
+    text = outputs[g.REPORT / 'book/chapters' / relative]
+    assert expected in text
+    assert wrong not in text
