@@ -614,16 +614,30 @@ files, so every construct below must work in both. When in doubt, render both an
 ### Reader standards
 
 The following reader standards govern content and navigation. They supersede any earlier chapters-only printed TOC rule.
-Implementation is staged: this lane enforces N3 and the TOC depth; the generated aids and other gates follow in their assigned lanes.
+Implementation is staged: the registry, rendered glossary and N1/N4 gates precede the N2 generator; the N9
+audit and warning lint follow in a separate change. These requirements do not claim that those gates exist yet.
 
-- N1 Navigation: printed TOC to section depth; generated topic index from per-section index entries kept in a data
-  file (not in chapter text); plain-word titles are a review-checklist item.
-- N2 Task map: "How do I ...?" appendix generated from the question bank; every id resolves to a section or a
-  "not provided" row; status = answered / partly documented / undocumented / unsupported by the code / outside scope.
+- G0 Rendered-book evidence: reader-facing gates run on the rendered book (PDF, `.toc` and `.aux`), not on source
+  files. A source preflight may diagnose an error early, but cannot establish a reader-facing pass; the checks
+  must verify the destination, definition or note that the reader can actually reach in the rendered output.
+- N1 Navigation: printed TOC to section depth; one concept registry, `tools/reader-glossary.json`, records each
+  concept's defining-section id. Every registry concept is reachable from the TOC or the generated topic index.
+  Index entries are kept in data, not chapter text; grouped summary sections get per-item topic-index entries,
+  not only an entry for the group. Plain-word titles remain a review-checklist item. A rendered glossary appendix
+  is generated from the same registry (N4), not maintained as a second list.
+- N2 Task map: the "How do I ...?" appendix is task-indexed and section-anchored. Generate its rows from the N6
+  blocks, DO cards and the curated reader-task list (seeded from both question banks and every held-out
+  NO-ENTRY). Each row supplies a section anchor or an explicit `not provided: <reason>`, not a chapter-only
+  destination. Preserve status = answered / partly documented / undocumented / unsupported by the code /
+  outside scope; a pointer is not by itself evidence that the task is answered.
 - N3 Render hygiene: the rendered text has no editorial markers (ISSUES.md, NOTATION.md, STYLE.md, "flagged to the
   editor"), no unresolved or raw @sec- references.
-- N4 Glossary: acronyms + YAML keys + bare symbols, defined at first use per chapter, symbols checked against
-  appendix A; one glossary file. Numerical-method terms later.
+- N4 Glossary: acronyms, YAML keys, symbols and named concepts use the N1 registry as their single source.
+  Generate chapter-first-use notes and the rendered glossary appendix from it; check symbol meanings against
+  appendix A. Each entry points to its defining section. Where the book has no definition, say "not defined
+  here" explicitly rather than inventing one, and keep the concept reachable under N1. Ratchet the count of
+  those entries so it cannot rise: seed it from the audit's 69 of 329 entries at `055481aae7c744bbb37e68685afe0daef9d7c023`, then record verified
+  reductions. The registry, appendix and rendered N1/N4 checks implement this together in their assigned lane.
 - N5 Consistency: defaults and install lines generated from the code at the pin; the rest (equations, assumptions,
   units, API behaviour) is a review-checklist item.
 - N6 Extension contracts: one "How to add one" block per extension point (forcing, boundary callback, species,
@@ -635,6 +649,11 @@ Implementation is staged: this lane enforces N3 and the TOC depth; the generated
   scope and repetitions.
 - N8 Runnable cards: CPU DO cards run in tools/tests (seconds); GPU/multi-rank cards in a validation tier with the
   evidence date. Troubleshooting only for crash / NaN / restart, as symptom -> diagnostic -> action.
+- N9 Limitation notes: replace free prose such as "cannot show", "see elsewhere" or "beyond scope" with a
+  structured note: `answered at <anchor>` or `not provided: <reason>`. The first resolves to the section that
+  supplies the answer; the second states what is absent and why, without implying an answer exists elsewhere.
+  A warning-level lint flags unlinked prose of this kind. The audit pass and lint are a later implementation;
+  the lint warns rather than failing the build.
 - Scope test for content: in if it states a fact about this code at the pin (convention, contract, assumption);
   out if it is a tutorial or a science study (then a "not provided" row). In: a conventions table (coordinates,
   units, signs, no pressure coordinate), the output contract, the H2-He assumptions snapy uses, the initial-state
