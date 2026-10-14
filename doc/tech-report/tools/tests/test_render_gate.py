@@ -156,10 +156,12 @@ def reader_standards_pass(monkeypatch):
     import gen_topic_index
     import check_reader_hygiene
     import gen_reader_reference
+    import gen_forcing_contract
     monkeypatch.setattr(gen_topic_index, "main", lambda argv: 0)
     monkeypatch.setattr(check_reader_hygiene, "main", lambda argv: 0)
     monkeypatch.setattr(gen_reader_reference, "check_glossary", lambda report: 0)
     monkeypatch.setattr(gen_reader_reference, "check_defaults", lambda report: 0)
+    monkeypatch.setattr(gen_forcing_contract, "check", lambda report: 0)
 
 
 def test_unwritten_chapter_refs_fail_and_are_labelled_expected(capsys, reader_standards_pass):

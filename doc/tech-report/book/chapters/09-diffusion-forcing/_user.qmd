@@ -97,25 +97,7 @@ make_fig()
 
 ### Code
 
-**A minimal input.** Run this example from `build/bin`, where `straka_single.yaml` is available. No YAML key: a module is scripted and saved in Python, and its file name handed to the block (or
-the `Mesh`, which has the same call, {{< code python/csrc/pymesh.cpp >}}):
-
-```python
-from typing import Dict
-import torch
-import snapy
-
-class DrySource(torch.nn.Module):
-    def forward(self, variables: Dict[str, torch.Tensor], dt: float,
-                stage: int) -> Dict[str, torch.Tensor]:
-        du = torch.zeros_like(variables["hydro_u"])
-        du[0] = dt * 1.e-6 * variables["hydro_u"][0]   # an increment over the step, not a rate
-        return {"hydro_du": du}
-
-torch.jit.script(DrySource().eval()).save("dry_source.pt")
-block = snapy.MeshBlock(snapy.MeshBlockOptions.from_yaml("straka_single.yaml"))
-block.set_user_stage_forcings(["dry_source.pt"])
-```
+{{< include 09-diffusion-forcing/_howto.qmd >}}
 
 **What is refused, and why** (each a `TORCH_CHECK` naming "User stage forcing N"):
 
