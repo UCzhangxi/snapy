@@ -72,3 +72,41 @@ def test_numbered_note_and_actual_elsewhere_are_not_deferrals():
 def test_task_question_before_structured_note():
     assert not lint.findings("How do I plot? Not provided: plotting is outside scope.")
     assert lint.findings("See elsewhere. Not provided: plotting is outside scope.")
+
+
+@pytest.mark.parametrize("phrase", ["not derived here", "not established here",
+                                    "not measured here", "not derived or measured here",
+                                    "cannot say"])
+def test_review_deferral_forms_warn(phrase):
+    assert lint.findings("This is " + phrase + ".")
+
+
+# Note counts retain the limitation even if somebody deletes its wording instead
+# of converting it. Reasons are checked separately for the repeated review defect.
+AUDITED_NOTES = {
+    "11-boundaries/" + name + ".qmd": 1
+    for name in ["_custom", "_exchange", "_extrapolation", "_outflow", "_periodic",
+                 "_reflecting", "_registry", "_solids", "_timing", "_wb"]
+}
+AUDITED_NOTES.update({
+    "02-thermodynamics/_ideal-gas.qmd": 1,
+    "02-thermodynamics/_ideal-moist.qmd": 1,
+    "02-thermodynamics/_saturation.qmd": 1,
+    "04-spatial-discretization/_roe.qmd": 2,
+    "04-spatial-discretization/_fluxcov.qmd": 1,
+    "05-well-balanced/_x1cent.qmd": 1,
+    "07-time-integration/_cfl.qmd": 1,
+    "08-positivity/_theta.qmd": 1,
+    "08-positivity/_borrow.qmd": 1,
+})
+
+
+@pytest.mark.parametrize("relative,count", AUDITED_NOTES.items())
+def test_review_notes_keep_the_limitation_and_reason(relative, count):
+    book = Path(__file__).resolve().parents[2] / "book/chapters"
+    text = (book / relative).read_text()
+    assert text.count("**Not provided:**") >= count
+    assert not lint.findings(text)
+    if relative.startswith("11-boundaries/"):
+        assert "without deriving each round-off bound" in text
+        assert "this book does not derive those bounds" in text
