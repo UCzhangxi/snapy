@@ -1387,6 +1387,7 @@ def main(argv):
     import check_reader_hygiene
     import gen_reader_reference
     import gen_forcing_contract
+    import gen_collective_contract
     report = book.resolve().parent
     for name, check in (
         ("N1 navigation", lambda: gen_topic_index.main([
@@ -1396,6 +1397,7 @@ def main(argv):
         ("N4 glossary", lambda: gen_reader_reference.check_glossary(report)),
         ("N5 pinned defaults", lambda: gen_reader_reference.check_defaults(report)),
         ("N6 forcing contract", lambda: gen_forcing_contract.check(report)),
+        ("N6 collective contract", lambda: gen_collective_contract.check(report)),
     ):
         try:
             record(name, check())
