@@ -384,3 +384,15 @@ def test_the_repository_has_one_owner_per_chapter():
     c = rg.count(rg.ROOT)
     owners, problems = rg.read_owners(rg.ROOT)
     assert problems == [] and rg.owner_problems(c, owners) == []
+
+
+# The ratchet CI step runs this file: it also runs the do-cards needs-build-option tests (tools/tests/test_do_cards.py).
+from test_do_cards import (  # noqa: E402,F401
+    test_a_needs_build_option_card_must_name_its_option,
+    test_a_needs_build_option_card_naming_a_cmake_option_passes,
+    test_ch14_pnetcdf_is_a_needs_build_option_card,
+    test_only_a_needs_build_option_card_names_a_build_option,
+    test_the_build_option_must_be_an_option_of_the_cmake_files,
+    test_the_build_option_value_is_on_or_off,
+    test_the_runner_skips_with_a_reason_when_the_build_lacks_the_option,
+)

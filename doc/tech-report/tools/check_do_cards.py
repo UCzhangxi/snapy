@@ -9,7 +9,13 @@ The check fails when
   - a runnable record names no deck (only `not runnable` may have none);
   - a deck does not resolve to a file of the repository;
   - a class or an expected outcome is not one of the allowed values;
+  - a `needs-build-option` card does not name its build option as {"name": <CMake option>, "value": "ON"|"OFF"}, the
+    name is not an `option()` of the repository's CMake files, or another class names a build option;
   - an exception is stale: it names a card that no longer fails, or a card that does not exist.
+
+A `needs-build-option` card runs only in a build configured with that option: tools/tests/test_do_cards_run.py reads the
+build's CMakeCache.txt and skips the card with the reason (`missing_build_option`) when the option is off or unset,
+and runs it as a CPU card when it is set.
 
 Named exceptions (`exceptions:` in the data file) are ratchet-style: each lets exactly one card fail the deck check,
 and the check fails again once the card is fixed until the exception is removed.
@@ -24,7 +30,9 @@ import re
 import sys
 from pathlib import Path
 
-CLASSES = ("CPU-seconds", "CPU-minutes+", "multi-rank", "GPU", "not runnable")
+CLASSES = ("CPU-seconds", "CPU-minutes+", "needs-build-option", "multi-rank", "GPU", "not runnable")
+NEEDS = "needs-build-option"
+_OPTION = re.compile(r"^\s*option\(\s*([A-Za-z0-9_]+)", re.M)
 CARD_LEAD = ("**A minimal input", "**Construction fragment.")
 _INCLUDE = re.compile(r"\{\{< include (\S+) >\}\}")
 _ANCHOR = re.compile(r"^#{1,2} .*\{#(sec-[A-Za-z0-9_-]+)")
@@ -108,6 +116,29 @@ def load(text):
     return data
 
 
+def cmake_options(repo):
+    """The names of every `option()` of the repository's top-level CMakeLists.txt and cmake/*.cmake."""
+    repo = Path(repo)
+    files = [repo / "CMakeLists.txt", *sorted((repo / "cmake").glob("*.cmake"))]
+    return {m for f in files if f.is_file() for m in _OPTION.findall(f.read_text(encoding="utf-8"))}
+
+
+def missing_build_option(rec, cache):
+    """Why a needs-build-option card cannot run in the build whose CMakeCache.txt text is `cache`; None when it can
+    (or when the card needs no option)."""
+    if rec.get("class") != NEEDS:
+        return None
+    name, value = rec["build_option"]["name"], rec["build_option"]["value"]
+    m = re.search(rf"^{re.escape(name)}:[A-Z]+=(.*)$", cache, re.M)
+    if m is None:
+        have = f"does not set {name}"
+    elif m.group(1).strip().upper() == value:
+        return None
+    else:
+        have = f"has {name}={m.group(1).strip()}"
+    return f"{rec['id']} needs build option {name}={value}; this build {have} (CMakeCache.txt)"
+
+
 def check(report, data=None):
     """Return (status, messages); status 0 means clean."""
     report = Path(report).resolve()
@@ -140,10 +171,22 @@ def check(report, data=None):
             msgs.append(f"card under {a} ({c['file']}:{c['line']}) has no record in {data.name}")
 
     ids = {r.get("id") for r in recs}
+    options = cmake_options(repo)
     for r in recs:
         rid, cls, deck = r.get("id"), r.get("class"), r.get("deck")
         if cls not in CLASSES:
             msgs.append(f"{rid}: class {cls!r} is not one of {', '.join(CLASSES)}")
+        bo = r.get("build_option")
+        if cls == NEEDS:
+            if not (isinstance(bo, dict) and bo.get("name") and bo.get("value")):
+                msgs.append(f'{rid}: class {NEEDS} needs build_option {{"name": <CMake option>, "value": "ON"|"OFF"}}')
+            else:
+                if bo["name"] not in options:
+                    msgs.append(f"{rid}: build_option {bo['name']} is not an option() of the repository's CMake files")
+                if bo["value"] not in ("ON", "OFF"):
+                    msgs.append(f"{rid}: build_option value {bo['value']!r} is not ON or OFF")
+        elif bo is not None:
+            msgs.append(f"{rid}: build_option is only for class {NEEDS}, not {cls}")
         exp = r.get("expect")
         if not (exp in ("exit 0", "nothing to run") or (isinstance(exp, str) and exp.startswith("refused: "))):
             msgs.append(f"{rid}: expect {exp!r} is not 'exit 0', 'nothing to run' or 'refused: <message>'")

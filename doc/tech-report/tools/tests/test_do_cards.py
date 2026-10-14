@@ -73,6 +73,67 @@ def test_the_loader_refuses_another_layout():
         c.load("cards:\n  - id: ch01-one\n")
 
 
+# --- the needs-build-option class: a card that runs only in a build with a CMake option -------------------------
+
+NEEDS = ('"class": "CPU-seconds"', '"class": "needs-build-option", "build_option": {"name": "PNETCDF", "value": "ON"}')
+
+
+def _variant(tmp_path, *edits):
+    """good.yaml with its second record edited; written to tmp_path (fixture data stays out of data/ directories)."""
+    lines = (FIX / "data" / "good.yaml").read_text().splitlines()
+    for old, new in edits:
+        lines[-1] = lines[-1].replace(old, new, 1)
+    path = tmp_path / "variant.yaml"
+    path.write_text("\n".join(lines) + "\n")
+    return c.check(REPORT, path)
+
+
+def test_a_needs_build_option_card_naming_a_cmake_option_passes(tmp_path):
+    assert _variant(tmp_path, NEEDS) == (0, [])
+
+
+def test_a_needs_build_option_card_must_name_its_option(tmp_path):
+    status, msgs = _variant(tmp_path, ('"class": "CPU-seconds"', '"class": "needs-build-option"'))
+    assert status == 1
+    assert msgs == ["ch01-two: class needs-build-option needs build_option {\"name\": <CMake option>, \"value\": \"ON\"|\"OFF\"}"]
+
+
+def test_the_build_option_must_be_an_option_of_the_cmake_files(tmp_path):
+    status, msgs = _variant(tmp_path, NEEDS, ('"PNETCDF"', '"PNETCDF_OUTPUT"'))
+    assert status == 1
+    assert msgs == ["ch01-two: build_option PNETCDF_OUTPUT is not an option() of the repository's CMake files"]
+
+
+def test_the_build_option_value_is_on_or_off(tmp_path):
+    status, msgs = _variant(tmp_path, NEEDS, ('"value": "ON"', '"value": "yes"'))
+    assert status == 1
+    assert msgs == ["ch01-two: build_option value 'yes' is not ON or OFF"]
+
+
+def test_only_a_needs_build_option_card_names_a_build_option(tmp_path):
+    status, msgs = _variant(tmp_path, ('"class": "CPU-seconds"', '"class": "CPU-seconds", "build_option": {"name": "PNETCDF", "value": "ON"}'))
+    assert status == 1
+    assert msgs == ["ch01-two: build_option is only for class needs-build-option, not CPU-seconds"]
+
+
+def test_the_runner_skips_with_a_reason_when_the_build_lacks_the_option():
+    rec = {"id": "ch14-pnetcdf", "class": "needs-build-option", "build_option": {"name": "PNETCDF", "value": "ON"}}
+    off = c.missing_build_option(rec, "NETCDF:BOOL=ON\nPNETCDF:BOOL=OFF\n")
+    assert off == "ch14-pnetcdf needs build option PNETCDF=ON; this build has PNETCDF=OFF (CMakeCache.txt)"
+    unset = c.missing_build_option(rec, "NETCDF:BOOL=ON\n")
+    assert unset == "ch14-pnetcdf needs build option PNETCDF=ON; this build does not set PNETCDF (CMakeCache.txt)"
+    assert c.missing_build_option(rec, "PNETCDF:BOOL=ON\n") is None          # the option is on: the card runs
+    assert c.missing_build_option({"id": "x", "class": "CPU-seconds"}, "") is None
+
+
+def test_ch14_pnetcdf_is_a_needs_build_option_card():
+    data = c.load((TOOLS / "do-cards.yaml").read_text())
+    card = next(r for r in data["cards"] if r["id"] == "ch14-pnetcdf")
+    assert card["class"] == "needs-build-option"
+    assert card["build_option"] == {"name": "PNETCDF", "value": "ON"}
+    assert card["expect"] == "exit 0"
+
+
 # --- the real book and data file ----------------------------------------------------------------------------------
 
 def test_the_real_data_file_matches_the_sources():

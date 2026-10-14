@@ -3,6 +3,8 @@
 Opt-in. The whole module skips unless SNAP_PIN_BUILD names the build directory of a chengcli/snapy source build at
 the sha of code_pin.yml (with build/bin and its linked decks), so the ratchet CI step and a machine without a build
 never run it. GPU and multi-rank cards are not run here: their evidence is the dated validation_log of the data file.
+A needs-build-option card runs like a CPU card when the build's CMakeCache.txt sets its option, and is skipped with the
+reason otherwise (check_do_cards.missing_build_option): it never passes without running.
 
   SNAP_PIN_BUILD=/path/to/snapy/build python3 -m pytest -q tools/tests/test_do_cards_run.py
 
@@ -40,7 +42,7 @@ BIN = BUILD / "bin"
 TIMEOUT = float(os.environ.get("SNAP_CARD_TIMEOUT", "60"))
 DATA = c.load((TOOLS / "do-cards.yaml").read_text(encoding="utf-8"))
 EXCEPTED = {e["id"] for e in DATA["exceptions"]}
-CPU = ("CPU-seconds", "CPU-minutes+")
+CPU = ("CPU-seconds", "CPU-minutes+", c.NEEDS)
 CARDS = {x["anchor"]: x for x in c.source_cards(REPORT / "book")}
 RECORDS = [r for r in DATA["cards"] if r["class"] in CPU]
 
@@ -112,6 +114,9 @@ def _execute(rec, tmp):
 def test_cpu_card_runs_trimmed(rec, tmp_path):
     if rec["id"] in EXCEPTED:
         pytest.skip(f"named exception in do-cards.yaml: {rec['id']} (no deck; the Editor's chapter lane fixes it)")
+    why = c.missing_build_option(rec, (BUILD / "CMakeCache.txt").read_text(encoding="utf-8"))
+    if why:
+        pytest.skip(why)
     rc, out = _execute(rec, tmp_path)
     tail = "\n".join(out.strip().splitlines()[-5:])
     if rec["run"].get("check"):
