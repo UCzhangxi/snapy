@@ -64,7 +64,8 @@ def _entry(block):
             entry[key] = {k.strip(): _scalar(v) for k, v in pairs}
         else:
             entry[key] = _scalar(value)
-    return json.dumps(entry)
+    lines = [f'    {json.dumps(k)}: {json.dumps(v)},' for k, v in entry.items()]
+    return '{\n' + '\n'.join(lines) + '\n}'
 
 
 SETUP = '''```python
@@ -126,11 +127,11 @@ def generate(report):
     load, load_cite = snap('src/eos/equation_of_state.cpp',
         r'  op->thermo\(\) = kintera::ThermoOptionsImpl::from_yaml\(filename, op->verbose\(\)\);')
     nvar, nvar_cite = snap('src/eos/ideal_moist.hpp',
-        r'    return 4 \+ pthermo->options->vapor_ids\(\)\.size\(\) \+\n[^;]+;', flat=True)
+        r'    return 4 \+ pthermo->options->vapor_ids\(\)\.size\(\) \+\n[^;]+;')
     icy, icy_cite = snap('python/csrc/snapy.cpp', r'  m\.attr\("kICY"\) = \(int\)snap::ICY;')
     gate, gate_cite = snap('src/mesh/meshblock.cpp',
         r'  if \(stage == pintg->stages\.size\(\) - 1 && phydro->options->eos\(\)->thermo\(\) &&\n'
-        r'      phydro->options->eos\(\)->thermo\(\)->reactions\(\)\.size\(\) > 0\)', flat=True)
+        r'      phydro->options->eos\(\)->thermo\(\)->reactions\(\)\.size\(\) > 0\)')
     writeback, writeback_cite = snap('src/mesh/meshblock.cpp', r'    hydro_u\.narrow\(0, ICY, ny\) = yfrac \* rho;')
     cause, cause_cite = snap('src/mesh/meshblock.cpp',
         r'"the saturation adjustment left a cell unadjusted, or the VIC "')
@@ -151,8 +152,27 @@ def generate(report):
         r'        op->has_gas_products = true;\n      \} else \{\n        cloud_set\.insert\(name\);\n      \}')
     reactant, reactant_cite = kin('src/thermo/nucleation.cpp',
         r'      TORCH_CHECK\(species_phases\[id\]\.empty\(\) \|\| species_phases\[id\] == "gas",\n[^;]+;')
+    signature, signature_cite = kin('src/utils/user_funcs.hpp', r'^using user_func1 = double \(\*\)\(double\);')
+    pair, pair_cite = kin('src/vapors/vapor_functions.h',
+        r'^DISPATCH_MACRO\ninline double h2o_bryan\(double T\) \{.*?\n\}\n\nDISPATCH_MACRO\n'
+        r'inline double h2o_bryan_ddT\(double T\) \{.*?\n\}')
+    cpu_table, cpu_table_cite = kin('src/func_table.cpp',
+        r'^user_func1 func1_table_cpu\[\] = \{\n    h2o_ideal,[^\n]+')
+    cpu_names, cpu_names_cite = kin('src/func_table.cpp',
+        r'^std::vector<std::string> func1_names = \{\n    "h2o_ideal",[^\n]+\n    "h2o_bryan_ddT",[^\n]+')
+    cuda_table, cuda_table_cite = kin('src/func_table.cu',
+        r'^__device__ user_func1 func1_table_cuda\[\] = \{\n    nullptr,\n    h2o_ideal,\n    h2o_ideal_ddT,\n'
+        r'    h2o_bryan,\n    h2o_bryan_ddT,')
+    host_lookup, host_lookup_cite = kin('src/utils/user_funcs.hpp', r'      funcs\.push_back\(func_table\[id\]\);')
+    device_lookup, device_lookup_cite = kin('src/utils/user_funcs.cu', r'      h_idx\.push_back\(id \+ 1\);(?=.*?get_device_func2)')
+    unknown, unknown_cite = kin('src/utils/user_funcs.hpp',
+        r'      throw std::runtime_error\("Function " \+ name \+ " not registered\."\);')
+    ddt, ddt_cite = kin('src/thermo/log_svp.hpp', r'    for \(auto& name : _logsvp_ddT\) name \+= "_ddT";')
+    rebuild, rebuild_cite = kin('README.md',
+        r'^# 3\. Configure and build the C\+\+ library\ncmake -B build\ncmake --build build --parallel\n.*?pip install \.')
     formulas, formulas_cite = kin('src/func_table.cpp', r'    "h2o_ideal",[^\n]+\n[^\n]+"nh3_ideal",[^\n]+')
 
+    KINTERA_REF = f'snapy@{sha} and kintera@{ksha}'
     vapour_py, cloud_py, reaction_py = _entry(vapour), _entry(cloud), _entry(reaction.split('\n', 1)[1])
 
     species = f'''<!-- generated reader-reference: species-contract -->
@@ -200,20 +220,30 @@ before, after = one_stage(block, n_gas, 0.01, 1.e5)
 ```python
 assert (n_dry, n_listed, n_gas) == (5, 5, 6)
 assert kintera.species_names() == ["dry", "H2O"]
-torch.testing.assert_close(after[snapy.kICY], before[snapy.kICY], rtol=0, atol=0)
+torch.testing.assert_close(after[snapy.kICY], before[snapy.kICY],
+                           rtol=0, atol=0)
 print("N6 species: H2O with phase gas adds state row", snapy.kICY)
 ```
 
-- **Contract.** Reading: the EOS builds its species table from the same YAML card,
-  `{load}` ({load_cite}).
+- **Contract.** Reading: the EOS builds its species table from the same YAML card ({load_cite}):
+
+  ```cpp
+  {load}
+  ```
+
 - Keys: `name`, `composition` (the molar mass comes from it), `cv_R`, `u0_R` and `phase`. A missing `cv_R`
   defaults as `{cv}` ({cv_cite}); a missing `u0_R` as `{u0}` ({u0_cite}).
 - Phase: empty, `gas`, `liquid` or `solid`; anything else is refused ({phase_cite}).
 - Reference species: the first entry is always a state species ({ref_cite}); the dry air goes first.
 - State rows: a species is a row when a reaction names it or when it declares a phase ({inert_cite});
   a listed species with neither is in kintera's table but not in the state.
-- Row count: `{nvar}` ({nvar_cite}), that is the five hydro rows plus one per
-  species after the first. The first species row is `kICY` ({icy_cite}).
+- Row count: the five hydro rows plus one per species after the first ({nvar_cite}):
+
+  ```cpp
+  {nvar}
+  ```
+
+  The first species row is `kICY` ({icy_cite}).
 - One table per process: each card clears kintera's species table and loads its own ({clear_cite});
   `kintera.species_names()` lists the card loaded last, as step 5 checks.
 
@@ -269,9 +299,12 @@ before, after = one_stage(block, nvar, 0.02, 8.e4)
 i = snapy.kICY
 assert nvar == 7
 assert (after[i] < before[i]).all() and (after[i + 1] > 0).all()
-torch.testing.assert_close(after[i:i + 2].sum(0), before[i:i + 2].sum(0), rtol=1.e-12, atol=0)
-torch.testing.assert_close(after[snapy.kIPR], before[snapy.kIPR], rtol=1.e-12, atol=0)
-print("N6 condensate: condensed", float((after[i + 1]).mean()), "kg m^-3 in one stage")
+torch.testing.assert_close(after[i:i + 2].sum(0), before[i:i + 2].sum(0),
+                           rtol=1.e-12, atol=0)
+torch.testing.assert_close(after[snapy.kIPR], before[snapy.kIPR],
+                           rtol=1.e-12, atol=0)
+condensed = float(after[i + 1].mean())
+print("N6 condensate: condensed", condensed, "kg m^-3 in one stage")
 ```
 
 - **Contract.** Classification: the reaction list is read as nucleation reactions, which sort their species
@@ -280,8 +313,12 @@ print("N6 condensate: condensed", float((after[i + 1]).mean()), "kg m^-3 in one 
   `phase: gas` ({product_cite}), so leave the phase empty or give `liquid` or `solid`.
 - Formula: `rate-constant: {{formula: ...}}` names one of kintera's saturation functions
   ({formulas_cite}).
-- When: once per step, on the last stage, whenever the reaction list is non-empty:
-  `{gate}` ({gate_cite}).
+- When: once per step, on the last stage, whenever the reaction list is non-empty ({gate_cite}):
+
+  ```cpp
+  {gate}
+  ```
+
 - What it writes: only the species rows, `{writeback}` ({writeback_cite}); the energy row is not written,
   as step 5 checks.
 - Failure: a cell the solve leaves unadjusted makes the block redo the step with a smaller `dt`
@@ -289,8 +326,53 @@ print("N6 condensate: condensed", float((after[i + 1]).mean()), "kg m^-3 in one 
 
 CI checks the contract, and the runtime test runs on a pin build.
 
-**Native C++ alternative.** A new saturation formula is a C++ function registered by name in kintera's
-function table ({formulas_cite}); the reaction then names it.
+**Native C++ alternative.** A new saturation formula is a pair of C++ functions in kintera: the logarithm of the
+saturation vapour pressure and its temperature derivative, each with this generated signature ({signature_cite}):
+
+```cpp
+{signature}
+```
+
+Write the pair after this generated one ({pair_cite}):
+
+```cpp
+{pair}
+```
+
+Register both names at the same position of the CPU table and of the name list ({cpu_table_cite},
+{cpu_names_cite}):
+
+```cpp
+{cpu_table}
+{cpu_names}
+```
+
+and in the CUDA table, which starts with `nullptr`, one position further on ({cuda_table_cite}):
+
+```cpp
+{cuda_table}
+```
+
+The derivative is found by name, the formula name with `_ddT` appended (`{ddt}`, {ddt_cite}), so both names are
+needed. The lookup is by position: the CPU build takes `{host_lookup}` ({host_lookup_cite}) and the CUDA build
+`{device_lookup}` ({device_lookup_cite}); a name not in the list throws ({unknown_cite}):
+
+```cpp
+{unknown}
+```
+
+Nothing compares the lengths of the list and the tables: on a CPU build of these files, two names added to the list
+without table entries raised no error, the first resolved to the function after `h2o_bryan_ddT`, every later name
+to the one two positions on, and the last read past the end of the table and crashed.[^ch10-func-table]
+Then rebuild and reinstall kintera, so that snapy links the new table ({rebuild_cite}):
+
+```bash
+{rebuild}
+```
+
+[^ch10-func-table]: [sha: {KINTERA_REF}; deck: the check itself; run: `python3 src/snapy_report/ch10/func_table_check.py`,
+    CPU, `c++` (GCC 11.5.0), 1 process; Python 3.11.13]. Output `func_table_check.out`, lines `[C1]`–`[C5]`; the
+    crash of `[C5]` is undefined behaviour, observed as exit status -11 on this build.
 <!-- end reader-reference: condensate-contract -->
 '''
     return {'species': species, 'condensate': condensate}

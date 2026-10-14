@@ -56,7 +56,12 @@ def one_stage(block, nvar, vapour, pressure):
 1. Write the species entry. Its values are those of the deck ([`examples/bryan.yaml:15-18`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/examples/bryan.yaml#L15-L18)).
 
 ```python
-vapour = {"name": "H2O", "composition": {"H": 2, "O": 1}, "cv_R": 3.08424, "u0_R": 0.0}
+vapour = {
+    "name": "H2O",
+    "composition": {"H": 2, "O": 1},
+    "cv_R": 3.08424,
+    "u0_R": 0.0,
+}
 ```
 
 2. Select its phase. No reaction names this species here, so only `phase: gas` makes it a state row.
@@ -85,20 +90,31 @@ before, after = one_stage(block, n_gas, 0.01, 1.e5)
 ```python
 assert (n_dry, n_listed, n_gas) == (5, 5, 6)
 assert kintera.species_names() == ["dry", "H2O"]
-torch.testing.assert_close(after[snapy.kICY], before[snapy.kICY], rtol=0, atol=0)
+torch.testing.assert_close(after[snapy.kICY], before[snapy.kICY],
+                           rtol=0, atol=0)
 print("N6 species: H2O with phase gas adds state row", snapy.kICY)
 ```
 
-- **Contract.** Reading: the EOS builds its species table from the same YAML card,
-  `op->thermo() = kintera::ThermoOptionsImpl::from_yaml(filename, op->verbose());` ([`src/eos/equation_of_state.cpp:86`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/equation_of_state.cpp#L86)).
+- **Contract.** Reading: the EOS builds its species table from the same YAML card ([`src/eos/equation_of_state.cpp:86`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/equation_of_state.cpp#L86)):
+
+  ```cpp
+  op->thermo() = kintera::ThermoOptionsImpl::from_yaml(filename, op->verbose());
+  ```
+
 - Keys: `name`, `composition` (the molar mass comes from it), `cv_R`, `u0_R` and `phase`. A missing `cv_R`
   defaults as `species_cref_R.push_back(5. / 2.);` ([`kintera src/species.cpp:175`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/species.cpp#L175)); a missing `u0_R` as `species_uref_R.push_back(0.);` ([`kintera src/species.cpp:181`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/species.cpp#L181)).
 - Phase: empty, `gas`, `liquid` or `solid`; anything else is refused ([`kintera src/species.cpp:158-161`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/species.cpp#L158-L161)).
 - Reference species: the first entry is always a state species ([`kintera src/thermo/thermo_options.cpp:119`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_options.cpp#L119)); the dry air goes first.
 - State rows: a species is a row when a reaction names it or when it declares a phase ([`kintera src/thermo/thermo_options.cpp:184-187`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_options.cpp#L184-L187));
   a listed species with neither is in kintera's table but not in the state.
-- Row count: `return 4 + pthermo->options->vapor_ids().size() + pthermo->options->cloud_ids().size();` ([`src/eos/ideal_moist.hpp:29-30`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/ideal_moist.hpp#L29-L30)), that is the five hydro rows plus one per
-  species after the first. The first species row is `kICY` ([`python/csrc/snapy.cpp:41`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/python/csrc/snapy.cpp#L41)).
+- Row count: the five hydro rows plus one per species after the first ([`src/eos/ideal_moist.hpp:29-30`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/ideal_moist.hpp#L29-L30)):
+
+  ```cpp
+  return 4 + pthermo->options->vapor_ids().size() +
+           pthermo->options->cloud_ids().size();
+  ```
+
+  The first species row is `kICY` ([`python/csrc/snapy.cpp:41`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/python/csrc/snapy.cpp#L41)).
 - One table per process: each card clears kintera's species table and loads its own ([`kintera src/species.cpp:152-153`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/species.cpp#L152-L153));
   `kintera.species_names()` lists the card loaded last, as step 5 checks.
 
