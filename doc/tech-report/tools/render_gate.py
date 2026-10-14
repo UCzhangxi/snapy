@@ -1391,6 +1391,8 @@ def main(argv):
     import gen_collective_contract
     import gen_scheme_contract
     import gen_scheme_native
+    import glossary_registry
+    import gen_glossary_appendix
     import gen_species_contract
     report = book.resolve().parent
     for name, check in (
@@ -1399,6 +1401,8 @@ def main(argv):
             "--fragment", str(book / "chapters/17-appendices/_appf-topic-index.qmd"), "--check"])),
         ("N3 reader hygiene", lambda: check_reader_hygiene.main(["--book", str(book)])),
         ("N4 glossary", lambda: gen_reader_reference.check_glossary(report)),
+        ("N4 concept registry", lambda: glossary_registry.check(report)),
+        ("N4 glossary appendix", lambda: gen_glossary_appendix.check(report)),
         ("N5 pinned defaults", lambda: gen_reader_reference.check_defaults(report)),
         ("N6 boundary contract", lambda: gen_boundary_contract.check(report)),
         ("N6 forcing contract", lambda: gen_forcing_contract.check(report)),
@@ -1440,6 +1444,8 @@ def main(argv):
 
     record("outputs", gate_outputs(book))
     record("unresolved-in-output", gate_unresolved_in_output(book))
+    import check_rendered_glossary
+    record("N1/N4 rendered glossary", check_rendered_glossary.check(book))
 
     hits = gate_stdout(out, {t for ts in expected.values() for t in ts})
     print(f"\n[stdout gate] {len(hits)} matching lines"
