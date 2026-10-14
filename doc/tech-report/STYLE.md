@@ -622,22 +622,27 @@ audit and warning lint follow in a separate change. These requirements do not cl
   must verify the destination, definition or note that the reader can actually reach in the rendered output.
 - N1 Navigation: printed TOC to section depth; one concept registry, `tools/reader-glossary.json`, records each
   concept's defining-section id. Every registry concept is reachable from the TOC or the generated topic index.
-  Index entries are kept in data, not chapter text; grouped summary sections get per-item topic-index entries,
-  not only an entry for the group. Plain-word titles remain a review-checklist item. A rendered glossary appendix
-  is generated from the same registry (N4), not maintained as a second list.
+  Index entries are kept in data, not chapter text. Every concept in a grouped or roll-up section gets its own
+  topic-index entry resolving to its registry defining-section id, not the group section. Add a label if the
+  concept section has none. The planned N1 rendered gate checks these destinations. Plain-word titles remain a
+  review-checklist item. A rendered glossary appendix is generated from the same registry (N4), not maintained
+  as a second list.
 - N2 Task map: the "How do I ...?" appendix is task-indexed and section-anchored. Generate its rows from the N6
   blocks, DO cards and the curated reader-task list (seeded from both question banks and every held-out
-  NO-ENTRY). Each row supplies a section anchor or an explicit `not provided: <reason>`, not a chapter-only
-  destination. Preserve status = answered / partly documented / undocumented / unsupported by the code /
-  outside scope; a pointer is not by itself evidence that the task is answered.
+  NO-ENTRY). Each row supplies the anchor of the section that answers the task, never a chapter or group
+  roll-up, or an explicit `not provided: <reason>`. Add a section label where needed; the N2 generator and an
+  `.aux` anchor check verify the answering-section destination. Preserve status = answered / partly documented /
+  undocumented / unsupported by the code / outside scope; a pointer is not by itself evidence that the task is answered.
 - N3 Render hygiene: the rendered text has no editorial markers (ISSUES.md, NOTATION.md, STYLE.md, "flagged to the
   editor"), no unresolved or raw @sec- references.
 - N4 Glossary: acronyms, YAML keys, symbols and named concepts use the N1 registry as their single source.
   Generate chapter-first-use notes and the rendered glossary appendix from it; check symbol meanings against
   appendix A. Each entry points to its defining section. Where the book has no definition, say "not defined
   here" explicitly rather than inventing one, and keep the concept reachable under N1. Ratchet the count of
-  those entries so it cannot rise: seed it from the audit's 69 of 329 entries at `055481aae7c744bbb37e68685afe0daef9d7c023`, then record verified
-  reductions. The registry, appendix and rendered N1/N4 checks implement this together in their assigned lane.
+  those entries so it cannot rise: the registry PR sets the baseline from the number marked "not defined here"
+  at the commit that lands the registry. Before that baseline exists, honestly undefined named concepts may be
+  added; later lowerings are recorded only as verified reductions. The registry, appendix and rendered N1/N4
+  checks implement this together in their assigned lane.
 - N5 Consistency: defaults and install lines generated from the code at the pin; the rest (equations, assumptions,
   units, API behaviour) is a review-checklist item.
 - N6 Extension contracts: one "How to add one" block per extension point (forcing, boundary callback, species,
