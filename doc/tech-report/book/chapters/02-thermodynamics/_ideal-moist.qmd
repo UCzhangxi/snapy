@@ -127,26 +127,7 @@ make_fig()
 
 ### Code
 
-**A minimal input.** The species card is required; this is a rounded version of the wall-saturation test deck's card:
-
-<!-- reader glossary keys -->Keys in this fragment: `Tref`[^rg-d2638fa4bcad], `Pref`[^rg-7058b44e3174], `species`[^rg-e2c86a33eac7], `composition`[^rg-e540c1be9eba], `O`[^rg-1252b434cf3f], `N`[^rg-b5dfd97dcd83], `Ar`[^rg-34cd1c5ea1e1], `cv_R`[^rg-69a0a493850f], `H`[^rg-76b58024e81a], `u0_R`[^rg-fa067cae2716].
-```yaml
-reference-state: {Tref: 0., Pref: 1.e5}
-species:
-  - name: dry
-    composition: {O: 0.42, N: 1.56, Ar: 0.01}
-    cv_R: 2.5                # c_v,d / R_d
-  - name: H2O
-    composition: {H: 2, O: 1}
-    cv_R: 1.534301
-    u0_R: 0.                 # u*_n mu_n / R
-  - name: H2O(l)
-    composition: {H: 2, O: 1}
-    cv_R: 7.52031
-    u0_R: -6786.6602
-dynamics:
-  equation-of-state: {type: ideal-moist}
-```
+{{< include 02-thermodynamics/_howto-species.qmd >}}
 
 **What is refused, and why.**
 
@@ -198,7 +179,7 @@ The six H2-He decks, listed below, make the same choices:
 - The H2-He background is **one lumped ideal-gas species named `dry`**, with the elemental composition `{H: 1.5, He: 0.15}`.
 - It has **constant** `cv_R = 2.5`, so $\gamma=7/5$ exactly and the molar mass is 2.112 g/mol.
 - There is **no ortho/para treatment**: the switch for it is off. It would also not apply to these decks, because it acts only on a species named exactly `H2`.
-- Condensables (H2O, NH3, H2S, NH4SH) are extra species with their own constant `cv_R` and a latent-heat offset `u0_R`.
+- Condensables (H2O, NH3, H2S, NH4SH) are extra species with their own constant `cv_R`[^rg-69a0a493850f] and a latent-heat offset `u0_R`[^rg-fa067cae2716].
 
 
 The thermodynamic facts here refer to kintera **v2.6.2**, commit `c55b13b2204997d2d09e04498558ab9495d8ee77`.
@@ -224,7 +205,7 @@ The numbers C1-C14 are independent arithmetic and a port of its rotor formula, n
 
 | id | fact | source |
 |---|---|---|
-| T-21 | `Tref` and `Pref` default to 300 K and 1e5 Pa | [kintera thermo.hpp#L77-L78](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo.hpp#L77-L78) |
+| T-21 | `Tref`[^rg-d2638fa4bcad] and `Pref`[^rg-7058b44e3174] default to 300 K and 1e5 Pa | [kintera thermo.hpp#L77-L78](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo.hpp#L77-L78) |
 | T-22 | At start-up kintera moves each `u0_R` to a T = 0 zero (`u0_R -= cv_R*Tref`) and each vapor's `s0_R` to T = 1 K, P = 1 Pa. Cloud entropy offsets are set to 0. With the decks' `Tref: 0.` the energy shift is zero | [kintera thermo_y.cpp#L63-L83](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_y.cpp#L63-L83) |
 | T-23 | The NASA-9 and H2-rotor branches pin their energy to a fixed T0 = 300 K (`kNasa9Tref`), not to `Tref` | [kintera eval_uhs.cpp#L22](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L22), [L285-L300](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/eval_uhs.cpp#L285-L300) |
 
@@ -314,27 +295,15 @@ a dry card, so it does not test the species offsets.
 
 [^rg-af1921a9322a]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
 
-[^rg-d2638fa4bcad]: Tref — thermodynamic reference temperature
-
-[^rg-7058b44e3174]: Pref — thermodynamic reference pressure
-
-[^rg-e2c86a33eac7]: species — species definitions or selection in the enclosing thermodynamic block
-
-[^rg-e540c1be9eba]: composition — elemental composition of a species
-
-[^rg-1252b434cf3f]: O — oxygen count in the composition mapping
-
-[^rg-b5dfd97dcd83]: N — nitrogen count in the composition mapping
-
-[^rg-34cd1c5ea1e1]: Ar — argon count in the composition mapping
-
 [^rg-69a0a493850f]: cv_R — reference heat capacity divided by the species gas constant
-
-[^rg-76b58024e81a]: H — hydrogen count in the composition mapping
 
 [^rg-fa067cae2716]: u0_R — reference internal energy in the species gas-constant normalisation
 
 [^rg-107866fa20ba]: $c_v, c_p$ — mixture specific heats **per unit total mass**, $c_v = \sum_n y_n c_{v,n}$ over dry air and every species [J kg$^{-1}$ K$^{-1}$]; a chapter that needs the per-dry-mass form writes it out and says so
+
+[^rg-d2638fa4bcad]: Tref — thermodynamic reference temperature
+
+[^rg-7058b44e3174]: Pref — thermodynamic reference pressure
 
 [^rg-e37071e794ae]: grav1 — gravity component along the first coordinate
 
