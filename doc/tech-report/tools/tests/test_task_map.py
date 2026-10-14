@@ -99,7 +99,9 @@ def test_every_render_regenerates_appendix_g():
     pre = yaml.safe_load((book / "_quarto.yml").read_text())["project"]["pre-render"]
     pre = [pre] if isinstance(pre, str) else pre
     assert any((book / p).resolve() == Path(g.__file__).resolve() for p in pre)
-    include = f"{{{{< include {g.FRAGMENT.relative_to(book / 'chapters').as_posix()} >}}}}"
+    # Appendix G prints the curated reader-task list (tools/gen_reader_tasks.py); the bank keeps its lookup grades
+    import gen_reader_tasks
+    include = f"{{{{< include {gen_reader_tasks.FRAGMENT.relative_to(book / 'chapters').as_posix()} >}}}}"
     assert include in (book / "chapters" / "appg-task-map.qmd").read_text()
 
 

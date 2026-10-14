@@ -1425,6 +1425,8 @@ def main(argv):
     record("unwritten-chapter refs", gate_unwritten_chapter_refs(book))
     record("unwritten-scheme refs", gate_unwritten_scheme_refs(book))
     record("task map", gate_task_map(book))
+    import gen_reader_tasks
+    record("N2 reader tasks", gen_reader_tasks.check(book.resolve().parent, book))
     pending, errors = gate_snapy_report(book)
     results["snapy_report"] = "fail" if errors else ("pending" if pending else "pass")
     record("frozen placeholders", gate_frozen_placeholders(book, pending))
@@ -1463,6 +1465,7 @@ def main(argv):
         h = re.sub(r"^(\s*WARNING) \([^)]*\)", r"\1", h)
         print("   ", h.strip()[:110])
     record("stdout", len(hits))
+    record("N2 rendered task map", gen_reader_tasks.check_rendered(book, book.resolve().parent))
 
     log = pathlib.Path(log_opt) if log_opt else find_log(book)
     text, fatal, noise = gate_log(log, book, overfull_pt)
