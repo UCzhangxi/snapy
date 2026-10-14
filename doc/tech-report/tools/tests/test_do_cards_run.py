@@ -9,7 +9,9 @@ never run it. GPU and multi-rank cards are not run here: their evidence is the d
 Optional: SNAP_PIN_PYTHONPATH (prepended to PYTHONPATH for the Python and ctest cards: the build's snapy package and kintera),
 SNAP_CARD_TIMEOUT (seconds per card, default 60). Each card runs in its own tmp directory: its first YAML block is
 merged into a copy of its deck with the record's trim, the record's driver runs, and the outcome is compared with
-`expect` (exit 0, or a refusal with the quoted message). Values are not compared: they differ across machines.
+`expect` (exit 0, or a refusal with the quoted message). For Python cards, optional
+`run.check` code runs after all Python blocks in the same namespace; assertion failures fail the card.
+The runner itself checks exit status; a record may additionally assert physical or interface properties.
 """
 
 import copy
@@ -80,7 +82,12 @@ def _execute(rec, tmp):
     if kind == "python":
         if rec["deck"]:
             (tmp / Path(rec["deck"]).name).write_text((REPO / rec["deck"]).read_text(encoding="utf-8"))
-        (tmp / "card.py").write_text((run.get("prelude", "") + "\n" + _block(rec, "python")).strip() + "\n")
+            deck_copy = tmp / rec["deck"]
+            deck_copy.parent.mkdir(parents=True, exist_ok=True)
+            deck_copy.write_text((REPO / rec["deck"]).read_text(encoding="utf-8"))
+        code = "\n".join(code for lang, code in CARDS[rec["anchor"]]["blocks"] if lang == "python")
+        (tmp / "card.py").write_text(
+            "\n".join((run.get("prelude", ""), code, run.get("check", ""))).strip() + "\n")
         return _run([sys.executable, "card.py"], tmp, env)
     if kind == "ctest":
         return _run(["ctest", "--test-dir", str(BUILD), "-R", run["select"], "--output-on-failure"], tmp, env)
@@ -107,6 +114,8 @@ def test_cpu_card_runs_trimmed(rec, tmp_path):
         pytest.skip(f"named exception in do-cards.yaml: {rec['id']} (no deck; the Editor's chapter lane fixes it)")
     rc, out = _execute(rec, tmp_path)
     tail = "\n".join(out.strip().splitlines()[-5:])
+    if rec["run"].get("check"):
+        print(tail)
     if rec["expect"] == "exit 0":
         assert rc == 0, f"exit {rc}:\n{tail}"
     else:
