@@ -80,28 +80,7 @@ boundary-condition:
     x1-outer: custom
 ```
 
-The fill is installed from Python, on the options and before the block is built, with
-`MeshBlockOptions.set_bfunc(dx3, dx2, dx1, func, name="")`. The offsets name the face: `(0, 0, -1)` is
-`x1-inner`, `(0, 0, 1)` is `x1-outer`, and $x_2$ and $x_3$ follow with `dx2` and `dx3`. The callback is
-`func(var, dim, op)`: it fills the `op.nghost()` ghost cells of `var` along tensor dimension `dim` in place. With
-the fragment above in a copy of `straka_single.yaml` saved as `deck.yaml`, in `build/bin` of a build at the pin
-with the Python package installed ([Install and run](#sec-preface-install)), a zero-gradient fill is
-
-```python
-import snapy
-
-def zero_gradient(face):  # face 0: x1-inner, face 1: x1-outer
-    def fill(var, dim, op):
-        ng, n = op.nghost(), var.size(dim)
-        lo, src = (0, ng) if face == 0 else (n - ng, n - ng - 1)
-        var.narrow(dim, lo, ng).copy_(var.narrow(dim, src, 1).expand_as(var.narrow(dim, lo, ng)))
-    return fill
-
-op = snapy.MeshBlockOptions.from_yaml("deck.yaml")  # x1-inner and x1-outer: custom
-op.set_bfunc(0, 0, -1, zero_gradient(0))            # (dx3, dx2, dx1) = (0, 0, -1): x1-inner
-op.set_bfunc(0, 0, 1, zero_gradient(1))             # x1-outer
-block = snapy.MeshBlock(op)
-```
+The generated recipe below installs and tests a Python zero-gradient fill.
 
 **Refusals and prerequisites.** Neither callback checks whether the supplied tensor has a physical interpretation.
 Custom silently preserves stale ghosts if the caller fails to fill them; parser name/key refusals remain those of
@@ -130,6 +109,8 @@ The assignment is the constant map in the Derivation layer. On a Boolean mask it
    [`bc_func.cpp:68-87`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/bc/bc_func.cpp#L68-L87).
 3. Use solid on a mask; do not infer a hydro wall from the function name. The anchor `rectify_solid` is in
    {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}.
+
+{{< include _howto.qmd >}}
 
 ### Tests
 
