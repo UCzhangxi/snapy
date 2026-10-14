@@ -14,14 +14,17 @@ N7 sharpens it. A tag fails when
   - it quotes a timing (a number of seconds or milliseconds, or a wall-clock time, in the tag or the rest of its
     footnote) and has no `scope:` field (what the time covers) or no `reps:` field (how many repetitions).
 
-The count of failing tags per chapter may only fall: tools/provenance-baseline.json records it, and the check fails
-when a chapter's count rises above its baseline. `--update` writes the current counts (do so only when they fell).
+The count of failing tags per chapter may only fall. tools/provenance-baseline.json records it, and the check fails
+when the file is missing, when a chapter's count differs from its baseline (a rise, or a fall not yet recorded), and,
+given the target branch (`--base-ref`), when the baseline rises against the target's copy: a new chapter entry is a
+rise from 0. The comparison reads the target's copy as tools/ratchet_gate.py does, and allows a rise only when the
+code pin moves. `--update` writes the current counts.
 
 Shas are resolved like tools/code_anchors.py resolves the pin: a local clone (`SNAPY_REPO`, then the repository
 holding this report), else a cache under `SNAPY_REPORT_CACHE` fetched from GitHub with its history, so that "the pin
 or later" can be decided.
 
-usage: python3 tools/check_provenance.py [report_dir] [--update] [--list]      (exit 0 when within the baseline)
+usage: python3 tools/check_provenance.py [report_dir] [--update] [--list] [--base-ref REF]   (exit 0: at the baseline)
 """
 import json
 import os
@@ -31,6 +34,8 @@ import sys
 from pathlib import Path
 
 REPO = "chengcli/snapy"
+BASELINE = "tools/provenance-baseline.json"
+TARGET = "tech-report"
 _TAG = re.compile(r"\[sha:\s*((?:[^\[\]]|\[[^\[\]]*\])*)\]", re.S)
 _HEX = re.compile(r"(?:([\w./-]+)@)?\b([0-9a-f]{7,40})\b")
 _TIMING = re.compile(r"\b\d+(?:\.\d+)?\s?(?:ms|s|min|seconds?)\b(?!\w)|\bwall[- ](?:clock|time)\b", re.I)
@@ -196,27 +201,79 @@ def counts(found):
     return dict(sorted(c.items()))
 
 
-def check(report, baseline=None, resolve=None):
-    """Return (status, messages, found): status 1 when a chapter's count is above its baseline."""
+def base_ref(report):
+    """The target branch the baseline may not rise against, picked as the ratchet step of CI picks it.
+
+    PROVENANCE_BASE_REF when set; in GitHub Actions, the pull request's target (GITHUB_BASE_REF) or else the previous
+    tip of a push, fetched shallowly into the checkout; otherwise origin/tech-report."""
+    if os.environ.get("PROVENANCE_BASE_REF"):
+        return os.environ["PROVENANCE_BASE_REF"]
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return f"origin/{TARGET}"
+    target = os.environ.get("GITHUB_BASE_REF", "")
+    if target:
+        _git(report, "fetch", "--quiet", "--depth=1", "origin", target)
+        return f"origin/{target}"
+    before = ""
+    try:
+        before = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")).get("before") or ""
+    except (KeyError, OSError, ValueError):
+        pass
+    if re.fullmatch(r"[0-9a-f]{40}", before) and before.strip("0"):
+        _git(report, "fetch", "--quiet", "--depth=1", "origin", before)
+        return before
+    _git(report, "fetch", "--quiet", "--depth=1", "origin", TARGET)
+    return f"origin/{TARGET}"
+
+
+def raised(report, ref, baseline):
+    """Chapters whose baseline rises against the baseline at `ref` (tools/ratchet_gate.py's baseline_raised, for
+    this file). A `ref` that names no commit is a problem; no baseline at `ref` means this change introduces it."""
+    from ratchet_gate import _git_show
+    if _git(report, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").returncode != 0:
+        return [f"base ref {ref!r} names no commit here (fetch it first): the baseline cannot be compared"]
+    old = _git_show(Path(report), ref, BASELINE)
+    if old is None:
+        return []
+    old_pin = re.search(r"\b([0-9a-f]{40})\b", _git_show(Path(report), ref, "code_pin.yml") or "")
+    if old_pin and old_pin.group(1) != read_pin(report):
+        return []  # the pin moves in this change: which shas count moves with it
+    old = json.loads(old)
+    return [f"{ch}: the baseline rises {old.get(ch, 0)} -> {baseline.get(ch, 0)} against {ref}"
+            for ch in sorted(set(baseline) | set(old)) if baseline.get(ch, 0) > old.get(ch, 0)]
+
+
+def check(report, baseline=None, resolve=None, ref=None):
+    """Return (status, messages, found): status 1 when the baseline is missing, differs from the counts, or rises
+    against the baseline at `ref`."""
     report = Path(report)
-    baseline = Path(baseline) if baseline else report / "tools" / "provenance-baseline.json"
-    base = json.loads(baseline.read_text(encoding="utf-8")) if baseline.exists() else {}
+    baseline = Path(baseline) if baseline else report / BASELINE
     found = violations(report, resolve)
+    if not baseline.exists():
+        return 1, [f"{BASELINE} is missing; write it with python3 tools/check_provenance.py --update"], found
+    base = json.loads(baseline.read_text(encoding="utf-8"))
     have, msgs = counts(found), []
-    for ch, n in have.items():
-        if n > base.get(ch, 0):
+    for ch in sorted(set(have) | set(base)):
+        n, b = have.get(ch, 0), base.get(ch, 0)
+        if n > b:
             new = [v for v in found if v["chapter"] == ch]
-            msgs.append(f"{ch}: {n} tag problem(s), baseline {base.get(ch, 0)}; e.g. "
+            msgs.append(f"{ch}: {n} tag problem(s), baseline {b}; e.g. "
                         + "; ".join(f"{v['file']}:{v['line']}: {v['why']}" for v in new[:3])
                         + " (python3 tools/check_provenance.py --list lists every one)")
+        elif n < b:
+            msgs.append(f"{ch}: {n} tag problem(s), baseline {b}; the baseline must equal the count "
+                        "(record a fall with python3 tools/check_provenance.py --update)")
+    if ref:
+        msgs += raised(report, ref, base)
     return (1 if msgs else 0), msgs, found
 
 
 def main(argv):
-    args = [a for a in argv if not a.startswith("--")]
+    ref = argv[argv.index("--base-ref") + 1] if "--base-ref" in argv[:-1] else None
+    args = [a for a in argv if not a.startswith("--") and a != ref]
     report = Path(args[0]) if args else Path(__file__).resolve().parent.parent
-    baseline = report / "tools" / "provenance-baseline.json"
-    status, msgs, found = check(report, baseline)
+    baseline = report / BASELINE
+    status, msgs, found = check(report, baseline, ref=ref)
     if "--update" in argv:
         baseline.write_text(json.dumps(counts(found), indent=1) + "\n", encoding="utf-8")
         print(f"[provenance] baseline written: {len(found)} tag problem(s)")
