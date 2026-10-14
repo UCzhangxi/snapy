@@ -223,3 +223,34 @@ def test_the_book_is_within_its_baseline():
     assert status == 0, msgs
     base = json.loads((TOOLS / "provenance-baseline.json").read_text())
     assert sum(base.values()) >= len(found)
+
+
+@pytest.mark.parametrize("relative", [
+    'chapters/04-spatial-discretization/_ppm.qmd',
+    'chapters/14-parallelism-io/_backends.qmd',
+    'chapters/14-parallelism-io/_bpp.qmd',
+    'chapters/14-parallelism-io/_gpu.qmd',
+    'chapters/14-parallelism-io/_repro.qmd',
+    'chapters/14-parallelism-io/_tools.qmd',
+    'chapters/15-verification/_ch01.qmd',
+    'chapters/15-verification/_ch02-thermodynamics.qmd',
+    'chapters/15-verification/_ch03-grids-geometry.qmd',
+    'chapters/15-verification/_ch04-spatial-discretization.qmd',
+    'chapters/15-verification/_ch05-well-balanced.qmd',
+    'chapters/15-verification/_ch10-moist-coupling.qmd',
+    'chapters/15-verification/_ch11.qmd',
+    'chapters/15-verification/_ch12-configuration.qmd',
+])
+def test_untraceable_run_records_are_explicit_without_exemptions(relative):
+    text = (TOOLS.parent / "book" / relative).read_text()
+    assert "**missing evidence** (untraceable run)" in text
+    unresolved = [t for t in cp.tags(TOOLS.parent / "book") if t["file"] == relative
+                  and cp.problems(t, lambda sha: None)]
+    assert len(unresolved) == 1, "Keep missing run records visible to the ratchet"
+
+
+def test_forcing_port_has_an_explicit_resolving_pin():
+    tag = next(t for t in cp.tags(TOOLS.parent / "book")
+               if t["file"] == "chapters/09-diffusion-forcing/_framework.qmd")
+    assert tag["fields"]["sha"] == "snapy@" + cp.read_pin(TOOLS.parent)
+    assert not cp.problems(tag, lambda sha: None)
