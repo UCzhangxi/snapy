@@ -83,7 +83,10 @@ def test_the_real_data_file_matches_the_sources():
     assert len(data["cards"]) == len(c.source_cards(report / "book")) == 69
 
 
-def test_the_real_exceptions_are_the_one_named_card():
-    """Card ch04-sphsrc names no deck; the Editor's chapter lane fixes it and then deletes this exception."""
-    data = c.load((TOOLS / "do-cards.yaml").read_text(encoding="utf-8"))
-    assert [e["id"] for e in data["exceptions"]] == ["ch04-sphsrc"]
+def test_the_construction_card_has_no_runnable_claim_or_exception():
+    data = c.load((TOOLS / "do-cards.yaml").read_text())
+    card = next(r for r in data['cards'] if r['id'] == 'ch04-sphsrc')
+    assert card['class'] == 'not runnable'
+    assert card['expect'] == 'nothing to run'
+    assert card['run']['kind'] == 'none'
+    assert not data['exceptions']
