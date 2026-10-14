@@ -1386,6 +1386,7 @@ def main(argv):
     import gen_topic_index
     import check_reader_hygiene
     import gen_reader_reference
+    import gen_boundary_contract
     import gen_forcing_contract
     import gen_collective_contract
     import gen_scheme_contract
@@ -1398,6 +1399,7 @@ def main(argv):
         ("N3 reader hygiene", lambda: check_reader_hygiene.main(["--book", str(book)])),
         ("N4 glossary", lambda: gen_reader_reference.check_glossary(report)),
         ("N5 pinned defaults", lambda: gen_reader_reference.check_defaults(report)),
+        ("N6 boundary contract", lambda: gen_boundary_contract.check(report)),
         ("N6 forcing contract", lambda: gen_forcing_contract.check(report)),
         ("N6 collective contract", lambda: gen_collective_contract.check(report)),
         ("N6 scheme contract", lambda: gen_scheme_contract.check(report)),
