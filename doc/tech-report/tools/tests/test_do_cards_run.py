@@ -6,7 +6,7 @@ never run it. GPU and multi-rank cards are not run here: their evidence is the d
 A needs-build-option card runs like a CPU card when the build's CMakeCache.txt sets its option, and is skipped with the
 reason otherwise (check_do_cards.missing_build_option): it never passes without running.
 
-  SNAP_PIN_BUILD=/path/to/snapy/build python3 -m pytest -q tools/tests/test_do_cards_run.py
+  SNAP_PIN_BUILD=/path/to/snapy/build python3 -m pytest -q -rs tools/tests/test_do_cards_run.py
 
 Optional: SNAP_PIN_PYTHONPATH (prepended to PYTHONPATH for the Python and ctest cards: the build's snapy package and kintera),
 SNAP_CARD_TIMEOUT (seconds per card, default 60). Each card runs in its own tmp directory: its first YAML block is

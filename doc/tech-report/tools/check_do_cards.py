@@ -123,6 +123,18 @@ def cmake_options(repo):
     return {m for f in files if f.is_file() for m in _OPTION.findall(f.read_text(encoding="utf-8"))}
 
 
+def cmake_true(value):
+    """CMake's if() on a cached value: true unless it is a false constant -- 0, OFF, NO, FALSE, N, IGNORE, NOTFOUND,
+    the empty string, a value ending in -NOTFOUND, or a zero number -- compared case-insensitively."""
+    v = value.strip().upper()
+    if v in ("", "0", "OFF", "NO", "FALSE", "N", "IGNORE", "NOTFOUND") or v.endswith("-NOTFOUND"):
+        return False
+    try:
+        return float(v) != 0
+    except ValueError:
+        return True
+
+
 def missing_build_option(rec, cache):
     """Why a needs-build-option card cannot run in the build whose CMakeCache.txt text is `cache`; None when it can
     (or when the card needs no option)."""
@@ -132,7 +144,7 @@ def missing_build_option(rec, cache):
     m = re.search(rf"^{re.escape(name)}:[A-Z]+=(.*)$", cache, re.M)
     if m is None:
         have = f"does not set {name}"
-    elif m.group(1).strip().upper() == value:
+    elif cmake_true(m.group(1)) == cmake_true(value):
         return None
     else:
         have = f"has {name}={m.group(1).strip()}"
