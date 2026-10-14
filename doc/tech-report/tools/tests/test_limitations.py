@@ -67,3 +67,8 @@ def test_rendered_pdf_warns_without_failing(tmp_path, monkeypatch, capsys):
 def test_numbered_note_and_actual_elsewhere_are_not_deferrals():
     assert not lint.findings("2. **Not provided:** a rationale; this is beyond scope.")
     assert not lint.findings("The field is zero elsewhere.")
+
+
+def test_task_question_before_structured_note():
+    assert not lint.findings("How do I plot? Not provided: plotting is outside scope.")
+    assert lint.findings("See elsewhere. Not provided: plotting is outside scope.")
