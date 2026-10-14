@@ -45,8 +45,7 @@ None at the pin: the interpolant throws before it computes anything, and the ste
 4. *`PPMInterpImpl::forward` throws before writing anything.* Its body computes the output shape and then
    executes `throw std::runtime_error("PPM interpolation is not implemented yet.")`; the `return` after it is
    unreachable: $\mathcal W[q]$ has no value for this type, because the call never returns.
-5. *Hence no face state of any accuracy is produced*, and there is no round-off to bound. The probe run of
-   @sec-ch04-framework builds a block with `type: ppm` and runs one stage: it stops with exactly this message.
+5. *Hence no face state of any accuracy is produced*, and there is no round-off to bound. The committed `ch04-ppm` card below builds a block with `type: ppm` and stops with exactly this message.
 
 ### Numerical method
 
@@ -93,22 +92,32 @@ The `throw` line is step 4; the `return` is never reached.
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| the probe run (this report) | `type: ppm` constructs and the first stage throws "PPM interpolation is not implemented yet." | exact (throws) | a run-time contract |
+| the committed `ch04-ppm` card | `type: ppm` constructs and the first stage throws "PPM interpolation is not implemented yet." | exact (throws) | a run-time contract |
 
 : Tests of PPM. {#tbl-ch04-ppm-tests}
 
-No ctest selects `type: ppm`. The probe is the run of @sec-ch04-framework.[^ppm-probe] The template
+No ctest selects `type: ppm`. The committed `ch04-ppm` card reproduces the refusal.[^ppm-probe] The template
 `interp_ppm` of `interp_simple.hpp`, which returns the centre value, is not on any production path;
 `recon_check.py` `[C6]` checks that template, not the module.
 
-[^ppm-probe]: **missing evidence** (untraceable run): the original probe was not committed and its exact
-    invocation was not recorded; the reported outcome cannot be reproduced from this run record.
-    [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck and run: those of the framework probe of
-    @sec-ch04-framework; snapy
-    2.11.10.dev1+g6fbb397 Release, torch 2.10.0, CPU, 1 process].
+[^ppm-probe]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: `ch04-ppm`,
+    `examples/straka_single.yaml` merged with this card's YAML; run:
+    `python3 -m pytest -q -s tools/tests/test_do_cards_run.py -k 'ch04-ppm or test_the_build_is_at_the_code_pin'`,
+    from the report directory with `SNAP_PIN_BUILD` pointing to the pin build and
+    `SNAP_PIN_PYTHONPATH` to its package; CPU, Release, 1 process; Python 3.11.13].
+    Both checks pass: the runner invokes `straka.release deck.yaml` and requires a nonzero exit
+    containing "PPM interpolation is not implemented yet." This committed reproduction replaces the
+    PPM part of the historical framework probe; it is not that original uncommitted run.
+    Recovery of the original multi-case probe checked the framework note and repository history;
+    only a descriptive API[^rg-70378f82fc9b] snippet, not its original command or script, is recorded. That original
+    record remains **missing evidence** and is no longer accepted by the command checker.
 
 ### Limits
 
 1. **The run stops.** Selecting `ppm` ends the run on its first stage. Whether to implement PPM or to refuse the
    type in the parser is a decision for the maintainers.
 2. **Ghost cost before the failure.** The block is built with three ghost cells for a method that never runs.
+
+<!-- reader glossary notes -->
+[^rg-70378f82fc9b]: API — application programming interface
+<!-- end reader glossary notes -->

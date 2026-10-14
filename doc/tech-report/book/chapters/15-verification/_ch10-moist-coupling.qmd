@@ -138,7 +138,7 @@ references. Energy and water are two conserved quantities and get two assertions
 | `test_sedimentation_guards.release` | a rising cloud is taken from the cell below | relative $10^{-9}$ | the test |
 | `test_check_redo_parallel.release` | both ranks take one retry decision and restore the saved tensors | exact (`torch::equal`) | the test |
 
-: Acceptance criteria read from the code pin; no pass at the pin is claimed. {#tbl-ch15-ch10-tests-assertions}
+: Acceptance criteria at the code pin; CPU run evidence is recorded below, with CUDA coverage limited explicitly. {#tbl-ch15-ch10-tests-assertions}
 
 The report-only `src/snapy_report/ch10/{fixvapor,borrow,kinetics,tracer,sed,redo}_check.py` scripts exercise
 the chapter's formulas on ports and import no snapy; their fixture comparisons are not tolerance tests of
@@ -148,13 +148,14 @@ Energy and water conservation are asserted separately from the cloud-change cont
 transport and retry rows keep distinct tolerances and failure contracts; none of them is a kinetics-step
 budget.[^ch15-ch10-run]
 
-[^ch15-ch10-run]: **missing evidence** (untraceable run): no execution was recorded for this section; these
-    are source-inspected registrations and acceptance criteria, not measured passes. No producing command
-    exists in this record.
-    [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; the selection names were checked against the
-    registrations of
-    `tests/CMakeLists.txt` at the pin; no compiled test, device comparison or two-rank run was executed for this
-    section]. The commands are reproduction instructions, not a run record.
+[^ch15-ch10-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: this section's CPU selections;
+    run: `ctest --output-on-failure -E '^test_shallow_xy_decomp$'` from `build/tests`,
+    Ubuntu CPU, Release, ranks as registered by each test; Python 3.11.17, torch 2.10.0].
+    The [pinned CI run](https://github.com/chengcli/snapy/actions/runs/38197324901) records 128 passed tests on Ubuntu
+    and 114 on macOS. Each CPU selection above appears as Passed in those logs.
+    The CUDA-only selection, where listed, is not covered: recovery checked both CI logs and the dated
+    N8 validation log; neither records `test_weno5_cuda_line.release`. Its pass status remains
+    **missing evidence**, not inferred from the CUDA example runs.
 
 ### Limits
 

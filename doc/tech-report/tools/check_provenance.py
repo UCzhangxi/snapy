@@ -170,7 +170,10 @@ def problems(tag, resolve):
         why = resolve(full[0])
         if why:
             out.append(why)
-    if not _CODE.search(f.get("run", "")):
+    command = _CODE.match(f.get("run", "").lstrip())
+    # A command leads the field; inline API examples embedded in prose are not invocations.
+    shell_start = r"(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*[A-Za-z0-9_./~+-]+(?:\s|$)"
+    if command is None or not re.match(shell_start, command.group()[1:-1]):
         out.append("no command (no `run:` field with a backticked command)")
     if _TIMING.search(tag["text"]):
         missing = [k for k in ("scope", "reps") if not f.get(k)]

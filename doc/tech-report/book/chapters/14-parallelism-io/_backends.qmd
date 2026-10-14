@@ -155,23 +155,22 @@ for (auto const& tensor : tensors) {
 There is no check script: the section derives nothing beyond the routing above, which the refusal tests exercise.
 The table lists the registered entries.[^ch14-backends-run]
 
-[^ch14-backends-run]: **missing evidence** (untraceable run): no execution was recorded for this section;
-    these are source-inspected registrations and acceptance criteria, not measured passes. No producing
-    command exists in this record.
-    [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the registrations of
-    `tests/CMakeLists.txt` at the pin; run: none,
-    the entries were read, not run, for this chapter].
+[^ch14-backends-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the `ch14-backends` card;
+    run: `BACKEND=gloo torchrun --nproc-per-node=2 --master-port=29511 collective.py`, CPU, 2 rank(s);
+    torch 2.10.0+cu128, kintera 2.6.2]. The dated N8 `validation_log` in
+    `tools/do-cards.yaml` records exit 0 on 2026-10-14. This is a card result, not a claim that every
+    registered test in the table ran. The [pinned CPU CI[^rg-9d639278ba00] run](https://github.com/chengcli/snapy/actions/runs/38197324901)
+    supplies individual Passed lines for the CPU tests; CUDA-only rows require separate evidence.
 
 The registrations use `setup_parallel_test` and `add_test` {{< code tests/CMakeLists.txt >}}; the one-tensor check is
 `a_message_of_two_tensors_is_refused_with_the_fix`, {{< code tests/test_gloo_one_tensor.cpp gloo.a_message_of_two_tensors_is_refused_with_the_fix >}}, and the Gloo-versus-UCX compare is
-`main` in {{< code tests/run_seam_backends.py main >}}. Their pass status at the pin was not
-run for this chapter.
+`main` in {{< code tests/run_seam_backends.py main >}}. CPU pass evidence and the N8 card result are distinguished in the run record above.
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 - No NCCL path. Multi-GPU exchange needs UCX built with CUDA; Gloo with `DEVICE=cuda` stops at the first send.
-- Linux CI[^rg-9d639278ba00] runs UCX by default; Gloo is reached on Linux only by the explicit `_gloo` entries above. The
+- Linux CI runs UCX by default; Gloo is reached on Linux only by the explicit `_gloo` entries above. The
   maintainer's position is that Gloo is the macOS backend and is not guaranteed elsewhere.[^ch14-backends-gloo]
 - `cmake/ucx.cmake` carries site-specific search paths for UCX; they are not part of the method.
 :::
