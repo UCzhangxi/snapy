@@ -1389,6 +1389,7 @@ def main(argv):
     import gen_forcing_contract
     import gen_collective_contract
     import gen_scheme_contract
+    import gen_species_contract
     report = book.resolve().parent
     for name, check in (
         ("N1 navigation", lambda: gen_topic_index.main([
@@ -1400,6 +1401,7 @@ def main(argv):
         ("N6 forcing contract", lambda: gen_forcing_contract.check(report)),
         ("N6 collective contract", lambda: gen_collective_contract.check(report)),
         ("N6 scheme contract", lambda: gen_scheme_contract.check(report)),
+        ("N6 species contract", lambda: gen_species_contract.check(report)),
     ):
         try:
             record(name, check())
