@@ -50,6 +50,7 @@ def test_audited_boundary_and_spatial_prose_is_converted():
     files = list((book / "chapters/11-boundaries").glob("*.qmd"))
     files.append(book / "chapters/15-verification/_ch04-spatial-discretization.qmd")
     files.append(book / "chapters/08-positivity/_eoslimiter.qmd")
+    files.append(book / "chapters/07-time-integration/_vic-assembly.qmd")
     assert not [(p.name, hit) for p in files for hit in lint.findings(p.read_text())]
 
 
