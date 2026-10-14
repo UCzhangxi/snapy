@@ -1,5 +1,6 @@
 """Source drift and generated recipe drift must fail the N6 boundary gate."""
 import sys
+import os
 from pathlib import Path
 import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -7,7 +8,8 @@ import gen_boundary_contract as c
 
 
 def test_clean_boundary_contract():
-    assert c.check() == 0
+    report = Path(os.environ.get("BOUNDARY_CONTRACT_REPORT", c.REPORT))
+    assert c.check(report) == 0
 
 
 @pytest.mark.parametrize("old,new", [

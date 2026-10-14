@@ -157,6 +157,7 @@ def reader_standards_pass(monkeypatch):
     import check_reader_hygiene
     import gen_reader_reference
     import gen_forcing_contract
+    import gen_boundary_contract
     import gen_collective_contract
     import gen_scheme_contract
     import gen_species_contract
@@ -165,6 +166,7 @@ def reader_standards_pass(monkeypatch):
     monkeypatch.setattr(gen_reader_reference, "check_glossary", lambda report: 0)
     monkeypatch.setattr(gen_reader_reference, "check_defaults", lambda report: 0)
     monkeypatch.setattr(gen_forcing_contract, "check", lambda report: 0)
+    monkeypatch.setattr(gen_boundary_contract, "check", lambda report: 0)
     monkeypatch.setattr(gen_collective_contract, "check", lambda report: 0)
     monkeypatch.setattr(gen_scheme_contract, "check", lambda report: 0)
     monkeypatch.setattr(gen_species_contract, "check", lambda report: 0)
