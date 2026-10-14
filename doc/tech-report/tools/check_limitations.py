@@ -36,6 +36,11 @@ def findings(text, source=True, data=DATA):
         for phrase in phrases:
             pattern = r"\b" + r"\s+".join(map(re.escape, phrase.split())) + r"\b"
             for match in re.finditer(pattern, value, re.I):
+                # A task question may precede its structured limitation note.
+                # Only phrases after that marker belong to the note.
+                prefix = value[:match.start()].replace("**", "")
+                if re.search(r"\bnot provided:\s*\S", prefix, re.I):
+                    continue
                 line = text.count("\n", 0, paragraph.start() + match.start()) + 1
                 result.append((line, phrase))
     return sorted(result)
