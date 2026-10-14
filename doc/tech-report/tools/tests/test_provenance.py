@@ -120,15 +120,96 @@ def test_update_writes_the_counts(tmp_path, snapy, monkeypatch):
 
 def test_the_render_gate_runs_the_provenance_gate(tmp_path, snapy, monkeypatch, capsys):
     import render_gate as rg
-    monkeypatch.setenv("SNAPY_REPO", str(snapy[0]))
-    monkeypatch.setenv("SNAPY_REPORT_CACHE", str(tmp_path / "cache"))
     report = _report(tmp_path, snapy, "complete.qmd", "no-command.qmd", baseline={"ch02": 1})
-    assert rg.gate_provenance(report / "book") == 0
-    (report / "tools" / "provenance-baseline.json").write_text("{}")
-    assert rg.gate_provenance(report / "book") == 1
+    base = _target(report)
+    assert _gate(report, snapy, monkeypatch, base) == 0
+    _set(report, {})
+    assert _gate(report, snapy, monkeypatch, base) == 1
     assert "no command" in capsys.readouterr().out
-    (report / "tools" / "provenance-baseline.json").unlink()
+    (report / "code_pin.yml").unlink()
     assert rg.gate_provenance(report / "book") == 0   # not the report layout: skipped
+
+
+# --- the baseline cannot drift: it is present, it does not rise against the target branch, it equals the counts ---
+
+NO_COMMAND = "\nThe flux is 2e-3 [sha: {pin}; deck: `c.yaml`; CPU].\n"
+
+
+def _git(report, *args):
+    return subprocess.run(["git", "-C", str(report), "-c", "user.name=t", "-c", "user.email=t@example.org",
+                           "-c", "commit.gpgsign=false", *args], check=True, capture_output=True, text=True).stdout
+
+
+def _target(report):
+    """Commit the report as the target branch and return its sha."""
+    _git(report, "init", "--quiet")
+    _git(report, "add", "-A")
+    _git(report, "commit", "--quiet", "-m", "target")
+    return _git(report, "rev-parse", "HEAD").strip()
+
+
+def _gate(report, snapy, monkeypatch, base_ref):
+    import render_gate as rg
+    monkeypatch.setenv("SNAPY_REPO", str(snapy[0]))
+    monkeypatch.setenv("SNAPY_REPORT_CACHE", str(report.parent / "cache"))
+    monkeypatch.setenv("PROVENANCE_BASE_REF", base_ref)
+    return rg.gate_provenance(report / "book")
+
+
+def _set(report, baseline):
+    (report / "tools" / "provenance-baseline.json").write_text(json.dumps(baseline))
+
+
+def test_a_missing_baseline_fails_the_gate(tmp_path, snapy, monkeypatch, capsys):
+    report = _report(tmp_path, snapy, "complete.qmd", baseline={})
+    base = _target(report)
+    (report / "tools" / "provenance-baseline.json").unlink()
+    assert _gate(report, snapy, monkeypatch, base) >= 1
+    assert "tools/provenance-baseline.json is missing" in capsys.readouterr().out
+
+
+def test_a_hand_raised_chapter_fails_against_the_target_branch(tmp_path, snapy, monkeypatch, capsys):
+    report = _report(tmp_path, snapy, "complete.qmd", "no-command.qmd", baseline={"ch02": 1})
+    base = _target(report)
+    q = report / "book" / "chapters" / "02-no-command.qmd"
+    q.write_text(q.read_text() + NO_COMMAND.replace("{pin}", snapy[1]["pin"]))
+    _set(report, {"ch02": 2})          # the baseline equals the new count, but rises against the target
+    assert _gate(report, snapy, monkeypatch, base) >= 1
+    assert "ch02: the baseline rises 1 -> 2 against" in capsys.readouterr().out
+
+
+def test_a_new_chapter_entry_is_a_rise_from_zero(tmp_path, snapy, monkeypatch, capsys):
+    report = _report(tmp_path, snapy, "complete.qmd", "no-command.qmd", baseline={"ch02": 1})
+    base = _target(report)
+    (report / "book" / "chapters" / "03-new.qmd").write_text(
+        "# New {#sec-ch03}\n" + NO_COMMAND.replace("{pin}", snapy[1]["pin"]))
+    _set(report, {"ch02": 1, "ch03": 1})
+    assert _gate(report, snapy, monkeypatch, base) >= 1
+    assert "ch03: the baseline rises 0 -> 1 against" in capsys.readouterr().out
+
+
+def test_an_unrecorded_fall_fails(tmp_path, snapy, monkeypatch, capsys):
+    report = _report(tmp_path, snapy, "complete.qmd", "no-command.qmd", baseline={"ch02": 2})
+    base = _target(report)              # the count is 1 and the baseline still says 2
+    assert _gate(report, snapy, monkeypatch, base) >= 1
+    assert "ch02: 1 tag problem(s), baseline 2; the baseline must equal the count" in capsys.readouterr().out
+
+
+def test_a_target_branch_that_is_not_there_fails(tmp_path, snapy, monkeypatch, capsys):
+    report = _report(tmp_path, snapy, "complete.qmd", "no-command.qmd", baseline={"ch02": 1})
+    _target(report)
+    assert _gate(report, snapy, monkeypatch, "origin/no-such-branch") >= 1
+    assert "names no commit here" in capsys.readouterr().out
+
+
+def test_a_recorded_fall_and_a_first_baseline_pass(tmp_path, snapy, monkeypatch):
+    report = _report(tmp_path, snapy, "complete.qmd", "no-command.qmd", baseline={"ch02": 2})
+    base = _target(report)
+    _set(report, {"ch02": 1})           # the fall recorded
+    assert _gate(report, snapy, monkeypatch, base) == 0
+    _git(report, "rm", "--quiet", "--cached", "tools/provenance-baseline.json")
+    _git(report, "commit", "--quiet", "-m", "no baseline at the target")
+    assert _gate(report, snapy, monkeypatch, "HEAD") == 0   # the change that introduces the baseline
 
 
 # --- the real book ------------------------------------------------------------------------------------------------
