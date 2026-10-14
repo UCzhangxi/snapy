@@ -1385,6 +1385,9 @@ def main(argv):
     # Reader standards share the normal entry point, including --labels-only.
     import gen_topic_index
     import check_reader_hygiene
+    import check_limitations
+    # N9 is advisory: do not record warnings as a failed (or passing) gate.
+    check_limitations.main(["--book", str(book)])
     import gen_reader_reference
     import gen_boundary_contract
     import gen_forcing_contract
@@ -1437,6 +1440,10 @@ def main(argv):
         print("\n".join(out.splitlines()[-15:]))
         results["render"] = "fail"
         return _verdict(results, release, expected)
+
+    # G0: the source preflight is not rendered-book evidence.
+    for pdf in sorted((book / "_book").glob("*.pdf")):
+        check_limitations.main(["--pdf", str(pdf)])
 
     record("outputs", gate_outputs(book))
     record("unresolved-in-output", gate_unresolved_in_output(book))
