@@ -31,6 +31,30 @@ def generate(report):
         return (match[0].strip(),
                 f'[`{path}:{line}`](https://github.com/{repo}/blob/{sha}/{path}#L{line})')
 
+    def deck_shock():
+        """Split examples/*.yaml at the pin by their reconstruct `shock:` values, with one cited line per group."""
+        names = subprocess.run(['git', '-C', str(checkout), 'ls-tree', '--name-only', sha, 'examples/'],
+                               check=True, capture_output=True, text=True).stdout.split()
+        groups = {}
+        for path in sorted(n for n in names if n.endswith('.yaml')):
+            text = read(path)
+            hits = [(text[:m.start()].count('\n') + 1, m.group(2)) for m in re.finditer(
+                r'^\s*(vertical|horizontal):[^\n]*\bshock:\s*(true|false)\b', text, re.M)]
+            values = {v for _, v in hits}
+            key = values.pop() if len(values) == 1 else ('mixed' if values else 'unset')
+            line = hits[0][0] if hits else 1
+            groups.setdefault(key, []).append(
+                f'[`{path}:{line}`](https://github.com/{repo}/blob/{sha}/{path}#L{line})')
+        return len([n for n in names if n.endswith('.yaml')]), groups
+
+    def shock_split(total, groups):
+        label = {'false': 'set `shock: false`', 'true': 'set `shock: true`',
+                 'mixed': 'mix the two', 'unset': 'leave it unset'}
+        parts = [f'{len(groups[k])} {label[k]} (e.g. {groups[k][0]})'
+                 for k in ('false', 'true', 'mixed', 'unset') if k in groups]
+        return f'of the {total} decks in `examples/`, ' + ', '.join(parts[:-1]) + \
+            (' and ' if len(parts) > 1 else '') + parts[-1]
+
     interface, interface_cite = excerpt('src/recon/reconstruct.hpp',
         r'  torch::Tensor forward\(torch::Tensor w, int dim, bool floor = true\);')
     option, option_cite = excerpt('python/csrc/pyrecon.cpp',
@@ -48,6 +72,7 @@ def generate(report):
     dispatch, dispatch_cite = excerpt('src/recon/interpolation.cpp',
         r'  if \(opts->type\(\) == "dc"\) \{\n    return p->register_module\(name, DonorCellInterp\(opts\)\);')
     shock, shock_cite = excerpt('src/recon/reconstruct.hpp', r'  ADD_ARG\(bool, shock\) = true;')
+    shock_decks = shock_split(*deck_shock())
     riemann, riemann_cite = excerpt('src/riemann/riemann_solver.hpp',
         r'  virtual torch::Tensor forward\(torch::Tensor wl, torch::Tensor wr, int dim,\n[^;]+;')
     riemann_dispatch, riemann_dispatch_cite = excerpt('src/riemann/riemann_solver.cpp',
@@ -95,7 +120,7 @@ def donor_cell(w: torch.Tensor, dim: int) -> torch.Tensor:
     return out
 ```
 
-2. Register it by its type name with the generated option ({option_cite}). The deck lives at
+2. Select it by its type name with the generated option ({option_cite}). The deck lives at
    `examples/straka_single.yaml`, whose line ({deck_cite}) is `{deck_line}`.
 
 ```python
@@ -136,7 +161,7 @@ print("N6 scheme: donor cell matches the built-in dc reconstruction exactly")
 - Dimension: the tensor dimension is 3 for $x_1$, 2 for $x_2$ and 1 for $x_3$ ({dims_cite}): `{dims}`.
 - Standalone use: without a parent hydro the result is clamped to non-negative values ({clamp_cite}), so
   prototype on a positive state, as step 0 does.
-- Shock flag: `{shock}` ({shock_cite}); the shipped decks set `shock: false`, as step 3 does.
+- Shock flag: `{shock}` ({shock_cite}); {shock_decks}. Step 3 sets it false, as the Straka deck does.
 - C++ registration: a new type is a class with `stencils()`, `left()` and `right()`, added to the type
   dispatch in `InterpImpl::create` ({dispatch_cite}):
 

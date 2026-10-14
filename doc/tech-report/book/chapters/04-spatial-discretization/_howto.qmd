@@ -37,7 +37,7 @@ def donor_cell(w: torch.Tensor, dim: int) -> torch.Tensor:
     return out
 ```
 
-2. Register it by its type name with the generated option ([`python/csrc/pyrecon.cpp:25`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/python/csrc/pyrecon.cpp#L25)). The deck lives at
+2. Select it by its type name with the generated option ([`python/csrc/pyrecon.cpp:25`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/python/csrc/pyrecon.cpp#L25)). The deck lives at
    `examples/straka_single.yaml`, whose line ([`examples/straka_single.yaml:23`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/examples/straka_single.yaml#L23)) is `vertical: {type: weno5, scale: false, shock: false}`.
 
 ```python
@@ -78,7 +78,7 @@ print("N6 scheme: donor cell matches the built-in dc reconstruction exactly")
 - Dimension: the tensor dimension is 3 for $x_1$, 2 for $x_2$ and 1 for $x_3$ ([`src/hydro/hydro_forward.cpp:281`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/hydro/hydro_forward.cpp#L281)): `enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };`.
 - Standalone use: without a parent hydro the result is clamped to non-negative values ([`src/recon/reconstruct.cpp:93`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/recon/reconstruct.cpp#L93)), so
   prototype on a positive state, as step 0 does.
-- Shock flag: `ADD_ARG(bool, shock) = true;` ([`src/recon/reconstruct.hpp:51`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/recon/reconstruct.hpp#L51)); the shipped decks set `shock: false`, as step 3 does.
+- Shock flag: `ADD_ARG(bool, shock) = true;` ([`src/recon/reconstruct.hpp:51`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/recon/reconstruct.hpp#L51)); of the 22 decks in `examples/`, 15 set `shock: false` (e.g. [`examples/bryan.yaml:43`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/examples/bryan.yaml#L43)) and 7 set `shock: true` (e.g. [`examples/jupiter_crm.yaml:88`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/examples/jupiter_crm.yaml#L88)). Step 3 sets it false, as the Straka deck does.
 - C++ registration: a new type is a class with `stencils()`, `left()` and `right()`, added to the type
   dispatch in `InterpImpl::create` ([`src/recon/interpolation.cpp:11`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/recon/interpolation.cpp#L11)):
 
