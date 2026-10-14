@@ -69,3 +69,20 @@ def test_the_riemann_default_depends_on_whether_the_section_exists(tmp_path, blo
     path = tmp_path / "deck.yaml"
     path.write_text(yaml.safe_dump(deck))
     assert snapy.MeshBlockOptions.from_yaml(str(path)).hydro().riemann().type() == expected
+
+
+def test_the_reader_check_in_the_book_passes(tmp_path):
+    """The `Check the registration` code of the generated block, run as written from a repository-like root."""
+    import subprocess
+    import sys
+    block = (Path(__file__).resolve().parents[2]
+             / "book/chapters/04-spatial-discretization/_howto-native.qmd").read_text()
+    code = block[block.index("**Check the registration.**"):]
+    code = code[code.index("```python\n") + len("```python\n"):]
+    code = code[:code.index("```")]
+    (tmp_path / "examples").mkdir()
+    (tmp_path / "examples/straka_single.yaml").write_text((REPO / "examples/straka_single.yaml").read_text())
+    (tmp_path / "check.py").write_text(code)
+    run = subprocess.run([sys.executable, "check.py"], cwd=tmp_path, capture_output=True, text=True)
+    assert run.returncode == 0, run.stdout[-400:] + run.stderr[-800:]
+    assert "N6 scheme: the selected names are registered" in run.stdout

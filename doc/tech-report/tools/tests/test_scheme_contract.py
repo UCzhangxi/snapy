@@ -19,7 +19,6 @@ def test_clean_contract():
     ('torch::Tensor forward(torch::Tensor w, int dim, bool floor = true);',
      'torch::Tensor forward(torch::Tensor w, int dim);'),
     ('int nghost = pinterp1->stencils() / 2 + 1;', 'int nghost = pinterp1->stencils() / 2;'),
-    ('if (opts->type() == "dc") {', 'if (opts->type() == "donor") {'),
     ('interp.type("dc")', 'interp.type("plm")'),
     ('enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };', 'enum { DIM1 = 1, DIM2 = 2, DIM3 = 3 };'),
     ('15 set `shock: false`', '16 set `shock: false`'),

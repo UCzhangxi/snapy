@@ -20,6 +20,10 @@ def test_clean_contract():
     ('this, "interp2");', 'this, "interp1");'),
     ('.check_all_same_dtype(true)', '.check_all_same_dtype(false)'),
     ('src/CMakeLists.txt#L42-L43', 'src/CMakeLists.txt#L41-L43'),
+    ('if (opts->type() == "dc") {', 'if (opts->type() == "donor") {'),
+    ('auto outl = wlr[IRT].slice(dim, il - 1, iu + 1);', 'auto outl = wlr[ILT].slice(dim, il - 1, iu + 1);'),
+    ('torch::empty_like(wl[IDN])', 'torch::empty_like(wl)'),
+    ('"P1", torch::zeros({nc3, nc2, nc1}', '"P1", torch::zeros({nvar, nc3, nc2, nc1}'),
 ])
 def test_contract_drift(tmp_path, old, new):
     target = tmp_path / c.TARGET
