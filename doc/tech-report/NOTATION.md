@@ -81,7 +81,7 @@ all $N_y$ species and excludes dry air.
 | $y_{\mathrm{sat},n}$ | the mass fraction of vapour $n$ in equilibrium with its condensate at the cell's $T$ and $\rho$, dimensionless [-]; the target of the saturation adjustment, not a stored variable | | $q_s$ |
 | $S_n = y_n/y_{\mathrm{sat},n}$ | saturation ratio of vapour $n$, dimensionless [-]; never $\mathsf S$ (slope matrix, §4) or $\hat s$ (entropy, §2) | | |
 | $\chi$ | the ratio $\rho/p$ used by the default reference and its wall continuation [s$^2$ m$^{-2}$] | `rop` | $r$ (not used: $r$ is radius) |
-| $\theta_p$ | dry potential temperature, $\theta_p = T(p_\star/p)^{R_{\mathrm{d}}/c_{p,\mathrm{d}}}$ [K], referred to the thermodynamic reference pressure $p_\star$ of §2a and formed with the **dry** constants whatever the composition | | $\theta$ (not used: $\theta$ is colatitude) |
+| $\theta_p$ | dry potential temperature, $\theta_p = T(p_\star/p)^{R_{\mathrm{d}}/c_{p,\mathrm{d}}}$ [K], referred to the thermodynamic reference pressure $p_\star$ of §2a and formed with the **dry** constants whatever the composition; the book uses dry constants, while the code computes `theta` from entropy | | $\theta$ (not used: $\theta$ is colatitude) |
 | $\theta_v$ | virtual potential temperature: $\theta_p$ of the dry-equivalent state with the same density [K]; defined in the chapter that first uses it | | |
 | $\Theta$ | the positivity limiter's donor factor in $[0,1]$: the fraction of a requested face flux the limiter allows. Capital, because $\theta$ is the colatitude | `theta`, meters `thetamin`, `thetasevere` | |
 | $H$ | a density or pressure scale height [m] | | $H$ |

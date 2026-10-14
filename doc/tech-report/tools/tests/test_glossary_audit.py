@@ -55,8 +55,8 @@ def test_unsourced_audit_disposition():
     data = json.loads((REPORT / 'tools/reader-glossary.json').read_text())['entries']
     linked = [e for e in data if e.get('source')]
     notation = [e for e in data if e.get('notation_only')]
-    assert len(linked) == 40
-    assert len(notation) == 29
+    assert len(linked) == 42
+    assert len(notation) == 27
     entries = {e['term']: e for e in g.glossary_entries(REPORT)}
     for e in linked:
         assert e['source'] in entries[e['term']]['meaning']
@@ -77,3 +77,16 @@ def test_glossary_source_refuses_ambiguous_provenance(tmp_path, metadata):
     (tmp_path / 'tools/reader-glossary.json').write_text(json.dumps(data))
     with pytest.raises(ValueError, match='invalid pinned glossary source'):
         g.glossary_entries(tmp_path)
+
+
+@pytest.mark.parametrize('term', [r'$\theta_p$', r'$\theta_v$'])
+def test_theta_diagnostic_source(term):
+    entries = {e['term']: e for e in g.glossary_entries(REPORT)}
+    meaning = entries[term]['meaning']
+    assert ('https://github.com/chengcli/snapy/blob/'
+            '6fbb39750f62b83df096058a4746e77d0a634bc5/'
+            'src/output/load_diag_output_data.cpp#L98-L104') in meaning
+    assert 'notation only' not in meaning
+    if term == r'$\theta_p$':
+        assert 'the book uses dry constants' in meaning
+        assert 'code computes `theta` from entropy' in meaning
