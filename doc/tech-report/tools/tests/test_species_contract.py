@@ -18,6 +18,7 @@ def test_clean_contract():
     ('species', 'src/species.cpp#L175', 'src/species.cpp#L174'),
     ('condensate', '"formula": "h2o_bryan"', '"formula": "h2o_ideal"'),
     ('condensate', 'hydro_u.narrow(0, ICY, ny) = yfrac * rho;', 'hydro_u.narrow(0, IDN, ny) = yfrac * rho;'),
+    ('condensate', 'h_idx.push_back(id + 1);', 'h_idx.push_back(id);'),
 ])
 def test_contract_drift(tmp_path, key, old, new):
     (tmp_path / 'code_pin.yml').write_text((c.REPORT / 'code_pin.yml').read_text())
@@ -29,3 +30,48 @@ def test_contract_drift(tmp_path, key, old, new):
     assert old in clean[key]
     (tmp_path / c.TARGETS[key]).write_text(clean[key].replace(old, new))
     assert c.check(tmp_path) == 1
+
+
+KINTERA_BLOB = 'https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/'
+
+
+def _code_lines(text):
+    inside, lines = False, []
+    for line in text.splitlines():
+        if line.strip().startswith('```'):
+            inside = not inside
+        elif inside:
+            lines.append(line)
+    return lines
+
+
+@pytest.mark.parametrize('key', sorted(c.TARGETS))
+def test_every_code_line_fits_the_page(key):
+    """The committed block's code lines stay within 80 characters, so the PDF does not cut them."""
+    text = (c.REPORT / c.TARGETS[key]).read_text()
+    wide = [line for line in _code_lines(text) if len(line) > 80]
+    assert wide == [], wide
+
+
+def test_the_native_alternative_gives_the_formula_tables_and_rebuild():
+    """The native C++ alternative of the condensate block: the generated signature, a formula and its _ddT pair,
+    the CPU table and name list, the CUDA table one position on, the lookups and the rebuild, each linked at the
+    kintera pin, and the measured effect of a name without its table entry."""
+    text = (c.REPORT / c.TARGETS['condensate']).read_text()
+    native = text[text.index('**Native C++ alternative.**'):]
+    for piece in ('using user_func1 = double (*)(double);', 'inline double h2o_bryan(double T)',
+                  'inline double h2o_bryan_ddT(double T)', 'user_func1 func1_table_cpu[] = {',
+                  'std::vector<std::string> func1_names = {', '__device__ user_func1 func1_table_cuda[] = {',
+                  'nullptr,', 'funcs.push_back(func_table[id]);', 'h_idx.push_back(id + 1);', 'name += "_ddT";',
+                  'cmake --build build --parallel', 'pip install .',
+                  'run: `python3 src/snapy_report/ch10/func_table_check.py`'):
+        assert piece in native, piece
+    for path in ('src/utils/user_funcs.hpp', 'src/vapors/vapor_functions.h', 'src/func_table.cpp',
+                 'src/func_table.cu', 'src/utils/user_funcs.cu', 'src/thermo/log_svp.hpp', 'README.md'):
+        assert KINTERA_BLOB + path + '#L' in native, path
+
+
+def test_the_function_table_check_output_is_committed():
+    out = (c.REPORT / 'src/snapy_report/ch10/func_table_check.out').read_text()
+    assert '5 of 5 passed' in out
+    assert all(f'[C{n}] PASS' in out for n in range(1, 6))
