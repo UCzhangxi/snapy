@@ -137,6 +137,8 @@ def glossary_entries(report):
         (report / 'NOTATION.md').read_text())[1] for row in s['rows'] if 'symbol' in row}
     entries, seen = [], set()
     for item in data['entries']:
+        if item.get('kind') == 'concept':  # named concepts: registry and glossary only, no first-use notes
+            continue
         kind, term = item['kind'], item['term']
         if kind not in ('acronym', 'key', 'symbol') or not isinstance(term, str) or not term.strip():
             raise ValueError(f'invalid glossary entry: {item!r}')

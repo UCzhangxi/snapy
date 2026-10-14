@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPORT = Path(__file__).resolve().parent.parent
 FRAGMENT = REPORT / 'book/chapters/17-appendices/_apph-glossary.qmd'
-GROUPS = (('acronym', 'Acronyms'), ('key', 'YAML keys'), ('symbol', 'Symbols'))
+GROUPS = (('acronym', 'Acronyms'), ('key', 'YAML keys'), ('concept', 'Named concepts'), ('symbol', 'Symbols'))
 
 
 def _tools():
@@ -27,6 +27,11 @@ def _tools():
 def _title(title):
     """A heading's text as link text: no trailing attribute braces, no nested links."""
     return re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', title).strip()
+
+
+def _where(item, book_labels):
+    target = book_labels.get(item.get('section', ''))
+    return f'[{_title(target["title"])}](#{item["section"]})' if target else f'`{item.get("section", "")}`'
 
 
 def render(report=REPORT):
@@ -42,6 +47,10 @@ def render(report=REPORT):
         lines += [f'## {heading} {{.unnumbered .unlisted}}', '']
         for item in sorted(items, key=lambda i: re.sub(r'[^0-9a-z]', '', i['term'].lower()) or i['term']):
             term = item['term'] if kind == 'symbol' else f'`{item["term"]}`' if kind == 'key' else f'**{item["term"]}**'
+            if kind == 'concept':  # a named concept carries no gloss of its own: the book's section is its meaning
+                lines.append(f'- {term}: ' + (f'not defined here; used in {_where(item, book_labels)}.' if item.get(
+                    registry.MARK) else f'defined in {_where(item, book_labels)}.'))
+                continue
             section = item.get('section', '')
             target = book_labels.get(section)
             where = f'[{_title(target["title"])}](#{section})' if target else f'`{section}`'

@@ -44,7 +44,7 @@ def _broken(data, term, **change):
 def test_every_concept_has_a_defining_section(data):
     assert registry.registry_problems(REPORT, data) == []
     assert all(e.get('section') for e in data['entries'])
-    assert len(data['entries']) == 329
+    assert len(data['entries']) == 346  # 329 acronyms, keys and symbols, and 17 named concepts
 
 
 @pytest.mark.parametrize('term,change,message', [
@@ -71,6 +71,18 @@ def test_a_broken_defining_section_fails(data, term, change, message):
     ('key', 'nb2', 'blocks', '| `distribute/layout`, `nb1`, `nb2`, `nb3` | `slab`, 1, 1, 1 | decomposition |', True),
     ('key', 'cfl', 'Courant number', '| block: reduce, `cfl`, redo | `max_time_step` |', False),
     ('key', 'cfl', 'Courant number', 'The step is multiplied by `cfl`, and halved for each redo.', False),
+    ('acronym', 'MC', 'monotonised-central limiter', 'TVD, total-variation diminishing; MC, the monotonised-central limiter.',
+     True),
+    ('key', 'limiter', 'positivity limiter', registry.KEY_TABLE + '| EOS `limiter` | false | positivity correction |', True),
+    ('key', 'disable-flux-x3', 'switch', registry.KEY_TABLE + '| `dynamics/disable-flux-x1`, `-x2`, `-x3` | false | gates |',
+     True),
+    ('key', 'cfl', 'Courant number', '| block: reduce, `cfl`, redo | `max_time_step` |', False),
+    ('key', 'nu_iso', 'viscosity', 'With the default `dynamic: false`, `nu_iso` is a kinematic viscosity.', True),
+    ('key', 'bot-heat', 'flux', '`body-heat` is a volumetric rate; `top-cool` and `bot-heat` stand for a surface flux.', True),
+    ('key', 'gammad', 'ratio', 'the last term; `gammad` is $\\gamma_d$ from the card.', True),
+    ('key', 'nx1', 'cells', 'The anchor `nx1` is in the hydro reset.', False),
+    ('key', 'uv-solver', 'solver', '**Activation.** `uv-solver` is `auto` (default), `kkt` or `partition`.', False),
+    ('concept', 'Riemann solver', '', 'A Riemann solver is a function of the two face states.', True),
 ])
 def test_the_definition_rule(kind, term, meaning, paragraph, expected):
     assert registry.defines(dict(kind=kind, term=term, meaning=meaning), paragraph) is expected
@@ -82,6 +94,57 @@ def test_a_generated_first_use_note_is_not_a_definition():
     cpu = dict(kind='acronym', term='CPU', meaning='central processing unit')
     assert not any(registry.defines(cpu, p) for s in order for p in paras.get(s, []))
     assert 'central processing unit' in (REPORT / 'book/chapters/01-overview/_driver.qmd').read_text()
+
+
+# The definitions the earlier recognisers missed (the review of the registry): under an unlabelled heading or in an
+# included preamble (Appendix A), in an acronym list, in the configuration key table and in prose.
+MISSED = {('acronym', 'PDE'): 'sec-appa-index', ('acronym', 'SI'): 'sec-appa-index',
+          ('acronym', 'BLAS'): 'sec-appa-index', ('acronym', 'MC'): 'sec-ch04-plm',
+          ('key', 'disable-flux-x2'): 'sec-ch12-yaml', ('key', 'disable-flux-x3'): 'sec-ch12-yaml',
+          ('key', 'limiter'): 'sec-ch12-yaml', ('key', 'vertical'): 'sec-ch12-yaml',
+          ('key', 'horizontal'): 'sec-ch12-yaml', ('key', 'scale'): 'sec-ch12-yaml', ('key', 'shock'): 'sec-ch12-yaml',
+          ('key', 'x1-inner'): 'sec-ch12-yaml', ('key', 'x3-outer'): 'sec-ch12-yaml',
+          ('key', 'const-gravity'): 'sec-ch06-cell', ('key', 'nu_iso'): 'sec-ch09-viscosity',
+          ('key', 'kappa_iso'): 'sec-ch09-viscosity', ('key', 'body-heat'): 'sec-ch09-heating',
+          ('key', 'top-cool'): 'sec-ch09-heating', ('key', 'bot-heat'): 'sec-ch09-heating',
+          ('key', 'gammad'): 'sec-ch02-ideal-moist'}
+
+
+def test_definitions_the_book_gives_are_not_marked(data):
+    entries = {(e['kind'], e['term']): e for e in data['entries']}
+    assert {k: entries[k][registry.MARK] for k in MISSED} == {k: False for k in MISSED}
+    assert {k: entries[k]['section'] for k in MISSED if k[0] == 'acronym'} == {
+        k: s for k, s in MISSED.items() if k[0] == 'acronym'}
+
+
+def test_the_mark_follows_the_book(data):
+    """No entry is marked while the book defines it, and the acronyms and keys marked are at most the reviewed 125."""
+    marked = [e for e in data['entries'] if e.get(registry.MARK) and e['kind'] in ('acronym', 'key')]
+    assert len(marked) <= 125
+    assert not [e['term'] for e in data['entries'] if e.get('notation_only') and e.get(registry.MARK)]
+    assert 'notation only; see @sec-appa. Not defined here' not in appendix.FRAGMENT.read_text(encoding='utf-8')
+
+
+def test_no_defining_section_is_a_roll_up(data):
+    book_labels = registry.labels(REPORT / 'book')
+    assert [e['term'] for e in data['entries'] if registry.rollup(e['section'], book_labels)] == []
+    own = {'PLM': 'sec-ch04-plm', 'PPM': 'sec-ch04-ppm', 'WENO': 'sec-ch04-weno', 'LMARS': 'sec-ch04-lmars',
+           'HLLC': 'sec-ch04-hllc', 'LLF': 'sec-ch04-roe', 'PVRS': 'sec-ch04-hllc', 'TVD': 'sec-appa-index',
+           'LF': 'sec-ch04-riemann'}
+    assert {e['term']: e['section'] for e in data['entries'] if e['term'] in own} == own
+
+
+def test_a_roll_up_section_fails_the_registry(data):
+    problems = registry.registry_problems(REPORT, _broken(data, 'PLM', section='sec-ch04'))
+    assert 'acronym PLM: section sec-ch04 is a chapter or appendix heading, not a section of its own' in problems
+
+
+def test_named_concepts_are_in_the_registry(data):
+    concepts = sorted(e['term'] for e in data['entries'] if e['kind'] == 'concept')
+    assert concepts == registry.concept_candidates(REPORT) and len(concepts) == 17
+    assert all(e.get('section') and isinstance(e.get(registry.MARK), bool) for e in data['entries']
+               if e['kind'] == 'concept')
+    assert '## Named concepts {.unnumbered .unlisted}' in appendix.FRAGMENT.read_text(encoding='utf-8')
 
 
 def test_a_use_under_an_unlabelled_section_has_no_section(data):
@@ -123,7 +186,7 @@ def test_the_committed_glossary_appendix_is_fresh_and_its_links_resolve():
 
 def test_the_glossary_says_not_defined_here(data):
     text = appendix.FRAGMENT.read_text(encoding='utf-8')
-    assert text.count('Not defined here') == registry.marked(data)
+    assert text.lower().count('not defined here') == registry.marked(data)
     assert '- **EOS**: equation of state. Defined in' in text
 
 
@@ -172,7 +235,8 @@ def _rendered(tmp_path, aux=None, toc=None, index=None):
 def test_the_rendered_fixture_passes(tmp_path):
     problems, stats = _rendered(tmp_path)
     assert problems == []
-    assert stats == dict(concepts=3, via_toc=2, via_topic_index=1, index_entries=3, appendix_links=3, unresolved=0)
+    assert stats == dict(concepts=3, via_toc=2, via_topic_index=1, index_entries=3, roll_ups=0, appendix_links=3,
+                         unresolved=0)
 
 
 def test_a_section_missing_from_the_aux_fails(tmp_path):
@@ -197,6 +261,21 @@ def test_an_index_line_to_a_roll_up_fails(tmp_path):
     problems, stats = _rendered(tmp_path, index=index)
     assert problems == ['acronym CPU: no topic-index line of its own refers to its defining section sec-ch01-driver']
     assert stats['index_entries'] == 2
+
+
+def test_a_rendered_roll_up_fails_even_when_registry_and_index_agree(tmp_path):
+    registry_text = (FIX / 'tools/reader-glossary.json').read_text().replace('"section": "sec-ch01-driver"',
+                                                                            '"section": "sec-ch01"')
+    index = (FIX / 'book/_appf.qmd').read_text().replace('**CPU**: Driver loop, @sec-ch01-driver.',
+                                                          '**CPU**: Overview, @sec-ch01.')
+    root = tmp_path / 'report'
+    shutil.copytree(FIX, root)
+    (root / 'tools/reader-glossary.json').write_text(registry_text)
+    (root / 'book/_appf.qmd').write_text(index)
+    problems, stats = rendered.problems(root / 'book', root, root / 'tools/reader-glossary.json',
+                                        root / 'book/_apph.qmd', root / 'book/_appf.qmd')
+    assert problems == ['acronym CPU: defining section sec-ch01 is a chapter or appendix heading (chapter.1), a roll-up']
+    assert stats['roll_ups'] == 1 and stats['index_entries'] == 3
 
 
 def test_the_rendered_gate_needs_a_render(tmp_path):
