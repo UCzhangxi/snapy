@@ -62,7 +62,8 @@ idempotence of a second fill [check `src/snapy_report/ch11/boundary_check.py`, o
 The input stays in its supplied representation. Conserved and primitive calls negate the normal row;
 a `kScalar` call only mirrors, so a tracer density or a limiter factor keeps even parity. A collapsed
 direction (one cell) returns at once. The fill runs with the physical fills of @sec-ch11-timing, before
-reconstruction consumes the ghosts, and again on the exchange-owned tangential slabs after an exchange. The
+reconstruction consumes the ghosts, and again after an exchange: once over the full extent when every tangential
+face is exchange-owned, otherwise on the exchange-owned tangential slabs (@sec-ch11-timing). The
 odd/even extension is exact for data that has that symmetry; no measured wall convergence order is available
 here.
 
@@ -116,7 +117,8 @@ The reversed donor slab implements the even row of @eq-ch11-reflecting-parity. T
 2. Negate the normal row for conserved or primitive input; keep even parity for scalar input. The anchor
    `reflecting_outer` is in
    [`bc_func.cpp:10-34`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/bc/bc_func.cpp#L10-L34).
-3. Repeat on the exchange-owned tangential corner slabs after a block exchange. The anchor `refresh` is in
+3. Repeat after a block exchange, in one full-extent call when every tangential face is exchange-owned and
+   otherwise on the exchange-owned tangential corner slabs. The anchor `refresh` is in
    {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}.
 
 ### Tests

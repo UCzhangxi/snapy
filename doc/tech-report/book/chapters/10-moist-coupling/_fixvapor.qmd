@@ -95,10 +95,14 @@ When the call comes from the stage update and $x_1$ is split over several blocks
 the full column with the dry density and the volumes, repairs it and keeps its own slice
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
 Failures are counted with `std::atomic` on CPU on every call
-({{< code src/eos/eos_dispatch.cpp call_fix_vapor_cpu >}}). On CUDA they are counted with `atomicAdd` and read
-back, one device synchronisation, only when the caller needs the count, that is when it requires success (`count`);
-otherwise no counter is allocated and nothing is read. A limiter call with parentless clouds runs the kernel twice
-(`nerr`, {{< code src/eos/eos_dispatch.cu call_fix_vapor_cuda >}}). @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
+({{< code src/eos/eos_dispatch.cpp call_fix_vapor_cpu >}}). On CUDA they are counted with `atomicAdd` only when the
+caller needs the count, that is when it requires success (`count`); otherwise no counter is allocated and nothing is
+read. Inside a block's stage and in the floor test's conversion of `check_redo`, the vapour count is added to a 0-d
+device counter of the equation of state, `vapor_failures_`, with no read
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}); `check_redo` carries it
+as a seventh flag in its one device-to-host copy and raises there, and stage 0 zeroes it (@sec-ch10-redo). Any other
+call reads its count back, one device synchronisation, and raises at once. A limiter call with parentless clouds runs
+the kernel twice (`nerr`, {{< code src/eos/eos_dispatch.cu call_fix_vapor_cuda >}}). @fig-ch10-fixvapor-column shows a column with an interior and a bottom deficit.
 
 ```{python}
 #| label: fig-ch10-fixvapor-column
@@ -134,7 +138,9 @@ make_fig()
 6. Mark the limiter only above round-off, `positivity_roundoff`
    ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}).
 
-A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed to fix vapor mass fractions."
+A user can hit one message: "[EquationOfState] apply_conserved_limiter_: Failed to fix vapor mass fractions."; on
+CUDA within a step it ends "(counted on the device in the step, reported at check_redo)."
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}}).
 
 **How to use it.** The same card as @sec-ch10-borrow: `limiter: true`. The column gather needs no key; it runs when
 $x_1$ is split over blocks (`distribute/nb1` > 1) and the call comes from the stage update. The vapour call is
@@ -169,8 +175,10 @@ float32 ({{< code tests/test_fix_vapor_volume.cpp DeviceTest.fix_vapor_keeps_the
 The split-column test requires every vapour cell of a two-block column to equal the one-block result exactly
 ({{< code tests/test_vapor_column_nb1.cpp DeviceTest.vapor_repair_keeps_the_mass_with_nb1_2 >}}).
 Also registered: `test_parentless_cloud_nb1.release`, the 2-rank `test_parentless_cloud_nb1_mp` (rain and total
-mass to $10^{-12}$), `test_fix_vapor_counts_every_column_python` (one broken column in 16384 is reported) and the CUDA
-arm `test_fix_vapor_reports_failure_cuda_python`. Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
+mass to $10^{-12}$), `test_fix_vapor_counts_every_column_python` (one broken column in 16384 is reported),
+`test_fix_vapor_stale_count_python` (a reported failure never resurfaces in a later `check_redo`) and the CUDA
+arms `test_fix_vapor_reports_failure_cuda_python` and `test_fix_vapor_stale_count_cuda_python`. Every other ctest named here that the CPU build registers passed in the run
+of @tbl-ch10-ctest-run; `test_fix_vapor_stale_count_python` is not in that run, and the CUDA and Gloo arms are not
 registered in that build and were not run.
 
 ### Limits
