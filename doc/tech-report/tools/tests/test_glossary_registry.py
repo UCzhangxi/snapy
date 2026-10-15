@@ -44,7 +44,7 @@ def _broken(data, term, **change):
 def test_every_concept_has_a_defining_section(data):
     assert registry.registry_problems(REPORT, data) == []
     assert all(e.get('section') for e in data['entries'])
-    assert len(data['entries']) == 360  # 329 acronyms, keys and symbols, 17 named concepts and 14 reader terms
+    assert len(data['entries']) == 362  # 329 acronyms, keys and symbols, 17 named concepts and 16 reader terms
 
 
 @pytest.mark.parametrize('term,change,message', [
@@ -152,7 +152,9 @@ READER_TERMS = {'MeshBlock': 'sec-ch01-construction', 'tensor layout': 'sec-ch01
                 'mixing ratio': 'sec-ch10-tracer', 'Python bindings': 'sec-ch01-python',
                 'options object': 'sec-ch01-options', 'module': 'sec-ch01-options',
                 'functional': 'sec-ch01-options', 'deck': 'sec-preface-install',
-                'case': 'sec-ch01-initialization', 'restart file': 'sec-ch14-restart'}
+                'case': 'sec-ch01-initialization', 'restart file': 'sec-ch14-restart',
+                'conserved variables': 'sec-ch14-netcdf',
+                'primitive variables': 'sec-ch14-netcdf'}
 
 
 def test_named_concepts_are_in_the_registry(data):
