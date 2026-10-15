@@ -44,7 +44,7 @@ def _broken(data, term, **change):
 def test_every_concept_has_a_defining_section(data):
     assert registry.registry_problems(REPORT, data) == []
     assert all(e.get('section') for e in data['entries'])
-    assert len(data['entries']) == 354  # 329 acronyms, keys and symbols, 17 named concepts and 8 reader terms
+    assert len(data['entries']) == 360  # 329 acronyms, keys and symbols, 17 named concepts and 14 reader terms
 
 
 @pytest.mark.parametrize('term,change,message', [
@@ -144,12 +144,15 @@ def test_a_roll_up_section_fails_the_registry(data):
     assert 'acronym PLM: section sec-ch04 is a chapter or appendix heading, not a section of its own' in problems
 
 
-# Reader terms (the Q326 held-out lookups): concepts a reader looks up that are not eponymous method names, so
+# Reader terms (the Q326 and q333 held-out lookups): concepts a reader looks up that are not eponymous method names, so
 # `concept_candidates` does not find them; each is defined in the section it routes to.
 READER_TERMS = {'MeshBlock': 'sec-ch01-construction', 'tensor layout': 'sec-ch01-layout',
                 'ghost exchange': 'sec-ch03-exchange', 'halo exchange': 'sec-ch03-exchange',
                 'ghost zone': 'sec-ch04-framework', 'latent heat': 'sec-ch10-satadj',
-                'mixing ratio': 'sec-ch10-tracer', 'Python bindings': 'sec-ch01-python'}
+                'mixing ratio': 'sec-ch10-tracer', 'Python bindings': 'sec-ch01-python',
+                'options object': 'sec-ch01-options', 'module': 'sec-ch01-options',
+                'functional': 'sec-ch01-options', 'deck': 'sec-ch01-initialization',
+                'case': 'sec-ch01-initialization', 'restart file': 'sec-ch01-initialization'}
 
 
 def test_named_concepts_are_in_the_registry(data):

@@ -16,6 +16,18 @@ read into those objects by one reader per module. A reader checks its block agai
 misspelt key stops the run with the key's path instead of being ignored. This section shows the macro behind the
 options objects, the key check, and how the readers delegate to each other.
 
+An options object is a configuration container, not the module that advances the state: for example,
+`HydroOptions` is a shared pointer to `HydroOptionsImpl`, whose `ADD_ARG` fields hold defaults and supply
+setters and getters ({{< code src/hydro/hydro.hpp HydroOptionsImpl >}}, {{< code src/add_arg.h >}}).
+
+A module is an object that owns configuration, buffers and child modules and exposes operations such as
+`forward`: `HydroImpl` derives from `torch::nn::Cloneable<HydroImpl>`, and `Hydro` is its `TORCH_MODULE`
+holder ({{< code src/hydro/hydro.hpp HydroImpl >}}). A functional is a function call with its inputs and
+options passed as arguments, without constructing a module object for that operation. For example,
+`conservative_refine` calls `torch::nn::functional::interpolate(x, opts_y)` with explicit interpolation
+options ({{< code src/utils/refine.cpp conservative_refine >}}). This distinction concerns the C++ API;
+it does not assert that every function is pure or that every snapy module has a matching functional.
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** N/A, a code map: `ADD_ARG` fields, `check_keys`, and the root reader's delegation.
 

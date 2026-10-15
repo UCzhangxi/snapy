@@ -101,10 +101,26 @@ The `build/python` directory must contain the extension built from this checkout
 extension from that build. Missing dependencies can stop configuration; a failed Torch ABI probe reports
 "Failed to detect Torch GLIBCXX ABI". YAML cannot change an already compiled feature.
 
-**Not provided:** what continuous integration runs on a proposed change and the contribution workflow (branches,
-review, which tests a change must add); they are the project's process, kept in the repository's workflow files
-rather than in the code at the pin, and this report describes the code. What a contributor needs from the code,
-registering a test and running it with `ctest`, is the recipe above.
+**Checks for a proposed change.** The pinned source's workflow ({{< code .github/workflows/ci.yml >}})
+runs pre-commit first, then Release builds and tests on Linux and macOS for changes targeting `main`.
+Both configure `BUILD_TESTS=ON`, `FULL_TESTS=OFF`, `CUDA=OFF` and `NETCDF=ON`, install the built Python
+package and set `SNAPY_TEST_PYTHONPATH` to its installation directory. The test commands are:
+
+```bash
+# Linux, from build/tests: all enabled registered tests except this decomposition case
+ctest --output-on-failure -E '^test_shallow_xy_decomp$'
+# macOS, from build/tests: the selected C++ tests and Python import-path probe
+ctest --output-on-failure \
+  -R '^(test_(eos|plm|gloo_one_tensor)\.release|test_python_import_path_python)$'
+```
+
+The macOS build targets are `test_eos.release`, `test_plm.release` and `test_gloo_one_tensor.release`.
+Use these workflow selections to reproduce the automated checks; `ctest -N` alone is not a pass.
+For the registered test inventory and each test's purpose, see @sec-appc.
+**Not provided:** a mandatory pre-submission test policy or the server's required-check settings. The
+pinned workflow specifies what runs when a change is proposed, but does not encode branch protection or
+a requirement to run every test locally before submitting. In particular, its proposed-change jobs do not
+enable `FULL_TESTS` or CUDA; those suites must not be presented as mandatory on the evidence of this file.
 
 {{< code CMakeLists.txt >}} contains this selection step:
 
