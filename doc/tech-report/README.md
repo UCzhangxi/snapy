@@ -65,6 +65,11 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
   cmake -S snapy-pin -B snapy-pin/build -DCMAKE_BUILD_TYPE=Release -DNETCDF=ON
   python3 tools/gen_test_index.py --refresh snapy-pin/build
   ```
+- `tools/gen_deck_keys.py`: generates Appendix I, the deck key reference (`book/chapters/17-appendices/_appi-deck-keys.qmd`),
+  from `tools/deck-keys.json`, the keys every `check_keys` list of snapy's parsers accepts at the pin, with the
+  default each parser falls back to and the line that decides it; each key links to the section that names it, or
+  says "no section". The fragment is rewritten before every render; `python3 tools/gen_deck_keys.py --check` fails
+  when it is stale. When the pin moves, refresh the JSON with `python3 tools/gen_deck_keys.py --refresh`.
 - **Generated files and rebasing.** Appendix A (`tools/gen_notation_index.py`) and Appendix B
   (`tools/gen_derivation_index.py`) are committed only in pieces that one chapter owns: Appendix B is one file per
   chapter (`book/chapters/17-appendices/_appb-chNN.qmd`) under a parent that holds no counts, and Appendix A
