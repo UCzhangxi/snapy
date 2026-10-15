@@ -46,7 +46,8 @@ MARK = 'not_defined_here'
 _ANY_HEADING = re.compile(r'^(#{1,6}) (.*?)\s*(\{[^{}]*\})?\s*$')
 _LABEL = re.compile(r'#(sec-[A-Za-z0-9_-]+)')
 # generated pages that list every concept; they are not where a concept is defined
-_GENERATED = ('_apph-glossary.qmd', '_appf-topic-index.qmd', 'apph-glossary.qmd', 'appf-topic-index.qmd')
+_GENERATED = ('_apph-glossary.qmd', '_appf-topic-index.qmd', 'apph-glossary.qmd', 'appf-topic-index.qmd',
+              '_appi-deck-keys.qmd', 'appi-deck-keys.qmd')
 
 
 def _tools():
