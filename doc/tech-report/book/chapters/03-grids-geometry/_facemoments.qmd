@@ -32,7 +32,7 @@ per-type flag that the shift is identically zero.
 **Data.** In: radial faces $r_\pm$ [m]. Out: `face_moment2_x1` [m$^2$] and `face_centroid_shift_x1` [m] per cell,
 on the face's own area measure, distinct from the cell measure of $\sigma_i^2$ and $\delta_i$.
 
-**Placement.** Evaluated when the face-flux covariance reads them, in each stage's $x_2$/$x_3$ flux.
+**Placement.** Read by the face-flux covariance in each stage's $x_2$/$x_3$ flux; `face_moment2_x1` is evaluated once per block and kept until `x1f` is replaced or modified or the device or dtype changes.
 
 **Activation.** Read by `SNAP_FLUX_COVARIANCE` (@sec-ch12-flux-covariance), on unless set to
 `0`/`false`/`off`/`no` or empty (any case); the helpers exist on every grid.
@@ -183,7 +183,8 @@ make_fig()
 
 In step order (@tbl-ch03-facemoments-code):
 
-1. The caller asks the coordinate for `face_moment2_x1` and `face_centroid_shift_x1`; virtual dispatch picks the
+1. The caller asks the coordinate for `face_moment2_x1` (only when its per-block copy, keyed on the `x1f` tensor,
+   its version, the device and the dtype, is missing or stale) and `face_centroid_shift_x1`; virtual dispatch picks the
    grid's form ({{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_centroid_shift_x1 >}},
    {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::face_moment2_x1 >}}).
 2. `radial_face_moment2_` forms $\Delta x_1$ and $x^{\mathrm{m}}$ from the faces and masks the degenerate cells with

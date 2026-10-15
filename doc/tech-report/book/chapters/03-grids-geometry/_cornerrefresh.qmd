@@ -16,8 +16,8 @@ ghosts of the updated slab.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** After the tangential exchange, each installed $x_1$ boundary function except outflow is applied again inside
-the $x_2$ and $x_3$ ghost slabs, so the ghost corners next to an $x_1$ wall match the updated column; a rule, stated
-in the Derivation layer.
+the $x_2$ and $x_3$ ghost slabs (a `reflecting` wall on a block with no physical tangential face: once over the whole
+array), so the ghost corners next to an $x_1$ wall match the updated column; a rule, stated in the Derivation layer.
 
 **Data.** In/out: the ghost corner cells of the conserved (`hydro_u`) and scalar (`scalar_s`) arrays, in their own units.
 
@@ -40,7 +40,9 @@ refresh rewrites (count).
 There is nothing to derive; it is a consistency rule. For each installed $x_1$ bfunc that is not outflow, and each
 tangential direction with more than one cell, the bfunc is called on the first and last $n_{\mathrm{slab}}$ cells of
 that direction, with $n_{\mathrm t}$ and $n_{\mathrm{slab}}$ as above (`int g = ng < n / 2 ? ng : n / 2` in {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}), unless that tangential face is itself physical and not periodic, in which case its own bfunc already
-wrote the corner. The rule relies on the contract stated with the `BC_FUNCTION` macro: a face function called again on
+wrote the corner. A `reflecting` $x_1$ wall on a block none of whose tangential faces is physical is instead called
+once over the whole array: it mirrors each $x_1$ row from that row's own interior, so the one call writes the same
+corner values as the slab calls and rewrites the other $x_1$ ghost rows with the bits they already hold. The rule relies on the contract stated with the `BC_FUNCTION` macro: a face function called again on
 a tangential slab must not depend on the slab's size and must give the same ghosts ({{< code src/bc/bc_func.hpp BC_FUNCTION >}}).
 Outflow is excluded because its background must match the whole block and it needs primitives.
 
@@ -56,8 +58,8 @@ than one, so the exclusion is exactly what keeps the result independent of the o
 ### Numerical method
 
 The refresh runs at the end of every per-stage sync, on `hydro_u` as conserved and on `scalar_s` as scalar, after
-both exchanges and before the scalar primitive is rebuilt. It writes only $x_1$ ghost rows inside the tangential ghost
-slabs. @fig-ch03-cornerrefresh-wall shows the cells it rewrites.
+both exchanges and before the scalar primitive is rebuilt. It changes only $x_1$ ghost rows inside the tangential ghost
+slabs; the one call of a `reflecting` wall also rewrites the other $x_1$ ghost rows, with the values they hold. @fig-ch03-cornerrefresh-wall shows the cells it rewrites.
 
 ```{python}
 #| label: fig-ch03-cornerrefresh-wall
@@ -81,23 +83,27 @@ In step order (@tbl-ch03-cornerrefresh-code):
 
 1. `physical` is true for an installed, non-periodic tangential face ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
 2. `refresh` loops over the two $x_1$ faces, skips a missing or `is_outflow` function and an $x_1$ axis of one cell,
-   and calls the function on each tangential slab whose face is not `physical` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
+   and calls the function on each tangential slab whose face is not `physical`, or, for a `reflecting` wall when no
+   tangential face is `physical` (`all_owned`), once on the whole array ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}).
 3. It runs for `hydro_u` and `scalar_s` with their types ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} for `refresh`).
 
 **How to use it.** No key: the refresh runs in every per-stage block sync for each installed $x_1$ function except
 `outflow`. A user boundary function must honour the `BC_FUNCTION` contract (same ghosts on any slab size). The slab
-rule is ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}):
+rule, after the one-call branch of a `reflecting` wall, is ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}):
 
 ```cpp
       for (int f = 0; f < nface; ++f) {
         if (!fns[f] || is_outflow(fns[f])) continue;
-        int spatial = 3 - f / 2;
-        if (field.size(spatial) == 1) continue;
+        ...
+          if (any_orth && all_owned && static_cast<size_t>(f) < names.size() &&
+              names[f].compare(0, 10, "reflecting") == 0) {
+            fns[f](field, spatial, op);
+            continue;
+          }
+        ...
         for (int orth = 1; orth <= 3; ++orth) {
-          if (orth == spatial || field.size(orth) <= 1) continue;
-          int n = static_cast<int>(field.size(orth));
+          ...
           int g = ng < n / 2 ? ng : n / 2;
-          if (g <= 0) continue;
           int inner = (3 - orth) * 2;
           if (!physical(inner)) fns[f](field.narrow(orth, 0, g), spatial, op);
           if (!physical(inner + 1))
