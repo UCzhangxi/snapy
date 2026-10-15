@@ -170,7 +170,8 @@ def test_reader_terms_are_defined_where_they_route(data):
     assert all(READER_TERMS[t] in defs[('concept', t)] for t in READER_TERMS)
     routes = {(e['kind'], e['term']): (e['section'], e.get(registry.MARK)) for e in data['entries']}
     assert routes[('key', 'nghost')] == ('sec-ch04-framework', False)
-    assert routes[('acronym', 'VIC')] == ('sec-ch07-cfl', False)
+    assert routes[('acronym', 'VIC')] == ('sec-ch07-vic-options', False)  # Q333 H17
+    assert routes[('acronym', 'CFL')] == ('sec-ch07-cfl', False)  # Q333 H24
     assert routes[('key', 'uv-solver')] == ('sec-ch10-satadj', False)
 
 
