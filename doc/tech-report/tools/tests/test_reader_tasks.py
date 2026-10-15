@@ -41,7 +41,7 @@ def test_the_list_has_its_199_rows(real):
     rows = real[0]
     assert len(rows) == 199 and len({r["id"] for r in rows}) == 199
     anchored = [r for r in rows if not r["where"].startswith("not provided")]
-    assert (len(anchored), len(rows) - len(anchored), len({r["where"] for r in anchored})) == (175, 24, 104)
+    assert (len(anchored), len(rows) - len(anchored), len({r["where"] for r in anchored})) == (175, 24, 105)
 
 
 def test_the_real_list_passes_and_the_appendix_is_fresh(real, capsys):
@@ -53,7 +53,7 @@ def test_the_real_list_passes_and_the_appendix_is_fresh(real, capsys):
 
 def test_the_statuses(real):
     rows, _, bank = real
-    assert g.counts(rows, bank) == {"answered": 98, "partly documented": 77, "undocumented": 16,
+    assert g.counts(rows, bank) == {"answered": 99, "partly documented": 76, "undocumented": 16,
                                     "unsupported by the code": 0, "outside scope": 8}
 
 

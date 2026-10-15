@@ -137,16 +137,7 @@ What each `variables:` keyword writes:
 
 : Netcdf contract, table 4. {#tbl-ch14-netcdf-contract-4}
 
-**A field of your own.** Row O-26 is the route for a new output field: register a callback on the block before
-its first output (`user_output_callback` in C++, as `main` of {{< code examples/run_hydro.cpp main >}} does;
-`set_user_output_func` in Python). It receives the variables map and returns a map from name to tensor, and each
-named tensor is written under that name
-({{< code src/output/load_user_output_data.cpp OutputType::loadUserOutputData >}}); `uov` must also be in
-`variables:`.
-
-**Not provided:** the steps to add a new built-in `variables:` keyword; the keywords are matched inside the output
-loaders at the pin, with no registry to extend, so a new one is a source change to those loaders that this report
-does not describe.
+To add a field, follow @sec-ch14-add-output-field; the existing diagnostic groups are in @sec-ch13-output-diag.
 
 | id | quantity | meaning | source |
 |---|---|---|---|
@@ -175,11 +166,72 @@ Watch-outs for a reader of the files:
 
 Cadence is described in @sec-ch14-schedule. The existing ghost-zone limits above still apply.
 
+### Add a new output field {#sec-ch14-add-output-field}
+
+A field is a named tensor loaded into an existing output stream. `OutputType::LoadOutputData` calls the hydro,
+diagnostic, scalar and user loaders in that order
+({{< code src/output/output_type.cpp OutputType::LoadOutputData >}}).
+Keep `type: netcdf` in `outputs`[^rg-b5340f5bdc7f] for a snapshot of a new diagnostic; `type` selects the writer, while `variables` selects fields.
+The procedure below adds a cell-centred scalar without adding a writer.
+
+1. **Choose the loader.** For a case-specific field, register `MeshBlockImpl::user_output_callback` on each block
+   before its first output, following {{< code examples/run_hydro.cpp main >}}. Return a map from a nonempty field
+   name to a tensor; select `variables: [uov]` (or `[user_out_var]`) to write all entries.
+   `OutputType::loadUserOutputData` refuses a missing callback and appends each entry as a scalar
+   ({{< code src/output/load_user_output_data.cpp OutputType::loadUserOutputData >}}).
+   For a built-in diagnostic, edit `OutputType::loadDiagOutputData` in
+   {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}};
+   state fields instead belong in `OutputType::loadHydroOutputData`
+   ({{< code src/output/load_hydro_output_data.cpp OutputType::loadHydroOutputData >}}).
+2. **Register the selection and data.** There is no separate field registry: `OutputType::ContainVariable`
+   matches strings in the stream's options
+   ({{< code src/output/output_type.cpp OutputType::ContainVariable >}}).
+   Add a guarded append in the loader. For example, this proposed addition copies the existing total-density
+   field under a new name; replace its tensor expression with the intended diagnostic:
+
+   ```cpp
+   if (ContainVariable("rho_copy")) {
+     auto const& w = vars.at("hydro_w");
+     appendTensorOutput("SCALARS", "rho_copy", w[IDN]);
+   }
+   ```
+
+   Place this branch directly in the loader body, outside the other keyword guards. Retain the full cell array,
+   including its ghosts, as the existing loaders do. `OutputType::appendTensorOutput` copies the tensor, links the `OutputData` node and increments the
+   variable count ({{< code src/output/output_type.cpp OutputType::appendTensorOutput >}}).
+3. **Add metadata and rebuild.** Add `{"rho_copy", "copy of total density", "kg/m^3", "CCC"}` to the table in
+   `MetadataTable::MetadataTable` ({{< code src/output/output_utils.cpp MetadataTable::MetadataTable >}}).
+   The columns are name, long name, units and grid location. `NetcdfOutput::write_output_file` obtains attributes
+   from that table by field name, not from `OutputData::units`; an unknown name gets no units or long name
+   ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}).
+4. **Select and locate it.** After rebuilding the source change, add this stream to the input deck:
+
+   ```yaml
+   outputs:
+     - type: netcdf
+       variables: [rho_copy]
+       dt: 100.
+   ```
+
+   `OutputOptionsImpl::from_yaml` copies the list into `options->variables()`
+   ({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}).
+   As the first stream, it writes `rho_copy(time, x1, x3, x2)` in
+   `<basename>.out0.<kkkkk>.nc`; with `combine: false`, use `<basename>.block<r>.out0.<kkkkk>.nc`.
+   The writer defines the variable and `NetcdfOutput::combine_blocks` joins the block files
+   ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}};
+   {{< code src/output/combine_netcdf.cpp NetcdfOutput::combine_blocks >}}).
+   Choosing `[rho_copy]` before adding its loader branch silently selects no such field.
+
+For a new field, check its values, shape, name and units in a written file against the defining calculation.
+The existing `UserOutput.registered_callback_allows_uov_output` and
+`UserOutput.missing_callback_reports_meaningful_error` tests cover callback acceptance and refusal, not this proposed
+field ({{< code tests/test_user_output.cpp UserOutput.registered_callback_allows_uov_output >}};
+{{< code tests/test_user_output.cpp UserOutput.missing_callback_reports_meaningful_error >}}).
+
 ### Code
 
 **A minimal input.** One NetCDF stream of the primitives and two diagnostics every 100 s, in double precision:
 
-<!-- reader glossary keys -->Keys in this fragment: `outputs`[^rg-b5340f5bdc7f].
 ```yaml
 outputs:
   - type: netcdf
