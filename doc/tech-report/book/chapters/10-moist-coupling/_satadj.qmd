@@ -12,8 +12,8 @@ status: draft
 Phase change is fast compared with the dynamics, so snapy does not resolve it inside the RK[^rg-fe50358aee8f] stages. It lets the
 stages advect vapour and condensate as tracers that carry their own reference energies, and once per step, after
 the last stage has been averaged, it hands each interior cell to kintera's equilibrium solve at fixed volume and
-fixed internal energy density (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is never a separate source: it is
-the difference of the species reference energies $u^{\star}_n$[^rg-065a1207808a] (appendix A, notation group 2), so moving mass between
+fixed internal energy density (@sec-ch02-saturation) and writes the new mass fractions back. Latent heat is the difference of the species
+reference energies $u^{\star}_n$[^rg-065a1207808a] (appendix A, notation group 2), never a separate source, so moving mass between
 phases at fixed $\rho e$ changes the temperature and leaves $E$[^rg-575a594ac1bd] alone. This section is the snapy side of that solve:
 when it runs, what it is handed, what it writes, and what happens when it fails.
 
@@ -37,6 +37,10 @@ The adjustment is on whenever the top-level `reactions`[^rg-665fda7973ee] list i
 while keeping the reactions. Its failures do not stop the step: they are counted and turned into redo cause 16
 (@sec-ch10-redo). The ghost cells are not adjusted; the boundary fill that ends the stage refills the physical ghosts
 from the adjusted interior.
+
+`uv-solver` is the name of the algorithm kintera runs for this fixed-energy solve, read from
+`dynamics/equation-of-state`: `auto` (the default), `kkt` or `partition`; any other value is refused when the block
+is parsed (@sec-ch02-interface; [`kintera thermo_options.cpp:105-111`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/thermo_options.cpp#L105-L111)).
 
 ### Derivation
 

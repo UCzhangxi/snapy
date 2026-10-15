@@ -61,6 +61,10 @@ cells $0..n-1$ along it, ghosts included; face $f$ is the face between cells $f-
 
 #### How many ghost cells, and why the run fails rather than reads garbage
 
+A ghost zone is the slab of ghost cells on each side of a block, in every direction with more than one cell;
+`nghost`[^rg-0d1aafefcc3b] is the number of cells across it, one value for the block (its default and setup guards are in
+@sec-ch12-yaml). The width an interpolant needs, and the guard that enforces it, are these:
+
 1. *The ghost width.* `forward` sets `nghost = stencils() / 2 + 1`, so $n_{\mathrm s} = 1, 3, 5$ give 1, 2, 3.
 2. *The interior range.* `il = nghost` and `iu = n - nghost`.
 3. *The guard.* `TORCH_CHECK(il <= iu)` refuses a block too thin for the stencil, so no face value is ever built
@@ -168,7 +172,7 @@ The `shock` branch is step 4 of the row split; the three calls below it are step
 | keys and defaults, block present | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=2 >}} | `from_yaml` | `dc`, false, false |
 | no block: the constructed options | {{< code src/recon/reconstruct.cpp ReconstructOptionsImpl::from_yaml overload=1 >}} | `from_yaml` | `shock` true |
 | face index map | {{< code src/recon/reconstruct.cpp _apply_inplace >}} | `_apply_inplace` | |
-| ghost width from the stencil | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `nghost`[^rg-0d1aafefcc3b] | |
+| ghost width from the stencil | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `nghost` | |
 | shock branch | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `shock` | `shock: true` |
 | density, velocity and pressure, tracers | {{< code src/recon/reconstruct.cpp ReconstructImpl::forward >}} | `pinterp2` | |
 | which interpolant is `interp2` | {{< code src/recon/interpolation.cpp InterpImpl::create >}} | `Center5Interp` | `weno3`, `weno5` |
@@ -222,6 +226,8 @@ caught only by an accuracy test.
 
 [^rg-99fd7d49b37f]: $\mathbf W$ — primitive state vector $(\rho, v_1, v_2, v_3, p, y_1..y_{N_y})$
 
+[^rg-0d1aafefcc3b]: nghost — number of ghost cells at each boundary
+
 [^rg-e5bc5308fcd8]: limiter — whether the enclosing component enables its limiter
 
 [^rg-c00856b883f2]: vertical — options for the vertical reconstruction
@@ -229,6 +235,4 @@ caught only by an accuracy test.
 [^rg-e7755bb7941e]: type — implementation selector for the enclosing options block
 
 [^rg-ae7031b3a70c]: horizontal — options for the horizontal reconstruction
-
-[^rg-0d1aafefcc3b]: nghost — number of ghost cells at each boundary
 <!-- end reader glossary notes -->
