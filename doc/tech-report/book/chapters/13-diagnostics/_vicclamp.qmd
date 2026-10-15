@@ -88,7 +88,8 @@ make_fig()
 
 After each redistribution, `forward_masked` forms the per-cell residual from the redistribution buffer
 `_mass_corr`. Its dry and species rows give $\Delta^{\mathrm{rd}}\rho_i$, and its row at index `IVX` holds the face
-transfers. It then raises the running maximum `_clamp_residual` ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The comment there
+transfers. It forms the raised running maximum and commits it to `_clamp_residual` at the end of the stage, unless the
+stage's post-solve finiteness check failed, which leaves the meter as it was ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}). The comment there
 explains why the residual is per cell: a column maximum would hide a binding in a low-flux layer. The meter is
 read through `clamp_residual` ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl::clamp_residual >}}). The cycle line takes the MAX over
 blocks into `vic_max` ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}), reduces it with MAX across ranks, and prints
@@ -110,12 +111,14 @@ The meter itself has no option.
 **The code, mapped to @eq-ch13-vicclamp** ({{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}}):
 
 ```cpp
-auto lhs = (cell * pcoord->cell_volume()).slice(-1, is, ie);       // Delta^rd rho V
+auto lhs = (cell * volume).slice(-1, is, ie);                       // Delta^rd rho V (volume: cached V_i)
 auto rhs = Ml - Mu;                                                 // M_{i-1/2} - M_{i+1/2}
 const double floor = Ml.scalar_type() == torch::kFloat32
                          ? std::numeric_limits<float>::min() : 1.e-300;   // M_fl
 auto scale = torch::maximum(Ml.abs(), Mu.abs()).clamp_min(floor);
-_clamp_residual.copy_(torch::maximum(_clamp_residual, ((lhs - rhs).abs() / scale).max().detach()));
+clamp_next = torch::maximum(_clamp_residual, ((lhs - rhs).abs() / scale).max().detach());
+// ... the solve's results; fail = 1 if any of them is nonfinite
+_clamp_residual.copy_(torch::where(fail, _clamp_residual, clamp_next));  // max over the run
 ```
 
 | what | code link | symbol | switch |
