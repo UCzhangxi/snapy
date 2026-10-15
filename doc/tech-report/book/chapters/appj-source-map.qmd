@@ -1,0 +1,75 @@
+# Source tree map {#sec-appj}
+
+<!-- PROVENANCE
+pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 (chengcli/snapy, code_pin.yml)
+sources: the tree at the pin; CMakeLists.txt, src/CMakeLists.txt (the source lists of the snap library),
+         setup.py and pyproject.toml (the Python package), cmake/eigen.cmake, cmake/yamlpp.cmake
+status: draft
+-->
+
+Use this page to find where a part of snapy lives in the repository and which chapter explains it. One row per
+top-level directory (the placeholder `.cache` aside) and build file, then one row per module directory of `src/`,
+at the code pin. "Built" means the directory is
+in the source lists of the `snap` library in [`src/CMakeLists.txt`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/CMakeLists.txt); a directory that is
+not is said so.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Map the repository's directories and modules to what each owns and the chapter that covers it.
+
+**Data.** The tree at the pin and its build files; no generated content.
+
+**Placement.** Reference page, outside the solver.
+
+**Activation.** None; the map describes the default build.
+
+**Guarantee / limits.** A row says what a directory holds and whether the build compiles it; the physics is in the linked chapters; "none" means no chapter covers it.
+
+**Evidence.** The build files cited in the provenance comment; 16 source directories of the `snap` library hold 106 `.cpp` and 10 `.cu` files.
+:::
+
+### Top-level directories
+
+| directory | what it owns | covered in |
+|---|---|---|
+| [`src/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src) | the C++ core: the `snap` shared library, plus a CUDA library when `CUDA` is on; one directory per module (next table) | @sec-ch01 |
+| `snap` | a symbolic link to `src`, so the code includes its own headers as `<snap/...>` | none |
+| [`python/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/python) | the `snapy` package (`package_dir` in `setup.py`): bindings in `csrc/` compiled into the extension `snapy.snapy`, type stubs in `snapy/`, the `pd-combine` and `pd-inspect` tools in `api/` | @sec-ch01-python, @sec-ch14-tools |
+| [`tests/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/tests) | the ctest suite: C++ and Python tests and the `run_*` drivers registered in `tests/CMakeLists.txt` | @sec-appc, @sec-ch15 |
+| [`examples/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/examples) | example drivers (`.cpp`) and their input decks (`.yaml`) | [Install and run](#sec-preface-install), @sec-ch10-kinetics |
+| [`cmake/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/cmake) | build macros, `Find*` modules for the dependencies, fetch scripts for Eigen, fmt, GoogleTest, kintera and yaml-cpp | @sec-ch12-build, @sec-ch01-dependencies |
+| [`api/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/api) | `pd-run` and `slurm.sbatch`, launch scripts installed with the package | @sec-ch14-launch |
+| [`external/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/external) | a copy of Gloo, put on the include path of the `snap` library | @sec-ch14-backends |
+| [`patches/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/patches) | patches the build applies to the fetched Eigen and yaml-cpp | none |
+| [`docs/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/docs) | the Sphinx documentation and derivation notes | none |
+| [`.github/`](https://github.com/chengcli/snapy/tree/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/.github) | the CI, release and deployment workflows | none |
+| `CMakeLists.txt`, `configure.h.in`, `setup.py`, `pyproject.toml` | the build: options, generated macros, the Python extension and its requirements | @sec-ch12-build, @sec-ch12-macros, @sec-appe |
+| `communication.md` | a design note on how communication is organised | none |
+
+: Top-level directories at the pin. {#tbl-appj-top}
+
+### Modules of `src/`
+
+| directory | what it owns | built | covered in |
+|---|---|---|---|
+| `bc/` | external boundary functions, internal (solid) boundaries | yes, with CUDA | @sec-ch11 |
+| `coord/` | coordinate systems and metrics: Cartesian, spherical-polar, gnomonic cubed sphere | yes, with CUDA | @sec-ch03 |
+| `eos/` | equations of state: ideal gas, ideal moist, moist mixture, shallow water, tabulated (`aneos/`) | yes, with CUDA | @sec-ch02 |
+| `hydro/` | the hydro module: its options, the stage increment, well-balanced references, flux positivity | yes, with CUDA | @sec-ch01-hydro, @sec-ch05, @sec-ch08 |
+| `recon/` | reconstruction: donor cell, PLM, CP3/CP5, WENO3/WENO5, PPM | yes, with CUDA | @sec-ch04-framework |
+| `riemann/` | Riemann solvers: Roe, LMARS, HLLC, shallow-water Roe, plume Roe | yes, with CUDA | @sec-ch04-riemann |
+| `implicit/` | the vertically implicit correction: assembly, block sweep, redistribution | yes, with CUDA | @sec-ch07-vic-options |
+| `forcing/` | forcing modules: gravity, Coriolis, diffusion, heating, relaxation, sponges | yes | @sec-ch09, @sec-ch06 |
+| `scalar/` | the passive-scalar module | yes | @sec-ch01-scalar, @sec-ch10-tracer |
+| `sedimentation/` | sedimentation velocities and their hydro coupling | yes, with CUDA | @sec-ch10-sed |
+| `mesh/` | `MeshBlock` and `Mesh`, their options, the cycle diagnostics | yes | @sec-ch01-construction, @sec-ch01-mesh |
+| `layout/` | block layouts (slab, cubed, cubed sphere), rank maps, process groups over Gloo or UCX | yes | @sec-ch03-layouts, @sec-ch14-backends |
+| `output/` | output types (NetCDF, PnetCDF, restart; HDF5 only with `HDF5OUTPUT` defined), their combine and field loaders | yes | @sec-ch14-netcdf, @sec-ch14-restart, @sec-ch13-output-diag |
+| `input/` | deck key checks, command line, restart reading, signals | yes | @sec-ch01-options |
+| `utils/` | logging, CUDA helpers and shared kernels | yes, with CUDA | @sec-ch01-dispatch |
+| `math/`, `interface/` | headers only: LU routines (used by `implicit`), array adapters (used by `output`) | headers | @sec-ch07-vic-pivot |
+| `diagnostics/`, `turbulence/`, `parallel/`, `z.junk/` | not in the library's source lists | no | @sec-ch09-turbulence |
+
+: Module directories of `src/` at the pin. {#tbl-appj-src}
+
+`src/add_arg.h` defines `ADD_ARG`, the macro that declares every options field; `src/snap.h` fixes the index
+names of the state vector (@sec-ch01-layout). A file ending in `.cpp_` is outside the source lists too.
