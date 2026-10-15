@@ -226,15 +226,19 @@ The block of @eq-ch10-kinetics-step, with the conversion $\Delta\rho_n=\mu_n\Del
 ({{< code examples/run_hydro.cpp main >}}):
 
 ```cpp
-    auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
-    auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
+    auto [rate, rc_ddC, rc_ddT, rate_constants] =
+        kinet->forward_with_rate_constants(temp, pres, conc_kinet);
+    auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT,
+                               rate_constants);
     auto del_conc = kintera::evolve_implicit(rate, kinet->stoich, jac, dt);
     ...
     auto del_rho = del_conc / thermo_y->inv_mu.narrow(0, 1, ny).view(vec);
     hydro_u.narrow(0, ICY, ny) += del_rho.permute({3, 0, 1, 2});
 ```
 
-`rate` is $\dot{\boldsymbol\omega}$, `jac` is $\mathsf J_{\dot\omega}$, `evolve_implicit` solves @eq-ch10-kinetics-step for
+`rate` is $\dot{\boldsymbol\omega}$, `rate_constants` are the raw coefficients $\Gamma_k\zeta_k$ of the same call, which
+`jacobian` takes as the mass-action term (kintera requires them where a condensate is zero; kintera $\ge$ 2.6.3), `jac` is
+$\mathsf J_{\dot\omega}$, `evolve_implicit` solves @eq-ch10-kinetics-step for
 `del_conc` $=\Delta\tilde{\mathbf c}$, and the last two lines are step 5. A driver of one's own copies these lines
 between the stages and `check_redo`.
 

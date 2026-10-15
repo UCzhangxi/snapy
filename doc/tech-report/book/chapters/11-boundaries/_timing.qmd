@@ -64,7 +64,10 @@ and then the physical fills of `apply_boundaries`.
 The refresh in `exchange_ghost_zones` uses only the first two callbacks (x1 inner and outer), skips an
 outflow callback, and restricts each call to the tangential ghost slabs whose own face is not physical,
 where "physical" here excludes a callback whose name starts with `periodic`. Each slab is $\min(n_g,
-\lfloor n/2\rfloor)$ cells wide in the tangential direction, with $n$ that direction's extent. The conserved
+\lfloor n/2\rfloor)$ cells wide in the tangential direction, with $n$ that direction's extent. A callback whose name
+starts with `reflecting` is instead called once over the full extent when no tangential face is physical: it mirrors
+each x1 row from that row's own interior, so the one call writes the slabs and rewrites the other ghost rows with
+the values they already hold. The conserved
 hydro state and the scalar densities are refreshed, and the scalar primitive ratios are then recomputed from
 them. Auxiliary fields take the same two-step order: the donor factor of the flux positivity limiter is
 exchanged raw and then passed through every installed callback with scalar type, in `HydroImpl::forward`
