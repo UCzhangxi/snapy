@@ -1,0 +1,96 @@
+## How snapy differs from a hydrostatic primitive-equation core (`none`) {#sec-ch02-pecore}
+
+<!-- PROVENANCE
+pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 (chengcli/snapy, code_pin.yml)
+sources: src/hydro/hydro_forward.cpp, src/eos/ideal_gas.cpp, src/coord/coordinate.cpp, src/coord/spherical_polar.cpp,
+         src/hydro/hydro.cpp, src/implicit/implicit_hydro.cpp, src/forcing/const_gravity.cpp, src/forcing/coriolis.cpp
+         at the pin; the sections each row of the table cites
+author: Zoey Hu
+status: draft
+-->
+
+### Summary
+
+A hydrostatic primitive-equation core is a dynamical core that replaces the vertical momentum equation by
+hydrostatic balance, so that the vertical velocity is diagnosed instead of predicted and vertically propagating
+sound waves are filtered out. That definition is general background, not a fact of the code at the pin; it is given
+so that a reader who has used such a core can see what changes. snapy instead solves the compressible equations of
+@sec-ch02-laws. This section lists, as facts of the code at the pin, the points where a reader of that background
+meets a difference, each with the section that states it.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Lists where the equations and numerics at the pin differ from a hydrostatic core (@tbl-ch02-pecore).
+
+**Data.** N/A, a comparison; it reads no state.
+
+**Placement.** N/A; each difference sits in the section the table cites.
+
+**Activation.** None; the compressible equations are always solved.
+
+**Guarantee / limits.** No comparison run against any other model is made at the pin.
+
+**Evidence.** The sections and code of @tbl-ch02-pecore and @tbl-ch02-pecore-code.
+:::
+
+| question | snapy at the pin | where |
+|---|---|---|
+| Is the vertical velocity prognostic? | Yes: the vertical momentum is a conserved row, updated by its flux divergence and sources like the other momenta. | @sec-ch02-laws |
+| Where does pressure come from? | From the equation of state of each cell's conserved state, not from integrating a hydrostatic column. | @sec-ch02-interface |
+| Is pressure the vertical coordinate? | No: $x_1$ is a fixed height or radius; there is no pressure, sigma or hybrid coordinate. | @sec-appa-conventions |
+| Are sound waves in the solution? | Yes: the explicit step is bounded by $\lvert v\rvert+c_s$ in every direction. | @sec-ch07-cfl |
+| Can the vertical sound-wave bound be removed? | Yes, by the vertically implicit correction, which acts in $x_1$ only and needs the whole column on one rank. | @sec-ch07-vic-options |
+| Is there a hydrostatic switch? | `non-hydrostatic`[^rg-0dd1d9434f28] below 1 replaces part of gravity by the cell's own pressure difference; even at 0 the vertical velocity stays prognostic. | @sec-ch05-hsmode |
+| Is the geometry shallow? | No: on the spherical grids every metric quantity uses the radius of its own cell; gravity is one constant, `grav1`. | @sec-ch03-sphpolar, @sec-ch06-cell |
+| Is the Coriolis force traditional? | Not by default: the full rotation vector is used; `traditional: true` keeps its radial part, on the cubed sphere only. | @sec-ch09-coriolis |
+
+: Where snapy at the pin differs from a hydrostatic primitive-equation core. {#tbl-ch02-pecore}
+
+### Derivation
+
+N/A: the section compares, it derives nothing. The equations are those of @sec-ch02-laws.
+
+### Numerical method
+
+N/A: no scheme of its own. The consequence that matters most in practice is the time step: an explicit
+compressible step is limited by the sound speed in $x_1$ as well as in $x_2$ and $x_3$, which is why the vertically
+implicit correction exists (@sec-ch07).
+
+### Code
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| flux divergence of every conserved row | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `_div` | |
+| pressure from the conserved state | {{< code src/eos/ideal_gas.cpp IdealGasImpl::compute >}} | `U->W` | `equation-of-state/type` |
+| grid types, none a pressure coordinate | {{< code src/coord/coordinate.cpp CoordinateImpl::create >}} | `Unknown coordinate type` | `geometry.type` |
+| radius in the spherical widths | {{< code src/coord/spherical_polar.cpp SphericalPolarImpl::center_width2 >}} | `x1v` | `spherical-polar` |
+| acoustic step bound | {{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}} | `cs` | `integration/cfl` |
+| vertically implicit correction | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::forward_masked >}} | `vic_solve_full` | `integration/implicit-scheme` |
+| hydrostatic split, constant gravity | {{< code src/forcing/const_gravity.cpp ConstGravityOptionsImpl::from_yaml >}} | `non-hydrostatic` | `forcing/const-gravity` |
+| traditional option, default off | {{< code src/forcing/coriolis.cpp CoriolisOptionsImpl::from_yaml >}} | `traditional`[^rg-eec0b8420f25] | `forcing/coriolis` |
+
+: Code map of the differences. {#tbl-ch02-pecore-code}
+
+**How to use it.** A deck ported from a hydrostatic core needs a geometric $x_1$ grid (@sec-ch03-globalgrid), an
+initial state in hydrostatic balance on that grid (@sec-ch05-balcol), and either a time step under the vertical
+acoustic bound or `integration/implicit-scheme` (@sec-ch07-vic-options). Refused: none here; the keys are
+refused where their own sections say.
+
+### Tests
+
+N/A: the comparison asserts nothing of its own. The tests are those of the cited sections.
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- No run of snapy against a hydrostatic core, and no measured cost of the compressible step against one, exists at
+  the pin.
+:::
+
+The table lists differences of the equations and the numerics only. Differences of physics packages (radiation,
+convection schemes) are not listed; the forcing modules snapy has are the subject of @sec-ch09.
+
+<!-- reader glossary notes -->
+[^rg-0dd1d9434f28]: non-hydrostatic — fraction of the vertical body force retained by the non-hydrostatic treatment
+
+[^rg-eec0b8420f25]: traditional — whether to use the traditional Coriolis approximation
+<!-- end reader glossary notes -->

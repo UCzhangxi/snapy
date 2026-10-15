@@ -44,7 +44,7 @@ def _broken(data, term, **change):
 def test_every_concept_has_a_defining_section(data):
     assert registry.registry_problems(REPORT, data) == []
     assert all(e.get('section') for e in data['entries'])
-    assert len(data['entries']) == 362  # 329 acronyms, keys and symbols, 17 named concepts and 16 reader terms
+    assert len(data['entries']) == 363  # 329 acronyms, keys and symbols, 17 named concepts and 17 reader terms
 
 
 @pytest.mark.parametrize('term,change,message', [
@@ -149,6 +149,7 @@ def test_a_roll_up_section_fails_the_registry(data):
 READER_TERMS = {'MeshBlock': 'sec-ch01-construction', 'tensor layout': 'sec-ch01-layout',
                 'ghost exchange': 'sec-ch03-exchange', 'halo exchange': 'sec-ch03-exchange',
                 'ghost zone': 'sec-ch04-framework', 'latent heat': 'sec-ch10-satadj',
+                'hydrostatic primitive-equation core': 'sec-ch02-pecore',
                 'mixing ratio': 'sec-ch10-tracer', 'Python bindings': 'sec-ch01-python',
                 'options object': 'sec-ch01-options', 'module': 'sec-ch01-options',
                 'functional': 'sec-ch01-options', 'deck': 'sec-preface-install',
