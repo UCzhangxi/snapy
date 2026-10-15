@@ -16,11 +16,12 @@ The flux through an $x_2$ or $x_3$ face should be the average of the point flux 
 computes it from cell values instead, and the average of a product is not the product of averages. In a
 stratified atmosphere every quantity varies strongly in $x_1$ across the face, so the two differ at
 $O(\Delta x_1^2)$, by a covariance term, and on a curved grid by a second term from the offset between the cell's
-and the face's centroids. The correction adds both to every row of the horizontal fluxes. It is on by default:
+and the face's centroids. The correction adds both to the horizontal fluxes: to every row on a curved grid, and in
+Cartesian, where only the energy, tracer and dry rows are nonzero, to those rows. It is on by default:
 the environment variable `SNAP_FLUX_COVARIANCE` turns it off only when set to `0`, `false`, `off`, `no` or empty.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Adds $\mathrm dF$ of @eq-ch04-fluxcov-dF to each row of every $x_2$, $x_3$ face flux.
+**Purpose.** Adds $\mathrm dF$ of @eq-ch04-fluxcov-dF to every $x_2$, $x_3$ face flux: each row on a curved grid, the nonzero energy, tracer and dry rows in Cartesian.
 
 **Data.** Reads the face states, $x_{1,i}$[^rg-ece61aeab82b], `face_moment2_x1` and the centroid shift; writes $\mathbf F_2$, $\mathbf F_3$ in place.
 
@@ -63,7 +64,7 @@ in the report's notation; every step below is checked by sympy.
    the $h^0$ and $h^2$ parts of the two sides cancel and the remainder is $O(h^4)$ (`covariance_check.py`
    `[C1]`). $h^2/12$ is the variance of $x_1$ over the cell; on a face of another measure it is that measure's
    variance, $\sigma^2_{\mathrm A,i}$, which is $h^2/12 - h^4/(144r^2)$ on a spherical-polar $x_2$/$x_3$ face
-   (`covariance_check.py` `[C2]`). In the code, @eq-ch04-fluxcov-identity is the closure `cov` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
+   (`covariance_check.py` `[C2]`). In the code, @eq-ch04-fluxcov-identity is the factor `s2rho` times two centred differences `d1` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
 #### Every row, Cartesian
 
@@ -102,7 +103,7 @@ in the report's notation; every step below is checked by sympy.
    scale height; it vanishes identically only in Cartesian.
 4. *Momentum.* Its rows take the centroid part only, in the face frame; the pressure part
    $-(x_{1,i} - x^{\mathrm A}_{1,i})\partial^{\mathrm h}_1p$ of the normal row is mirrored in the geometric source as $p^{\mathrm{sh}}$
-   (@sec-ch04-sphsrc). In the code, @eq-ch04-fluxcov-dF is `cov` plus `ctr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
+   (@sec-ch04-sphsrc). In the code, @eq-ch04-fluxcov-dF is the `s2rho` product plus `ctr` ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
 #### Why the rest state keeps an exact zero, and why conservation is untouched
 
@@ -155,7 +156,7 @@ leave.[^fc-ratio]
    sharing the factor $\sigma^2_{\mathrm A}\partial_2\partial_1v_\perp$. For a mode $v_1\propto\sin(2\pi x_1/\lambda_w)$ in an
    incompressible plane, $\partial_1\partial_2v_2 = (2\pi/\lambda_w)^2v_1$ (`[C16]`): each part of the squared buoyancy
    frequency is weakened by the same relative amount.
-4. *The ratio.* Put @eq-ch04-fluxcov-err into @eq-ch04-fluxcov-buoy: In the code, @eq-ch04-fluxcov-err is the missing `cov` rows ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
+4. *The ratio.* Put @eq-ch04-fluxcov-err into @eq-ch04-fluxcov-buoy: In the code, @eq-ch04-fluxcov-err is the missing `s2rho` rows ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
    $$
    \Upsilon = \frac{\alpha_{\mathrm v}\,\dot y_{\mathrm v}^{\mathrm{err}}}{\dot T^{\mathrm{err}}/T}
@@ -169,7 +170,7 @@ leave.[^fc-ratio]
 5. *Saturated vapour.* With $y_{\mathrm v}\approx(\mu_{\mathrm v}/\mu_{\mathrm d})p_{\mathrm{sat}}(T)/p$, Clausius–Clapeyron
    $\mathrm d\ln p_{\mathrm{sat}}/\mathrm dT = L_{\mathrm v\to\mathrm c}/(R_{\mathrm v}T^2)$ and hydrostatic $\partial_1\ln p = g_1/(R_{\mathrm d}T)$,
    $\Upsilon\approx\alpha_{\mathrm v}y_{\mathrm v}\bigl[L_{\mathrm v\to\mathrm c}/(R_{\mathrm v}T) - \lvert g_1\rvert/(R_{\mathrm d}\Gamma)\bigr]$; a vapour that
-   instead falls off with $p$ on the dry adiabat gives the bracket $c_{p,\mathrm d}/R_{\mathrm d} = 3.5$ (`[C16]`). In the code, @eq-ch04-fluxcov-ratio is the ratio of the tracer and energy `cov` rows ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
+   instead falls off with $p$ on the dry adiabat gives the bracket $c_{p,\mathrm d}/R_{\mathrm d} = 3.5$ (`[C16]`). In the code, @eq-ch04-fluxcov-ratio is the ratio of the tracer and energy `s2rho` rows ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}).
 
 #### The ratio at three cloud bases
 
@@ -257,36 +258,38 @@ must make the same choice, or a shared face stops being single-valued. Nothing i
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}):
 
 ```cpp
-  auto cov = [&](torch::Tensor const& a, torch::Tensor const& b) {
-    return cell(s2) * cell(rho) * d1(a) * d1(b);
-  };
+  auto s2rho = cell(s2) * cell(rho);
+  auto dun = d1(un);
   auto ctr = [&](torch::Tensor const& f) { return -cell(ds) * d1(f); };
-
-  auto dflx = torch::zeros_like(wl);
-  // energy row
-  auto h = enth / rho;
-  auto ce = cov(h, un);
-  dflx[IPR].narrow(-1, 1, n1 - 2) = centroid ? ce + ctr(enth * un) : ce;
   ...
-  for (int n = 0; n < ny; ++n) {
-    auto q = wbar[ICY + n];
-    auto c = cov(un, q);
-    dflx[ICY + n].narrow(-1, 1, n1 - 2) = centroid ? c + ctr(mflx * q) : c;
-    dry = dry.defined() ? dry - c : -c;
+  if (!centroid) {
+    ...
+    torch::mul_out(ce, s2rho * d1(h), dun);
+    ...
+      torch::mul_out(cy, s2rho * dun, d1(ys));
+    ...
+    return rows;
   }
+  ...
+  dflx[IPR].narrow(-1, 1, n1 - 2) = s2rho * d1(h) * dun + ctr(enth * un);
+  ...
+    dflx.narrow(0, ICY, ny).narrow(-1, 1, n1 - 2) = cy + ctr(mflx * ys);
 ```
 
-`cov` is the first term of @eq-ch04-fluxcov-dF with `s2` $= \sigma^2_{\mathrm A,i}$; `ctr` is the second with `ds`
-$= x_{1,i} - x^{\mathrm A}_{1,i}$; `h` is $\hat h$ and `un` is $v_\perp$; the loop builds the species rows and the dry row
-as minus their sum (step 3 of the rows).
+`s2rho` times two `d1` differences is the first term of @eq-ch04-fluxcov-dF with `s2` $= \sigma^2_{\mathrm A,i}$; `ctr`
+is the second with `ds` $= x_{1,i} - x^{\mathrm A}_{1,i}$; `h` is $\hat h$, `un` is $v_\perp$ and `ys` the species mass
+fractions. In Cartesian (`!centroid`) the function returns only the nonzero rows, stacked as energy, species and dry,
+on the $x_1$-interior cells, and `add_cov` in `forward` adds them to those rows; on a curved grid it returns the full
+flux, centroid parts and momentum rows included. In both, the dry row is minus the sum of the species rows (step 3
+of the rows).
 
 | what | code link | symbol | switch |
 |---|---|---|---|
 | the switch, read once | {{< code src/hydro/hydro.cpp HydroImpl::flux_covariance >}} | `get_env` | default `"1"` |
-| the rows | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `cov` | switch on |
+| the rows | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `s2rho` | switch on |
 | guards | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `n1` | $n_1 < 3$, shallow water |
 | face moments from the coordinate | {{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}} | `face_moment2_x1` | |
-| applied to $x_2$ and $x_3$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `dcov` | |
+| applied to $x_2$ and $x_3$ | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `add_cov` | |
 | seam rows | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_seam_rows` | internal $x_1$ seam |
 | the limiter turned on | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `cov2` | species present |
 | the shifted pressure | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `wsrc` | curved grid |
@@ -375,7 +378,7 @@ The ratio's evaluation at three cloud bases is @tbl-ch04-fluxcov-b3 in the Deriv
 
 [^rg-060923d3cabe]: $\lambda_w$ — a wavelength (named); notation only; see @sec-appa
 
-[^rg-6902c52ef171]: $\hat h$ — specific enthalpy $e + p/\rho$ [J kg$^{-1}$]; [source](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/src/eos/ideal_moist.cpp#L268-L270)
+[^rg-6902c52ef171]: $\hat h$ — specific enthalpy $e + p/\rho$ [J kg$^{-1}$]; [source](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/eos/ideal_moist.cpp#L278-L281)
 
 [^rg-3c8deee64597]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
 
