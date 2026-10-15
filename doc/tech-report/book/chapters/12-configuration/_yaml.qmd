@@ -154,6 +154,18 @@ accept/reject distinction and the symbolic budget difference; actual parser erro
    without an operator path. The anchor `gravity_work_fixer` is in
    {{< code src/hydro/hydro.cpp HydroImpl::reset >}}.
 
+**Porting a deck from Athena++.** snapy has no converter and reads no Athena++ input file; it reads only YAML, so a
+deck is translated by hand, block by block. The mesh block (`nx1`..`nx3`[^rg-57ef49c68231], `x1min`[^rg-57b3ad867168]..`x3max`[^rg-476f85fbaeac]) becomes
+`geometry/cells` and `geometry/bounds`; the boundary flags of each face (`ix1_bc`, `ox1_bc`, ...) become
+`boundary-condition/external/x1-inner`, `x1-outer`[^rg-0d25664fc287], ..., with `reflecting`, `outflow` and `periodic` among the names
+({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}); the time block (`cfl_number`,
+`tlim`[^rg-6a64ae1a6c68], `nlim`[^rg-85347293a770], `integrator`) becomes `integration/cfl`, `tlim`, `nlim` and `type`; each output block becomes one
+entry of `outputs`[^rg-2470c71af444] with its `type`, `dt`[^rg-73a3f4e38361] and `variables`[^rg-c01683340b31]. Thermodynamics and species go to the blocks of
+@sec-ch02-interface, and Athena++ problem-generator code has no deck equivalent: it becomes the driver's
+initial-condition builder (@sec-ch01-initialization). Appendix I (@sec-appi) lists every key snapy accepts with its
+default, and a key a parser does not know stops the run with "unknown key"
+({{< code src/input/check_keys.cpp check_keys >}}).
+
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
@@ -222,6 +234,24 @@ The complete switch inventory is @sec-ch12-matrix.
 [^rg-1f42b5e0e193]: integration — time-integration options
 
 [^rg-56fbcf9e291a]: implicit-scheme — implicit time-integration scheme selector
+
+[^rg-57ef49c68231]: nx3 — number of cells in the third coordinate direction
+
+[^rg-57b3ad867168]: x1min — lower bound of the first coordinate
+
+[^rg-476f85fbaeac]: x3max — upper bound of the third coordinate
+
+[^rg-0d25664fc287]: x1-outer — boundary name on the outer first-coordinate face
+
+[^rg-6a64ae1a6c68]: tlim — simulation end time
+
+[^rg-85347293a770]: nlim — maximum number of integration cycles
+
+[^rg-2470c71af444]: outputs — output-stream configuration
+
+[^rg-73a3f4e38361]: dt — time-step duration
+
+[^rg-c01683340b31]: variables — variables requested by an output stream
 
 [^rg-ec37780980f1]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
 <!-- end reader glossary notes -->

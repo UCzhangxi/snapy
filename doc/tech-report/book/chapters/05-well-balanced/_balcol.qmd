@@ -159,6 +159,15 @@ w_bal, residual, sweeps = snapy.balance_column(w, dx1f, grav=9.8)   # w: (nvar, 
 row 4 (`IPR`), then the species; `dx1f` is the $(n_1,)$ tensor of the cell widths $\Delta x_{1,i}$ of the column, in
 the dtype and on the device of `w` ({{< code src/hydro/balance_column.cpp balance_column >}}).
 
+**From your own $T$[^rg-25056f7d187a]–$p$ profile (a sounding).** snapy reads no sounding file, so the initial-condition builder does
+four steps. (1) Interpolate $T$ onto the cell centres `x1v` of the column. (2) Integrate
+$\mathrm{d}p/\mathrm{d}x_1 = -g\,p/(R_d T)$ upward from the surface pressure to get $p$ at the same centres; any
+quadrature will do, because step 4 removes its residual. (3) Fill `w`: $p$ in row `IPR`, $\rho = p/(R_d T)$ in row
+`IDN`, zero velocities, as `initialize_block` of {{< code examples/straka.cpp >}} does for its adiabatic profile.
+(4) Call `balance_column` on the ghost-free column and hand `w_bal` to the block as its interior primitive state
+(@sec-ch01-initialization). A moist column alternates step 4 with the saturation adjustment, as `balance_ic` does
+({{< code examples/bryan.cpp balance_ic >}}).
+
 **What it refuses, and why.** Each refusal is a `TORCH_CHECK` with its own message
 ({{< code src/hydro/balance_column.cpp balance_column >}}):
 
@@ -281,4 +290,6 @@ balanced under `SNAP_X1_CENTROID_EXACT`.
 [^rg-5bca7677f2e6]: balance-ic-passes — maximum number of saturation/projection passes for the initial column
 
 [^rg-9506fb10c3da]: problem — problem-specific driver options
+
+[^rg-25056f7d187a]: $T$ — temperature [K]
 <!-- end reader glossary notes -->

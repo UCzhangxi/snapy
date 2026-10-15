@@ -16,6 +16,15 @@ safe time step and calls every stage of the integrator. It then asks whether the
 outputs of an accepted step. This section shows that loop as the two shipped examples run it, so a reader can write a
 driver of their own or follow an existing one.
 
+**One time step, in order.** (1) `max_time_step` picks $\Delta t$[^rg-473f42b9b5af]. (2) Each stage of the integrator runs
+`MeshBlockImpl::advance_local`, which reconstructs the face states, solves the Riemann problems, limits the fluxes and
+forms their divergence, adds the forcings and the vertical implicit correction, applies the user stage forcings, takes
+the RK[^rg-251dacab968c] average with the conserved limiter, refills the solids, adjusts the phases and the gravity work on the last
+stage only, and fills the physical ghosts; @sec-ch02-laws lists these six steps with their owners. (3) `run_hydro`
+alone then runs the kinetics step. (4) `check_redo` accepts, redoes or stops. (5) On acceptance the clock advances and
+`make_outputs` writes. The Code layer below gives the anchors of (1), (3), (4) and (5)
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} for (2)).
+
 ::: {.callout-note title="At a glance"}
 **Purpose.** N/A, a code map: choose the step, run the stages, accept or redo, write outputs.
 
@@ -221,6 +230,10 @@ outside the block's stage.
 :::
 
 <!-- reader glossary notes -->
+[^rg-473f42b9b5af]: $\Delta t$ — the step
+
+[^rg-251dacab968c]: RK — Runge–Kutta
+
 [^rg-25ec79df3164]: $C$ — Courant number (named: acoustic, advective, vertical acoustic)
 
 [^rg-d9e768dc5199]: cfl — Courant-number limit for the time step
