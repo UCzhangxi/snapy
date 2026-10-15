@@ -4,13 +4,15 @@
 Every labelled `##` section of the book gets index terms in the reader's own words in `tools/topic-index.yaml`;
 the chapters carry no index markup. This script turns that file into an alphabetical index: one line per term,
 with a reference to every section that lists it (book order), and one "see" line per alias. A numbered section
-is cited as its title plus `@sec-...`, an unnumbered one (the preface, the groups of Appendix A) as a link.
+is cited as its title plus `@sec-...`, an unnumbered one (the preface, the groups of Appendix A) as a link. A term
+whose answer is a whole chapter or appendix with no `##` sections of its own (the test index, Appendix C) may
+also be listed under that chapter's `#` label.
 Every concept of the registry, `tools/reader-glossary.json` (acronyms, YAML keys, symbols), also gets its own
 line, which refers to its registry defining section and to no other (STYLE N1).
 
 It also checks the file against the book and stops the render on a problem:
 
-  * a label in the file that no `##` heading of the book carries;
+  * a label in the file that no `#` or `##` heading of the book carries;
   * a labelled `##` section with no term (the reader could not find it from the index);
   * a `##` heading with no label that is neither a `.unlisted` part divider nor listed under `unlabeled`, and an
     `unlabeled` row that matches no heading or names a label that does not exist;
@@ -186,11 +188,12 @@ def numbered(h: dict, book: Path) -> bool:
 def problems(data: dict, heads: list[dict]) -> list[str]:
     out = []
     sections = {h["label"]: h for h in heads if h["level"] == 2 and h["label"]}
+    targets = {h["label"] for h in heads if h["level"] <= 2 and h["label"]}
     labels = {h["label"] for h in heads if h["label"]}
     entries = data.get("sections") or {}
     for label, ents in entries.items():
-        if label not in sections:
-            out.append(f"{label}: no `##` section of the book has this label")
+        if label not in targets:
+            out.append(f"{label}: no `#` or `##` heading of the book has this label")
         its = items(ents or [])
         if not its:
             out.append(f"{label}: no index term")
@@ -278,7 +281,7 @@ def concept_problems(pairs: list[tuple[str, str]], labs: dict[str, dict]) -> lis
 
 def render(data: dict, heads: list[dict], book: Path, pairs: list[tuple[str, str]] = (),
            labs: dict[str, dict] | None = None) -> str:
-    sections = {h["label"]: h for h in heads if h["level"] == 2 and h["label"]}
+    sections = {h["label"]: h for h in heads if h["level"] <= 2 and h["label"]}
     refs: dict[str, list[dict]] = {}
     see: dict[str, set[str]] = {}
     for label, ents in (data.get("sections") or {}).items():

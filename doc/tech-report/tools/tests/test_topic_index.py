@@ -1,6 +1,6 @@
 """Gate of the topic index (N1): tools/topic-index.yaml against the book, and the Appendix F generator.
 
-The gate fails when a label in the data file resolves to no `##` section, when a labelled `##` section has no
+The gate fails when a label in the data file resolves to no `#` or `##` heading, when a labelled `##` section has no
 index term, and when the committed Appendix F fragment is not a fresh generation. The fixture book under
 fixtures/topic-index shows each failure on a small case.
 
@@ -35,7 +35,7 @@ def test_the_gate_passes_on_a_complete_index(tmp_path):
 def test_the_gate_fails_on_a_label_that_does_not_resolve(tmp_path, capsys):
     assert _run("broken-label.yaml", tmp_path) == 1
     err = capsys.readouterr().err
-    assert "sec-ch01-cfI: no `##` section of the book has this label" in err
+    assert "sec-ch01-cfI: no `#` or `##` heading of the book has this label" in err
 
 
 def test_the_gate_fails_on_a_section_with_no_entry(tmp_path, capsys):
@@ -55,6 +55,20 @@ def test_the_gate_fails_on_an_unlisted_unlabelled_heading(tmp_path, capsys):
     data.write_text("sections:\n  sec-ch01-a:\n    - a topic\nunlabeled:\n  - file: chapters/01-x.qmd\n"
                     "    heading: No label\n    covered-by: sec-ch01\n")
     assert g.main(["--data", str(data), "--book", str(book), "--fragment", str(tmp_path / "f.qmd")]) == 0
+
+
+def test_a_chapter_label_may_carry_a_term_but_need_not(tmp_path):
+    """An appendix with no `##` sections (the test index) can be an index destination; a chapter label stays
+    optional, so every other chapter heading still needs no entry."""
+    book = tmp_path / "book"
+    (book / "chapters").mkdir(parents=True)
+    (book / "chapters" / "01-x.qmd").write_text("# X {#sec-ch01}\n\n## Labelled {#sec-ch01-a}\n")
+    (book / "chapters" / "appc-t.qmd").write_text("# Test index {#sec-appc}\n\n### Summary\n")
+    data = tmp_path / "t.yaml"
+    data.write_text("sections:\n  sec-ch01-a:\n    - test problems\n  sec-appc:\n    - test problems\n")
+    frag = tmp_path / "f.qmd"
+    assert g.main(["--data", str(data), "--book", str(book), "--fragment", str(frag)]) == 0
+    assert "**test problems**: Labelled, @sec-ch01-a; Test index, @sec-appc." in frag.read_text()
 
 
 def test_an_alias_may_not_also_be_a_term(tmp_path, capsys):
