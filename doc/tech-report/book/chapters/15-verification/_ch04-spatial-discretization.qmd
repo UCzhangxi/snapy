@@ -15,6 +15,14 @@ indexing error, for example by feeding a constant field and demanding a constant
 **Not provided:** convergence-order evidence from that constant-field test; a constant-field pass does not
 establish the convergence order the chapter derives.
 
+The orders themselves are derived, and where a report check measures them also measured, in the section of each
+scheme: donor cell is first order everywhere (@sec-ch04-dc); PLM[^rg-cf6b04bc68b1] with its van Leer harmonic-mean slope limiter is
+second order where the field is smooth and first order at an extremum (@sec-ch04-plm); the unlimited cp3 and cp5
+are third and fifth order on a uniform smooth field (@sec-ch04-cp); WENO3[^rg-6abe5e01be09] and WENO5[^rg-50dd55ea6e88] reach their design orders 3
+and 5 where smooth, and WENO3 falls to second order at a critical point, measured at 2.09 (@sec-ch04-weno). The
+horizontal flux covariance removes two $O(\Delta x_1^2)$ terms of the face fluxes (@sec-ch04-fluxcov), and the
+$x_1$ mass covariance raises the stored velocity from second to fourth order (@sec-ch04-x1masscov).
+
 This section collects the tests that check the three parts, says what
 each one establishes, and keeps the chapter's own algebra checks, which run without snapy, apart from the
 registered solver tests.
@@ -46,7 +54,7 @@ Why the catalogue reads these tests the way it does, each step tied to the sourc
 
 1. *Test preservation before convergence.* `DeviceTest.reconstruct_preserves_a_constant_field`
    ({{< code tests/test_plm.cpp DeviceTest.reconstruct_preserves_a_constant_field >}}) feeds a constant array to
-   the donor-cell, PLM[^rg-cf6b04bc68b1] and WENO5[^rg-50dd55ea6e88] reconstructions in each direction and requires the output to equal that
+   the donor-cell, PLM and WENO5 reconstructions in each direction and requires the output to equal that
    constant by `allclose` at its library defaults, and to have the two-sided face shape.
 2. *Do not read an order from a zero residual on a constant.* Every reconstruction reproduces a constant
    exactly in exact arithmetic, so the row establishes the plumbing, not the order of @sec-ch04.
@@ -142,7 +150,9 @@ EXPECT_TRUE(torch::allclose(result, torch::full_like(result, 2.)))
 : Acceptance criteria at the code pin; CPU run evidence is recorded below, with CUDA coverage limited explicitly. {#tbl-ch15-ch04-tests-assertions}
 
 The three report checks run through `src/tests/test_checks.py` and import no snapy; their derivations are in
-@sec-ch04. `recon_check.py` covers polynomial reproduction, the linear WENO3[^rg-6abe5e01be09] and WENO5 combinations, the face
+the scheme sections of @sec-ch04: @sec-ch04-dc, @sec-ch04-plm, @sec-ch04-cp and @sec-ch04-weno for the
+reconstructions, @sec-ch04-fluxcov and @sec-ch04-x1masscov for the covariance terms, and @sec-ch04-divergence
+for the divergence. `recon_check.py` covers polynomial reproduction, the linear WENO3 and WENO5 combinations, the face
 orders at smooth and critical points, the harmonic PLM slope, the PPM[^rg-937d74d91431] placeholder and the donor-cell ladder.
 The PPM placeholder it ports is `interp_ppm` ({{< code src/recon/interp_simple.hpp interp_ppm >}}), a
 formula that returns its input and that nothing in the code calls. A deck that selects `type: ppm` does not
@@ -176,13 +186,13 @@ accuracy, plume-Roe coverage, or the error hidden by seam averaging; those need 
 <!-- reader glossary notes -->
 [^rg-cf6b04bc68b1]: PLM — piecewise-linear method
 
+[^rg-6abe5e01be09]: WENO3 — third-order weighted essentially non-oscillatory reconstruction
+
 [^rg-50dd55ea6e88]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
 
 [^rg-d5c0bdc7b42f]: WENO — weighted essentially non-oscillatory
 
 [^rg-c2f0d69d715d]: LMARS — low-Mach approximate Riemann solver
-
-[^rg-6abe5e01be09]: WENO3 — third-order weighted essentially non-oscillatory reconstruction
 
 [^rg-937d74d91431]: PPM — piecewise-parabolic method
 
