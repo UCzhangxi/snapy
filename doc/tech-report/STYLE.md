@@ -242,7 +242,7 @@ with each other and disagreed with the one the tools use —
 
 | where, at that sha | what it said |
 |---|---|
-| `code_pin.yml:3-4` | `repo: chengcli/snapy`, `sha: 6fbb39750f62b83df096058a4746e77d0a634bc5` — what every `{{< code >}}` actually resolves at |
+| `code_pin.yml:3-4` | `repo: chengcli/snapy`, `sha: ccf40f9565642c32be69f4b9ef0cfa6daff3f201` — what every `{{< code >}}` actually resolves at |
 | `STYLE.md:137-140` (this section, before this revision) | a four-row pin table: snapy base `aea71ed852effb09e6aa155dd26349f1210ef556`, snapy round `e894700ff7aee30b52882e5202b16461413780b0`, kintera `c55b13b2204997d2d09e04498558ab9495d8ee77`, pyharp `4721715855e937c1e8b218e964c0655f46e56e29`; no pydisort or commux row |
 | `book/index.qmd:9-10` | "Code is cited at the snapy main pin", then `e894700ff7aee30b52882e5202b16461413780b0`, described as "reproduced" from this section |
 

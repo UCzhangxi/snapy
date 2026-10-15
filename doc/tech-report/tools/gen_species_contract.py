@@ -12,7 +12,7 @@ TARGETS = {
     'species': 'book/chapters/02-thermodynamics/_howto-species.qmd',
     'condensate': 'book/chapters/10-moist-coupling/_howto-condensate.qmd',
 }
-PIN = '6fbb39750f62b83df096058a4746e77d0a634bc5'
+PIN = 'ccf40f9565642c32be69f4b9ef0cfa6daff3f201'
 KINTERA = ('chengcli/kintera', 'c55b13b2204997d2d09e04498558ab9495d8ee77')  # kintera v2.6.2
 
 

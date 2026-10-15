@@ -9,7 +9,7 @@ import code_anchors
 
 REPORT = Path(__file__).resolve().parent.parent
 TARGET = 'book/chapters/09-diffusion-forcing/_howto.qmd'
-PIN = '6fbb39750f62b83df096058a4746e77d0a634bc5'
+PIN = 'ccf40f9565642c32be69f4b9ef0cfa6daff3f201'
 
 
 def generate(report):
@@ -145,11 +145,11 @@ print("N6 forcing: registered float64 driver delta=0.00025")
 
 - **Contract.** Shape with ghosts: return the full state shape, including active-axis ghosts; singleton axes stay one cell ({ghosts_cite}).
 - Dt-integrated increment: the driver calls the module once per stage with
-  `{dispatch}` ({dispatch_cite}). Return the rate times `dt`; the driver adds it without another time factor ([addition](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L690)).
+  `{dispatch}` ({dispatch_cite}). Return the rate times `dt`; the driver adds it without another time factor ([addition](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L708)).
 - Borrowed read-only inputs: shared state and buffer tensors must not be mutated or retained ([inputs](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L38)).
 - Device and dtype: use `zeros_like` and convert stored floating buffers to the input device and dtype; loading moves device, not dtype ([loading](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L99)).
 - Ownership: allocate a fresh increment; the block owns the loaded modules until registration replaces the list ([registration](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L99)).
-- Allowed keys: `hydro_du` and/or `scalar_ds`; the latter needs passive scalars and matching scalar shape ([validation](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L690)).
+- Allowed keys: `hydro_du` and/or `scalar_ds`; the latter needs passive scalars and matching scalar shape ([validation](https://github.com/{repo}/blob/{sha}/src/mesh/meshblock.cpp#L708)).
 
 The generated state shape ({shape_cite}) and extents are:
 
