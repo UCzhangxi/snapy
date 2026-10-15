@@ -70,6 +70,23 @@ The 2-D warm-bubble test is `bryan.yaml`, a moist warm bubble on one block ($x_1
 `problem` card sets the bubble's amplitude `dT`, centre `xc`, `zc` and radii `xr`, `zr`. It runs the same way,
 `./bryan.release bryan.yaml`, stops at 1000 s of model time and writes one output frame every 100 s.
 
+**The same example on one GPU.** Rebuild with the `CUDA` option on
+([`CMakeLists.txt:10`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/CMakeLists.txt#L10)),
+that is, with `-DCUDA=ON` added to the build command above, then select the device with two environment variables:
+
+```bash
+cd build/bin
+DEVICE=cuda DEVICE_ID=0 ./straka.release straka_single.yaml
+```
+
+`DEVICE` defaults to `cpu`
+([`src/layout/layout.cpp:238`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/layout/layout.cpp#L238));
+with `cuda`, the block runs on `cuda:<DEVICE_ID>`, or on the local rank's GPU when `DEVICE_ID` is unset
+({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::device_str >}}).
+The driver prints "Running on CUDA" before the first step when it got a GPU
+(`main` of {{< code examples/straka.cpp main >}});
+without that line it is running on the CPU. @sec-ch14-gpu covers the rest of GPU execution.
+
 **Which driver for which deck.** `straka.release` runs dry Cartesian decks such as `straka_single.yaml`;
 `bryan.release` runs the moist `bryan.yaml`; `run_hydro.release -i <deck>` needs a deck with a `reactions:` card,
 such as `jupiter_evap_precip_1d.yaml`, and stops on a dry deck. A "minimal input" in a chapter is a fragment, not
