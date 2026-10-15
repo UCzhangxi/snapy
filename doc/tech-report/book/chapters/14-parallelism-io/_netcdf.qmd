@@ -30,6 +30,30 @@ Local symbols: $f$ a cubed-sphere panel, $0..5$ [count]; $n_{b2}$, $n_{b3}$ the
 blocks per panel along $x_2$, $x_3$ [count]; $\mathrm{fl}_{32}(x)$ the float32 value nearest a double $x$; $t$ the
 written time [s].
 
+Units of the output fields: a variable carries a `units` attribute where the output code sets one, in SI[^rg-8c117ccbf00d]: `rho`
+kg/m^3, `press` "pa", `vel1..3` m/s, `temp` and `theta` K, the coordinates "m" and `time` "s"; `dens`, `Etot`,
+`mom1..3` and the species fields carry none (@tbl-ch14-netcdf-contract-4, @tbl-ch14-netcdf-contract-5,
+@tbl-ch14-netcdf-contract-6).
+
+Primitive and conserved variables, in the deck and in the output. The conserved variables are the rows of
+`hydro_u` that the scheme advances: row 0 the dry density (the total density under `ideal-gas`), rows 1-3 the
+momenta, row 4 the total energy and rows 5 onward the partial densities of the species (O-16, O-17). The primitive
+variables are the rows of `hydro_w` at the same indices: total density, velocities, pressure and mass fractions.
+In the deck, the `variables:` list of an output stream chooses which set is written: `prim` writes the primitive
+variables as `rho`, `press`, `vel1 vel2 vel3` (O-18), and `cons` writes the conserved ones as `dens`, `Etot`,
+`mom1 mom2 mom3` (O-19).
+
+Reading a file in Python: open the combined file with `xarray` (or `netCDF4`); a cell-centred field has dimensions
+`(time, x1, x3, x2)` with $x_1$ the vertical (O-29). Temperature is `temp`, written by the `thermo` keyword (O-24)
+and by the user output of the Straka example:
+
+```python
+import xarray as xr
+ds = xr.open_dataset("straka_single.out0.00001.nc")  # <basename>.out<n>.<kkkkk>.nc
+T = ds["temp"].isel(time=0, x3=0)                    # one x2-x1 slice, units K
+T.plot(x="x2", y="x1")                               # needs matplotlib
+```
+
 ### Derivation
 
 The output copies values and, by default, rounds them to float32. What that rounding costs, in four steps:
@@ -148,7 +172,7 @@ To add a field, follow @sec-ch14-add-output-field; the existing diagnostic group
 Watch-outs for a reader of the files:
 
 - The pressure unit string is lower-case "pa" (O-18).
-- Mass fractions, partial densities, `dens`, `Etot` and `mom*` carry no `units` attribute at all (O-18, O-19). Their SI[^rg-8c117ccbf00d] units are not stated in any output code.
+- Mass fractions, partial densities, `dens`, `Etot` and `mom*` carry no `units` attribute at all (O-18, O-19). Their SI units are not stated in any output code.
 - **Hypothesis, not run:** `variables: [prim, cons]` on a deck with species defines each species name twice: once from `hydro_w`, once from `hydro_u` ([load_hydro_output_data.cpp#L155-L161](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/load_hydro_output_data.cpp#L155-L161)). `nc_def_var` is wrapped in a check that throws on error ([netcdf.cpp#L325-L348](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/netcdf.cpp#L325-L348)), so a "name in use" write failure is expected. This hypothesis has not been run.
 
 **Dimensions, coordinates and ghost cells in NetCDF.**
@@ -321,6 +345,8 @@ this chapter.
 
 [^rg-60f001cddf89]: double_precision — whether an output stream writes NetCDF variables as `NC_DOUBLE` instead of `NC_FLOAT` (default false)
 
+[^rg-8c117ccbf00d]: SI — International System of Units; notation only; see @sec-appa
+
 [^rg-ddd3dfc3359d]: type — implementation selector for the enclosing options block
 
 [^rg-88a9e0a977ff]: $n_g$ — ghost cells on each side
@@ -334,8 +360,6 @@ this chapter.
 [^rg-bc477a8d0f7b]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
 
 [^rg-0a77b7001f11]: scalar — passive-scalar options
-
-[^rg-8c117ccbf00d]: SI — International System of Units; notation only; see @sec-appa
 
 [^rg-9792da14d102]: x1 — first grid coordinate (the vertical coordinate in this output layout)
 
