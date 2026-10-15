@@ -151,8 +151,8 @@ READER_TERMS = {'MeshBlock': 'sec-ch01-construction', 'tensor layout': 'sec-ch01
                 'ghost zone': 'sec-ch04-framework', 'latent heat': 'sec-ch10-satadj',
                 'mixing ratio': 'sec-ch10-tracer', 'Python bindings': 'sec-ch01-python',
                 'options object': 'sec-ch01-options', 'module': 'sec-ch01-options',
-                'functional': 'sec-ch01-options', 'deck': 'sec-ch01-initialization',
-                'case': 'sec-ch01-initialization', 'restart file': 'sec-ch01-initialization'}
+                'functional': 'sec-ch01-options', 'deck': 'sec-preface-install',
+                'case': 'sec-ch01-initialization', 'restart file': 'sec-ch14-restart'}
 
 
 def test_named_concepts_are_in_the_registry(data):
