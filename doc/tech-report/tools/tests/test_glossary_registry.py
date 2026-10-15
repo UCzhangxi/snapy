@@ -44,7 +44,7 @@ def _broken(data, term, **change):
 def test_every_concept_has_a_defining_section(data):
     assert registry.registry_problems(REPORT, data) == []
     assert all(e.get('section') for e in data['entries'])
-    assert len(data['entries']) == 346  # 329 acronyms, keys and symbols, and 17 named concepts
+    assert len(data['entries']) == 353  # 329 acronyms, keys and symbols, 17 named concepts and 7 reader terms
 
 
 @pytest.mark.parametrize('term,change,message', [
@@ -83,6 +83,11 @@ def test_a_broken_defining_section_fails(data, term, change, message):
     ('key', 'nx1', 'cells', 'The anchor `nx1` is in the hydro reset.', False),
     ('key', 'uv-solver', 'solver', '**Activation.** `uv-solver` is `auto` (default), `kkt` or `partition`.', False),
     ('concept', 'Riemann solver', '', 'A Riemann solver is a function of the two face states.', True),
+    # a named concept that is also a class name is defined in code font (section 1.2)
+    ('concept', 'MeshBlock', '', 'A `MeshBlock` is the unit that owns a grid patch and every module that acts on it.',
+     True),
+    ('concept', 'MeshBlock', '', 'Each `MeshBlock` holds its own stage buffers.', False),
+    ('concept', 'MeshBlock', '', 'A `MeshBlockOptions` is a tree of options.', False),
 ])
 def test_the_definition_rule(kind, term, meaning, paragraph, expected):
     assert registry.defines(dict(kind=kind, term=term, meaning=meaning), paragraph) is expected
@@ -139,12 +144,34 @@ def test_a_roll_up_section_fails_the_registry(data):
     assert 'acronym PLM: section sec-ch04 is a chapter or appendix heading, not a section of its own' in problems
 
 
+# Reader terms (the Q326 held-out lookups): concepts a reader looks up that are not eponymous method names, so
+# `concept_candidates` does not find them; each is defined in the section it routes to.
+READER_TERMS = {'MeshBlock': 'sec-ch01-construction', 'tensor layout': 'sec-ch01-layout',
+                'ghost exchange': 'sec-ch03-exchange', 'halo exchange': 'sec-ch03-exchange',
+                'ghost zone': 'sec-ch04-framework', 'latent heat': 'sec-ch10-satadj',
+                'mixing ratio': 'sec-ch10-tracer'}
+
+
 def test_named_concepts_are_in_the_registry(data):
-    concepts = sorted(e['term'] for e in data['entries'] if e['kind'] == 'concept')
+    concepts = sorted(e['term'] for e in data['entries'] if e['kind'] == 'concept' and e['term'] not in READER_TERMS)
     assert concepts == registry.concept_candidates(REPORT) and len(concepts) == 17
     assert all(e.get('section') and isinstance(e.get(registry.MARK), bool) for e in data['entries']
                if e['kind'] == 'concept')
     assert '## Named concepts {.unnumbered .unlisted}' in appendix.FRAGMENT.read_text(encoding='utf-8')
+
+
+def test_reader_terms_are_defined_where_they_route(data):
+    """Each reader term is in the registry, unmarked, with the section that defines it (H03, H04, H20, H24, H34,
+    H36), and the re-routed entries land on the section that answers the question (H03, H16, H24)."""
+    have = {e['term']: e for e in data['entries'] if e['kind'] == 'concept'}
+    assert {t: have[t]['section'] for t in READER_TERMS if t in have} == READER_TERMS
+    assert not any(have[t][registry.MARK] for t in READER_TERMS)
+    defs = registry.definitions(REPORT, data)
+    assert all(READER_TERMS[t] in defs[('concept', t)] for t in READER_TERMS)
+    routes = {(e['kind'], e['term']): (e['section'], e.get(registry.MARK)) for e in data['entries']}
+    assert routes[('key', 'nghost')] == ('sec-ch04-framework', False)
+    assert routes[('acronym', 'VIC')] == ('sec-ch07-cfl', False)
+    assert routes[('key', 'uv-solver')] == ('sec-ch10-satadj', False)
 
 
 def test_a_use_under_an_unlabelled_section_has_no_section(data):

@@ -11,7 +11,8 @@ files, never in the generated first-use notes:
     "`dynamics/disable-flux-x1`, `-x2`"), by a reference-table row whose first cell names only keys, or by prose
     that makes it the subject of a definition ("`nu_iso` is a kinematic viscosity", "`top-cool` and `bot-heat`
     stand for ...", "`gammad` is $...$");
-  - a named concept is defined by prose that makes it the subject the same way ("a Riemann solver is a ...").
+  - a named concept is defined by prose that makes it the subject the same way ("a Riemann solver is a ...",
+    "a `MeshBlock` is the unit ..." for a concept that is also a class name).
 An acronym whose definition is only in its chapter's introduction (the acronym list of chapter 4) points to its own
 section of that chapter: the one whose title names it, else holds its expansion, else first uses it.
 An entry the book defines nowhere is marked `"not_defined_here": true`: the glossary says "not defined here" for
@@ -20,6 +21,8 @@ it, and its section is the first section of its own that uses it in prose, so th
 Named concepts are the eponymous method names of the prose ("Riemann solver", "Courant number"): a capitalised
 name followed by a method word, used mid-sentence at least twice, whose name is not also an ordinary lower-case
 word of the book (`concept_candidates`). They have registry, glossary and topic-index entries, no first-use notes.
+A concept may also be a reader term added by hand ("ghost zone", "MeshBlock"); `--seed` keeps it, and like any
+unmarked entry it must be defined in its section.
 
 The count of entries marked "not defined here" is a ratchet, tools/not-defined-here-baseline.json, set at the
 commit that lands the registry: it may not rise, and a fall is recorded with --update. A fall is verified,
@@ -272,7 +275,8 @@ def defines(item, paragraph):
         return False
     if item['kind'] == 'concept':
         name = r'[-–‐]'.join(map(re.escape, re.split(r'[–-]', term)))
-        return bool(re.search(_SUBJECT.format(item=name), paragraph, re.I))
+        # a concept that is also a class name ("A `MeshBlock` is the unit ...") is written in code font
+        return bool(re.search(_SUBJECT.format(item=r'(?:%s|`%s`)' % (name, name)), paragraph, re.I))
     return False
 
 
