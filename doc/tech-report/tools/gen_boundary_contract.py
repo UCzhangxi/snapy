@@ -7,7 +7,7 @@ import code_anchors
 
 REPORT = Path(__file__).resolve().parent.parent
 TARGET = 'book/chapters/11-boundaries/_howto.qmd'
-PIN = '6fbb39750f62b83df096058a4746e77d0a634bc5'
+PIN = 'ccf40f9565642c32be69f4b9ef0cfa6daff3f201'
 
 
 def read_source(checkout, sha, path):
@@ -190,18 +190,18 @@ print("N6 boundary: both x1 faces filled at initialization and after RK1")
   The extents below include ghosts only on non-singleton axes (@ghosts_cite@).
   After exchange, an x1 callback can receive a view whose tangential extent is
   `min(nghost, n/2)` for tangential size `n`; use the supplied sizes, not cached block sizes
-  ([slab dispatch](@url@/src/mesh/meshblock.cpp#L955)).
+  ([slab dispatch](@url@/src/mesh/meshblock.cpp#L977)).
 - Faces and timing: offsets `(dx3, dx2, dx1)` select inner/outer x1 with
   `(0,0,-1)` / `(0,0,1)`, x2 with `(0,-1,0)` / `(0,1,0)` and x3 with
   `(-1,0,0)` / `(1,0,0)` ([mapping](@url@/python/csrc/pymesh.cpp#L70)).
   C++ dispatch skips null callbacks and singleton dimensions, passes `dim = 3 - f/2`,
   then calls hydro and, if present, scalars with the corresponding `op.type()`
-  ([dispatch](@url@/src/mesh/meshblock.cpp#L1545)). Calls occur for primitives at
+  ([dispatch](@url@/src/mesh/meshblock.cpp#L1600)). Calls occur for primitives at
   [initialization](@url@/src/mesh/meshblock.cpp#L431), conserved state at the end
   of [initialization](@url@/src/mesh/meshblock.cpp#L498) and
-  [each local stage](@url@/src/mesh/meshblock.cpp#L841), plus x1 tangential-slab
+  [each local stage](@url@/src/mesh/meshblock.cpp#L862), plus x1 tangential-slab
   refresh after exchange when that tangential face is not physical
-  ([refresh](@url@/src/mesh/meshblock.cpp#L938)). Do not assume one call per stage.
+  ([refresh](@url@/src/mesh/meshblock.cpp#L960)). Do not assume one call per stage.
 - Dtype/device: the binding passes the tensor through (@callback_cite@).
   Use tensor-relative operations, as above, and explicitly match any auxiliary
   floating tensors to `var.dtype` and `var.device`. This recipe's runtime
