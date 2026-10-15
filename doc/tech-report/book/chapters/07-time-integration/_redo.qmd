@@ -48,7 +48,8 @@ $$ {#eq-ch07-redo-dt}
 
 1. **How often.** A step that never passes is tried $n_{\mathrm{redo}}^{\max}+1=6$ times, the last at $\Delta t_0/32$
    (`[C2]`), and an acceptance sets $n_{\mathrm{redo}}=0$ again (`[C3]`).
-2. **One decision.** Each rank forms six flags on the device, reads them back once, `MAX`-reduces them, and
+2. **One decision.** Each rank forms six flags and the step's vapour-repair failure count on the device, reads them
+   back once (a nonzero count raises the limiter's error), `MAX`-reduces the six flags, and
    encodes the result as a bit mask with bits 1, 2, 4, 8, 16, 32 for floor, clamp, limiter, NaN, saturation and
    VIC solve. For 0/1 flags `MAX` is OR, so every rank sees the same mask and takes the same branch (`[C1]`).
 3. **Full restore.** A redo copies the step-start state back into `hydro_u`, recomputes `hydro_w` from it,
@@ -80,10 +81,12 @@ make_fig()
 ```
 
 The six flags are one device tensor, `local_redo_flag_tensor` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}), read to the host once by
-`read_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}}). The floor test recomputes the primitives from `hydro_u` on a
+`read_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}}). A seventh entry carries the vapour-repair
+failures counted on the device during the step (@sec-ch08-fixvapor); the copy zeroes the count, and
+`read_redo_flags` raises the limiter's error when it is nonzero. The floor test recomputes the primitives from `hydro_u` on a
 copy, because `hydro_w` is one stage stale after the last stage, and compares them with $1.001$ times the floors in a
 negated form, so a NaN counts as a hit. The clamp flag is the VIC dry-clamp mark, the limiter and NaN flags are the
-two limiter marks, the saturation flag drains kintera's failure count, and the VIC flag is the solve latch. A Mesh
+two limiter marks, the saturation flag drains kintera's failure count, and the VIC flag is the solve latch, taken as a tensor without a read of its own. A Mesh
 with several local blocks on one device stacks the blocks' flag tensors and reads their maximum once (on mixed
 devices it ORs the flags block by block), reduces once, and applies the decision to every block; it checks
 signals first, in `MeshImpl::check_redo` ({{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). The
@@ -94,7 +97,7 @@ example driver calls `check_redo` after the kinetics, so a redo also rolls the k
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| the six flags on the device, floor test included | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}} | `local_redo_flag_tensor` | `density-floor`, `pressure-floor` |
+| the six flags and the vapour-repair count on the device, floor test included | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}} | `local_redo_flag_tensor` | `density-floor`, `pressure-floor` |
 | one device-to-host read | {{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}} | `read_redo_flags` | |
 | decision, restore, stop | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}} | `apply_redo` | `max_redo` |
 | local flags | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flags >}} | `local_redo_flags` | |
@@ -183,8 +186,9 @@ state.
 
 1. **Gentle events only.** A cell that erupts past the floor test and floors on the next step is not
    caught.[^ch07-redo-pos]
-2. **Hard aborts.** An unrepairable vapour column stops the run from inside the limiter instead of requesting a
-   redo, and the floor test's conversion can raise it too.[^ch07-redo-pos]
+2. **Hard aborts.** An unrepairable vapour column stops the run instead of requesting a redo: on the CPU from
+   inside the limiter, on CUDA within a stage at `check_redo`, which reads the count; the floor test's conversion
+   can raise it too.[^ch07-redo-pos]
 3. **Bad start states.** A species repair of a bad initial state requests a redo that no step can
    cure.[^ch07-redo-start]
 4. **Signals.** Only the Mesh path checks signals, with `CheckSignalFlags`; the single-block path does not

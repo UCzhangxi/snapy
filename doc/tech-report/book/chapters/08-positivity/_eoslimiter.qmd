@@ -82,11 +82,14 @@ catastrophic depends on the scaling of the problem.
 
 The marks are a two-element device-side boolean buffer, reset at `reset_limiter_marks`
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::reset_limiter_marks >}}) and read by the redo detector of
-@sec-ch08-redo. Entry one is the NaN mark and entry zero the patch mark. In the conserved pass they are set at
-`limiter_marks_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}): a NaN sets
+@sec-ch08-redo. Entry one is the NaN mark and entry zero the patch mark. A limiter call does not write the buffer: it
+queues its 0-d `any()` result with `push_mark_`, and the read `limiter_marks()` ORs each entry's queue into the buffer
+and empties it ({{< code src/eos/equation_of_state.hpp EquationOfStateImpl >}}); the reset empties the queues too. In the
+conserved pass the marks are queued at `push_mark_`
+({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}): a NaN sets
 entry one; entry zero is set by comparing the density and energy rows against a copy taken before the floors, and
 again by a species repair larger than the round-off threshold of @sec-ch08-roundoff. In the primitive pass
-`limiter_marks_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}) sets entry
+`push_mark_` ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}}) sets entry
 one for a NaN and entry zero for a species fraction below minus that threshold; its floors mark nothing.
 
 **Why this order, and what a floor costs.** Three facts of the code.
@@ -108,7 +111,7 @@ one for a NaN and entry zero for a species fraction below minus that threshold; 
 | NaN to zero, marked | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `masked_fill_` | |
 | the dry density floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `density_floor` | |
 | the energy floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `min_ie` | an energy row exists |
-| the patch mark | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `limiter_marks_` | interior only |
+| the patch mark | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}} | `push_mark_` | interior only |
 | the primitive pass | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `apply_primitive_limiter_` | `limiter: true` |
 | its density floor | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `density_floor` | |
 | its species clamp | {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_primitive_limiter_ >}} | `clamp_min_` | species present |
