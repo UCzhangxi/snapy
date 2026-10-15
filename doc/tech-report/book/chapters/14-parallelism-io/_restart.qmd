@@ -123,8 +123,8 @@ What a resume does with it:
 
 | id | fact | source |
 |---|---|---|
-| O-41 | It requires `hydro_u`, `last_time`, `last_cycle`, `file_number` and `next_time`. It restores the cycle and time, re-matches the stream schedules, and moves every tensor to the run's device | [meshblock.cpp#L1367-L1386](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1422-L1441), [L1388-L1462](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1443-L1517) |
-| O-42 | With an outflow (radiating) boundary, it also requires the `boundary_reference_*` tensors ("Initialize afresh or select extrapolation") | [meshblock.cpp#L1464-L1478](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1519-L1533) |
+| O-41 | It requires `hydro_u`, `last_time`, `last_cycle`, `file_number` and `next_time`. It restores the cycle and time, re-matches the stream schedules, and moves every tensor to the run's device | [meshblock.cpp#L1422-L1441](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1422-L1441), [L1443-L1517](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1443-L1517) |
+| O-42 | With an outflow (radiating) boundary, it also requires the `boundary_reference_*` tensors ("Initialize afresh or select extrapolation") | [meshblock.cpp#L1519-L1533](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1519-L1533) |
 
 : Restart contract, table 2. {#tbl-ch14-restart-contract-2}
 
@@ -132,11 +132,11 @@ What is **not** restored:
 
 | id | not restored | consequence for you | source |
 |---|---|---|---|
-| O-43 | the YAML card: grid, EOS[^rg-b6eeb6bec592], species and every option | rebuilt from the card you pass on resume. `_init_from_restart` has no check that the card matches the one that wrote the file (none found in L1359-L1492) | [restart.cpp#L24-L61](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/restart.cpp#L24-L61) (only tensors are written), [meshblock.cpp#L1359-L1492](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1414-L1547) |
+| O-43 | the YAML card: grid, EOS[^rg-b6eeb6bec592], species and every option | rebuilt from the card you pass on resume. `_init_from_restart` has no check that the card matches the one that wrote the file (none found in L1414-L1547) | [restart.cpp#L24-L61](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/restart.cpp#L24-L61) (only tensors are written), [meshblock.cpp#L1414-L1547](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1414-L1547) |
 | O-44 | the running `*_stat` mean and spread | these live in the output stream, not in the variable map, so a resumed run starts a new statistics window | [output_type.hpp#L211-L217](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/output_type.hpp#L211-L217), [restart.cpp#L42-L61](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/restart.cpp#L42-L61) |
 | O-45 | the time step | no `dt` is written. The step is recomputed from the state by `max_time_step` | [restart.cpp#L38-L61](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/restart.cpp#L38-L61), [mesh.cpp#L306-L325](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/mesh.cpp#L306-L325) |
-| O-46 | wall-clock timing | the timer restarts at the resumed cycle (`_time_start = clock()`) | [meshblock.cpp#L1382-L1384](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1437-L1439) |
-| O-48 | `scalar_r` | not stored when `scalar_s` and `hydro_u` are stored; rebuilt on read | [meshblock.cpp#L1453-L1462](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1508-L1517), [L1487-L1489](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1542-L1544) |
+| O-46 | wall-clock timing | the timer restarts at the resumed cycle (`_time_start = clock()`) | [meshblock.cpp#L1437-L1439](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1437-L1439) |
+| O-48 | `scalar_r` | not stored when `scalar_s` and `hydro_u` are stored; rebuilt on read | [meshblock.cpp#L1508-L1517](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1508-L1517), [L1542-L1544](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1542-L1544) |
 
 : Restart contract, table 3. {#tbl-ch14-restart-contract-3}
 

@@ -63,7 +63,9 @@ A CUDA test of snapy runs only when snapy was built with CUDA *and* torch sees a
 ({{< code tests/cuda_test_gate.hpp snapy_cuda_test_enabled >}}).
 
 Each host read-back (`.item()`) of a device value synchronises the device. Per step, they come from the time-step
-MIN, the redo flags, the signal check, the cycle-line meters and the gravity-work fixer. Their count per step at
+MIN, the redo flags, the signal check, the cycle-line meters, the gravity-work fixer and, with the implicit solver,
+one finiteness screen per stage. Within a stage and in the redo check, the CUDA vapour repair adds its failures to a
+device count that the redo flags carry (@sec-ch14-collectives) instead of reading them back. Their count per step at
 the pin was not measured for this chapter.[^ch14-gpu-sync]
 
 [^ch14-gpu-sync]: An open upstream issue (chengcli/snapy#291) counted 33 per step on a small 2-D moist grid with
@@ -114,7 +116,7 @@ block->to(device);
 | `test_weno5_cuda_line` (CUDA builds) | reconstruction on CUDA matches the CPU for lines of 32, 1024, 1025, 1030 and 1280 cells | $10^{-12}$ | round-off of the stencil sums |
 | `test_cubed_sphere_exchange` `subdivided_panel_exchange_matches_one_block_cuda` | on CUDA, $n_{b2} = 2, 4$ give the faces, $\Delta x_2$ and the density after one stage of $n_{b2} = 1$ | bitwise (`torch::equal`) | @sec-ch14-repro |
 | `test_x1_seam_split_*_cuda` (CUDA builds) | the $x_1$ seam arms on CUDA | as the CPU arms | @sec-ch03-x1seams |
-| `*_cuda_python` (CUDA builds) | eight Python tests rerun with `--device cuda`: vapour-fix failure, saturation redo, two flux-positivity cases, fourth-order well-balanced, $x_1$ centroid, radial-exact work, scalar flux covariance (`test_scalar_flux_covariance_cuda`) | as the CPU runs | same scripts and assertions |
+| `*_cuda_python` (CUDA builds) | nine Python tests rerun with `--device cuda`: vapour-fix failure, vapour-fix stale count, saturation redo, two flux-positivity cases, fourth-order well-balanced, $x_1$ centroid, radial-exact work, scalar flux covariance (`test_scalar_flux_covariance_cuda`) | as the CPU runs | same scripts and assertions |
 | `test_vic_moist_device_python` (CUDA builds) | one implicit moist step on CPU and on CUDA agree | $10^{-9}$ max abs. | about 17 times the $5.8\times10^{-11}$ of the source comment (H100; no sha or deck given, so not evidence here) |
 | `test_shallow_splash_ucx_cuda_decomp` (`FULL_TESTS`) | shallow-water splash decompositions on two GPUs over UCX; exits 125 without them | the runner's | `run_shallow_splash_decomp.py` |
 
@@ -130,7 +132,7 @@ device.[^ch14-gpu-run]
     registered test in the table ran. The [pinned CPU test run](https://github.com/chengcli/snapy/actions/runs/38197324901)
     supplies individual Passed lines for the CPU tests; CUDA-only rows require separate evidence.
 
-The CUDA registrations use `snapy_add_python_test` [`tests/CMakeLists.txt:330-356`](https://github.com/chengcli/snapy/blob/6fbb39750f62b83df096058a4746e77d0a634bc5/tests/CMakeLists.txt#L330-L356), with the
+The CUDA registrations use `snapy_add_python_test` [`tests/CMakeLists.txt:333-362`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/tests/CMakeLists.txt#L333-L362), with the
 seam arms from `seam_arm` {{< code tests/CMakeLists.txt >}}. The device tolerance is `DEVICE_TOL`
 ({{< code tests/test_vic_moist_device.py DEVICE_TOL >}}). The N8 CUDA example ran, but the CUDA-only test rows remain **missing evidence**.
 Recovery inspected both jobs of the pinned test run and all dated N8 records: the CI logs disable
