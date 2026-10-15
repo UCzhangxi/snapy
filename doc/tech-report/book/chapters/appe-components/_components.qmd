@@ -23,7 +23,7 @@ radiative-transfer solver call. Dependency availability does not imply active ra
 
 | component | use in snapy | required version at the snapy pin |
 |---|---|---|
-| kintera | moist EOS, saturation adjustment, driver kinetics | at least 2.6.2 in CMake (`find_package(Kintera 2.6.2 REQUIRED)`) and in Python build and runtime metadata (`kintera>=2.6.2`) |
+| kintera | moist EOS, saturation adjustment, driver kinetics | at least 2.6.3 in CMake (`find_package(Kintera 2.6.3 REQUIRED)`) and in Python build and runtime metadata (`kintera>=2.6.3`) |
 | pyharp / CMake Harp | integrator options, stage weights and stage combination | required by CMake; no version minimum or exact version specified |
 | pydisort / CMake Disort | C++ shared-library link and Python package import | required by CMake; no version minimum or exact version specified |
 | commux | process group over UCX (@sec-ch14-backends) | `commux>=0.1.4` on Linux in Python build and runtime metadata; CMake links `commux::commux` when UCX is found |
@@ -31,10 +31,10 @@ radiative-transfer solver call. Dependency availability does not imply active ra
 
 : Requirements, distinct from source pins and tested compatibility. {#tbl-appe-requirements}
 
-`find_package` declares these CMake requirements: `Disort` and `Harp` with no version, `Kintera 2.6.2`
+`find_package` declares these CMake requirements: `Disort` and `Harp` with no version, `Kintera 2.6.3`
 ({{< code CMakeLists.txt >}}). `FindKintera` enforces the floor at configure time: it reads `kintera.__version__`
-and fails with "snapy requires kintera >= 2.6.2 (…)" below it ({{< code cmake/modules/FindKintera.cmake >}}).
-Python `[build-system] requires` and `[project] dependencies` both contain `kintera>=2.6.2`
+and fails with "snapy requires kintera >= 2.6.3 (…)" below it ({{< code cmake/modules/FindKintera.cmake >}}).
+Python `[build-system] requires` and `[project] dependencies` both contain `kintera>=2.6.3`
 ({{< code pyproject.toml >}}).
 Neither Python list declares pyharp or pydisort. They are required all the same, and the version a build accepts is
 not bounded, in four steps:
@@ -87,12 +87,12 @@ make_fig()
 
 ### Code
 
-**What to install.** For a CPU build on Linux: PyTorch 2.10.0, `kintera>=2.6.2`, pyharp, pydisort, and, for the UCX
+**What to install.** For a CPU build on Linux: PyTorch 2.10.0, `kintera>=2.6.3`, pyharp, pydisort, and, for the UCX
 process group and PnetCDF output, `commux>=0.1.4` and `pinc>=0.2.0`. The versions are those of the build metadata
 above; for pyharp and pydisort none is declared.
 
 ```bash
-python -m pip install "torch==2.10.0" "kintera>=2.6.2" pyharp pydisort "commux>=0.1.4" "pinc>=0.2.0"
+python -m pip install "torch==2.10.0" "kintera>=2.6.3" pyharp pydisort "commux>=0.1.4" "pinc>=0.2.0"
 ```
 
 These metadata requirements do not establish a tested compatible combination; use the preface recipe for a complete build.
@@ -102,8 +102,8 @@ These metadata requirements do not establish a tested compatible combination; us
 1. *An importable package is missing.* `FindKintera`, `FindHarp` and `FindDisort` each import their Python package
    to read its version, and stop with "cannot determine PEP 440 version of …" if the import fails. The C++ library
    is located from the Python package.
-2. *kintera is older than 2.6.2.* `FindKintera` fails with "snapy requires kintera >= 2.6.2 (…), found …". The
-   message names the three kintera features behind the floor.
+2. *kintera is older than 2.6.3.* `FindKintera` fails with "snapy requires kintera >= 2.6.3 (…), found …". The
+   message names the four kintera features behind the floor.
 3. *A library or its headers is not found.* Each locator's `REQUIRED_VARS` fails the `REQUIRED` `find_package`.
 
 At import time, `import snapy` fails if `pydisort`, `pyharp` or `kintera` cannot be imported (`python/__init__.py`).
@@ -114,7 +114,7 @@ At import time, `import snapy` fails if `pydisort`, `pyharp` or `kintera` cannot
 find_package(Torch REQUIRED)
 find_package(Disort REQUIRED)
 find_package(Harp REQUIRED)
-find_package(Kintera 2.6.2 REQUIRED)
+find_package(Kintera 2.6.3 REQUIRED)
 ```
 
 The first three lines are the unversioned requirements of item 3 of the refusal list above; the last is the floor
@@ -143,9 +143,10 @@ snapy calls it in one place, `saturation_failures`, at stage 0 of every step, so
 step is not charged to it ({{< code src/mesh/meshblock.cpp MeshBlockImpl::saturation_failures >}};
 {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). The redo check does not call it. It reads
 kintera's count `nfail_` on the device and clears it in the same place, so the count is drained once per step without a
-host read (`local_redo_flag_tensor`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). The CMake comment above `find_package(Kintera …)` records three steps of the floor: 2.5.8 for `SpeciesThermo`
-`names()`/`mu()`, 2.5.13 for this method, and 2.6.2 for the `h2o_bryan` liquid beta that `examples/bryan.yaml`
-needs. The floor at the pin is the last, 2.6.2 ({{< code CMakeLists.txt >}}).
+host read (`local_redo_flag_tensor`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). The CMake comment above `find_package(Kintera …)` records four steps of the floor: 2.5.8 for `SpeciesThermo`
+`names()`/`mu()`, 2.5.13 for this method, 2.6.2 for the `h2o_bryan` liquid beta that `examples/bryan.yaml`
+needs, and 2.6.3 for the same-call rate constants that the kinetics Jacobian of `run_hydro` and
+`jupiter_evap_precip_1d` takes. The floor at the pin is the last, 2.6.3 ({{< code CMakeLists.txt >}}).
 
 ### Tests
 
