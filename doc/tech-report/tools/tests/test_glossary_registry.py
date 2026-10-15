@@ -44,7 +44,7 @@ def _broken(data, term, **change):
 def test_every_concept_has_a_defining_section(data):
     assert registry.registry_problems(REPORT, data) == []
     assert all(e.get('section') for e in data['entries'])
-    assert len(data['entries']) == 364  # 329 acronyms, keys and symbols, 17 named concepts and 18 reader terms
+    assert len(data['entries']) == 365  # 329 acronyms, keys and symbols, 17 named concepts and 19 reader terms
 
 
 @pytest.mark.parametrize('term,change,message', [
@@ -147,6 +147,7 @@ def test_a_roll_up_section_fails_the_registry(data):
 # Reader terms (the Q326 and q333 held-out lookups): concepts a reader looks up that are not eponymous method names, so
 # `concept_candidates` does not find them; each is defined in the section it routes to.
 READER_TERMS = {'MeshBlock': 'sec-ch01-construction', 'tensor layout': 'sec-ch01-layout',
+                'grid type': 'sec-ch03-choosing',
                 'ghost exchange': 'sec-ch03-exchange', 'halo exchange': 'sec-ch03-exchange',
                 'steady state': 'sec-ch07-vic-steady',
                 'ghost zone': 'sec-ch04-framework', 'latent heat': 'sec-ch10-satadj',
