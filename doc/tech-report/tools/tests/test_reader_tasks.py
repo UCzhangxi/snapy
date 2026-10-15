@@ -182,6 +182,44 @@ def test_a_reason_missing_from_the_rendered_pdf_fails(tmp_path):
     assert problems == ["T-4: not provided, but the rendered PDF prints no reason"]
 
 
+def _pdftotext(monkeypatch, book, out):
+    """pdf_text on a stand-in PDF whose pdftotext output is `out`."""
+    import subprocess
+    (book / "_book").mkdir(exist_ok=True)
+    (book / "_book" / "report.pdf").write_bytes(b"%PDF")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=out))
+    return g.pdf_text(book)
+
+
+# pdftotext puts the foot of a page (its number) and the head of the next (the running head) at each form feed
+_BREAK = "Not provided: no shock-\n\n901\n\n\fUndocumented\n\ntube deck"
+
+
+@pytest.mark.parametrize("pages", [
+    pytest.param(lambda t: t.replace("## Undocumented {.unnumbered .unlisted}", "Undocumented"),
+                 id="head-is-a-heading-of-the-body"),
+    pytest.param(lambda t: "Undocumented\n\n" + t, id="head-repeats-on-another-page"),
+])
+def test_a_reason_split_by_a_page_break_still_matches(tmp_path, monkeypatch, pages):
+    root = tmp_path / "report"
+    shutil.copytree(FIX, root)
+    rows = g.load((root / "tools/reader-tasks.md").read_text())
+    text = pages(g.render(rows, gtm.labels(root / "book"), {})).replace("Not provided: no shock-tube deck", _BREAK)
+    assert "\f" in text and "901" in text
+    problems, stats = g.rendered_problems(root / "book", rows, {}, _pdftotext(monkeypatch, root / "book", text))
+    assert problems == [] and stats["not_provided"] == 1
+
+
+def test_page_furniture_stripping_keeps_the_body(tmp_path, monkeypatch):
+    """Only a page number at the foot and a running head that the text prints again are furniture."""
+    (tmp_path / "book").mkdir()
+    out = ("Setup\n\nStep 3 of\n\n12\n\n\fSetup\n\nthe run.\nSee row\n\n42\n\nin the table.\n\f"
+           "Once only\n\nthe end.\n\n13\n\n\f")
+    assert _pdftotext(monkeypatch, tmp_path / "book", out) == (
+        "Setup\n\nStep 3 of\n\n\n\f\nthe run.\nSee row\n\n42\n\nin the table.\n\fOnce only\n\nthe end.\n\n\n\f")
+
+
 def test_the_rendered_gate_needs_a_render(tmp_path):
     (tmp_path / "book").mkdir()
     problems, _ = g.rendered_problems(tmp_path / "book", [], {})

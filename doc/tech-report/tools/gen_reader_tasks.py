@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -185,7 +186,34 @@ def pdf_text(book: Path) -> str | None:
     pdfs = sorted((book / "_book").glob("*.pdf"))
     if not pdfs or not shutil.which("pdftotext"):
         return None
-    return subprocess.run(["pdftotext", str(pdfs[0]), "-"], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(["pdftotext", str(pdfs[0]), "-"], capture_output=True, text=True, check=True).stdout
+    return strip_page_furniture(out)
+
+
+_PAGE_NUMBER = re.compile(r"\d+|[ivxlcdm]+", re.IGNORECASE)
+
+
+def strip_page_furniture(text: str) -> str:
+    """pdftotext text without the furniture at each page break (\\f), so a sentence that crosses a page reads on:
+    the page number, when it is the last line before the break, and the running head, when the first line after
+    the break is printed again elsewhere in the text (on another page's head or as a heading of the body) and is
+    no page number. A body line at the top of a page that the text prints only once is kept."""
+    pages = [p.split("\n") for p in text.split("\f")]
+    count = Counter(line.strip() for page in pages for line in page if line.strip())
+
+    def first(lines, order):
+        return next((i for i in order if lines[i].strip()), None)
+
+    for k, lines in enumerate(pages):
+        if k + 1 < len(pages):
+            i = first(lines, range(len(lines) - 1, -1, -1))
+            if i is not None and _PAGE_NUMBER.fullmatch(lines[i].strip()):
+                del lines[i]
+        if k > 0:
+            i = first(lines, range(len(lines)))
+            if i is not None and count[lines[i].strip()] > 1 and not _PAGE_NUMBER.fullmatch(lines[i].strip()):
+                del lines[i]
+    return "\f".join("\n".join(lines) for lines in pages)
 
 
 def printed_reason(r: dict) -> str:
