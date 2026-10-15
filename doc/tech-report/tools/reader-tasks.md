@@ -209,3 +209,4 @@ anchored row it starts with the rendered section number. A literal `|` inside a 
 | DO-ch14-schedule | Schedule a NetCDF stream with time-weighted mean and deviation, and stop at a set time | DO ch14-schedule | sec-ch14-schedule | §14.10; card class CPU-seconds; deck examples/straka_single.yaml |
 | DO-ch14-tools | Combine per-block output and inspect it (pd-combine, pd-inspect) | DO ch14-tools | sec-ch14-tools | §14.11; card class multi-rank; deck examples/straka_proc2.yaml |
 | DO-ch14-repro | Run the decomposition reproducibility tests (FULL_TESTS=ON) | DO ch14-repro | sec-ch14-repro | §14.12; card class multi-rank; deck tests/run_shallow_xy_decomp.py |
+| EXT-EOS | Add a new equation of state: implement its interface and register its deck selector | Editor EOS content gap | sec-ch02-new-eos | §2.10; native C++ recipe, not runtime validated |

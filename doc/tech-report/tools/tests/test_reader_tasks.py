@@ -37,23 +37,23 @@ def _row(rows, rid, **change):
 
 # --- the list ---------------------------------------------------------------------------------------------------
 
-def test_the_list_has_its_198_rows(real):
+def test_the_list_has_its_199_rows(real):
     rows = real[0]
-    assert len(rows) == 198 and len({r["id"] for r in rows}) == 198
+    assert len(rows) == 199 and len({r["id"] for r in rows}) == 199
     anchored = [r for r in rows if not r["where"].startswith("not provided")]
-    assert (len(anchored), len(rows) - len(anchored), len({r["where"] for r in anchored})) == (174, 24, 103)
+    assert (len(anchored), len(rows) - len(anchored), len({r["where"] for r in anchored})) == (175, 24, 104)
 
 
 def test_the_real_list_passes_and_the_appendix_is_fresh(real, capsys):
     assert g.check() == 0
     out = capsys.readouterr().out
-    assert "[N2 reader tasks] 0 problem(s); 198 tasks" in out
+    assert "[N2 reader tasks] 0 problem(s); 199 tasks" in out
     assert "finding" not in out and not (REPORT / "tools/reader-tasks-findings.json").exists()
 
 
 def test_the_statuses(real):
     rows, _, bank = real
-    assert g.counts(rows, bank) == {"answered": 97, "partly documented": 77, "undocumented": 16,
+    assert g.counts(rows, bank) == {"answered": 98, "partly documented": 77, "undocumented": 16,
                                     "unsupported by the code": 0, "outside scope": 8}
 
 

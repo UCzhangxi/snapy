@@ -1,0 +1,53 @@
+## How to add an equation of state {#sec-ch02-new-eos}
+
+A new equation of state needs a C++ implementation and a factory entry. Changing the deck alone cannot add
+one: the factory rejects an unknown `type`. Start with the dry ideal-gas implementation when the new model
+uses the same state layout; the existing choices and conversion keys are listed in @sec-ch02-interface.
+
+1. **Implement the class in `src/eos/`.** Follow
+   {{< code src/eos/ideal_gas.hpp IdealGasImpl >}}: derive from
+   `torch::nn::Cloneable<MyEOSImpl>` and `EquationOfStateImpl`, provide `reset()`, expose the inherited
+   `forward`, and declare `TORCH_MODULE(MyEOS)`. Pass the options and parent to the base constructor;
+   it requires a `HydroImpl` parent ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::EquationOfStateImpl >}}).
+2. **Implement the thermodynamic contract.** Override `compute(std::string ab,
+   std::vector<torch::Tensor> const& args)`. The base implementation throws. For a dry-gas starting point,
+   retain all seven branches of {{< code src/eos/ideal_gas.cpp IdealGasImpl::compute >}}:
+   `W->U`, `U->W`, `W->I`, `W->T`, `UT->I`, `W->A` and `WA->L`. Conversions accept an optional output
+   tensor as the second argument; otherwise they allocate with `empty_like`. Temperature, internal-energy
+   density, adiabatic index and sound-speed results have the cell shape, without the state-row dimension.
+   Preserve the state layout and metric conventions in @sec-ch01-layout, including ghosts; follow the limiter
+   calls in {{< code src/eos/ideal_gas.cpp IdealGasImpl::_prim2cons >}} and
+   {{< code src/eos/ideal_gas.cpp IdealGasImpl::_cons2prim >}}. Those calls can modify their input tensors.
+   Keep tensor allocations on the input dtype and device, as the existing `empty_like` and `ones_like` calls do.
+3. **Supply model-specific properties.** Implement `nvar()`, `species_weight`, `species_cv_ref` and
+   `specific_heat_cv` as in `IdealGasImpl`. Review `internal_energy_offset` and `species_enthalpy` for a
+   constituent model: their base defaults are zero and an undefined tensor, respectively
+   ({{< code src/eos/equation_of_state.hpp EquationOfStateImpl >}};
+   {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::internal_energy_offset >}}).
+   These defaults do not establish consistency for a new model; use @sec-ch02-consistency.
+4. **Register and select it.** Include the new header and add a branch to
+   {{< code src/eos/equation_of_state.cpp EquationOfStateImpl::create >}}. For example, this is the existing
+   ideal-gas registration with only the proposed name and holder substituted:
+
+   ```cpp
+   } else if (opts->type() == "my-eos") {
+     return p->register_module(name, MyEOS(opts, p));
+   ```
+
+   Select it in a complete input deck with the fragment below. `my-eos` is a proposed name, not a shipped
+   option. The parser reads this string; its default remains `moist-mixture`. New parameter keys also need
+   options, parsing and admission to `check_keys` in
+   {{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}}.
+
+   ```yaml
+   dynamics:
+     equation-of-state:
+       type: my-eos
+   ```
+
+The smallest implementation exercise is to copy `ideal_gas.hpp` and `ideal_gas.cpp` to new names, rename
+`IdealGasImpl`/`IdealGas` throughout, and add the factory branch above before changing any thermodynamics.
+Reconfigure and rebuild: [`src/CMakeLists.txt:35-40`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/CMakeLists.txt#L35-L40)
+collects `eos/*.cpp` at configure time. This recipe preserves the existing dry-gas closure; it is not a
+validated new physical model. Check conversion round trips, the temperature/internal-energy identities and
+sound speed before using a changed closure. Runtime validation of this proposed copy is not provided here.
