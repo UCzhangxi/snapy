@@ -64,7 +64,7 @@ def test_the_native_alternative_gives_the_formula_tables_and_rebuild():
                   'std::vector<std::string> func1_names = {', '__device__ user_func1 func1_table_cuda[] = {',
                   'nullptr,', 'funcs.push_back(func_table[id]);', 'h_idx.push_back(id + 1);', 'name += "_ddT";',
                   'cmake --build build --parallel', 'pip install .',
-                  'run: `python3 src/snapy_report/ch10/func_table_check.py`'):
+                  'run: `python3 src/snapy_report/ch10/checks/func_table_check.py`'):
         assert piece in native, piece
     for path in ('src/utils/user_funcs.hpp', 'src/vapors/vapor_functions.h', 'src/func_table.cpp',
                  'src/func_table.cu', 'src/utils/user_funcs.cu', 'src/thermo/log_svp.hpp', 'README.md'):
@@ -72,6 +72,6 @@ def test_the_native_alternative_gives_the_formula_tables_and_rebuild():
 
 
 def test_the_function_table_check_output_is_committed():
-    out = (c.REPORT / 'src/snapy_report/ch10/func_table_check.out').read_text()
+    out = (c.REPORT / 'src/snapy_report/ch10/checks/func_table_check.out').read_text()
     assert '5 of 5 passed' in out
     assert all(f'[C{n}] PASS' in out for n in range(1, 6))

@@ -1228,6 +1228,22 @@ def gate_fig_output(book):
     return len(msgs)
 
 
+def gate_figure_manifest(book):
+    """FIGURES.md, the figure manifest, lists every figure cell with its section file and the figure modules its code
+    imports, and every path it lists exists (tools/render_figures.py; static, nothing is drawn)."""
+    report = book.parent
+    if not (report / "tools" / "render_figures.py").exists():
+        print("\n[figure-manifest gate] no tools/render_figures.py next to the book: skipped")
+        return 0
+    import render_figures
+    msgs = render_figures.check_manifest(report)
+    print("\n[figure-manifest gate] " + ("every figure cell listed in FIGURES.md, every listed path present"
+                                         if not msgs else f"{len(msgs) - 1} problem(s)"))
+    for m in msgs:
+        print(f"  ✗ {m}")
+    return len(msgs)
+
+
 def gate_tables(book):
     """Pipe tables against STYLE 10.5 and the Code/Tests headers of STYLE 2 (at most 5 columns, a labelled caption,
     the fixed headers, one table per Code or Tests layer); per-chapter counts may only shrink
@@ -1376,6 +1392,7 @@ def main(argv):
                     ("freeze tracked", gate_freeze_is_tracked),
                     ("chapter list", gate_chapter_list),
                     ("figstyle", gate_figstyle),
+                    ("figure manifest", gate_figure_manifest),
                     ("provenance", gate_provenance),
                     ("tables", gate_tables),
                     ("do cards", gate_do_cards),

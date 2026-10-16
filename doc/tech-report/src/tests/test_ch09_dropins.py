@@ -1,5 +1,5 @@
 """Check the shipped bounds, and ensure wrong operators are detected."""
-from snapy_report.ch09.ch09_dropin_check import TAGS, check
+from snapy_report.ch09.checks.ch09_dropin_check import TAGS, check
 import pytest
 
 

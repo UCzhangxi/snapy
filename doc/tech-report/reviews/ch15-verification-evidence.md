@@ -72,7 +72,7 @@ to the existing 6.2.1 binary. A workspace cache supplies pinned source and citat
 | `python tools/gen_notation_index.py` | existing generated index | two first-use cells regenerated |
 | `python tools/book_chapters.py` | existing list | no diff |
 | `python tools/check_math_spans.py` on chapter-15 files | existing source gate clean | exit 0 |
-| `PYTHONPATH=src python src/snapy_report/ch15/metrics_check.py` | absent | 3 exact symbolic claims pass |
+| `PYTHONPATH=src python src/snapy_report/ch15/checks/metrics_check.py` | absent | 3 exact symbolic claims pass |
 | `git diff --check` | clean | clean |
 
 The independent checks are included in the existing `src/tests/test_checks.py` discovery test, so the added

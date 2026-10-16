@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 import pytest
 
-path=Path(__file__).parents[1]/'snapy_report/ch12/configuration_check.py'
+path=Path(__file__).parents[1]/'snapy_report/ch12/checks/configuration_check.py'
 spec=importlib.util.spec_from_file_location('configuration_check',path)
 module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)

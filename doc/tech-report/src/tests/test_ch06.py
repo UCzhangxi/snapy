@@ -13,10 +13,11 @@ from matplotlib.patches import Patch
 from matplotlib.text import Text
 
 import snapy_report.ch06 as ch06
+import snapy_report.ch06.figures as ch06_figures
 from snapy_report import figstyle as fs
 
-FIGS = sorted(m.name for m in pkgutil.iter_modules(ch06.__path__) if m.name.startswith("fig_"))
-CHECKS = sorted(Path(ch06.__file__).parent.glob("*_check.py"))
+FIGS = sorted(m.name for m in pkgutil.iter_modules(ch06_figures.__path__) if m.name.startswith("fig_"))
+CHECKS = sorted((Path(ch06.__file__).parent / "checks").glob("*_check.py"))
 ALLOWED = {c.lower() for c in (fs.BLACK, fs.ORANGE, fs.SKY, fs.GREEN, fs.YELLOW, fs.BLUE, fs.VERMILLION, fs.PURPLE,
                                fs.GREY, "#ffffff", "#eaf5fc", "#f7e6ef")}
 
@@ -27,7 +28,7 @@ def hexes(c):
 
 @pytest.mark.parametrize("name", FIGS)
 def test_figure_rules(name):
-    fig = importlib.import_module(f"snapy_report.ch06.{name}").make_fig()
+    fig = importlib.import_module(f"snapy_report.ch06.figures.{name}").make_fig()
     fig.draw_without_rendering()
     assert min(abs(fig.get_size_inches()[0] - w) for w in (fs.SINGLE, fs.DOUBLE)) < 1e-6
     for art in fig.findobj(lambda a: a.get_visible()):

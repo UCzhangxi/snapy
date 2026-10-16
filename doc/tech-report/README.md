@@ -9,7 +9,30 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
 - `code_pin.yml`: the one commit every `{{< code >}}` citation resolves at. It is the single source of truth for the snapy pin; no other file restates that sha.
 - `NOTATION.md`: every symbol, with one meaning each.
 - `OUTLINE.md`: the plan, chapter by chapter and scheme by scheme.
-- `chapters/NN-slug/`: Markdown with LaTeX, with `figures/` (scripts and PNGs) and `checks/` (sympy/numpy scripts and their output). The one figure style is `src/snapy_report/figstyle.py` (`from snapy_report import figstyle as fs`); `chapters/common/figstyle.py` and the chapter shims `src/snapy_report/ch05/_style.py` and `ch09/_style.py` are folded into it and go when their figures are ported. The worked example is `chapters/06-gravity-energy/D_face_work_pe.md`.
+- **Where things live.** One home per kind of resource; `FIGURES.md` maps every figure to its code and data.
+
+  | what | home | written by | read by |
+  |---|---|---|---|
+  | chapter text | `book/chapters/NN-slug.qmd` and its sections `book/chapters/NN-slug/_<scheme>.qmd` | authors | Quarto |
+  | figure code | `src/snapy_report/chNN/figures/fig_<name>.py`: one module per figure, `make_fig()` returns it | authors | the figure's `{python}` cell in its section file |
+  | chapter helpers | `src/snapy_report/chNN/*.py` (`flow.py`, `formulas.py`, `_draw.py`, ...); the one figure style `src/snapy_report/figstyle.py` | authors | figure modules and checks |
+  | executable checks | `src/snapy_report/chNN/checks/<name>_check.py` with its committed output `<name>_check.out` | authors | `src/tests` (byte comparison), Appendix B (`tools/gen_derivation_index.py`) |
+  | figure data | `src/snapy_report/chNN/data/` | the check or run script `FIGURES.md` names next to the file, or a snapy run named in the file's `provenance` | figure modules |
+  | run records | `src/snapy_report/chNN/evidence/` (chapter 10: `run_evidence.py` and `logs/`) | the run script | the chapter's Tests layer |
+  | generated appendices | `book/chapters/17-appendices/_app*.qmd` | the pre-render generators in `book/_quarto.yml`, from their inputs in `tools/` (`*.yaml`, `*.json`) | the appendix chapter |
+  | execution cache | `book/_freeze/` (committed for chapter 5 only) | Quarto (`freeze: auto`) | Quarto |
+  | gates and their baselines | `tools/*.py`, `tools/*-baseline.json`; their tests `tools/tests/`, fixtures `tools/tests/fixtures/` | authors; a baseline by its gate's `--update` | CI, `AUTHOR-CHECKLIST.md` |
+  | review records | `reviews/`: `review-record.tsv`, anchor maps, pin-move notes, and the one-off scripts of past reviews (kept as records, run by nothing) | reviewers | the ratchet gate (`review-record.tsv`), reviewers |
+  | inputs | `sources/` | | authors |
+  | drawn figures | `build/figures/<chapter>/<label>.svg\|pdf\|png` (gitignored) | `tools/render_figures.py` | you |
+
+  **Figures.** `python3 tools/render_figures.py` draws every figure cell as the render does, to `build/figures/`
+  (`--chapters ch05,ch06` for some chapters; `build/figures/index.json` holds each SVG's sha256, so two draws
+  compare byte for byte). To change a figure's data, run the writer `FIGURES.md` names (a check rewrites its data
+  file when run; `src/snapy_report/ch06/checks/d_face_work_pe_check.py` only with `--write-data`), then draw it.
+  After adding a figure, or changing the modules or data files it uses, rewrite the manifest with
+  `python3 tools/render_figures.py --manifest` in the same commit; `render_gate.py` checks it statically (gate
+  `figure manifest`) and `python3 -m pytest tools/tests` tests the tool.
 - `tools/check_citations.py`: checks that every code citation (STYLE 10.6 links and `path:line@sha`) resolves at its sha, that the cited lines exist and, in a `.qmd`, contain the link's anchor symbol, and that the repository is one STYLE 3.1 allows; `python3 -m pytest tools/tests` tests it.
 - **Citing code.** Cite snapy code by file and symbol, never by line number:
   `{{< code src/hydro/hydro_forward.cpp HydroImpl::_flux_covariance >}}` renders as the link
@@ -25,7 +48,7 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
   `code_pin.yml` only when every citation resolves there; `diff <old> <new>` prints the same list for any two
   commits. Links that could not be converted to symbols (lines across several symbols, top-level code,
   kintera/pyharp, generated appendices) remain STYLE 10.6 links, listed in `reviews/code-anchors-unmapped.tsv`.
-- `tools/check_figstyle.py`: the figure-style gate (STYLE 6). Figure code under `src/snapy_report/` and `chapters/` may style only through `snapy_report.figstyle`: it counts, per chapter and without importing anything, imports of other style modules, rcParams writes and inline font settings (`fontsize=8`, `family=...`), and compares the counts with `tools/figstyle-baseline.json`. Ratchet: a chapter above its baseline fails, and so does one below it until `python3 tools/check_figstyle.py --update` lowers the baseline in the same commit (it never raises one); `--list` prints every site. `render_gate.py` runs it as its `figstyle` source gate; `python3 -m pytest tools/tests` tests it.
+- `tools/check_figstyle.py`: the figure-style gate (STYLE 6). Figure code under `src/snapy_report/` may style only through `snapy_report.figstyle`: it counts, per chapter and without importing anything, imports of other style modules, rcParams writes and inline font settings (`fontsize=8`, `family=...`), and compares the counts with `tools/figstyle-baseline.json`. Ratchet: a chapter above its baseline fails, and so does one below it until `python3 tools/check_figstyle.py --update` lowers the baseline in the same commit (it never raises one); `--list` prints every site. `render_gate.py` runs it as its `figstyle` source gate; `python3 -m pytest tools/tests` tests it.
 - **Ratchet gate.** `tools/ratchet_gate.py` counts four things per chapter (and for the preface,
   `book/index.qmd`) and compares them with the committed baseline `tools/ratchet-baseline.json`; the
   `tech-report-ratchet` workflow runs it with its tests on every pull request and push. **history**: change history

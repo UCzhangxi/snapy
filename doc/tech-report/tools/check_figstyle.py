@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Figure-style gate: figure code styles only through `snapy_report.figstyle` (STYLE.md 6.1, 6.2, 10.4).
 
-A static check, in ratchet mode. It reads the Python files of the report's figure code (`src/snapy_report/` and
-`chapters/`) without importing them and counts, per file, three kinds of styling done outside the one figure-style
+A static check, in ratchet mode. It reads the Python files of the report's figure code (`src/snapy_report/`, and a
+`chapters/` planning tree if one exists) without importing them and counts, per file, three kinds of styling done outside the one figure-style
 module:
 
-  * `import`: a style module other than `snapy_report.figstyle` (a chapter's `_style.py`, the planning tree's
+  * `import`: a style module other than `snapy_report.figstyle` (a chapter's `_style.py`, a planning tree's
     `chapters/common/figstyle.py` imported as `figstyle`, `matplotlib.style`, seaborn);
   * `rc`: a write to matplotlib's settings (`rcParams[...] = ...`, `rcParams.update`, `rc(...)`, `rc_context`,
     `style.use`);

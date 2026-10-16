@@ -12,9 +12,10 @@ from matplotlib.patches import Patch
 from matplotlib.text import Text
 
 import snapy_report.ch05 as ch05
+import snapy_report.ch05.figures as ch05_figures
 from snapy_report.ch05 import _style as fs
 
-FIGS = sorted(m.name for m in pkgutil.iter_modules(ch05.__path__) if m.name.startswith("fig_"))
+FIGS = sorted(m.name for m in pkgutil.iter_modules(ch05_figures.__path__) if m.name.startswith("fig_"))
 ALLOWED = {c.lower() for c in fs.PALETTE}
 
 
@@ -24,7 +25,7 @@ def hexes(c):
 
 @pytest.mark.parametrize("name", FIGS)
 def test_figure_rules(name):
-    fig = importlib.import_module(f"snapy_report.ch05.{name}").make_fig()
+    fig = importlib.import_module(f"snapy_report.ch05.figures.{name}").make_fig()
     fig.draw_without_rendering()
     assert min(abs(fig.get_size_inches()[0] - w) for w in (fs.SINGLE, fs.DOUBLE)) < 1e-6
     for art in fig.findobj(lambda a: a.get_visible()):
@@ -43,7 +44,7 @@ def test_figure_rules(name):
 
 
 def test_check_passes():
-    path = Path(ch05.__file__).parent / "wbref_check.py"
+    path = Path(ch05.__file__).parent / "checks" / "wbref_check.py"
     spec = importlib.util.spec_from_file_location("wbref_check", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

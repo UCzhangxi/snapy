@@ -1,6 +1,6 @@
 """Check boundary derivations independently of the compiled solver."""
 import pytest
-from snapy_report.ch11 import boundary_check as checks
+from snapy_report.ch11.checks import boundary_check as checks
 
 
 @pytest.mark.parametrize('check',[
