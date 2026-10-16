@@ -62,7 +62,7 @@ def make_book(tmp_path):
     (book / "chapters" / "02-thermodynamics.qmd").write_text(CHAPTER)
     (book / "chapters" / "02-thermo" / "_gas.qmd").write_text(SCHEME)
     (book / "chapters" / "appb-derivations.qmd").write_text("# Derivation index {#sec-appb}\n")
-    checks = tmp_path / "src" / "snapy_report" / "ch02"
+    checks = tmp_path / "src" / "snapy_report" / "ch02" / "checks"
     checks.mkdir(parents=True)
     (checks / "gas_check.py").write_text("")
     return book
@@ -123,7 +123,7 @@ def test_statements_are_one_file_per_chapter(tmp_path, capsys):
 
 def test_a_missing_check_script_is_not_listed(tmp_path):
     book = make_book(tmp_path)
-    (tmp_path / "src" / "snapy_report" / "ch02" / "gas_check.py").unlink()
+    (tmp_path / "src" / "snapy_report" / "ch02" / "checks" / "gas_check.py").unlink()
     rows = g.collect(book, {}, tmp_path / "src" / "snapy_report")[0][2]
     assert rows[0].check == "`[C2]`"
     assert rows[2].check == "none"

@@ -82,8 +82,8 @@ pin move; the offpin instances are these kept records.
   `jupiter_evap_precip_1d` card (ch14 `_gpu`) and the ch10 ctest table (#312 changes
   the kinetics Jacobian); the ch07 ctest table (#309 moves the VIC post-solve check to
   the device).
-- `src/snapy_report/ch07/vic_reject_check.py` and `fig_vic_reject.py` port the old
+- `src/snapy_report/ch07/checks/vic_reject_check.py` and `fig_vic_reject.py` port the old
   rejection flow (separate result and correction guards, two host screens);
-  `src/snapy_report/ch07/redo_check.py` cites old meshblock lines in comments.
+  `src/snapy_report/ch07/checks/redo_check.py` cites old meshblock lines in comments.
 - New registered tests not listed in the chapter test tables: `test_flux_covariance_rowset`
   (ch04), the two new `test_eos` cases (ch15).

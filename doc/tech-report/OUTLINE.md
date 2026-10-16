@@ -2054,7 +2054,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
 - Derivations: exists: `docs/derivations/curved-gravity-work-weight.md@e894700ff7aee30b52882e5202b16461413780b0`
   §§1-4 (face form and error expansion), §§7-8 (the corrected potential and the weights), §10 (the implicit
   operator) and §11 (onset); re-written in the report with checks C1-C11
-  (`chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, all pass). Two carry-overs from §11 are open
+  (`src/snapy_report/ch06/checks/d_face_work_pe_check.py`, all pass). Two carry-overs from §11 are open
   and must be closed before approval: the §11.2 onset numbers quoted in the Tests layer have no deck or run
   (**missing evidence**), and the §11.3 convergence table was a placeholder at the pin. Note that §7, §8.6 and
   §§11.3-11.4 of the note were edited after the pin on `next/final-batch`; re-read the note's current head
@@ -2069,7 +2069,7 @@ How gravity's work enters the energy equation and what each form conserves: the 
   "conflict" sentence. Each §4.4 item is dispositioned before 6.4 is approved — accepted and the derivation
   note corrected, or rejected with a reason — and the outcome recorded in the section's Limits layer. An
   undispositioned item blocks approval.
-- Figures: done: `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (stencils interior/wall/seam, VIC
+- Figures: done: `src/snapy_report/ch06/figures/fig_dwork_*.py` (stencils interior/wall/seam, VIC
   lumping, order of accuracy).
 - Code: see the section's Code layer. 37 distinct `path:lines@dae902b04d217a824634762dd4e07790a12add5e` citations; each file exists and each
   range exists at `dae902b04d217a824634762dd4e07790a12add5e`, checked 2026-10-10 with

@@ -371,7 +371,7 @@ Then rebuild and reinstall kintera, so that snapy links the new table ({rebuild_
 {rebuild}
 ```
 
-[^ch10-func-table]: [sha: {KINTERA_REF}; deck: the check itself; run: `python3 src/snapy_report/ch10/func_table_check.py`,
+[^ch10-func-table]: [sha: {KINTERA_REF}; deck: the check itself; run: `python3 src/snapy_report/ch10/checks/func_table_check.py`,
     CPU, `c++` (GCC 11.5.0), 1 process; Python 3.11.13]. Output `func_table_check.out`, lines `[C1]`–`[C5]`; the
     crash of `[C5]` is undefined behaviour, observed as exit status -11 on this build.
 <!-- end reader-reference: condensate-contract -->

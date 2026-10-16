@@ -14,7 +14,7 @@ scanned for its Derivation layer (STYLE 2). Each labelled equation `{#eq-...}` i
     checker reads) and its `file:lines` text. The link itself stays in the chapter, which owns the citation;
     the index repeats no URL, so a citation is checked once, where it is made;
   * the check: the executable check scripts the scheme file names (`<scheme>_check.py`, STYLE 7) that exist
-    under `src/snapy_report/chNN/`, and the check lines (`[Cn]`) the layer quotes next to the equation;
+    under `src/snapy_report/chNN/checks/`, and the check lines (`[Cn]`) the layer quotes next to the equation;
   * the source: "exists" when the layer cites a derivation note (`docs/derivations/` or `sources/`), else
     "re-derived".
 
@@ -180,7 +180,7 @@ def scheme_rows(s: Scheme, statements: dict[str, str], checks_dir: Path) -> list
     body = "\n".join(s.lines[s.start:s.end])
     whole = "\n".join(s.lines)
     num = re.match(r"sec-ch(\d+)", s.chapter)
-    chk_dir = checks_dir / f"ch{num.group(1)}" if num else None
+    chk_dir = checks_dir / f"ch{num.group(1)}" / "checks" if num else None
     # Explicit equation-check comments scope a multi-equation script to its actual claims.
     tagged = re.findall(r"<!-- equation-check: (eq-[\w-]+) ([\w-]+_check\.py) (\[D[\w]+\]) -->", whole)
     tagged_scripts = {script for _, script, _ in tagged}

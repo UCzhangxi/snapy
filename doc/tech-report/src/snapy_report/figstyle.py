@@ -20,7 +20,7 @@ This module also holds, unchanged, the names its first version exported (`apply`
 `apply()` still sets the 9 pt serif/STIX text of that version. The figures of chapters 1-3, 6, 8-10, 13 and
 appendix E are ported (they call `new_figure`, never `apply`); chapters 4, 5, 7, 11 and 12 still use the legacy
 names. The house API folds in the chapter 5 and chapter 9 shims (`snapy_report/ch05/_style.py`; the chapter 9 one
-is gone with its port) and the planning tree's `chapters/common/figstyle.py`; their helpers keep their drawing, at
+is gone with its port) and the planning tree's `chapters/common/figstyle.py` (removed with that tree); their helpers keep their drawing, at
 the STYLE widths. Where a shim's helper had a
 name this module already used with another signature, the house helper has a new name:
 

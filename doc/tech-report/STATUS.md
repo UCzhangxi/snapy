@@ -12,10 +12,10 @@ OUTLINE.md generated from five research inventories + ch6 (152 schemes, 439 cita
 | notation | `NOTATION.md` | draft for review |
 | outline | `OUTLINE.md` | for the lead's review, then the owner's approval |
 | review of the D section | (one adversarial review against the code; 20 findings, all applied) | done |
-| worked example (D) | `chapters/06-gravity-energy/D_face_work_pe.md` | draft, six layers |
-| its check | `chapters/06-gravity-energy/checks/d_face_work_pe_check.py` | 11/11 claims pass |
-| its figure | `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (+ `.png`) | rebuilds bit for bit |
-| shared figure style | `chapters/common/figstyle.py` | |
+| worked example (D) | `chapters/06-gravity-energy/D_face_work_pe.md`, now `book/chapters/06-gravity-energy/_dwork.qmd` | draft, six layers |
+| its check | `chapters/06-gravity-energy/checks/d_face_work_pe_check.py`, now `src/snapy_report/ch06/checks/d_face_work_pe_check.py` | 11/11 claims pass |
+| its figure | `chapters/06-gravity-energy/figures/fig_D_face_work_pe.py` (+ `.png`), now `src/snapy_report/ch06/figures/fig_dwork_*.py` | rebuilds bit for bit |
+| shared figure style | `chapters/common/figstyle.py`, now `src/snapy_report/figstyle.py` | |
 | citation checker | `tools/check_citations.py` | NOT COMMITTED: it was written under `build/`, which snapy gitignores; to be re-pushed under `tools/` |
 
 ## Open questions for the lead

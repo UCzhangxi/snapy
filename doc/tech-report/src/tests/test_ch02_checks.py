@@ -4,7 +4,7 @@ import subprocess
 import sys
 import pytest
 
-CHECKS = sorted((Path(__file__).parents[1] / 'snapy_report/ch02').glob('*_check.py'))
+CHECKS = sorted((Path(__file__).parents[1] / 'snapy_report/ch02/checks').glob('*_check.py'))
 
 
 @pytest.mark.parametrize('script', CHECKS, ids=lambda p: p.stem)
