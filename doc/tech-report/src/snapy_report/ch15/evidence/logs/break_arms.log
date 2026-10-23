@@ -1,0 +1,54 @@
+# command: python3 src/snapy_report/ch15/checks/invariants_<name>_check.py --break <arm>
+# cwd: doc/tech-report, PYTHONPATH=src
+# pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201
+# date: 2026-10-23T19:33:14Z
+# Every arm below is EXPECTED to fail: it removes one term and the claim must go red.
+--- stdout ---
+
+$ invariants_zero_check.py --break Z1-floor
+break arm Z1-floor: flux_positivity_theta takes the cell's amount through a 1e-300 floor instead of relu
+[Z1] FAIL an absent species has an exactly zero rate and no negative amount after 2000 steps of the positivity limiter: the first step's tendency for the absent row is 6.2e-299 over all 48 cells; after 2000 steps the row holds 96000 non-zero entries and its minimum is -2.0e-297. theta is 0.0 in every draining cell of the absent row, so the limiter scales its donor faces to zero and the row cannot be drained at all. The present control row reaches -2.0e-297, which is 4e+26 subnormal unit(s): a cell drained into the subnormal range loses the 4096-epsilon margin to underflow, and the rounding of theta times the drain can cross zero by one unit
+0/1 claims pass
+# exit: 1
+
+$ invariants_zero_check.py --break Z3-floor
+break arm Z3-floor: the condensate repair floors the cloud at 1e-300 instead of clamping it to zero
+[Z3] FAIL an absent condensate borrows nothing from its parent vapour over 500 limiter calls: the parent vapour moves by at most 0.0e+00 over 4000 cells and the cloud row holds 4000 non-zero entries, minimum +1.0e-300: the deficit is min(c, 0), which is exactly zero for an absent cloud, and the repair then writes max(c, 0), also exactly zero. Nothing in the call can make an absent condensate present
+0/1 claims pass
+# exit: 1
+
+$ invariants_zero_check.py --break Z4-noclamp
+break arm Z4-noclamp: the reconstruction's face species clamp is removed
+[Z4] FAIL an absent species reconstructs to zero on both sides of every face, so its upwind flux is exactly zero: with the face clamp removed the most negative reconstructed face value is -1.0e-18 and the largest face flux the row carries, over both upwind directions at unit speed, is 1.0e-18: one cell left at -1e-18 reaches the faces and is transported instead of being repaired
+0/1 claims pass
+# exit: 1
+
+$ invariants_budget_check.py --break B1-seam
+break arm B1-seam: the two sides of one interior x2 face use fluxes that differ by 0.001 relative
+[B1] FAIL global mass is constant to round-off over 2000 steps of the divergence with one flux per face and closed walls: on 512 cells of a gnomonic-equiangular panel the relative mass drift is -4.054e-14 per step and -8.109e-11 over the run, against a sequential-reduction bound of 5.673e-14 and a machine epsilon of 2.220e-16. The face terms cancel exactly between neighbours, so what is left is the rounding of the reduction and of the update, not transport
+0/1 claims pass
+# exit: 1
+
+$ invariants_budget_check.py --break B2-cellwork
+break arm B2-cellwork: the gravity work is booked at the cell instead of at the faces
+[B2] FAIL global total energy, stored energy plus potential, is constant to round-off over 2000 steps when the gravity work is booked at the faces: on 512 cells the relative drift of sum (E + rho phi) V is +2.884e-15 per step and +5.770e-12 over the run, against the reduction bound 5.673e-14. The face booking moves each parcel of mass across the potential of the face it crosses, so the work terms telescope with the mass terms that produced them
+0/1 claims pass
+# exit: 1
+
+$ invariants_budget_check.py --break B3-trapezoid
+break arm B3-trapezoid: the cell volume is the trapezoid of the two x1 face areas instead of the exact radial integral
+[B3] FAIL the six panels' solid angles sum to 4 pi and their volumes to the shell's, and the discrete divergence of r rhat is 3: at 12 by 12 cells per panel the solid angles sum to -1.11e-16 of 4 pi and the volumes to +1.08e-05 of 4 pi (ro^3 - ri^3) / 3; max |div(r rhat) - 3| is 3.44e-05 over all 6912 cells. Every volume-weighted budget below rests on these three numbers: a volume measure that is not the exact radial integral of the same solid angle as the x1 face area makes a conserved total drift with the grid rather than with the flow
+0/1 claims pass
+# exit: 1
+
+$ invariants_budget_check.py --break B4-analytic
+break arm B4-analytic: the geometric pressure source uses the analytic metric derivative instead of the discrete face difference
+[B4] FAIL a uniform-pressure state at rest feels no tangential force on the cubed sphere, so it exerts no spurious axial torque: over all 6 panels at 8 by 8 by 6 cells the largest covariant tangential force density is 1.027e-01 against a single term of size 1.350e-02, i.e. 7.61e+00 relative; the global axial torque is +0.000e+00 N m against 3.890e+25 N m of unsigned torque. The cancellation is exact by construction: x_ov_rD is the discrete difference of the SAME product, face area times sine, that the x2 pressure flux divides by the volume, so only the order of the two multiplications differs
+0/1 claims pass
+# exit: 1
+
+$ invariants_budget_check.py --break B5-odd-panel
+break arm B5-odd-panel: one of the six panels uses the analytic metric source while the other five use the discrete one
+[B5] FAIL global axial angular momentum stays at round-off over 2000 steps of the uniform-pressure rest state: over 2304 cells on 6 panels the drift is -6.945e+24 kg m^2 s^-1 per step and -1.389e+28 over the run, which is -1.11e-01 and -2.21e+02 of the 6.284e+25 kg m^2 s^-1 the same cells would carry at one metre per second eastward. The source of the drift is the rounding of the two multiplication orders in [B4] and nothing else: there is no term left over for it to accumulate
+0/1 claims pass
+# exit: 1
