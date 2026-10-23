@@ -315,7 +315,7 @@ def run(args):
                 where.append(f"inside a stage ({len(repairs)} repaired negative "
                              f"concentration(s) reported by the thermodynamics)")
             print(f"RED: with the seed, a species amount went negative "
-                  f"{' and '.join(where)} over {cycles_done} implicit cycles")
+                  f"{' and '.join(where)} over {cycles_done} cycles at implicit-scheme {args.scheme}")
             return 1
         print(f"arm did NOT go red: the seeded rows stayed at or above zero over "
               f"{cycles_done} cycles, worst {lo:+.6e}, with no repair reported")
@@ -325,12 +325,12 @@ def run(args):
            if worst[w]["min"] != 0.0 or worst[w]["nonzero"] != 0]
     if bad or repairs:
         print(f"RED: {', '.join(bad) or 'a species'} acquired a non-zero or negative "
-              f"amount over {cycles_done} implicit cycles "
+              f"amount over {cycles_done} cycles at implicit-scheme {args.scheme} "
               f"({len(repairs)} repair line(s))")
         bad = bad or ["(repair reported)"]
     else:
         print(f"GREEN: both absent rows are bitwise zero in every interior cell of all "
-              f"6 panels at every one of {cycles_done} implicit cycles, with no "
+              f"6 panels at every one of {cycles_done} cycles at implicit-scheme {args.scheme}, with no "
               f"negative-concentration repair reported at any stage; the present "
               f"control row never goes below {worst[PRESENT]['min']:+.3e}")
 

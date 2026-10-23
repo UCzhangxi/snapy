@@ -196,8 +196,8 @@ result: every row of @tbl-ch15-inv-run exists on CPU, and the three CUDA rows re
 four-species moist thermodynamics and the NH$_3$ + H$_2$S nucleation of `tests/test_condensate_conservation.yaml`,
 the conserved limiter switched **on**, an implicit $x_1$ solve, and a warm bubble to make the implicit solve and
 the species transport do real work. NH$_3$ is present and is the control; H$_2$S and its condensate NH$_4$SH are
-set to exactly zero. Six arms were run.[^ch15-inv-absent] In all six — 2000 implicit cycles at 8 cells per panel
-edge, 200 at 16, implicit schemes 9, 1 and 0, on CPU and on the GPU — **both absent rows hold zero non-zero
+set to exactly zero. Six green arms were run.[^ch15-inv-absent] In all six — 2000 cycles at 8 cells per panel
+edge, 200 at 16, implicit schemes 9 and 1 and the explicit scheme 0, on CPU and on the GPU — **both absent rows hold zero non-zero
 entries in every interior cell of all six panels at every cycle**, and their global masses stay at exactly
 $0$. The present row is never driven negative either: its smallest value over 2000 cycles is
 $+2.97\times10^{-6}$, against an initial $10^{-3}$. The CPU and GPU arms agree to every printed digit, including
@@ -406,7 +406,10 @@ factor is exactly zero rather than merely small — which is the distinction the
     `PYTHONPATH=src python3 src/snapy_report/ch15/evidence/absent_species_run.py --device cpu --nx 8 --cycles 2000 --scheme 9`
     and five further arms (`--nx 16 --cycles 200`; `--scheme 1`; `--scheme 0`; `--device cuda` at `--nx 8` and
     `--nx 16`), 1 process, 6 blocks, double precision; wall 45.5 s for the 2000-cycle CPU arm, 55.3 s and 58.1 s
-    for the two GPU arms; snapy 2.11.12 built from source with `-DCUDA=ON`, torch 2.10.0+cu128, Python 3.11.13,
+    for the two GPU arms; scope: the cycle loop only, from after the initial state is built to after the last
+    cycle, excluding the mesh build and the per-cycle budget reduction's first call; reps: 1 (one run of each
+    arm, not a timing study — the numbers are reported so a reader can budget the rerun, and no claim rests on
+    them); snapy 2.11.12 built from source with `-DCUDA=ON`, torch 2.10.0+cu128, Python 3.11.13,
     NVIDIA RTX 5090; all six arms exited 0, which for this script is the assertion that no absent row acquired a
     non-zero entry and that nothing was repaired at any stage. The break arms were run as
     `… --break blob-no-limiter` (CPU: exit 1, 2 repair lines; CUDA: exit 0, 0 repair lines),
