@@ -1,0 +1,97 @@
+[Z1] PASS an absent species has an exactly zero rate and no negative amount after 2000 steps of the positivity limiter: the first step's tendency for the absent row is 0.0e+00 over all 48 cells; after 2000 steps the row holds 0 non-zero entries and its minimum is +0.0e+00. theta is 0.0 in every draining cell of the absent row, so the limiter scales its donor faces to zero and the row cannot be drained at all. The present control row reaches -4.9e-324, which is 1 subnormal unit(s): a cell drained into the subnormal range loses the 4096-epsilon margin to underflow, and the rounding of theta times the drain can cross zero by one unit
+[Z2] PASS the limiter zeroes every donor face of an absent row in both precisions, and the 1e-300 guard is not even representable in float32: the largest scaled face flux of the absent row is 0.0e+00 in float64 and 0.0e+00 in float32, with theta 0.0 and 0.0; 1e-300 stored as float32 is 0.0e+00 and as float64 is 1.0e-300. A rule built on that guard would mean one thing in double and another in single, which is why the shipped rule is relu and the guard sits only under a `where` that discards it
+[Z3] PASS an absent condensate borrows nothing from its parent vapour over 500 limiter calls: the parent vapour moves by at most 0.0e+00 over 4000 cells and the cloud row holds 0 non-zero entries, minimum +0.0e+00: the deficit is min(c, 0), which is exactly zero for an absent cloud, and the repair then writes max(c, 0), also exactly zero. Nothing in the call can make an absent condensate present
+[Z4] PASS an absent species reconstructs to zero on both sides of every face, so its upwind flux is exactly zero: over 40 cells the largest reconstructed face value of the absent row is 0.0e+00 and its largest face flux is 0.0e+00; a present row through the same stencil carries fluxes up to 1.163e+00. The limited slope of an identically zero stencil is zero before any clamp, and the face clamp then has nothing to repair
+       state  eos/equation_of_state.cpp:209; :339
+              dry density floored at density-floor (YAML 1e-6, C++ default 1e-10)
+              over 4000 cells straddling it the floor invents 5.118e-04 of dry mass in 917 cells; it can only add, and nothing removes it again
+       state  eos/equation_of_state.cpp:233
+              total energy floored at the kinetic energy plus rho cv T_floor, with the ALREADY floored density
+              on the same 4000 cells it invents 3.929e+01 of total energy in 4000 cells; the floor is built from the density of :209, so the two passes do not commute
+       state  eos/equation_of_state.cpp:355
+              pressure floored at pressure-floor (YAML 1e-3, C++ default 1e-10) on the primitive pass
+              it raises 414 of 4000 pressures and invents 2.329e-01 of pressure; the primitive pass floors no temperature and repairs no energy row
+       state  eos/equation_of_state.cpp:264; :268
+              a negative condensate is borrowed from its parent vapour, then clamped to exactly zero
+              over 4000 cells the pair changes the cell total by +0.0e+00; clamping the condensate to zero without the borrow would invent 6.683e-02. On an ABSENT condensate both terms are exactly zero
+       state  eos/equation_of_state.cpp:317; :352
+              cloud and species rows clamped at zero after the kinetics source and on the primitive pass
+              it raises 0 of 4000 rows and invents 0.000e+00 of species mass; an absent row is already zero, so the clamp does not touch it
+       state  recon/reconstruct.cpp:95; :154
+              reconstructed face species clamped at zero (scale-off and shock-off paths)
+              it raises 0 of 4000 face values and invents 0.000e+00 of face species; both faces of an absent row are exactly zero before the clamp
+       state  recon/reconstruct.cpp:136; :144
+              reconstructed face density and pressure floored at the EOS floors
+              the density floor raises 885 of 4000 face values by 4.906e-04 in total; these run only where the reconstruction's `shock` arm is off
+       state  forcing/relax_bot_comp.cpp:104
+              the relaxation target's dry fraction clamped at zero
+              it raises 0 of 4000 targets by 0.000e+00 in total; the target is a boundary value, so the change is a forcing change, not a repair
+       state  output/output_type.cpp:359; :374
+              a variance clamped at zero before its square root (diagnostic output only)
+              it raises 1981 of 4000 round-off-negative variances by 1.585e-09; it changes an output column and never the state
+       select hydro/flux_positivity.cpp:42; :50; :58
+              the drain accumulates only the OUTGOING part of each face's area-flux, through relu on the upper face and on the negated lower face
+              over 4000 random faces the relu pair keeps 3.217e+03 of area-flux, which is the sum of the magnitudes, against +1.664e+01 for the signed sum: an incoming face cannot pay for an outgoing one, which is what makes the bound per cell rather than per net flux
+       select hydro/flux_positivity.cpp:66; :70
+              the cell's own amount is relu'd before it is offered, and the resulting factor is capped at one
+              the cap changes 2 of 6 probe factors, every one above 1; without it a cell with more amount than drain would have its faces AMPLIFIED. The relu on the amount is what sends an absent row's factor to exactly zero rather than to a negative number
+       meter  hydro/hydro_forward.cpp:846; implicit/implicit_hydro.cpp:462; mesh/meshblock.cpp:885; :1115; :1118
+              running minima and maxima that record that a floor or a clamp fired
+              on a 4000-cell probe with 51 hits these reductions report the hit; they are read by the redo decision and the step log and they change no state themselves. A floor with no meter is a silent repair, which is the condition this chapter's checks exist to detect
+       guard  hydro/flux_positivity.cpp:70
+              the 1e-300 guard under the drain division
+              of 5 probe denominators it changes the quotient in 2, all of them at or below 1e-300; the enclosing `where(drain > 0)` selects the quotient in only 4 of them, every one above the guard, so the guard changes NO selected value. It exists to keep the discarded branch from evaluating 1/0, which would be a NaN under torch
+       guard  coord/coordinate.cpp:37; :50; :57; :609; :610; :611; :612; :613; :614
+              1e-30 guards under the interpolation distance and the curl line elements
+              of 5 probe lengths the guard changes the quotient in 2, all at or below 1e-30. A real line element on any grid this report describes is many orders above it, so on a physical grid the guards are inert; they bind only on a degenerate cell, where the result is already meaningless
+       guard  coord/coordinate.cpp:490; :519
+              1e-300 guards under the radial centroid and face-moment divisions
+              of 5 probe radii the guard changes the quotient in 3, all at r below 1e-150 m; the smallest radius any deck in this report uses is positive and metres-scale, so the guards never bind there
+       guard  hydro/hydro.cpp:376
+              a 1e-30 guard under the product of two face magnitudes in the time-step reduction
+              of 4 probes it changes the quotient in 2; it bounds a time step, so when it binds it makes the step SMALLER, never larger
+       guard  hydro/hydro_dispatch.cpp:59; :60; hydro/hydro_ref_x1_impl.h:41
+              the hydrostatic face pressures floored at the smallest positive normal double
+              of 5 probes it raises 3, every one at or below 2.2e-308 Pa; its purpose is to keep the following logarithm finite, and a physical face pressure is some 300 orders above it
+       guard  implicit/implicit_hydro.cpp:455; :457
+              the implicit mass-correction residual scale floored at 1e-300 in double and at the smallest normal float in single
+              of 4 probes it changes the scale in 2; the floor only enlarges the denominator, so a floored cell reports a SMALLER relative residual -- it can hide a binding in a zero-flux layer, never invent one. The source says the double value is kept because 1e-300 is zero in float32
+       guard  riemann/roe_dispatch.cpp:151
+              the Roe sound speed squared floored at 1e-10
+              of 5 probes it raises 3 to 1e-10, i.e. a sound speed of 1e-5 m/s; it binds only on a non-physical Roe average and when it does it makes the wave speeds, and so the dissipation, SMALLER
+       domain coord/cubed_sphere_utils.cpp:188
+              the cosine argument of the panel-angle arccos held in [-1, 1]
+              of 5 probes it moves 2, each by at most 4.4e-16; without it arccos returns NaN just outside the domain, which round-off in the dot product can reach
+       domain forcing/top_sponge_lyr.cpp:61; forcing/bot_sponge_lyr.cpp:61; forcing/diffusion.cpp:223
+              the sponge and blending coordinates held in [0, 1]
+              of 5 probes it moves 1 by at most 1.0e-16; outside the layer the factor is exactly 0 or 1, so the forcing stays inside the layer it names
+       domain bc/bc_func.cpp:178; :200
+              the boundary blending factor capped at 0.99 of its bound and held in [0, 1]
+              of 5 probes the [0, 1] clamp moves 2; alpha multiplies a difference, so 0 keeps the interior value and 1 takes the boundary value in full
+       cap    sedimentation/sed_vel.cpp:70; sedimentation/sed_hydro_dispatch.cpp:189
+              the sedimentation velocity capped at the deck's upper-limit
+              at a 50 m/s limit it moves 2 of 5 probe velocities, by up to 70 m/s; it is a deck-chosen physical cap, not a positivity repair, and it changes the transported amount whenever it binds
+       index  hydro/gravity_work_radial.hpp:83; forcing/diffusion.cpp:221; coord/x1_centroid.cpp:194; :195; hydro/wb_ref4.cpp:116; layout/cubed_sphere_layout.cpp:376
+              index clamps that keep a stencil, a profile lookup or a block count inside its array
+              on a 12-cell array the gravity-work clamp maps the 6 out-of-range indices of 16 onto the end stencils; it changes WHICH cell is read near a wall and never the value of any cell
+       eps    hydro/flux_positivity.cpp:66; flux_positivity.hpp:18; :23
+              the available amount is taken 4096 machine epsilons (64 in float32) short of the cell's own amount
+              the margin is 9.095e-13 relative, so a fully drained cell lands at 9.095e-13 of its amount above zero instead of at an exact zero that rounds negative. It costs at most that fraction of the transported amount per step and it is what makes `u >= 0` survive the division
+       eps    implicit/vic_redistribute_impl.h:140
+              the VIC redistribution keeps 1 - 4096 eps of the donor cell
+              the retained fraction is 0.99999999999909051, i.e. 9.095e-13 short of one; it leaves that fraction behind rather than emptying a cell exactly
+       eps    coord/coordinate.cpp:200
+              the uniform-spacing test accepts a spread of 16 machine epsilons relative
+              the tolerance is 3.553e-15 relative; it decides whether the uniform stencil or the general one is built, so it changes the operator, not a stored value
+       eps    math/ludcmp.h:35
+              the LU pivot tolerance, 8N machine epsilons
+              for an 8 by 8 block the tolerance is 1.421e-14; below it the pivot is declared singular and the solve is refused rather than returning a huge correction
+[Z5] PASS every positivity floor, clamp and epsilon in the covered code paths is listed with a measurement of what it changes: 64 sites in 28 groups: cap 2, domain 6, eps 6, guard 19, index 6, meter 5, select 5, state 15. The `state` group changes stored values and is measured in invented mass, energy or pressure; the `guard` group is shown to bind only at or below its own value and, for the positivity drain, to change no SELECTED value at all; `select` keeps a sign or a cap; `domain` and `index` change an argument or an address, not an amount; `eps` decides a branch or leaves a stated fraction behind; `cap` is a deck choice; `meter` records a hit. No floor in this list can make an absent species present
+       break Z1-floor -> RED
+              [Z1] FAIL an absent species has an exactly zero rate and no negative amount after 2000 steps of the positivity limiter: the first step's tendency for the absent row is 6.2e-299 over all 48 cells; after 2000 steps the row holds 96000 non-zero entries and its minimum is -2.0e-297. theta is 0.0 in every draining cell of the absent row, so the limiter scales its donor faces to zero and the row cannot be drained at all. The present control row reaches -2.0e-297, which is 4e+26 subnormal unit(s): a cell drained into the subnormal range loses the 4096-epsilon margin to underflow, and the rounding of theta times the drain can cross zero by one unit
+       break Z3-floor -> RED
+              [Z3] FAIL an absent condensate borrows nothing from its parent vapour over 500 limiter calls: the parent vapour moves by at most 0.0e+00 over 4000 cells and the cloud row holds 4000 non-zero entries, minimum +1.0e-300: the deficit is min(c, 0), which is exactly zero for an absent cloud, and the repair then writes max(c, 0), also exactly zero. Nothing in the call can make an absent condensate present
+       break Z4-noclamp -> RED
+              [Z4] FAIL an absent species reconstructs to zero on both sides of every face, so its upwind flux is exactly zero: with the face clamp removed the most negative reconstructed face value is -1.0e-18 and the largest face flux the row carries, over both upwind directions at unit speed, is 1.0e-18: one cell left at -1e-18 reaches the faces and is transported instead of being repaired
+[Z6] PASS each of the 3 break arms turns its claim red: Z1-floor breaks Z1; Z3-floor breaks Z3; Z4-noclamp breaks Z4. A claim that cannot be made to fail is not a check; each arm above removes exactly one term and prints the FAIL line it produces
+6/6 claims pass

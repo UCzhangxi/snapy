@@ -17,8 +17,9 @@ This branch (`tech-report` on UCzhangxi/snapy) holds a technical description of 
   | figure code | `src/snapy_report/chNN/figures/fig_<name>.py`: one module per figure, `make_fig()` returns it | authors | the figure's `{python}` cell in its section file |
   | chapter helpers | `src/snapy_report/chNN/*.py` (`flow.py`, `formulas.py`, `_draw.py`, ...); the one figure style `src/snapy_report/figstyle.py` | authors | figure modules and checks |
   | executable checks | `src/snapy_report/chNN/checks/<name>_check.py` with its committed output `<name>_check.out` | authors | `src/tests` (byte comparison), Appendix B (`tools/gen_derivation_index.py`) |
+  | break arms of a check | the same `<name>_check.py`: `--list-breaks` names them, `--break <arm>` runs one and is expected to exit nonzero, and the green run executes every arm and fails if one of them passes (chapter 15: `invariants_zero_check.py`, `invariants_budget_check.py`) | authors | the check's own last claim; the committed `evidence/logs/break_arms.log` |
   | figure data | `src/snapy_report/chNN/data/` | the check or run script `FIGURES.md` names next to the file, or a snapy run named in the file's `provenance` | figure modules |
-  | run records | `src/snapy_report/chNN/evidence/` (chapter 10: `run_evidence.py` and `logs/`) | the run script | the chapter's Tests layer |
+  | run records | `src/snapy_report/chNN/evidence/` (chapter 10: `run_evidence.py` and `logs/`; chapter 15: `aam_budget_run.py`, `port_validation.py` and `logs/`, which need a build at the pin in the active Python and, for the GPU arm, a CUDA-enabled one) | the run script | the chapter's Tests layer |
   | generated appendices | `book/chapters/17-appendices/_app*.qmd` | the pre-render generators in `book/_quarto.yml`, from their inputs in `tools/` (`*.yaml`, `*.json`) | the appendix chapter |
   | execution cache | `book/_freeze/` (committed for chapter 5 only) | Quarto (`freeze: auto`) | Quarto |
   | gates and their baselines | `tools/*.py`, `tools/*-baseline.json`; their tests `tools/tests/`, fixtures `tools/tests/fixtures/` | authors; a baseline by its gate's `--update` | CI, `AUTHOR-CHECKLIST.md` |
