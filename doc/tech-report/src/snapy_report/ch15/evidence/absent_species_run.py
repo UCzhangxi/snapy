@@ -26,18 +26,37 @@ it, so an absent cell's factor is exactly zero and its donor faces are scaled
 to zero. A non-zero entry in an absent row is the kintera #147/#151 defect
 class appearing in snapy.
 
+Two break arms put the defect into the deck the only way a Python driver can,
+through the initial state and the switches:
+
+  --break floor-seed   the two absent rows start at 1e-300 instead of 0, which
+                       is what a kintera-style concentration floor would leave
+                       behind: the row is no longer absent, so theta is no
+                       longer exactly zero and the limiter's bound becomes a
+                       relative one at a magnitude where its 4096-eps margin
+                       underflows
+  --break no-limiter   the same seed with `limiter: false`, so nothing repairs
+                       the row at all
+
+A break arm is expected to end RED, and exits nonzero when it does.
+
   python3 src/snapy_report/ch15/evidence/absent_species_run.py \
       [--device cpu|cuda] [--nx 8] [--cycles 200] [--scheme 9] [--json PATH]
+  python3 src/snapy_report/ch15/evidence/absent_species_run.py --break floor-seed
 
-Exits 0 when every absent row is still exactly zero at the end, 1 otherwise.
+Exits 0 when every absent row is still exactly zero at the end, 1 otherwise;
+under `--break` the two are swapped, so a green run of the arm is the failure.
 """
 import argparse
+import contextlib
 import copy
+import ctypes
 import datetime
 import json
 import os
 import platform
 import sys
+import tempfile
 import time
 
 import torch
@@ -63,7 +82,22 @@ ABSENT = (1, 2)        # H2S and NH4SH, rows ICY + 1 and ICY + 2: exactly zero
 NAMES = {0: "NH3 (present control)", 1: "H2S (absent)", 2: "NH4SH (absent)"}
 
 
-def deck(nx, scheme):
+#: the break arms, by name: (what it does, seed shape, seed amplitude, limiter)
+BREAKS = {
+    "floor-seed": ("the two absent rows start at the 1e-300 a concentration floor "
+                   "would leave behind, so they are no longer absent",
+                   "uniform", 1.0e-300, True),
+    "blob-no-limiter": ("a sharp top-hat of the two rows with the conserved limiter "
+                        "switched off, so the reconstruction's undershoot is not repaired",
+                        "tophat", 1.0e-6, False),
+    "blob-limiter": ("the same sharp top-hat with the limiter on: the control that "
+                     "says the limiter, and not the smoothness of the field, is what "
+                     "holds the row at or above zero",
+                     "tophat", 1.0e-6, True),
+}
+
+
+def deck(nx, scheme, limiter=True):
     cfg = copy.deepcopy(DECK)
     cfg["species"] = copy.deepcopy(SPECIES)
     cfg["reactions"] = copy.deepcopy(REACTIONS)
@@ -71,14 +105,14 @@ def deck(nx, scheme):
     # conserved limiter is the operator under test, so it is ON here
     cfg["dynamics"]["equation-of-state"] = {
         "type": "ideal-moist", "density-floor": 1.0e-20,
-        "pressure-floor": 1.0e-20, "limiter": True}
+        "pressure-floor": 1.0e-20, "limiter": limiter}
     cfg["integration"]["implicit-scheme"] = scheme
     for key in ("nx1", "nx2", "nx3"):
         cfg["geometry"]["cells"][key] = nx
     return cfg
 
 
-def initial_state(cfg, mesh, blocks, omega, qpresent, dtemp):
+def initial_state(cfg, mesh, blocks, omega, qpresent, dtemp, shape=None, seed=0.0):
     """The balanced isothermal shell of `aam_budget_run.py` plus a warm bubble
     and a non-zero NH3 profile. The two absent rows are left at exactly zero."""
     import snapy
@@ -115,8 +149,20 @@ def initial_state(cfg, mesh, blocks, omega, qpresent, dtemp):
                            - (lat / 0.3) ** 2 - (lon / 0.3) ** 2)
         w[kIPR] = w[kIPR] * (1.0 + dtemp * bubble)
 
-        # NH3 present everywhere, the two absent rows left at exactly zero
+        # NH3 present everywhere; the two absent rows left at exactly zero,
+        # unless a break arm seeds them with what a floor would leave behind
         w[kICY + PRESENT] = qpresent * (1.0 + 0.5 * bubble)
+        if shape == "uniform":
+            for which in ABSENT:
+                w[kICY + which] = seed
+        elif shape == "tophat":
+            # a discontinuous blob: the stencil of a WENO reconstruction that
+            # straddles its edge is exactly where an unlimited face value
+            # undershoots below zero
+            hat = ((lat.abs() < 0.2) & (lon.abs() < 0.2)
+                   & ((radius - r0).abs() < 1.0e5)).to(w) * seed
+            for which in ABSENT:
+                w[kICY + which] = hat
 
         vel = torch.zeros_like(w[kIV1:kIV3 + 1])
         vel[2] = omega * radius * torch.cos(lat)
@@ -129,6 +175,36 @@ def initial_state(cfg, mesh, blocks, omega, qpresent, dtemp):
         mesh_vars.append({"hydro_w": w})
     mesh_vars, _ = mesh.initialize(mesh_vars)
     return mesh_vars
+
+
+#: what the thermodynamics prints when it repairs a negative species amount
+REPAIR = "Negative concentration"
+
+
+@contextlib.contextmanager
+def capture_native_stdout(sink):
+    """Catch what the C++ writes to file descriptor 1.
+
+    A species that goes negative inside a stage is repaired before the step
+    ends, so reading the state at the cycle boundary cannot see it. The
+    repair announces itself on stdout, from C++, which `contextlib.
+    redirect_stdout` does not intercept: only the file descriptor does.
+    """
+    sys.stdout.flush()
+    saved = os.dup(1)
+    with tempfile.TemporaryFile("w+b") as tmp:
+        os.dup2(tmp.fileno(), 1)
+        try:
+            yield
+        finally:
+            sys.stdout.flush()
+            # the C++ side buffers: without fflush(NULL) its lines reach the real
+            # stdout only at interpreter exit, long after fd 1 has been restored
+            ctypes.CDLL(None).fflush(None)
+            os.dup2(saved, 1)
+            os.close(saved)
+            tmp.seek(0)
+            sink.append(tmp.read().decode("utf-8", "replace"))
 
 
 def rows(cfg, blocks, mesh_vars):
@@ -154,37 +230,52 @@ def run(args):
     if sidecars:
         print(f"# CUDA sidecars loaded: {', '.join(sidecars)}")
     import snapy
-    cfg = deck(args.nx, args.scheme)
+    what, shape, seed, limiter = BREAKS.get(getattr(args, "break"), (None, None, 0.0, True))
+    cfg = deck(args.nx, args.scheme, limiter=limiter)
     mesh, blocks = build(cfg, args.device)
-    mesh_vars = initial_state(cfg, mesh, blocks, args.omega, args.qpresent, args.dtemp)
+    mesh_vars = initial_state(cfg, mesh, blocks, args.omega, args.qpresent,
+                              args.dtemp, shape=shape, seed=seed)
     intg = blocks[0].module("intg")
 
     print(f"# snapy {snapy.__version__} at pin {PIN[:12]}, torch {torch.__version__}, "
           f"python {platform.python_version()}")
     print(f"# device {args.device}, 6 panels, nx = {args.nx}, {args.cycles} cycles, "
-          f"implicit-scheme {args.scheme}, moist limiter on")
+          f"implicit-scheme {args.scheme}, moist limiter "
+          f"{'on' if limiter else 'OFF'}")
+    if what:
+        print(f"# break arm {getattr(args, 'break')}: {what}")
 
     first = rows(cfg, blocks, mesh_vars)
     worst = {w: dict(first[w]) for w in first}
     t0 = time.time()
     cycles_done = 0
-    for cycle in range(1, args.cycles + 1):
-        mesh.set_cycle(cycle)
-        dt = mesh.max_time_step(mesh_vars)
-        for stage in range(len(intg.stages)):
-            mesh.forward(mesh_vars, dt, stage)
-        if mesh.check_redo(mesh_vars) != 0:
-            print(f"# step rejected at cycle {cycle}; stopping")
-            break
-        cycles_done = cycle
-        now = rows(cfg, blocks, mesh_vars)
-        for which in now:
-            worst[which]["min"] = min(worst[which]["min"], now[which]["min"])
-            worst[which]["nonzero"] = max(worst[which]["nonzero"], now[which]["nonzero"])
-        if cycle == 1:
-            after_one = {w: dict(now[w]) for w in now}
+    native = []
+    with capture_native_stdout(native):
+        for cycle in range(1, args.cycles + 1):
+            mesh.set_cycle(cycle)
+            dt = mesh.max_time_step(mesh_vars)
+            for stage in range(len(intg.stages)):
+                mesh.forward(mesh_vars, dt, stage)
+            if mesh.check_redo(mesh_vars) != 0:
+                print(f"# step rejected at cycle {cycle}; stopping")
+                break
+            cycles_done = cycle
+            now = rows(cfg, blocks, mesh_vars)
+            for which in now:
+                worst[which]["min"] = min(worst[which]["min"], now[which]["min"])
+                worst[which]["nonzero"] = max(worst[which]["nonzero"],
+                                              now[which]["nonzero"])
+            if cycle == 1:
+                after_one = {w: dict(now[w]) for w in now}
     wall = time.time() - t0
     final = rows(cfg, blocks, mesh_vars)
+
+    # a species repaired INSIDE a stage is back at or above zero by the time the
+    # cycle ends, so the only trace of it is the line the repair prints
+    repairs = [ln for ln in "".join(native).splitlines() if REPAIR in ln]
+    for line in native:
+        sys.stdout.write("".join(ln + "\n" for ln in line.splitlines()
+                                 if REPAIR not in ln and ln.strip()))
 
     print(f"# wall {wall:.1f} s, {cycles_done} cycles")
     print(f"{'species row':24s} {'worst min':>14s} {'max non-zeros':>14s} "
@@ -194,25 +285,55 @@ def run(args):
               f"{worst[which]['nonzero']:14d} {after_one[which]['min']:+14.6e} "
               f"{final[which]['mass']:14.6e}")
 
-    bad = [NAMES[w] for w in ABSENT
-           if worst[w]["min"] != 0.0 or worst[w]["nonzero"] != 0]
-    if bad:
-        print(f"RED: {', '.join(bad)} acquired a non-zero amount over {cycles_done} "
-              f"implicit cycles")
-    else:
-        print(f"GREEN: both absent rows are bitwise zero in every interior cell of all "
-              f"6 panels at every one of {cycles_done} implicit cycles; the present "
-              f"control row never goes below {worst[PRESENT]['min']:+.3e}")
-
     if args.json:
         with open(args.json, "w") as f:
             json.dump({"pin": PIN, "snapy": snapy.__version__, "torch": torch.__version__,
                        "device": args.device, "nx": args.nx, "scheme": args.scheme,
+                       "break": getattr(args, "break"), "limiter": limiter,
+                       "seed_shape": shape, "seed": seed,
                        "cycles": cycles_done, "wall_s": wall,
                        "worst": {NAMES[w]: worst[w] for w in worst},
                        "final": {NAMES[w]: final[w] for w in final},
                        "when": datetime.datetime.now(datetime.timezone.utc).isoformat()},
                       f, indent=1)
+
+    print(f"# {len(repairs)} repair line(s) of the form "
+          f"\"{REPAIR} for species ...\" during the run"
+          + (f"; first: {repairs[0].strip()}" if repairs else ""))
+
+    if what:
+        # the arm seeds the rows, so "still zero" is not the question any more:
+        # the claim it breaks is that the amount never goes NEGATIVE, at a cycle
+        # boundary or inside a stage
+        lo = min(worst[w]["min"] for w in ABSENT)
+        bad = [NAMES[w] for w in ABSENT if worst[w]["min"] < 0.0]
+        if bad or repairs:
+            where = []
+            if bad:
+                where.append(f"at a cycle boundary ({', '.join(bad)}, worst {lo:+.6e})")
+            if repairs:
+                where.append(f"inside a stage ({len(repairs)} repaired negative "
+                             f"concentration(s) reported by the thermodynamics)")
+            print(f"RED: with the seed, a species amount went negative "
+                  f"{' and '.join(where)} over {cycles_done} implicit cycles")
+            return 1
+        print(f"arm did NOT go red: the seeded rows stayed at or above zero over "
+              f"{cycles_done} cycles, worst {lo:+.6e}, with no repair reported")
+        return 0
+
+    bad = [NAMES[w] for w in ABSENT
+           if worst[w]["min"] != 0.0 or worst[w]["nonzero"] != 0]
+    if bad or repairs:
+        print(f"RED: {', '.join(bad) or 'a species'} acquired a non-zero or negative "
+              f"amount over {cycles_done} implicit cycles "
+              f"({len(repairs)} repair line(s))")
+        bad = bad or ["(repair reported)"]
+    else:
+        print(f"GREEN: both absent rows are bitwise zero in every interior cell of all "
+              f"6 panels at every one of {cycles_done} implicit cycles, with no "
+              f"negative-concentration repair reported at any stage; the present "
+              f"control row never goes below {worst[PRESENT]['min']:+.3e}")
+
     return 1 if bad else 0
 
 
@@ -225,8 +346,16 @@ def main(argv=None):
     p.add_argument("--omega", type=float, default=2.0e-5, help="solid-body rotation [1/s]")
     p.add_argument("--qpresent", type=float, default=1.0e-3, help="NH3 mass fraction")
     p.add_argument("--dtemp", type=float, default=0.1, help="relative warm-bubble amplitude")
+    p.add_argument("--break", choices=sorted(BREAKS), default=None,
+                   help="run one break arm; it is expected to end RED and exit nonzero")
+    p.add_argument("--list-breaks", action="store_true", help="name the break arms and exit")
     p.add_argument("--json", default=None)
-    return run(p.parse_args(argv))
+    args = p.parse_args(argv)
+    if args.list_breaks:
+        for name in sorted(BREAKS):
+            print(f"{name}\tbreaks [absent-species]\t{BREAKS[name][0]}")
+        return 0
+    return run(args)
 
 
 if __name__ == "__main__":
