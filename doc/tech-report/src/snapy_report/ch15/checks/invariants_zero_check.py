@@ -453,7 +453,7 @@ def inventory():
     # --- division guards ------------------------------------------------------
     drain = np.array([0.0, 1e-320, 1e-300, 1e-200, 1.0])
     quotient_guarded = 1.0 / np.maximum(drain, DRAIN_GUARD)
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         quotient_raw = 1.0 / drain
     binds = int(np.count_nonzero(quotient_guarded != quotient_raw))
     selected = int(np.count_nonzero(drain > 0.0))
@@ -467,7 +467,7 @@ def inventory():
 
     dl = np.array([0.0, 1e-40, 1e-30, 1e-20, 1.0])
     g = np.maximum(dl, 1e-30)
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         raw = 1.0 / dl
     add("coord/coordinate.cpp:37; :50; :57; :609; :610; :611; :612; :613; :614",
         "guard",
