@@ -162,8 +162,38 @@ formula, which is derived in the Limits layer and is not a port error.
 The run record is the complement: a six-panel integration of the real solver on a shell, with a discretely
 balanced isothermal rest state and a solid-body zonal wind, closed radial walls, no drag, no sponge and no
 topography. Its system has no external torque, so the exact drift of all three budgets is zero and every measured
-slope is numerical. It runs on CPU and, with a CUDA-enabled build, on the GPU; the two agree on every reported
-digit of the energy and angular-momentum drift.
+slope is numerical. It runs on CPU and, with a CUDA-enabled build, on the GPU.
+
+| run | mass | energy and potential | $L_z$ |
+|---|---|---|---|
+| CPU, 8 cells per panel edge, 400 cycles | $-6.0\times10^{-17}$ | $-1.0\times10^{-10}$ | $+6.0\times10^{-8}$ |
+| CPU, 16, 400 cycles | $-6.0\times10^{-17}$ | $+1.8\times10^{-11}$ | $-5.0\times10^{-10}$ |
+| CPU, 24, 400 cycles | $-5.6\times10^{-17}$ | $-1.6\times10^{-11}$ | $-5.9\times10^{-10}$ |
+| CPU, 16, 2000 cycles | $-5.9\times10^{-17}$ | $-2.4\times10^{-12}$ | $-9.9\times10^{-10}$ |
+| CPU, 8, 400 cycles, at rest | $-6.0\times10^{-17}$ | $-4.8\times10^{-17}$ | $L_z \equiv 0$ |
+| CUDA, 8, 400 cycles | $-6.0\times10^{-17}$ | $-1.0\times10^{-10}$ | $+6.0\times10^{-8}$ |
+| CUDA, 16, 400 cycles | $-5.9\times10^{-17}$ | $+1.8\times10^{-11}$ | $-5.0\times10^{-10}$ |
+| CUDA, 8, 400 cycles, at rest | $-6.0\times10^{-17}$ | $-4.8\times10^{-17}$ | $L_z \equiv 0$ |
+
+: Measured relative drift per cycle of the three global budgets, six panels on a shell at the code pin. {#tbl-ch15-inv-run}
+
+Read @tbl-ch15-inv-run as follows.[^ch15-inv-run] Mass is at round-off at every resolution and on both devices:
+the volume-weighted total of @eq-ch15-budget holds in the solver, not only in the port. Energy, with the
+potential carried, is also at round-off in the resting state, $-4.8\times10^{-17}$ per cycle, which says that the
+gravity work booked at the faces closes the budget exactly; with the flow it is four to six orders larger, and
+that part is the scheme's own dissipation, not a bookkeeping error. $L_z$ is the one budget that is neither: it
+is $10^{-8}$ to $10^{-10}$ of itself per cycle, far above mass and above the resting energy drift, it changes
+sign and falls steeply between the coarsest grid and the next, and in the resting state it stays identically
+zero. So the drift is a property of the flowing solution, not of the geometry, and it is not at round-off.
+
+CPU and CUDA agree to all four printed digits of the energy and $L_z$ drift of the two flowing runs, and differ
+in the last digit of the mass round-off; in the resting run, where the energy drift is itself at round-off, the
+two differ in its third digit ($-4.829\times10^{-17}$ against $-4.837\times10^{-17}$). No row is a device-only
+result: every row of @tbl-ch15-inv-run exists on CPU, and the three CUDA rows repeat CPU rows on the GPU.
+
+The port was validated against the build at the pin.[^ch15-inv-port] Sixteen quantities, on six panels, at four
+resolutions: all sixteen agree within the conditioning bound at every resolution, and fourteen agree bit for bit
+at the coarsest.
 
 ### Code
 
@@ -275,34 +305,6 @@ Both checks were run for this chapter and their output is the committed
   what the same cells carry at one metre per second eastward; under `B5-odd-panel`, with one of the six panels
   assembled from the analytic metric and the other five from the discrete one, the drift is
   $-6.9\times10^{24}$ per step, or $11\%$ of that reference every step.
-
-| run | mass | energy and potential | $L_z$ |
-|---|---|---|---|
-| CPU, 8 cells per panel edge, 400 cycles | $-6.0\times10^{-17}$ | $-1.0\times10^{-10}$ | $+6.0\times10^{-8}$ |
-| CPU, 16, 400 cycles | $-6.0\times10^{-17}$ | $+1.8\times10^{-11}$ | $-5.0\times10^{-10}$ |
-| CPU, 24, 400 cycles | $-5.6\times10^{-17}$ | $-1.6\times10^{-11}$ | $-5.9\times10^{-10}$ |
-| CPU, 16, 2000 cycles | $-5.9\times10^{-17}$ | $-2.4\times10^{-12}$ | $-9.9\times10^{-10}$ |
-| CPU, 8, 400 cycles, at rest | $-6.0\times10^{-17}$ | $-4.8\times10^{-17}$ | $L_z \equiv 0$ |
-| CUDA, 8, 400 cycles | $-6.0\times10^{-17}$ | $-1.0\times10^{-10}$ | $+6.0\times10^{-8}$ |
-| CUDA, 16, 400 cycles | $-5.9\times10^{-17}$ | $+1.8\times10^{-11}$ | $-5.0\times10^{-10}$ |
-| CUDA, 8, 400 cycles, at rest | $-6.0\times10^{-17}$ | $-4.8\times10^{-17}$ | $L_z \equiv 0$ |
-
-: Measured relative drift per cycle of the three global budgets, six panels on a shell at the code pin. {#tbl-ch15-inv-run}
-
-Read @tbl-ch15-inv-run as follows.[^ch15-inv-run] Mass is at round-off at every resolution and on both devices:
-the volume-weighted total of @eq-ch15-budget holds in the solver, not only in the port. Energy, with the
-potential carried, is also at round-off in the resting state, $-4.8\times10^{-17}$ per cycle, which says that the
-gravity work booked at the faces closes the budget exactly; with the flow it is four to six orders larger, and
-that part is the scheme's own dissipation, not a bookkeeping error. $L_z$ is the one budget that is neither: it
-is $10^{-8}$ to $10^{-10}$ of itself per cycle, far above mass and above the resting energy drift, it changes
-sign and falls steeply between the coarsest grid and the next, and in the resting state it stays identically
-zero. So the drift is a property of the flowing solution, not of the geometry, and it is not at round-off. CPU
-and CUDA agree on every printed digit of the energy and $L_z$ drift and differ only in the last digit of the mass
-round-off.
-
-The port was validated against the build at the pin.[^ch15-inv-port] Sixteen quantities, on six panels, at four
-resolutions: all sixteen agree within the conditioning bound at every resolution, and fourteen agree bit for bit
-at the coarsest.
 
 ### Limits
 
