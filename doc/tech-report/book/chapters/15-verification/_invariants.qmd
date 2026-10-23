@@ -5,6 +5,7 @@ pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201
 sources: src/snapy_report/ch15/checks/invariants_zero_check.py;
   src/snapy_report/ch15/checks/invariants_budget_check.py;
   src/snapy_report/ch15/evidence/aam_budget_run.py;
+  src/snapy_report/ch15/evidence/absent_species_run.py;
   src/snapy_report/ch15/evidence/port_validation.py;
   src/hydro/flux_positivity.cpp; src/eos/equation_of_state.cpp;
   src/coord/coordinate.cpp; src/coord/gnomonic_equiangle.cpp at the pin.
@@ -191,6 +192,17 @@ in the last digit of the mass round-off; in the resting run, where the energy dr
 two differ in its third digit ($-4.829\times10^{-17}$ against $-4.837\times10^{-17}$). No row is a device-only
 result: every row of @tbl-ch15-inv-run exists on CPU, and the three CUDA rows repeat CPU rows on the GPU.
 
+`[Z1]` is a statement about the limiter alone, so it has a run record of its own: the same shell, with the
+four-species moist thermodynamics and the NH$_3$ + H$_2$S nucleation of `tests/test_condensate_conservation.yaml`,
+the conserved limiter switched **on**, an implicit $x_1$ solve, and a warm bubble to make the implicit solve and
+the species transport do real work. NH$_3$ is present and is the control; H$_2$S and its condensate NH$_4$SH are
+set to exactly zero. Six arms were run.[^ch15-inv-absent] In all six — 2000 implicit cycles at 8 cells per panel
+edge, 200 at 16, implicit schemes 9, 1 and 0, on CPU and on the GPU — **both absent rows hold zero non-zero
+entries in every interior cell of all six panels at every cycle**, and their global masses stay at exactly
+$0$. The present row is never driven negative either: its smallest value over 2000 cycles is
+$+2.97\times10^{-6}$, against an initial $10^{-3}$. The CPU and GPU arms agree to every printed digit, including
+the final species masses $5.831574\times10^{15}$ and $5.186102\times10^{15}$ kg.
+
 The port was validated against the build at the pin.[^ch15-inv-port] Sixteen quantities, on six panels, at four
 resolutions: all sixteen agree within the conditioning bound at every resolution, and fourteen agree bit for bit
 at the coarsest.
@@ -241,8 +253,13 @@ CUDA-enabled one for `--device cuda`:
 ```bash
 PYTHONPATH=src python3 src/snapy_report/ch15/evidence/aam_budget_run.py \
     --device cpu --nx 16 --cycles 2000 --omega 2.0e-5
+PYTHONPATH=src python3 src/snapy_report/ch15/evidence/absent_species_run.py \
+    --device cpu --nx 8 --cycles 2000 --scheme 9
 PYTHONPATH=src python3 src/snapy_report/ch15/evidence/port_validation.py --nx 45 --nr 8
 ```
+
+`absent_species_run.py` is the one run record that asserts: it exits nonzero if either absent row acquires a
+non-zero entry at any cycle. The other two report and exit 0.
 
 A CUDA-enabled build needs one extra step, which `aam_budget_run.py` performs for its `cuda` arm: the extension
 passes the CUDA sidecar to the linker but references no symbol in it, because its kernels register themselves
@@ -285,7 +302,8 @@ Both checks were run for this chapter and their output is the committed
 
 - **[Z1]** the absent row's first-step tendency is $0$ in all 48 cells and the row holds 0 non-zero entries after
   2000 steps, minimum $+0$. Under `Z1-floor` the same row's tendency is $6.2\times10^{-299}$, it holds 96000
-  non-zero entries and its minimum is $-2.0\times10^{-297}$.
+  non-zero entries and its minimum is $-2.0\times10^{-297}$. The same claim holds in the compiled solver, with
+  the implicit $x_1$ solve and the moist limiter on: see the run record above.[^ch15-inv-absent]
 - **[Z5]** 64 sites in 28 groups: 15 state, 19 guard, 5 select, 6 domain, 6 index, 6 eps, 2 cap, 5 meter. The
   state group invents, on 4000 probe cells, $5.1\times10^{-4}$ of dry mass at the density floor and
   $3.9\times10^{1}$ of total energy at the energy floor; the $10^{-300}$ drain guard changes none of the
@@ -313,10 +331,14 @@ and accumulate its round-off; they say nothing about a state with a circulation,
 Riemann solver and no cross-panel exchange. The measured drift of a flowing state is in the run record, and only
 there.
 
-**The run record is one deck.** Six panels in one process on a thin shell, dry ideal gas, closed radial walls,
-constant radial gravity, solid-body rotation and no forcing. A budget that closes on it is not a claim about a
-deck with moist physics, sedimentation, sponges or more than one block per panel. The angular-momentum drift it
-measures is the drift of *this* configuration; it is reported, not explained.
+**Each run record is one deck.** The budget record is six panels in one process on a thin shell, dry ideal gas,
+closed radial walls, constant radial gravity, solid-body rotation and no forcing. A budget that closes on it is
+not a claim about a deck with sedimentation, sponges or more than one block per panel. The angular-momentum drift
+it measures is the drift of *this* configuration; it is reported, not explained. The absent-species record adds
+the moist thermodynamics, the conserved limiter and an implicit $x_1$ solve to the same shell, but it is still
+one block per panel in one process, and it runs no kinetics between steps: the reaction is declared so that the
+species rows exist, and the driver-level kinetics of @sec-ch10-kinetics is not called. An absent species crossing
+a *rank* seam, and an absent species through a kinetics source, are outside both records.
 
 **The angular metric is ill-conditioned at high resolution.** The angular cell widths are an arccosine of a
 quantity that approaches one as the grid refines: $1-u \approx (d/2)^2$ for an angular width $d$, so arccosine
@@ -355,6 +377,16 @@ factor is exactly zero rather than merely small — which is the distinction the
     and the same with the device, resolution and cycle count of each other row, 1 process, 6 blocks, double
     precision; snapy 2.11.12 built from source with `-DCUDA=ON`, torch 2.10.0+cu128, Python 3.11.13, NVIDIA RTX
     5090; full output in `src/snapy_report/ch15/evidence/logs/aam_budget.log`]
+
+[^ch15-inv-absent]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the one built in
+    `src/snapy_report/ch15/evidence/absent_species_run.py`, four species with the NH3 + H2S nucleation of
+    `tests/test_condensate_conservation.yaml`, `limiter: true`; run:
+    `PYTHONPATH=src python3 src/snapy_report/ch15/evidence/absent_species_run.py --device cpu --nx 8 --cycles 2000 --scheme 9`
+    and five further arms (`--nx 16 --cycles 200`; `--scheme 1`; `--scheme 0`; `--device cuda` at `--nx 8` and
+    `--nx 16`), 1 process, 6 blocks, double precision; wall 45.5 s for the 2000-cycle CPU arm, 55.3 s and 58.1 s
+    for the two GPU arms; snapy 2.11.12 built from source with `-DCUDA=ON`, torch 2.10.0+cu128, Python 3.11.13,
+    NVIDIA RTX 5090; all six arms exited 0, which for this script is the assertion that no absent row acquired a
+    non-zero entry; full output in `src/snapy_report/ch15/evidence/logs/absent_species.log`]
 
 [^ch15-inv-port]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the one built in
     `src/snapy_report/ch15/evidence/port_validation.py`; run:
