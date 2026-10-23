@@ -203,6 +203,28 @@ $0$. The present row is never driven negative either: its smallest value over 20
 $+2.97\times10^{-6}$, against an initial $10^{-3}$. The CPU and GPU arms agree to every printed digit, including
 the final species masses $5.831574\times10^{15}$ and $5.186102\times10^{15}$ kg.
 
+A species repaired *inside* a stage is back at or above zero by the time the cycle ends, so reading the state at
+the cycle boundary cannot see it; the only trace is the line the thermodynamics prints when it repairs one. The
+script therefore captures file descriptor 1 across the whole run and counts those lines. **Every green arm
+reports zero of them.** That is the stronger statement: not merely that the absent rows are zero when each cycle
+ends, but that nothing was repaired at any stage of any cycle.
+
+The break arm makes the counter fire. `blob-no-limiter` gives the two rows a discontinuous top-hat of
+$10^{-6}$ and switches the conserved limiter off; the reconstruction then undershoots across the edge of the hat
+and, on CPU, the run reports `Warning: Negative concentration for species 2 = -8.7005e-321. Setting it to zero.`
+twice, and the script exits 1. `blob-limiter` is the same top-hat with the limiter back on: zero repair lines.
+The pair is what identifies the responsible term — the limiter, not the smoothness of the field. This is the
+same pathology `tests/test_flux_positivity.py` describes at the pin, "the very repair-instead-of-prevention
+pathology the limiter removes" ({{< code tests/test_flux_positivity.py >}}), reproduced on the six-panel shell.
+
+Two results of that run are negative findings and are reported as such. First, `--break floor-seed`, which starts
+the two rows at the $10^{-300}$ a concentration floor would leave behind, **does not go red**: over 200 implicit
+cycles the seeded rows stay at or above zero and nothing is repaired. The kintera defect needed an implicit
+kinetics source to consume the floored amount; this deck runs transport, the limiter and the equation of state
+and no kinetics, and that is not enough on its own. Second, `blob-no-limiter` is red on CPU and **not** on the
+GPU, where the same arm reports zero repair lines. Whether the GPU arm does not undershoot or the repair is
+reported only from the host path is a hypothesis this report has not tested.
+
 The port was validated against the build at the pin.[^ch15-inv-port] Sixteen quantities, on six panels, at four
 resolutions: all sixteen agree within the conditioning bound at every resolution, and fourteen agree bit for bit
 at the coarsest.
@@ -386,7 +408,10 @@ factor is exactly zero rather than merely small — which is the distinction the
     `--nx 16`), 1 process, 6 blocks, double precision; wall 45.5 s for the 2000-cycle CPU arm, 55.3 s and 58.1 s
     for the two GPU arms; snapy 2.11.12 built from source with `-DCUDA=ON`, torch 2.10.0+cu128, Python 3.11.13,
     NVIDIA RTX 5090; all six arms exited 0, which for this script is the assertion that no absent row acquired a
-    non-zero entry; full output in `src/snapy_report/ch15/evidence/logs/absent_species.log`]
+    non-zero entry and that nothing was repaired at any stage. The break arms were run as
+    `… --break blob-no-limiter` (CPU: exit 1, 2 repair lines; CUDA: exit 0, 0 repair lines),
+    `… --break blob-limiter` (exit 0, 0 repair lines) and `… --break floor-seed` (exit 0, 0 repair lines). Full
+    output of all ten arms in `src/snapy_report/ch15/evidence/logs/absent_species.log`]
 
 [^ch15-inv-port]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the one built in
     `src/snapy_report/ch15/evidence/port_validation.py`; run:
