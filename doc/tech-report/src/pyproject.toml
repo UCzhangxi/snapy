@@ -5,4 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "snapy-report"
 version = "0.0.1"
-dependencies = ["numpy", "sympy", "matplotlib"]
+# numpy is pinned exactly: several checks byte-compare their stdout against a committed `.out`, and
+# round-off-level quantities (the ch15 budget per-step slopes, for one) move with numpy's reduction
+# order. 2.4 -> 2.5 changed them. The committed outputs are generated on the CI interpreter, Python
+# 3.12, with this pin; see `requires-python` below.
+dependencies = ["numpy==2.5.4", "sympy", "matplotlib"]
+# The report CI runs Python 3.12 (.github/workflows/tech-report.yml, PYTHON_VERSION). Some round-off
+# digits also move between CPython minor versions independently of numpy -- the ch15 B3 solid-angle
+# sum prints -1.11e-16 on 3.11 and +0.00e+00 on 3.12 under one and the same numpy -- so the byte-
+# compared outputs are only reproducible on the interpreter they were generated on.
+requires-python = ">=3.12"
