@@ -411,10 +411,32 @@ def tangential_force(panel, pressure, metric_rule="discrete"):
     and 0; the x3 face is the mirror image. The geometric sources at rest are
     x_ov_rD p and y_ov_rC p (:461-468).
 
-    `metric_rule='analytic'` is the break arm: it replaces the discrete
-    difference of fx that defines x_ov_rD by the analytic metric derivative of
-    the same quantity, which is the same term to truncation order and a
-    different number.
+    `metric_rule='analytic'` is the break arm. It replaces the discrete
+    difference of fx that defines x_ov_rD by an analytic expression for the
+    derivative of the same quantity. It is NOT the same term to truncation
+    order -- an earlier version of this docstring and of the chapter said it
+    was, and that was wrong. Measured against the discrete source at p0 = 1e5,
+    max |src2|:
+
+        n_ang    discrete     analytic     analytic/discrete
+            8    1.3499e-02   1.1622e-01   8.61
+           16    1.4994e-02   2.3622e-01   15.75
+           32    1.5773e-02   4.7525e-01   30.13
+           45    1.6004e-02   6.6946e-01   41.83
+
+    The discrete source converges as the mesh refines; the analytic branch
+    grows roughly in proportion to n_ang, i.e. like the inverse cell width, so
+    the two do not approach each other at all. The ratio tracks n_ang closely
+    enough to suggest one missing angular factor, but restoring a dbeta and the
+    C/D ratio only stops the growth -- it leaves a constant factor near 2.9 --
+    so the arm is not one factor away from being a truncation-order variant and
+    no correction is attempted here rather than ship a formula we cannot derive.
+
+    The arm is still a valid break arm: it shows the claim is sensitive to this
+    source term, and it goes red decisively. It simply does not demonstrate the
+    delicacy a truncation-order perturbation would. For [B5] the honest
+    term-removal test is `metric_rule='none'`, which deletes the source
+    outright and needs no substitute formula to argue about.
     """
     f2 = np.broadcast_to(pressure, panel.area2.shape) * panel.sine_face2
     f3 = np.broadcast_to(pressure, panel.area3.shape) * panel.sine_face3
@@ -422,7 +444,11 @@ def tangential_force(panel, pressure, metric_rule="discrete"):
             - panel.area2[:, :-1] * f2[:, :-1]) / panel.volume
     div3 = (panel.area3[1:, :] * f3[1:, :]
             - panel.area3[:-1, :] * f3[:-1, :]) / panel.volume
-    if metric_rule == "discrete":
+    if metric_rule == "none":
+        # the term removed outright, not replaced by another formula
+        src2 = np.zeros_like(panel.x_ov_rD * pressure)
+        src3 = np.zeros_like(panel.y_ov_rC * pressure)
+    elif metric_rule == "discrete":
         src2 = panel.x_ov_rD * pressure
         src3 = panel.y_ov_rC * pressure
     elif metric_rule == "analytic":
@@ -492,7 +518,8 @@ def break_B4_analytic():
 # =============================================================================
 # [B5] axial angular momentum over many steps
 # =============================================================================
-def aam_budget(nstep=2000, odd_panel=None, n_ang=8, n_rad=6, p0=1.0e5):
+def aam_budget(nstep=2000, odd_panel=None, no_source=False, n_ang=8,
+               n_rad=6, p0=1.0e5):
     """Step the covariant tangential momentum rows of the uniform-pressure rest
     state and record the global axial angular momentum each step.
 
@@ -502,7 +529,8 @@ def aam_budget(nstep=2000, odd_panel=None, n_ang=8, n_rad=6, p0=1.0e5):
     neighbours, which is a defect no single-panel test can see."""
     panels = [Panel(n_ang, n_rad, f) for f in range(NFACE)]
     forces = [tangential_force(
-        p, p0, metric_rule=("analytic" if f == odd_panel else "discrete"))
+        p, p0, metric_rule=("none" if no_source
+                            else "analytic" if f == odd_panel else "discrete"))
         for f, p in enumerate(panels)]
     rho = 0.1
     dt = 1.0
@@ -535,12 +563,24 @@ def aam_budget(nstep=2000, odd_panel=None, n_ang=8, n_rad=6, p0=1.0e5):
     return np.array(series), ref, sum(p.volume.size for p in panels)
 
 
-def check_B5(odd_panel=None, nstep=2000):
-    series, ref, ncell = aam_budget(nstep=nstep, odd_panel=odd_panel)
+#: [B5]'s bound on the per-step relative AAM drift. It is NOT 1e-15: the
+#: discrete metric source holds the drift at 8.7e-34, and a bound of 1e-15
+#: is sixteen orders looser than that -- loose enough that DELETING the
+#: geometric pressure source on all six panels also passed it, at 2.1e-18,
+#: and replacing it by the analytic derivative everywhere passed at 1.5e-17.
+#: A claim whose bound cannot separate the shipped operator from that
+#: operator's deletion tests nothing. 1e-20 separates them with fourteen
+#: orders of margin on the shipped side and two on the deleted one.
+B5_REL_BOUND = 1e-20
+
+
+def check_B5(odd_panel=None, no_source=False, nstep=2000):
+    series, ref, ncell = aam_budget(nstep=nstep, odd_panel=odd_panel,
+                                    no_source=no_source)
     per_step = slope_per_step(series)
     rel = per_step / ref
     rel_total = (series[-1] - series[0]) / ref
-    ok = abs(rel) < 1e-15
+    ok = abs(rel) < B5_REL_BOUND
     return report(
         "B5", ok,
         f"global axial angular momentum stays at round-off over {nstep} steps "
@@ -548,15 +588,30 @@ def check_B5(odd_panel=None, nstep=2000):
         f"over {ncell} cells on {NFACE} panels the drift is {per_step:+.3e} "
         f"kg m^2 s^-1 per step and {series[-1] - series[0]:+.3e} over the run, "
         f"which is {rel:+.2e} and {rel_total:+.2e} of the {ref:.3e} kg m^2 s^-1 "
-        f"the same cells would carry at one metre per second eastward. The source "
-        f"of the drift is the rounding of the two multiplication orders in [B4] "
-        f"and nothing else: there is no term left over for it to accumulate")
+        f"the same cells would carry at one metre per second eastward, against a "
+        f"bound of {B5_REL_BOUND:.0e} per step. The source of the drift is the "
+        f"rounding of the two multiplication orders in [B4] and nothing else: "
+        f"there is no term left over for it to accumulate. The bound is set to "
+        f"separate this from the same operator DELETED on all six panels, which "
+        f"drifts at 2.1e-18 per step -- sixteen orders worse, and still inside "
+        f"the 1e-15 this claim used to ask for")
 
 
 def break_B5_odd_panel():
     """One of the six panels builds its geometric pressure source from the
     analytic metric derivative; the other five keep the discrete difference."""
     return check_B5(odd_panel=0, nstep=2000)
+
+
+def break_B5_nosource():
+    """The term the claim credits, deleted outright on ALL six panels: the
+    geometric pressure source is set to zero rather than replaced by another
+    formula, so nothing about the substitute can be argued over. Unlike the
+    odd-panel arm it leaves the six panels consistent with each other, so no
+    seam argument catches it -- only the bound does, and only since the bound
+    was tightened: this arm drifts at 2.1e-18 per step, which the 1e-15 the
+    claim used to ask for let through."""
+    return check_B5(no_source=True, nstep=2000)
 
 
 # =============================================================================
@@ -578,6 +633,9 @@ BREAKS = {
     "B5-odd-panel": ("B5", break_B5_odd_panel,
                      "one of the six panels uses the analytic metric source "
                      "while the other five use the discrete one"),
+    "B5-nosource": ("B5", break_B5_nosource,
+                    "the geometric pressure source is removed outright on all "
+                    "six panels"),
 }
 
 

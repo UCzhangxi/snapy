@@ -30,6 +30,8 @@ epsilon in the covered paths with a measurement of what that floor changes; the 
 total energy and, for the cubed sphere, global axial angular momentum over many steps and reports the drift per
 step and where it comes from. Every claim carries a break arm that removes one term and makes it red. A check
 that cannot be made to fail is not finished, so the green run executes every break arm and requires it to fail.
+Two claims carry no arm and the chapter does not pretend otherwise: `[Z5]` is an inventory, and an inventory
+cannot be broken from inside the check that owns the list; and `[Z6]`/`[B6]` are the arm-runners themselves.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** States the invariants a catalogue of per-test assertions does not cover: zero in, zero out, and the three global budgets.
@@ -326,16 +328,16 @@ zero rather than a tiny positive number.
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `invariants_zero_check.py` `[Z1]` (report only) | an absent species has a zero rate and no negative amount after 2000 limiter steps | exact zero | the rectifier of @eq-ch15-inv-theta; break arm `Z1-floor` |
-| `[Z2]` (report only) | the absent row is zeroed in float64 and float32, and $10^{-300}$ is not representable in float32 | exact zero | the same rectifier in both precisions |
-| `[Z3]` (report only) | an absent condensate borrows nothing over 500 limiter calls | exact zero | $\min(c,0)$ and $\max(c,0)$ at $c=0$; break arm `Z3-floor` |
-| `[Z4]` (report only) | an absent species reconstructs to zero on both sides of every face | exact zero | a limited slope over a zero stencil; break arm `Z4-noclamp` |
-| `[Z5]` (report only) | every floor, clamp and epsilon in the covered paths is listed with what it changes | 65 sites in 29 groups | the sites found in the covered paths at the pin |
+| `[Z2]` (report only) | the absent row is zeroed in float64 and float32, and $10^{-300}$ is not representable in float32 | exact zero | the same rectifier in both precisions; break arm `Z2-floor` |
+| `[Z3]` (report only) | an absent condensate borrows nothing over 500 limiter calls | exact zero | $\min(c,0)$ and $\max(c,0)$ are *no-ops* at $c=0$, so this tests that nothing in the call manufactures a condensate, not the clamp; defect-injection arm `Z3-floor` |
+| `[Z4]` (report only) | an absent species reconstructs to zero on both sides of every face | exact zero | the limited slope of a zero stencil is zero *before* the clamp, so the clamp is a no-op here; `Z4-noclamp` seeds a negative cell and tests that separate claim |
+| `[Z5]` (report only) | every floor, clamp and epsilon in the covered paths is listed with what it changes | 65 sites in 29 groups | the sites found in the covered paths at the pin; **no break arm** -- see below |
 | `[Z6]` (report only) | every break arm of this check turns its claim red | all arms red | a claim that cannot fail is not a check |
 | `invariants_budget_check.py` `[B1]` (report only) | global mass over 2000 steps of the divergence | the reduction bound of @eq-ch15-budget | sequential-reduction round-off; break arm `B1-seam` |
-| `[B2]` (report only) | global energy plus potential over 2000 steps, gravity work at the faces | the same bound | the same round-off; break arm `B2-cellwork` |
+| `[B2]` (report only) | that the *cell-velocity* booking does not conserve while the face booking does | the same bound | the same round-off; arm `B2-cellwork`. Deleting the face term alone is **not** detectable here -- see below |
 | `[B3]` (report only) | six-panel solid angle, volume, and $\nabla\cdot(r\hat{\mathbf r})=3$ | $10^{-14}$, $10^{-12}$ | exactness of @eq-ch15-inv-volume; break arm `B3-trapezoid` |
 | `[B4]` (report only) | no tangential force on a uniform-pressure resting shell | $10^{-12}$ relative | the identity of @eq-ch15-inv-metric; break arm `B4-analytic` |
-| `[B5]` (report only) | $L_z$ over 2000 steps of that state | $10^{-15}$ relative | the same identity, accumulated; break arm `B5-odd-panel` |
+| `[B5]` (report only) | $L_z$ over 2000 steps of that state | $10^{-20}$ per step | tightened so it separates the shipped source from its deletion; arms `B5-odd-panel`, `B5-nosource` |
 | `[B6]` (report only) | every break arm of this check turns its budget red | all arms red | a claim that cannot fail is not a check |
 
 : The invariant claims and the arm that breaks each. {#tbl-ch15-inv-claims}
@@ -362,10 +364,74 @@ Both checks were run for this chapter and their output is the committed
 - **[B4]** the largest covariant tangential force density on the resting shell is $2.5\times10^{-17}$ against a
   single term of $1.35\times10^{-2}$, i.e. $1.8\times10^{-15}$ relative; under `B4-analytic` the same quantity is
   $1.0\times10^{-1}$, which is $7.6$ times the term itself.
+
+  `B4-analytic` is a **wrong-formula arm, not a truncation-order variant**, and earlier wording here claiming it
+  was "the same term to truncation order" was wrong. Measured against the discrete source at $p_0=10^5$, the
+  largest $|\mathrm{src}_2|$ is
+
+  | $n_\mathrm{ang}$ | discrete | analytic | ratio |
+  |---|---|---|---|
+  | 8 | $1.3499\times10^{-2}$ | $1.1622\times10^{-1}$ | $8.61$ |
+  | 16 | $1.4994\times10^{-2}$ | $2.3622\times10^{-1}$ | $15.75$ |
+  | 32 | $1.5773\times10^{-2}$ | $4.7525\times10^{-1}$ | $30.13$ |
+  | 45 | $1.6004\times10^{-2}$ | $6.6946\times10^{-1}$ | $41.83$ |
+
+  The discrete source converges with refinement while the analytic branch grows roughly like
+  $n_\mathrm{ang}$, i.e. like the inverse cell width, so the two never approach each other: the gap widens from
+  $7.6$ to $40.8$ times the discrete term between 8 and 45 cells per panel edge. The ratio tracks
+  $n_\mathrm{ang}$ closely enough to suggest a single missing angular factor, but restoring a $d\beta$ and the
+  $C/D$ ratio only stops the growth and leaves a constant factor near $2.9$, so the arm is not one factor away
+  from being a truncation-order variant; we leave it as the wrong-formula arm it is rather than ship a
+  substitute we cannot derive. It remains a valid break arm -- it shows the claim is sensitive to this source
+  term -- but it does not demonstrate the delicacy a truncation-order perturbation would.
 - **[B5]** $L_z$ drifts $+5.5\times10^{-8}\ \mathrm{kg\,m^2\,s^{-1}}$ per step, which is $8.7\times10^{-34}$ of
   what the same cells carry at one metre per second eastward; under `B5-odd-panel`, with one of the six panels
   assembled from the analytic metric and the other five from the discrete one, the drift is
   $-6.9\times10^{24}$ per step, or $11\%$ of that reference every step.
+
+  This claim's bound was $10^{-15}$ per step and is now $10^{-20}$, because the old bound could not see its own
+  term being deleted. Removing the geometric pressure source outright on **all six** panels leaves the drift at
+  $-2.1\times10^{-18}$ per step, and replacing it by the analytic derivative on all six leaves it at
+  $-1.5\times10^{-17}$: both passed $10^{-15}$. The odd-panel arm only ever caught the *inconsistency* between
+  panels, never the term itself. The new arm `B5-nosource` deletes the source on all six panels and is red
+  against the tightened bound, which the shipped operator clears with fourteen orders of margin
+  ($8.7\times10^{-34}$ against $10^{-20}$).
+
+### What each claim does and does not test
+
+An independent review asked a sharper question than "does the arm go red": does the claim still pass when the
+term it credits is **deleted**? That is not what most of the arms above do -- they inject a defect (a positive
+floor, an odd panel) rather than removing a guard. Running each term-removal explicitly, on the committed
+checks at this pin:
+
+| claim | term deleted | claim still passes? |
+|---|---|---|
+| `[Z1]` | the rectifier `u.relu()` | **no**, goes red -- but on the *present* control row, which reaches $-9.9\times10^{-324}$ (two subnormal units), not on the absent row |
+| `[Z2]` | both reconstruction clamps, or the rectifier | yes -- for $u=0$ exactly, `relu(u)` and `u` are the same number |
+| `[Z3]` | the $\max(c,0)$ clamp, or the $\min(c,0)$ borrow gate | yes |
+| `[Z4]` | the reconstruction face clamp, on a genuinely zero row | yes |
+| `[B2]` | the potential-flux face term | yes |
+| `[B5]` | the geometric pressure source, on all six panels | yes under the old $10^{-15}$ bound; **no** under the $10^{-20}$ bound this chapter now uses |
+
+The pattern in the zero-in/zero-out family is one fact, not five: **every one of these guards is a no-op on an
+exactly zero row.** A limited slope over a zero stencil is zero before any clamp; $\min(0,0)$ and $\max(0,0)$
+are zero; `relu(0)` is `0`. So the right reading of `[Z2]`--`[Z4]` is that *nothing in the absent-species path
+manufactures a non-zero from zero*, which is a real and checkable property, and not that any particular clamp
+is what holds the row at zero. The guards earn their place on rows that have gone slightly negative, which is a
+different claim, and `Z4-noclamp` -- which seeds one cell at $-10^{-18}$ -- is in fact a test of that different
+claim rather than of `[Z4]` as stated. The arms that remain are defect-injection arms, and they are the right
+ones for this family: the failure mode worth guarding against is a positive floor of the kintera
+\#147/\#151 kind, not a missing clamp. `[Z2]` gains `Z2-floor` on the same principle.
+
+`[B2]` is narrowed rather than re-armed. The diagnostic is $\sum (E + \rho\phi)V$, and dropping the
+potential-flux face term leaves $\phi_\mathrm{cell}\,\nabla\!\cdot\!(A F_m)$ cancelling against the
+potential term identically, so the global total is conserved whatever that face term does. No tolerance can
+recover sensitivity here; the check genuinely tests only that the cell-velocity booking fails where the face
+booking holds. Showing that the face term is right locally needs a different diagnostic, which this chapter
+does not have.
+
+`[B5]` is the one case where tightening the claim was enough, and it mattered: at $10^{-15}$ the claim passed
+with its own source deleted on all six panels.
 
 ### Limits
 
@@ -431,8 +497,10 @@ factor is exactly zero rather than merely small — which is the distinction the
     `tests/test_condensate_conservation.yaml`, `limiter: true`; run:
     `PYTHONPATH=src python3 src/snapy_report/ch15/evidence/absent_species_run.py --device cpu --nx 8 --cycles 2000 --scheme 9`
     and five further arms (`--nx 16 --cycles 200`; `--scheme 1`; `--scheme 0`; `--device cuda` at `--nx 8` and
-    `--nx 16`), 1 process, 6 blocks, double precision; wall 45.5 s for the 2000-cycle CPU arm, 55.3 s and 58.1 s
-    for the two GPU arms; scope: the cycle loop only, from after the initial state is built to after the last
+    `--nx 16`), 1 process, 6 blocks, double precision; wall 59.5 s for the 2000-cycle CPU arm, 25.7 s and 27.1 s
+    for the two GPU arms (200 cycles each), as recorded in
+    `src/snapy_report/ch15/evidence/logs/absent_species.log`; scope: the cycle loop only, from after the initial
+    state is built to after the last
     cycle, excluding the mesh build and the per-cycle budget reduction's first call; reps: 1 (one run of each
     arm, not a timing study — the numbers are reported so a reader can budget the rerun, and no claim rests on
     them); snapy 2.11.12 built from source with `-DCUDA=ON`, torch 2.10.0+cu128, Python 3.11.13,
