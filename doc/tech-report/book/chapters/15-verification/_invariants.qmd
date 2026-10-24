@@ -369,12 +369,13 @@ Both checks were run for this chapter and their output is the committed
   truncation order" that the name might suggest. Measured against the discrete source at $p_0=10^5$, the
   largest $|\mathrm{src}_2|$ is
 
-  | $n_\mathrm{ang}$ | discrete | analytic | ratio |
-  |---|---|---|---|
-  | 8 | $1.3499\times10^{-2}$ | $1.1622\times10^{-1}$ | $8.61$ |
-  | 16 | $1.4994\times10^{-2}$ | $2.3622\times10^{-1}$ | $15.75$ |
-  | 32 | $1.5773\times10^{-2}$ | $4.7525\times10^{-1}$ | $30.13$ |
-  | 45 | $1.6004\times10^{-2}$ | $6.6946\times10^{-1}$ | $41.83$ |
+  ```
+  n_ang      discrete       analytic    analytic/discrete
+      8    1.3499e-02    1.1622e-01      8.61
+     16    1.4994e-02    2.3622e-01     15.75
+     32    1.5773e-02    4.7525e-01     30.13
+     45    1.6004e-02    6.6946e-01     41.83
+  ```
 
   The discrete source converges with refinement while the analytic branch grows roughly like
   $n_\mathrm{ang}$, i.e. like the inverse cell width, so the two never approach each other: the gap widens from
@@ -404,14 +405,15 @@ term it credits is **deleted**? That is not what most of the arms above do -- th
 floor, an odd panel) rather than removing a guard. Running each term-removal explicitly, on the committed
 checks at this pin:
 
-| claim | term deleted | claim still passes? |
-|---|---|---|
-| `[Z1]` | the rectifier `u.relu()` | **no**, goes red -- but on the *present* control row, which reaches $-9.9\times10^{-324}$ (two subnormal units), not on the absent row |
-| `[Z2]` | both reconstruction clamps, or the rectifier | yes -- for $u=0$ exactly, `relu(u)` and `u` are the same number |
-| `[Z3]` | the $\max(c,0)$ clamp, or the $\min(c,0)$ borrow gate | yes |
-| `[Z4]` | the reconstruction face clamp, on a genuinely zero row | yes |
-| `[B2]` | the potential-flux face term | yes |
-| `[B5]` | the geometric pressure source, on all six panels | yes against a $10^{-15}$ bound; **no** against the $10^{-20}$ bound this chapter sets |
+- `[Z1]`, the rectifier `u.relu()`: **goes red** -- but on the *present* control row, which reaches
+  $-9.9\times10^{-324}$, two subnormal units, not on the absent row.
+- `[Z2]`, both reconstruction clamps, or the rectifier: still passes. For $u=0$ exactly, `relu(u)` and `u` are
+  the same number.
+- `[Z3]`, the $\max(c,0)$ clamp, or the $\min(c,0)$ borrow gate: still passes.
+- `[Z4]`, the reconstruction face clamp, on a genuinely zero row: still passes.
+- `[B2]`, the potential-flux face term: still passes.
+- `[B5]`, the geometric pressure source on all six panels: passes against a $10^{-15}$ bound; **fails** against
+  the $10^{-20}$ bound this chapter sets.
 
 The pattern in the zero-in/zero-out family is one fact, not five: **every one of these guards is a no-op on an
 exactly zero row.** A limited slope over a zero stencil is zero before any clamp; $\min(0,0)$ and $\max(0,0)$
@@ -477,7 +479,7 @@ factor is exactly zero rather than merely small — which is the distinction the
 [^ch15-inv-checks-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the checks themselves; run:
     `PYTHONPATH=src python3 src/snapy_report/ch15/checks/invariants_zero_check.py` and
     `… invariants_budget_check.py`, CPU, 1 process; Python 3.12.15, numpy 2.5.4 (the interpreter the report
-    CI uses and the pin in `src/pyproject.toml`); output identical to the committed `.out` files. The
+    CI[^rg-d68826361563] uses and the pin in `src/pyproject.toml`); output identical to the committed `.out` files. The
     round-off digits these checks print are reproducible only on that pair: the budget check's per-step
     slopes move with numpy's reduction order (2.4.6 prints +1.600e-19 and -5.169e-19 where 2.5.4 prints
     +5.869e-20 and -4.151e-19 for [B1] and [B2]), and [B3]'s solid-angle sum prints -1.11e-16 on Python
@@ -530,4 +532,6 @@ factor is exactly zero rather than merely small — which is the distinction the
 [^rg-481ae03bbe3c]: shock — whether reconstruction uses its shock handling
 
 [^rg-027bd3190e07]: gravity-work — form of the $x_1$ gravity work: `face` (default), `face-wallc` or `cell`
+
+[^rg-d68826361563]: CI — continuous integration
 <!-- end reader glossary notes -->
