@@ -214,7 +214,7 @@ def break_Z1_floor():
 # =============================================================================
 # [Z2] the absent row is not merely small: it is bitwise zero, in float32 too
 # =============================================================================
-def check_Z2():
+def check_Z2(avail_rule="relu"):
     rng = np.random.default_rng(12)
     n = 32
     out = {}
@@ -223,7 +223,8 @@ def check_Z2():
         af = rng.normal(0.0, 1.0, n + 1).astype(dtype)
         af[0] = af[-1] = 0
         u = np.zeros(n, dtype=dtype)
-        th = theta(u, af[:-1], af[1:], volume, dtype(0.05), dtype=dtype)
+        th = theta(u, af[:-1], af[1:], volume, dtype(0.05), avail_rule=avail_rule,
+                   dtype=dtype)
         scaled = scale_faces(th, af[:-1], af[1:])
         out[name] = (float(np.abs(scaled).max()), float(th.min()),
                      float(dtype(DRAIN_GUARD)))
@@ -242,6 +243,16 @@ def check_Z2():
         f"{out['float64'][2]:.1e}. A rule built on that guard would mean one thing "
         f"in double and another in single, which is why the shipped rule is relu "
         f"and the guard sits only under a `where` that discards it")
+
+
+def break_Z2_floor():
+    """The floor rule instead of the rectifier. This is the only mutation [Z2]
+    can see: for u == 0 exactly, relu(u) and u are the same number, so deleting
+    the rectifier changes nothing here (verified: the claim stays green). What
+    changes the answer is replacing it by a POSITIVE floor, which is also the
+    defect the claim exists to catch -- and it changes it in float64 only, which
+    is the precision instability the claim is about."""
+    return check_Z2(avail_rule="floor")
 
 
 # =============================================================================
@@ -651,6 +662,9 @@ def check_Z5():
 # [Z6] every break arm goes red
 # =============================================================================
 BREAKS = {
+    "Z2-floor": ("Z2", break_Z2_floor,
+                 "the limiter takes the cell's amount through a 1e-300 floor, "
+                 "whose effect differs between float64 and float32"),
     "Z1-floor": ("Z1", break_Z1_floor,
                  "flux_positivity_theta takes the cell's amount through a 1e-300 "
                  "floor instead of relu"),
