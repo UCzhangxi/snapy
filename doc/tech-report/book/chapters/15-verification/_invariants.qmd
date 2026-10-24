@@ -80,6 +80,27 @@ it. The row cannot be drained at all, and stays bitwise zero for any number of s
 floor at $10^{-300}$ and the numerator is positive: the cell is treated as holding that amount, the update
 removes it, and the row goes negative — which is the defect this check exists to catch.
 
+That guarantee is only ever *exercised* where the absent row is actually drained. $\theta_{15}$ is
+$\min(1,\,\text{avail}/\text{drain})$ on the cells with $\text{drain}>0$ and exactly $1$ everywhere else
+({{< code src/hydro/flux_positivity.cpp flux_positivity_theta >}}, the `torch::where` on `drain > 0.`), and the
+numerator — the only place the rectifier appears — is not consulted on the `else` branch. An identically zero
+row reconstructs to zero on both sides of every face, which is claim `[Z4]` below, so its species flux, and
+hence its drain, is identically zero: the rectifier is never reached for such a row. Instrumenting
+`flux_positivity_theta` at the pin and running the compiled record of @tbl-ch15-inv-run measures exactly that —
+over the 162 limiter calls of three cycles on six panels, the two absent channels have
+$\max(\text{drain}) = 0$ and no cell at all with $\text{drain}>0$, against a maximum drain of
+$2.274\times10^{13}$ over 2456 cells for the present control channel.
+
+So the two pieces of evidence below are credited with different things, and this is the sharpest statement each
+supports. `[Z1]` tests the rectifier, because it prescribes the face fluxes of the absent row directly and can
+therefore put it in the draining state the solver will not produce on its own; replacing the rectifier by the
+floor turns `[Z1]` red. The compiled record tests something weaker but end-to-end: that an absent row survives
+the implicit solve, the moist limiter and the cross-panel exchange still bitwise zero. It does **not** test the
+rectifier, and we should not claim it does — with the rectifier replaced by a $10^{-300}$ floor in the built
+library the record stays green on both CPU and CUDA, exactly because the drain it would act on is zero. The
+honest reading is that two independent mechanisms protect an absent row, a zero flux and a zero factor, and that
+the record exercises the first while `[Z1]` exercises the second.
+
 Two further absent-species paths close the same way. The condensate repair
 ({{< code src/eos/equation_of_state.cpp EquationOfStateImpl::apply_conserved_limiter_ >}}) borrows a deficit
 $\min(c,0)$ from the parent vapour and then writes $\max(c,0)$; both are exactly zero for $c=0$, so an absent
@@ -308,7 +329,7 @@ zero rather than a tiny positive number.
 | `[Z2]` (report only) | the absent row is zeroed in float64 and float32, and $10^{-300}$ is not representable in float32 | exact zero | the same rectifier in both precisions |
 | `[Z3]` (report only) | an absent condensate borrows nothing over 500 limiter calls | exact zero | $\min(c,0)$ and $\max(c,0)$ at $c=0$; break arm `Z3-floor` |
 | `[Z4]` (report only) | an absent species reconstructs to zero on both sides of every face | exact zero | a limited slope over a zero stencil; break arm `Z4-noclamp` |
-| `[Z5]` (report only) | every floor, clamp and epsilon in the covered paths is listed with what it changes | 64 sites in 28 groups | the sites found in the covered paths at the pin |
+| `[Z5]` (report only) | every floor, clamp and epsilon in the covered paths is listed with what it changes | 65 sites in 29 groups | the sites found in the covered paths at the pin |
 | `[Z6]` (report only) | every break arm of this check turns its claim red | all arms red | a claim that cannot fail is not a check |
 | `invariants_budget_check.py` `[B1]` (report only) | global mass over 2000 steps of the divergence | the reduction bound of @eq-ch15-budget | sequential-reduction round-off; break arm `B1-seam` |
 | `[B2]` (report only) | global energy plus potential over 2000 steps, gravity work at the faces | the same bound | the same round-off; break arm `B2-cellwork` |
@@ -326,7 +347,7 @@ Both checks were run for this chapter and their output is the committed
   2000 steps, minimum $+0$. Under `Z1-floor` the same row's tendency is $6.2\times10^{-299}$, it holds 96000
   non-zero entries and its minimum is $-2.0\times10^{-297}$. The same claim holds in the compiled solver, with
   the implicit $x_1$ solve and the moist limiter on: see the run record above.[^ch15-inv-absent]
-- **[Z5]** 64 sites in 28 groups: 15 state, 19 guard, 5 select, 6 domain, 6 index, 6 eps, 2 cap, 5 meter. The
+- **[Z5]** 65 sites in 29 groups: 15 state, 19 guard, 5 select, 6 domain, 6 index, 5 eps, 2 cap, 7 meter. The
   state group invents, on 4000 probe cells, $5.1\times10^{-4}$ of dry mass at the density floor and
   $3.9\times10^{1}$ of total energy at the energy floor; the $10^{-300}$ drain guard changes none of the
   *selected* quotients.
@@ -371,7 +392,7 @@ and $1.2\times10^{-11}$ at 45. That is a bound on how precisely any statement ab
 those resolutions, and it is six orders below the angular-momentum drift measured above, so it does not account
 for it.
 
-**An inventory is a snapshot of one pin.** The 64 sites of `[Z5]` are the floors, clamps and epsilons of the
+**An inventory is a snapshot of one pin.** The 65 sites of `[Z5]` are the floors, clamps and epsilons of the
 paths this chapter covers at the code pin, not of every path in the repository; a floor added elsewhere is
 outside it until the inventory is rerun. The pin predates the work on the angular-momentum
 drift,[^ch15-inv-pinlag] so nothing here measures any fix for it: the numbers describe the code at the pin and

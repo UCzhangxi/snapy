@@ -74,9 +74,12 @@
        index  hydro/gravity_work_radial.hpp:83; forcing/diffusion.cpp:221; coord/x1_centroid.cpp:194; :195; hydro/wb_ref4.cpp:116; layout/cubed_sphere_layout.cpp:376
               index clamps that keep a stencil, a profile lookup or a block count inside its array
               on a 12-cell array the gravity-work clamp maps the 6 out-of-range indices of 16 onto the end stencils; it changes WHICH cell is read near a wall and never the value of any cell
-       eps    hydro/flux_positivity.cpp:66; flux_positivity.hpp:18; :23
-              the available amount is taken 4096 machine epsilons (64 in float32) short of the cell's own amount
+       eps    hydro/flux_positivity.cpp:65-66; flux_positivity.hpp:18
+              the available amount is taken 4096 machine epsilons short of the cell's own amount, in float32 as well as float64
               the margin is 9.095e-13 relative, so a fully drained cell lands at 9.095e-13 of its amount above zero instead of at an exact zero that rounds negative. It costs at most that fraction of the transported amount per step and it is what makes `u >= 0` survive the division
+       meter  hydro/flux_positivity.cpp:16-20; flux_positivity.hpp:23
+              the float32 ulp count, 64, of the threshold that decides whether a withheld or repaired mass is REPORTED as a positivity event
+              64 float32 epsilons is 7.629e-06 relative, against 4.883e-04 for the 4096 that theta's own margin uses in the same precision. It never enters theta -- flux_positivity.cpp:65 takes the ulp count from kPositivityRoundoffUlp in both precisions -- so it changes no stored value, only whether MeshBlock::check_redo sees a limiter patch
        eps    implicit/vic_redistribute_impl.h:140
               the VIC redistribution keeps 1 - 4096 eps of the donor cell
               the retained fraction is 0.99999999999909051, i.e. 9.095e-13 short of one; it leaves that fraction behind rather than emptying a cell exactly
@@ -86,7 +89,7 @@
        eps    math/ludcmp.h:35
               the LU pivot tolerance, 8N machine epsilons
               for an 8 by 8 block the tolerance is 1.421e-14; below it the pivot is declared singular and the solve is refused rather than returning a huge correction
-[Z5] PASS every positivity floor, clamp and epsilon in the covered code paths is listed with a measurement of what it changes: 64 sites in 28 groups: cap 2, domain 6, eps 6, guard 19, index 6, meter 5, select 5, state 15. The `state` group changes stored values and is measured in invented mass, energy or pressure; the `guard` group is shown to bind only at or below its own value and, for the positivity drain, to change no SELECTED value at all; `select` keeps a sign or a cap; `domain` and `index` change an argument or an address, not an amount; `eps` decides a branch or leaves a stated fraction behind; `cap` is a deck choice; `meter` records a hit. No floor in this list can make an absent species present
+[Z5] PASS every positivity floor, clamp and epsilon in the covered code paths is listed with a measurement of what it changes: 65 sites in 29 groups: cap 2, domain 6, eps 5, guard 19, index 6, meter 7, select 5, state 15. The `state` group changes stored values and is measured in invented mass, energy or pressure; the `guard` group is shown to bind only at or below its own value and, for the positivity drain, to change no SELECTED value at all; `select` keeps a sign or a cap; `domain` and `index` change an argument or an address, not an amount; `eps` decides a branch or leaves a stated fraction behind; `cap` is a deck choice; `meter` records a hit. No floor in this list can make an absent species present
        break Z1-floor -> RED
               [Z1] FAIL an absent species has an exactly zero rate and no negative amount after 2000 steps of the positivity limiter: the first step's tendency for the absent row is 6.2e-299 over all 48 cells; after 2000 steps the row holds 96000 non-zero entries and its minimum is -2.0e-297. theta is 0.0 in every draining cell of the absent row, so the limiter scales its donor faces to zero and the row cannot be drained at all. The present control row reaches -2.0e-297, which is 4e+26 subnormal unit(s): a cell drained into the subnormal range loses the 4096-epsilon margin to underflow, and the rounding of theta times the drain can cross zero by one unit
        break Z3-floor -> RED

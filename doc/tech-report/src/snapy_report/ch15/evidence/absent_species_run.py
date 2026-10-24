@@ -21,10 +21,25 @@ Each cycle it records, over the interiors of all six panels,
   the global mass of each species row
 
 The exact answer is that an absent row stays bitwise zero for any number of
-steps: `flux_positivity_theta` rectifies the cell's amount instead of flooring
-it, so an absent cell's factor is exactly zero and its donor faces are scaled
-to zero. A non-zero entry in an absent row is the kintera #147/#151 defect
-class appearing in snapy.
+steps. A non-zero entry in an absent row is the kintera #147/#151 defect class
+appearing in snapy.
+
+What keeps it zero HERE is the zero flux, not the limiter's rectifier, and this
+record must not be credited with testing the latter. An identically zero row
+reconstructs to zero on both sides of every face, so its species flux is zero,
+so `out` and `drain` are zero, so `flux_positivity_theta` returns 1 from the
+`else` branch of its `torch::where(drain > 0., ...)` (flux_positivity.cpp:69-71)
+and never evaluates the rectified numerator at all. Measured at the pin with the
+function instrumented: over the 162 limiter calls of three cycles the two absent
+channels have max drain exactly 0.0 and zero cells with drain > 0, while the
+present control channel reaches 2.274e+13 over 2456 cells. Consequently, with
+`u.relu()` replaced by `u.clamp_min(1e-300)` in the built library this record
+still ends GREEN on both CPU and CUDA -- it is insensitive to that term by
+construction.
+
+The rectifier is tested instead by `[Z1]` of the committed check, which
+prescribes the absent row's face fluxes directly and so can put it in the
+draining state the solver will not produce on its own.
 
 Two break arms put the defect into the deck the only way a Python driver can,
 through the initial state and the switches:
