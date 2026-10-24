@@ -80,8 +80,14 @@ def theta(u, af_lo, af_hi, volume, dt, avail_rule="relu", dtype=np.float64):
       floor -- an absent row treated as present at 1e-300 (the kintera defect)
     """
     eps = EPS32 if dtype is np.float32 else EPS64
-    ulp = ULP_FLOAT if dtype is np.float32 else ULP
-    margin = ulp * eps
+    # The margin is ULP (4096) in BOTH precisions: flux_positivity.cpp:65 reads
+    # `kPositivityRoundoffUlp * machine_epsilon(u.scalar_type())`, so only the
+    # epsilon switches on dtype, not the ulp count. ULP_FLOAT (64) belongs to
+    # positivity_roundoff() (:16-20), the threshold that decides whether a
+    # withheld or repaired mass is REPORTED as a positivity event -- it never
+    # enters theta. flux_positivity.hpp:22 says so in as many words: "The
+    # margin of flux_positivity_theta stays 4096 ulp."
+    margin = ULP * eps
     out = np.maximum(af_hi, 0.0) + np.maximum(-af_lo, 0.0)   # :42
     if avail_rule == "relu":
         avail = np.maximum(u, 0.0) * volume * (1.0 - margin)  # :66
@@ -576,13 +582,21 @@ def inventory():
     # --- epsilons -------------------------------------------------------------
     margin = ULP * EPS64
     u = 1.0
-    add("hydro/flux_positivity.cpp:66; flux_positivity.hpp:18; :23", "eps",
-        "the available amount is taken 4096 machine epsilons (64 in float32) short "
-        "of the cell's own amount",
+    add("hydro/flux_positivity.cpp:65-66; flux_positivity.hpp:18", "eps",
+        "the available amount is taken 4096 machine epsilons short of the cell's "
+        "own amount, in float32 as well as float64",
         f"the margin is {margin:.3e} relative, so a fully drained cell lands at "
         f"{u * margin:.3e} of its amount above zero instead of at an exact zero "
         f"that rounds negative. It costs at most that fraction of the transported "
         f"amount per step and it is what makes `u >= 0` survive the division")
+    add("hydro/flux_positivity.cpp:16-20; flux_positivity.hpp:23", "meter",
+        "the float32 ulp count, 64, of the threshold that decides whether a withheld "
+        "or repaired mass is REPORTED as a positivity event",
+        f"64 float32 epsilons is {64.0 * EPS32:.3e} relative, against "
+        f"{ULP * EPS32:.3e} for the 4096 that theta's own margin uses in the same "
+        f"precision. It never enters theta -- flux_positivity.cpp:65 takes the ulp "
+        f"count from kPositivityRoundoffUlp in both precisions -- so it changes no "
+        f"stored value, only whether MeshBlock::check_redo sees a limiter patch")
 
     keep = 1.0 - 4096.0 * EPS64
     add("implicit/vic_redistribute_impl.h:140", "eps",
