@@ -17,7 +17,7 @@ is unpacked; a mismatch stops the run rather than installing the file.
 
 | | version | pinned in | why that version |
 |---|---|---|---|
-| Python | 3.11–3.13 | `tools/env-pins.json` | torch 2.10.0 publishes no wheel below 3.11; CI uses 3.12 |
+| Python | 3.12–3.13 | `tools/env-pins.json` | `src/pyproject.toml` requires >=3.12, so `snapy_report` does not install below it; torch 2.10.0 publishes no wheel below 3.11 or for 3.14; CI uses 3.12 |
 | numpy, sympy, matplotlib | 2.4.6, 1.14.0, 3.11.2 | `tools/requirements.txt` | the versions the report's committed numbers were produced with |
 | torch | 2.10.0 | `tools/requirements.txt` | what the cards and data provenance record throughout |
 | Quarto | 1.10.19 | `tools/env-pins.json` | `QUARTO_VERSION` of `.github/workflows/tech-report.yml` |
