@@ -29,13 +29,9 @@ env:
   QUARTO_VERSION: "1.10.19"
   # Universal Ctags finds the line ranges of the code citations (tools/code_anchors.py, which names the same version)
   CTAGS_VERSION: "6.2.1"
-  # Gates that fail on the branch as it stands and are reported, not failed, here (render_gate.py's report mode).
-  # "freeze tracked": only ch05 has a committed _freeze/, so CI executes the other chapters' cells, as a fresh
-  # clone does. Every other gate failure fails the run.
-  REPORT_ONLY_GATES: "freeze tracked"
-  # Items of the "log" gate that are reported, not failed: overfull boxes are typography, and their count depends on
-  # the TeX Live release. A log gate with any other item (missing character, multiply defined, ...) fails the run.
-  REPORT_ONLY_LOG_ITEMS: "overfull box > 10 pt"
+  # Which gate failures are reported rather than failed is doc/tech-report/tools/render-gate-policy.json.
+  # render_gate.py applies it and exits accordingly, and the step below judges the run by that exit code, so
+  # this workflow and the command the setup notes document cannot drift apart. This file states no policy.
 
 jobs:
   render:
@@ -112,42 +108,21 @@ jobs:
           cp "$pdf" "$RUNNER_TEMP/out/snapy-tech-report-${{ steps.name.outputs.short }}.pdf"
           ls -l "$RUNNER_TEMP/out"
 
-      - name: Render gate (report mode)
+      - name: Render gate verdict
         env:
           GATE_RC: ${{ steps.render.outputs.rc }}
         run: |
-          python3 - "$RUNNER_TEMP/gate.txt" <<'EOF'
-          import os, re, sys
-          text = open(sys.argv[1]).read().splitlines()
-          rc = int(os.environ["GATE_RC"])
-          allowed = {g.strip() for g in os.environ["REPORT_ONLY_GATES"].split(",") if g.strip()}
-          i = max((n for n, l in enumerate(text) if re.match(r"\d+ gate\(s\) passed", l)), default=None)
-          summary = text[i:] if i is not None else []
-          fail = next((l.split(":", 1)[1] for l in summary if l.startswith("  fail: ")), "")
-          fail = {g.strip() for g in fail.split(",") if g.strip()}
-          # the log gate's own items, e.g. "  ✗ overfull box > 10 pt: 1 (...)", between "[log gate]" and the next gate
-          log_items, in_log = set(), False
-          for l in text:
-              if l.startswith("["):
-                  in_log = l.startswith("[log gate]")
-              elif in_log and (m := re.match(r"\s+✗ (.+?): \d+ \(", l)):
-                  log_items.add(m.group(1))
-          log_ok = {g.strip() for g in os.environ["REPORT_ONLY_LOG_ITEMS"].split(",") if g.strip()}
-          if "log" in fail and log_items and log_items <= log_ok:
-              allowed.add("log")
-          real = sorted(fail - allowed)
-          print("::notice title=render gate (exit %d)::%s" % (rc, "%0A".join(summary) or "no verdict printed"))
-          if rc == 1 and fail & allowed:
-              print("::warning title=render gate report mode::not failing the run on: " + ", ".join(sorted(fail & allowed))
-                    + ("%0Alog items: " + ", ".join(sorted(log_items)) if "log" in fail & allowed else ""))
-          if rc not in (0, 1, 2) or not summary:
-              print("::error title=render gate::the gate crashed or printed no verdict (exit %d)" % rc)
-              sys.exit(1)
-          if rc == 1 and (real or not fail):
-              print("::error title=render gate::failed: " + (", ".join(real) or "see the gate output"))
-              sys.exit(1)
-          print("render gate: %s" % ("pass" if rc == 0 else "pending" if rc == 2 else "only report-mode failures"))
-          EOF
+          # render_gate.py has already applied tools/render-gate-policy.json: 0 means the run is
+          # acceptable (clean, pending, or only report-only failures), anything else is a failure.
+          summary=$(sed -n '/gate(s) passed/,$p' "$RUNNER_TEMP/gate.txt" | head -20)
+          echo "::notice title=render gate (exit $GATE_RC)::$(echo "$summary" | sed ':a;N;$!ba;s/\n/%0A/g')"
+          if [ "$GATE_RC" != "0" ]; then
+            echo "::error title=render gate::failed with exit $GATE_RC; see the gate output above"
+            exit 1
+          fi
+          tolerated=$(grep -m1 'reported, not failed, per' "$RUNNER_TEMP/gate.txt" || true)
+          [ -n "$tolerated" ] && echo "::warning title=render gate::$tolerated"
+          echo "render gate: acceptable (exit 0 under the policy)"
 
       - name: Upload the PDF
         if: always()
