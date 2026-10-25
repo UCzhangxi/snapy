@@ -97,6 +97,22 @@ done
 [ -n "$PYTHON" ] || die "no Python in [$PY_MIN, $PY_MAX) on PATH; env-pins.json explains why that window"
 info "python      $("$PYTHON" -V 2>&1) at $PYTHON"
 
+# The window above is a pin; src/pyproject.toml is what pip actually enforces when snapy_report is
+# installed. If the two drift apart the run dies three minutes later on an unhelpful pip error
+# ("Package 'snapy-report' requires a different Python"), so say it here instead.
+"$PYTHON" - "$HERE/src/pyproject.toml" "$PY_MIN" <<'EOF' || die "$(printf 'the Python window in tools/env-pins.json is below what src/pyproject.toml requires;\n    raise "python.minimum" to match it, or the install of snapy_report will fail')"
+import re, sys
+text = open(sys.argv[1]).read()
+m = re.search(r'^requires-python\s*=\s*"([^"]+)"', text, re.M)
+if not m:
+    sys.exit(0)                                  # nothing declared: the window alone decides
+need = re.search(r'>=\s*(\d+)\.(\d+)', m.group(1))
+if not need:
+    sys.exit(0)
+pinned = tuple(int(p) for p in sys.argv[2].split("."))
+sys.exit(0 if pinned >= (int(need.group(1)), int(need.group(2))) else 1)
+EOF
+
 case "$(uname -s)" in
   Linux)  OS=linux ;;
   Darwin) OS=darwin ;;
