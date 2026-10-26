@@ -43,6 +43,11 @@ scripts") and changed only where this report differs:
     sets another output name; `--log` overrides.
   * Overfull boxes wider than 10 pt FAIL (STYLE 10.9); smaller ones and the
     underfull ones are still only counted. `--overfull-pt` sets the limit.
+  * Which of those failures are reported rather than failed is
+    `tools/render-gate-policy.json`, applied here on every run and judged by
+    CI through this script's exit status, so the documented command and the
+    workflow cannot disagree about a run. `--strict` returns the untreated
+    verdict; put it after the book path (`render_gate.py book/ --strict`).
   * After the render the HTML and the PDF must both be in `book/_book/`
     (STYLE 10.9 renders both from one command; quarto deletes the HTML of a
     book when `--to pdf` is rendered on its own).
@@ -75,6 +80,7 @@ command line rather than written into `_quarto.yml` so that this gate needs no
 change to a file other sessions own.
 """
 
+import json
 import re
 import subprocess
 import sys
@@ -1337,8 +1343,50 @@ def gate_outputs(book):
 EXPECTED_FAIL = {"unwritten-chapter refs": "expected until those chapters are written",
                  "unwritten-scheme refs": "expected until those schemes are written"}
 
+#: Which failures are reported rather than failed. CI judges the gate by this script's exit code,
+#: so this file is the one place the rule lives; before it, the workflow carried a second copy and a
+#: fresh clone exited 1 on gates CI was green on.
+POLICY_PATH = pathlib.Path(__file__).resolve().parent / "render-gate-policy.json"
 
-def _verdict(results, release, expected_targets=None):
+
+def load_policy(path=POLICY_PATH):
+    """The report-only lists, as sets. A missing or unreadable file tolerates nothing."""
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        print(f"[policy] {path} unreadable ({exc}); tolerating nothing")
+        return frozenset(), frozenset()
+    return (frozenset(raw.get("report_only_gates", ())),
+            frozenset(raw.get("report_only_log_items", ())))
+
+
+def apply_policy(status, failed, log_items, policy):
+    """Map the gate's own verdict through the report-only policy.
+
+    `failed` is what the verdict printed on its `fail:` line -- the real failures, with the
+    expected ones already set aside. Returns (exit status, the names tolerated).
+
+    A run whose only failures are the expected ones still fails: `failed` is then empty while the
+    status is 1, and a ruling to revisit is not a tolerated state.
+
+    Only failures are treated. PENDING keeps its own exit status, which this repository has always
+    given it and which `test_no_book_is_pending` pins: it is not a failure, `--release` turns it
+    into one, and the one shape it takes that CI would call green -- a rendered book with a
+    placeholder in it -- is a state to notice locally rather than to report as a pass.
+    """
+    if status != 1:
+        return status, frozenset()
+    gates, items = policy
+    tolerated = set(failed) & set(gates)
+    if "log" in failed and log_items and set(log_items) <= set(items):
+        tolerated.add("log")
+    remaining = set(failed) - tolerated
+    if remaining or not failed:
+        return 1, frozenset(tolerated)
+    return 0, frozenset(tolerated)
+
+
+def _verdict(results, release, expected_targets=None, log_items=(), policy=None):
     """Print the pass/pending/fail tally of the gates and return the exit status."""
     tally = {k: sorted(n for n, v in results.items() if v == k) for k in ("pass", "pending", "fail")}
     print(f"\n{len(tally['pass'])} gate(s) passed, {len(tally['pending'])} pending, "
@@ -1355,13 +1403,23 @@ def _verdict(results, release, expected_targets=None):
                   + (f": {' '.join('@' + t for t in sorted(targets))}" if targets else ""))
     if tally["fail"]:
         print("GATE FAILED" + ("" if real else ": only the expected failures above"))
-        return 1
-    if tally["pending"]:
+        status = 1
+    elif tally["pending"]:
         print("GATE PENDING: nothing failed, but nothing can be released while anything is pending"
               + (" (--release: this counts as a failure)" if release else ""))
-        return 1 if release else PENDING_EXIT
-    print("GATE PASSED")
-    return 0
+        status = 1 if release else PENDING_EXIT
+    else:
+        print("GATE PASSED")
+        status = 0
+    if policy is None:
+        return status
+    treated, tolerated = apply_policy(status, real, log_items, policy)
+    if tolerated:
+        print("  reported, not failed, per tools/render-gate-policy.json: "
+              + ", ".join(sorted(tolerated))
+              + (f" (log items: {', '.join(sorted(log_items))})" if "log" in tolerated else ""))
+        print("GATE PASSED under the policy" if treated == 0 else "GATE FAILED despite the policy")
+    return treated
 
 
 def main(argv):
@@ -1371,6 +1429,9 @@ def main(argv):
     book = pathlib.Path(argv[0] if argv and not argv[0].startswith("--") else "book")
     do_render = "--no-render" not in argv
     release = "--release" in argv
+    # The policy is on by default so that the documented command and CI judge a run alike;
+    # --strict shows the untreated verdict.
+    policy = None if "--strict" in argv else load_policy()
     results = {}
 
     def record(name, problems):
@@ -1381,7 +1442,7 @@ def main(argv):
         print(f"[book gate] {book / '_quarto.yml'} does not exist: there is no book to render yet"
               " (STYLE 8; the editor adds it)")
         results["book"] = "pending"
-        return _verdict(results, release)
+        return _verdict(results, release, policy=policy)
 
     source_gates = (("labels", gate_cross_chapter_labels), ("dangling refs", gate_dangling_refs),
                     ("float labels", gate_float_label_prefixes),
@@ -1449,7 +1510,7 @@ def main(argv):
     record("frozen placeholders", gate_frozen_placeholders(book, pending))
 
     if "--labels-only" in argv:
-        return _verdict(results, release, expected)
+        return _verdict(results, release, expected, policy=policy)
     # runs the figure code, so not a source gate: in every full run, before the render
     record("figure output", gate_fig_output(book))
 
@@ -1462,7 +1523,7 @@ def main(argv):
         print(f"\nRENDER FAILED (exit {rc}). Last lines:\n")
         print("\n".join(out.splitlines()[-15:]))
         results["render"] = "fail"
-        return _verdict(results, release, expected)
+        return _verdict(results, release, expected, policy=policy)
 
     # G0: the source preflight is not rendered-book evidence.
     for pdf in sorted((book / "_book").glob("*.pdf")):
@@ -1491,7 +1552,7 @@ def main(argv):
         print("   quarto deleted it. Re-run without --no-render so that")
         print("   -M latex-clean:false keeps the log alive.")
         results["log"] = "fail"
-        return _verdict(results, release, expected)
+        return _verdict(results, release, expected, policy=policy)
 
     print(f"\n[log gate] {log} ({len(text):,} bytes)")
     if not fatal:
@@ -1508,7 +1569,9 @@ def main(argv):
     print("    typography (not fatal): "
           + ", ".join(f"{n} {c}" for n, c in noise.items() if c))
 
-    return _verdict(results, release, expected)
+    # `fatal` keys are the log gate's own item names; the policy tolerates the log gate only when
+    # every one of them is listed there.
+    return _verdict(results, release, expected, log_items=frozenset(fatal), policy=policy)
 
 
 if __name__ == "__main__":

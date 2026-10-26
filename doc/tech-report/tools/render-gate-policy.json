@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "The single source of truth for which render-gate failures are reported rather than failed.",
+    "tools/render_gate.py applies this on every run, and CI judges the gate by that exit code, so the",
+    "documented local command and the workflow cannot drift apart. Before this file they were two",
+    "copies of the same rule -- the workflow carried its own in an inline script -- and a fresh clone",
+    "exited 1 on gates CI was green on. `--strict` prints the untreated verdict.",
+    "Everything not named here fails the gate, locally and in CI alike."
+  ],
+  "report_only_gates": [
+    "freeze tracked"
+  ],
+  "report_only_log_items": [
+    "overfull box > 10 pt"
+  ],
+  "why": {
+    "freeze tracked": "only one chapter has a committed _freeze/, so every other chapter's cells are executed on each run; a fresh clone cannot have a freeze cache and would otherwise always fail",
+    "overfull box > 10 pt": "typography, and the count depends on the TeX Live release; any other log item (missing character, multiply defined, ...) still fails"
+  },
+  "rules": [
+    "A gate named in report_only_gates does not fail the run.",
+    "The log gate does not fail the run only when every one of its reported items is named in report_only_log_items; one unlisted item fails it.",
+    "A run whose only failures are the gate's own expected failures still fails: those are rulings to revisit, not tolerated states.",
+    "Pending is not a failure and keeps its own exit status; --release turns it into one.",
+    "Only failures are treated here; a pending run is reported as pending, not as a pass."
+  ]
+}
