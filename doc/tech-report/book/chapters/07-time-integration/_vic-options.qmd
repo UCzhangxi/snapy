@@ -1,7 +1,7 @@
 ## VIC options and activation: `implicit-scheme` 1 or 9, one block in $x_1$ (`ImplicitOptions`) {#sec-ch07-vic-options}
 
 <!-- PROVENANCE
-pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 (chengcli/snapy)
+pin: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f (chengcli/snapy)
 sources: OUTLINE.md 7.6; src/implicit/implicit_hydro.cpp; src/implicit/implicit_hydro.hpp; src/hydro/hydro.cpp;
          src/hydro/hydro_options.cpp; tests/test_implicit_options_type.py; tests/test_hydro_options.cpp
 status: draft
@@ -48,7 +48,9 @@ and the steps that fix what a value means are:
 1. *Bit 3.* $\lfloor n_{\mathrm{vic}}/8\rfloor \bmod 2$ is bit 3, so 1 gives $N=3$ and 9 gives $N=5$.
 2. *The variables.* `vic-partial` solves for $(\rho, \rho v_1, E)$ and `vic-full` for
    $(\rho, \rho v_1, \rho v_2, \rho v_3, E)$, with $v_1$ the $x_1$ velocity (`[C1]`). Here $\rho$ is the total density: the
-   species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute).
+   species ride on it and are redistributed afterwards (@sec-ch07-vic-redistribute). `vic-partial` does not hold
+   $\rho v_2$, $\rho v_3$ fixed: it ties their increments to each cell's mass increment in the assembly
+   (@eq-ch07-vic-fold) and moves them with the face transfers afterwards (@sec-ch07-vic-redistribute).
 3. *Which values build.* `type` names 0, 1 and 9 and refuses every other value, so a value with bit 1 or 2 set never
    builds, although the time-step bound reads those bits (`[C1]`).
 4. *No round-off.* The value is an integer and $N$ a bit test, so nothing is rounded.
@@ -160,9 +162,9 @@ and 10; `[C2]` gives the defaults 1 and 0 and refuses 4 of 4 bad values; `[C3]` 
 scheme; `[C4]` builds `nb1` = 1, refuses `nb1` = 2, and runs scheme 0 at `nb1` = 2. The option logic has no device
 path.
 
-[^ch07-vic-options-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the check itself; run:
+[^ch07-vic-options-run]: [sha: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f; deck: the check itself; run:
     `python3 src/snapy_report/ch07/checks/vic_options_check.py`,
-    CPU, 1 process; Python 3.14.7, numpy 2.5.1; output identical to the committed `vic_options_check.out`].
+    CPU, 1 process; Python 3.12.10, numpy 2.5.4, sympy 1.14.0; output identical to the committed `vic_options_check.out`].
 
 ### Limits
 
