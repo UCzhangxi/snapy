@@ -107,6 +107,14 @@ rewrite; each still resolves at `ccf40f9565642c32be69f4b9ef0cfa6daff3f201`):
   `temperature_inner`, `temperature_outer`, `wall_velocity` (diffusion, #324). Removed: none.
   `x1_slice`, `x2_slice`, `x3_slice` now default `guarded` in `output_type.cpp` (lists, #323)
   instead of `std::nullopt` in `output_type.hpp`; the other 19 changed entries are line moves.
+  The fragment now links 149 keys (14 with no section); `implicit_radial` links to ch07 `_rk`
+  until chapter 9 names it.
+- Appendix I's links name their anchor symbol. check_citations flagged every "read at" link
+  ("names no anchor symbol", 156 of 156 at 443baf49), because `gen_deck_keys.py` wrote a bare
+  line link in a table with no symbol column. `--refresh` now stores, per key, an identifier that
+  is on the cited line at the pin (the key itself for 131 keys, `check_keys` for 31, `at_face`
+  for 1), and the fragment writes it before the link. check_citations: 605 -> 449 flagged at
+  the head, none added, 156 removed (all of Appendix I).
 
 ## Provenance tags
 
