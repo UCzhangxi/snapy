@@ -8,6 +8,10 @@ gravity (grav = 0): the gravity rows of the operator belong to the gravity chapt
   src/implicit/vic_assemble_partial_impl.h  vic_assemble_partial_impl (the 3 x 3 rows IDN, IVX, IPR)
   src/implicit/forward_sweep_impl.h         ForwardSweep
   src/implicit/vic_redistribute_impl.h      vic_backward_substitute, vic_constituent_column
+  at snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f, for the partial matrix (N = 3) only:
+  src/implicit/vic_assemble_partial_impl.h  the m_t fold of vic_assemble_partial_impl (du and rhs_corr set)
+  src/implicit/forward_sweep_impl.h         ForwardSweep's subtraction of that right-hand-side term
+  src/implicit/vic_redistribute_impl.h      vic_tangential_momentum_column
   src/math/ludcmp.h                         ludcmp
 
 Index layout as in snapy: IDN 0, IVX 1, IVY 2, IVZ 3, IPR 4; species ICY = 5 onward in the per-cell arrays.
@@ -268,3 +272,50 @@ def constituent_column(du, w, delta0, vol, dtype=np.float64):
             moved[i + 1] += q
             avail = avail_up + q
     return M, mass, mark, moved, top, R
+
+
+IT = [IVY, IVZ]                            # the tangential momenta t = dir + 1, dir + 2 for dir = 0
+
+
+def fold_partial(a, b, c, W, du):
+    """vic_assemble_partial_impl with du and rhs_corr set, for the column of assemble_full (no solid cells).
+
+    The kernel's aT, bT, cT are the m_t columns of the rows IDN, IVX, IPR of the same terms as a[i], b[i], c[i]
+    (Phi and the 1/dt diagonal have none there), so they are the m_t columns of the 5 x 5 blocks of assemble_full;
+    the wall mirror keeps m_t, so a face merged into a[i] is already in a's columns. Each block's rho column gains
+    its m_t columns times v_t of the cell it multiplies, and rhs_corr[i] = aT q_i + bT q_{i-1} + cT q_{i+1} with
+    q_t,j = du_t,j - v_t,j du_rho,j; ForwardSweep then solves with rhs du/dt - rhs_corr. Returns (a3, b3, c3,
+    rhs_corr). tests/test_vic_partial_tangential.cpp checks the C++ kernel against this reduction."""
+    n = len(a)
+    v = W[1:-1][:, IT]
+    q = du[:, IT] - v * du[:, [IDN]]
+    a3, b3, c3 = (np.array([m[np.ix_(PART, PART)] for m in x]) for x in (a, b, c))
+    corr = np.zeros((n, 3))
+    for k in range(n):
+        for blk, red, j in ((a[k], a3[k], k), (b[k], b3[k], k - 1), (c[k], c3[k], k + 1)):
+            if not 0 <= j < n:
+                continue                   # a merged wall face: cell k's v_t and q_t, already in a[k]
+            tb = blk[np.ix_(PART, IT)]
+            for t in range(2):
+                if v[j, t] != 0:
+                    red[:, 0] += tb[:, t] * v[j, t]
+                if q[j, t] != 0:
+                    corr[k] += tb[:, t] * q[j, t]
+    return a3, b3, c3, corr
+
+
+def tangential_momentum_column(du_t, w_t, moved, vol):
+    """vic_tangential_momentum_column for one column: du_t[n, 2] the tangential momentum tendencies (updated in
+    place and returned), w_t[n, 2] the tangential velocities, moved[i] the total clamped transfer through the face
+    below cell i (the `moved` output of constituent_column), vol[n]."""
+    n = len(vol)
+    for i in range(n - 1):
+        q = moved[i + 1]
+        donor = i if q > 0 else i + 1
+        for t in range(2):
+            p = q * w_t[donor, t]
+            if p == 0:
+                continue
+            du_t[i, t] -= p / vol[i]
+            du_t[i + 1, t] += p / vol[i + 1]
+    return du_t

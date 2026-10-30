@@ -3,6 +3,9 @@
 What is checked: the Roe flux decomposition (src/implicit/flux_decomposition_impl.h:37-126) and the assembly of
 a, b, c (src/implicit/vic_assemble_full_impl.h:89-99, vic_assemble_partial_impl.h:110-120) at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported in vic_port.py with grav = 0. Claims C1-C6; C6 is exact (sympy).
+C4 is the frozen-m_t partial assembly (the kernel without du). C7 is the m_t fold of the partial assembly and the
+right-hand-side term ForwardSweep subtracts (vic_assemble_partial_impl.h:174-214, forward_sweep_impl.h:34-40 at
+snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f), ported in vic_port.fold_partial.
 
 Run: python3 vic_assembly_check.py   (numpy and sympy; exits with the number of failed claims)
 """
@@ -122,7 +125,8 @@ def check_C4_partial_is_the_full_without_transverse_motion():
         part = vp.backward_substitute(ap, dp)
         errs.append(np.abs(part - full[:, vp.PART]).max() / np.abs(full[:, vp.PART]).max())
     ok = errs[0] < 1e-12 and errs[1] > 1e-6
-    return report("C4", ok, "the partial (3 x 3) solve equals the full one restricted to rho, rho u, E when v = w = 0, "
+    return report("C4", ok, "the frozen-m_t partial (3 x 3) solve equals the full one restricted to rho, rho u, E when "
+                  "v = w = 0, "
                   "and differs when v != 0", "relative difference %.1e at v = 0, %.1e at v = 50 m/s" % tuple(errs))
 
 
@@ -169,11 +173,40 @@ def check_C6_blocks_from_the_row_residual():
                   "diagonal and the gravity Jacobian Phi subtracted", "A_i, B_i, C_i exact on generic 2 x 2 blocks")
 
 
+def check_C7_folded_partial_carries_a_uniform_wind():
+    """The m_t fold: with a uniform tangential wind and explicit increments that carry it (q_t = 0), the full solve
+    keeps dm_t = v_t drho, so the folded partial solve equals the full one on rho, rho u, E; the frozen one does not."""
+    errs = []
+    for v2, v3 in ((50., 0.), (400., -30.)):
+        W, gam, area, vol = column()
+        n, dt = len(vol), 2.
+        W[:, vp.IVY], W[:, vp.IVZ] = v2, v3
+        du = rng.normal(size=(n, 5)) * 1e-3
+        du[:, vp.IT] = W[1:-1][:, vp.IT] * du[:, [vp.IDN]]
+        a, b, c = vp.assemble_full(W, gam, area, vol, dt)
+        _, af, df = vp.forward_sweep(a, b, c, du / dt)
+        full = vp.backward_substitute(af, df)
+        keep = np.abs(full[:, vp.IT] - W[1:-1][:, vp.IT] * full[:, [vp.IDN]]).max() / np.abs(full[:, vp.IT]).max()
+        a3, b3, c3 = (np.array([m[np.ix_(vp.PART, vp.PART)] for m in x]) for x in (a, b, c))
+        _, ap, dp = vp.forward_sweep(a3, b3, c3, du[:, vp.PART] / dt)
+        frozen = vp.backward_substitute(ap, dp)
+        a3, b3, c3, corr = vp.fold_partial(a, b, c, W, du)
+        _, ap, dp = vp.forward_sweep(a3, b3, c3, du[:, vp.PART] / dt - corr)
+        fold = vp.backward_substitute(ap, dp)
+        s = np.abs(full[:, vp.PART]).max()
+        errs.append((keep, np.abs(fold - full[:, vp.PART]).max() / s, np.abs(frozen - full[:, vp.PART]).max() / s))
+    ok = all(k < 1e-10 and f < 1e-10 and z > 1e-3 for k, f, z in errs)
+    return report("C7", ok, "under a uniform tangential wind with q_t = 0 the full solve keeps dm_t = v_t drho and the "
+                  "folded partial solve equals it on rho, rho u, E; the frozen-m_t partial solve does not",
+                  "; ".join("v = (%g, %g) m/s: dm_t - v_t drho %.1e, folded %.1e, frozen %.1e relative"
+                            % (v[0], v[1], *e) for v, e in zip(((50., 0.), (400., -30.)), errs)))
+
+
 def main():
     checks = [check_C1_eigenvectors_invert, check_C2_roe_matrix_and_roe_property,
               check_C3_blocks_linearise_the_roe_divergence, check_C4_partial_is_the_full_without_transverse_motion,
               check_C5_solid_cell_is_inert,
-              check_C6_blocks_from_the_row_residual]
+              check_C6_blocks_from_the_row_residual, check_C7_folded_partial_carries_a_uniform_wind]
     sys.exit(sum(not c() for c in checks))
 
 
