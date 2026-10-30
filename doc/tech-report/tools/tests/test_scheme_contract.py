@@ -21,7 +21,7 @@ def test_clean_contract():
     ('int nghost = pinterp1->stencils() / 2 + 1;', 'int nghost = pinterp1->stencils() / 2;'),
     ('interp.type("dc")', 'interp.type("plm")'),
     ('enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };', 'enum { DIM1 = 1, DIM2 = 2, DIM3 = 3 };'),
-    ('15 set `shock: false`', '16 set `shock: false`'),
+    ('18 set `shock: false`', '19 set `shock: false`'),
 ])
 def test_contract_drift(tmp_path, old, new):
     target = tmp_path / c.TARGET
