@@ -138,6 +138,13 @@ while the first is in flight. A card only reaches this section through `distribu
 2. *More than 32768 variables in one exchange*, in `exchange_each_var`: the tag would pass $2^{31}$ (step 4).
 3. *More than 16 blocks per process for block-to-block messages*: "at most 16 blocks per process" in `send_to_block`
    and `recv_from_block`. The fold factor would pass 255.
+4. *Same-process neighbours that packed different numbers of variables*: "local exchange: block … sends N variables
+   to block …, which expects M; every block must exchange the same variables" in `_copy_local_exchange_buffers`
+   ({{< code src/layout/layout.cpp LayoutImpl::_copy_local_exchange_buffers >}}), before the per-buffer size check.
+   The copy pairs the sender's buffers with the receiver's by position and would otherwise read past the shorter list.
+5. *A `Mesh` exchange whose blocks pass different variable names*: "Mesh::exchange: block i has no variable … /
+   has variable … that block 0 does not" in `check_same_variables` ({{< code src/mesh/mesh.cpp check_same_variables >}}),
+   called by `MeshImpl::exchange` ({{< code src/mesh/mesh.cpp MeshImpl::exchange >}}) before any block exchanges.
 
 **The excerpt.** The tag of @eq-ch14-msgmatch-tag in `make_comm_tag`:
 
@@ -167,6 +174,7 @@ TORCH_CHECK(phyid >= 0 && tag >= 0 && tag < 65536, "comm tag ", tag, ...);
 |---|---|---|---|
 | `test_cubed_sphere_exchange` `CommTag.rejects_tags_that_collide_with_the_variable_offset` | `make_comm_tag(3, (0,1,0), 63)` is $63\cdot1024 + 3\cdot32 + 1$; $\mathrm{phy} = 64$ and $\mathrm{phy} = -1$ throw | exact | integer compare |
 | this chapter's check, `msgmatch_check.py` | `[C1]`-`[C5]` the tag arithmetic of the three message kinds | exact | integer compare |
+| `test_cubed_sphere_exchange` `CubedSphere.mesh_exchange_refuses_a_block_missing_a_variable`, `CubedSphere.block_exchange_refuses_mismatched_variables` | a `Mesh` exchange with one block missing a variable, and a same-process block exchange with mismatched variable lists, throw | exact (throws) | the two refusals above |
 | `test_exchange` | after two identical syncs no buffer data pointer has changed; ghosts hold the neighbour's payload; with three blocks per process both a local and a remote neighbour are seen | exact pointers; value bounds | payloads identify the sender |
 
 : Tests of message matching. C++ entries carry the build suffix (`.release`). {#tbl-ch14-msgmatch-tests}
@@ -181,7 +189,9 @@ bound $2^{31}$ and the collision at $\mathrm{loc}=32$; `[C4]` and `[C5]` the rel
     `derivation_check.py`, output `derivation_check.out`, lines `[C2]`–`[C9]`.
 
 The tag check calls `make_comm_tag` {{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}; the
-pointer and neighbour checks are in `main` of {{< code tests/test_exchange.cpp main >}}.
+pointer and neighbour checks are in `main` of {{< code tests/test_exchange.cpp main >}}. The two refusals are
+asserted in {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.mesh_exchange_refuses_a_block_missing_a_variable >}}
+and {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.block_exchange_refuses_mismatched_variables >}}.
 Their pass status at the pin was not run for this chapter. No test posts two variables between the same two
 processes with tags that would alias if the offset were missing; the argument above is the evidence.
 

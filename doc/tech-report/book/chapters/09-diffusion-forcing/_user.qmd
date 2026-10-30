@@ -27,8 +27,8 @@ correction and the scalar update, before the RK average.
 **Activation.** The call `MeshBlockImpl::set_user_stage_forcings(filenames)`; no YAML[^rg-14d76ead90d3] key. Default: none.
 `scalar_ds` needs passive scalars.
 
-**Guarantee / limits.** The return value is added as it is, not multiplied by $\Delta t$; a wrong shape or an
-unknown key is refused.
+**Guarantee / limits.** The return value is added as it is, not multiplied by $\Delta t$, except that species rows are
+clipped at zero when the limiter is on (Limits); a wrong shape or an unknown key is refused.
 
 **Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
 :::
@@ -179,6 +179,12 @@ for them), although `test_stage_forcing_dry_tracer.py` accepts a device argument
    limiter makes the step redo; the redo machinery is @sec-ch07-redo and @sec-ch08.
 3. **Ordering.** User modules see the stage variables, not the native increment; a module cannot react to what the
    native forcings did in the same stage.
+4. **Species clip.** With the equation-of-state `limiter`[^rg-5c345e3fdfd9] on and species present, after all user modules the block
+   raises every species increment that is below $\min(\Delta U_n^{\mathrm{native}},-U_n)$ to that value, where
+   $\Delta U_n^{\mathrm{native}}$ is the species increment before the user modules and $U_n$ the stage state, so a
+   user forcing cannot take a species density below zero. The withheld amount is not applied anywhere, and where the
+   clip does not bind the increment is unchanged bit for bit (`clip_species`,
+   {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); the positivity chain it completes is @sec-ch08.
 
 [^env-user]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
 
@@ -186,4 +192,6 @@ for them), although `test_stage_forcing_dry_tracer.py` accepts a device argument
 [^rg-14d76ead90d3]: YAML — YAML Ain't Markup Language, the structured input format used for decks
 
 [^rg-75cdb7c1343f]: API — application programming interface
+
+[^rg-5c345e3fdfd9]: limiter — whether the enclosing component enables its limiter
 <!-- end reader glossary notes -->

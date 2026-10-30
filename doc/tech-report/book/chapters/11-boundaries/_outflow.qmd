@@ -129,8 +129,12 @@ face with more than one cell and the EOS is not shallow water. The callback firs
 shallow-water fallback, then requires the EOS, the coordinate and a saved background of the same shape as
 its input, a supported EOS type, primitive input, finite input, and an admissible background
 (`check_background`, {{< code src/bc/bc_func.cpp check_background >}}: finite, density and pressure at or
-above their floors, nonnegative composition summing to at most one); it also requires finite positive sound
-speeds of both the background and the current state. It transforms both states to the face frame with the
+above their floors, nonnegative composition summing to at most one); it also requires a finite positive sound
+speed of the background over the whole source plane (the layer of cells next to the face) and of the current state
+over the cells of that plane that belong to the block interior. A cell of the plane outside the interior, in another
+direction's ghost rows, may hold a stale or forced state that the exchange or the next face overwrites; where its
+sound speed is not finite and positive it takes the background state and the background sound speed
+(`in_plane`, {{< code src/bc/bc_func.cpp radiating >}}). It transforms both states to the face frame with the
 coordinate's `boundary_velocity_`, forms the perturbation from the nearest owned cell, selects the outgoing
 modes, limits each ghost, transforms back, and writes only the ghosts; with tracers it also writes the
 tracer-ratio ghosts as background plus `alpha` times the selected ratio perturbation.
@@ -205,8 +209,9 @@ auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 
 1. Take the scalar/shallow-water fallback first; otherwise require the EOS, the coordinate and a saved
    same-shape background. The anchor `radiating` is in {{< code src/bc/bc_func.cpp radiating >}}.
-2. Require a supported EOS, primitive input, finite input, positive finite sound speeds, and an admissible
-   background density, pressure and composition. The anchor `check_background` is in
+2. Require a supported EOS, primitive input, finite input, positive finite sound speeds (the background's on the
+   whole source plane, the current state's on its interior cells, the background substituted elsewhere), and an
+   admissible background density, pressure and composition. The anchor `check_background` is in
    {{< code src/bc/bc_func.cpp check_background >}}.
 3. Split in the face frame, select the modes with the current speeds, and reconstruct the selected
    perturbation. The anchor `plus` is in {{< code src/bc/bc_func.cpp radiating >}}.
@@ -226,6 +231,7 @@ auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 | `test_radiating_boundary.release` | Joint composition/tracer limiter; restart continuation; missing reference throws | inequalities; exact restart equality | test assertions |
 | `test_radiating_boundary.release` | CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | test constant |
 | `test_radiating_boundary_python` | A manual fill keeps the saved reference and the interior | exact equality | test assertions |
+| `test_outflow_stale_ghosts_python` | Six cubed-sphere panels with an outflow top, a balanced rest column and implicit schemes 1 and 9 at a vertical Courant number above 2: five steps run with no redo and stay at rest | $\max\lvert v\rvert/c_s\le10^{-3}$; Courant $>2$ | test constants |
 | `boundary_check.py` (report only) | `[C2]`, `[C3]` as described below | exact | symbolic, rational or integer identity |
 
 : Source-test assertions and report-only checks for outflow. {#tbl-ch11-outflow-tests}
@@ -253,6 +259,9 @@ The device comparison `allclose` is in
 
 The Python assertions are the top-level `assert` statements of
 {{< code tests/test_radiating_boundary_python.py >}}, after `apply_boundaries` with and without tracers.
+
+The stale-ghost assertions are in `run` ({{< code tests/test_outflow_stale_ghosts.py run >}}) and `main`
+({{< code tests/test_outflow_stale_ghosts.py main >}}).
 
 **Not provided:** a round-off derivation for each tolerance, because the cited tests give acceptance
 criteria without deriving each round-off bound, and this book does not derive those bounds.

@@ -2,7 +2,7 @@
 
 What is checked: the time loop of main in examples/run_hydro.cpp, the step of MeshBlockImpl::max_time_step
 (src/mesh/meshblock.cpp, 2^-r times cfl times the bound) and the cycle and redo bookkeeping of
-MeshBlockImpl::apply_redo (src/mesh/meshblock.cpp) at snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported as a state
+MeshBlockImpl::apply_redo (src/mesh/meshblock.cpp) at snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f, ported as a state
 machine driven by a scripted sequence of check_redo results. Claims C1-C3.
 
 Run: python3 driver_check.py   (numpy only; exits with the number of failed claims)
@@ -25,17 +25,16 @@ def run(results, tlim=100.):
     for res in results:
         if time >= tlim:
             break
-        cycle += 1
-        dt = 2. ** -redo * CFL * BOUND           # meshblock.cpp:528
-        log.append((cycle, dt))
-        if res > 0:                              # apply_redo: count up, cycle back, state restored
+        dt = 2. ** -redo * CFL * BOUND           # MeshBlockImpl::max_time_step
+        log.append((cycle, dt))                  # print_cycle_info sees the accepted-step count
+        if res > 0:                              # apply_redo: count up, state restored; the cycle is untouched
             redo += 1
-            cycle -= 1
             continue
         if res < 0:
             break
         redo = 0                                 # acceptance resets the count
-        time += dt                               # run_hydro.cpp:198, only after an accepted step
+        cycle += 1                               # run_hydro.cpp main: cycle and clock advance only after
+        time += dt                               # an accepted step
         outputs.append(time)
     return time, cycle, log, outputs
 

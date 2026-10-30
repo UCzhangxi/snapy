@@ -159,8 +159,8 @@ The card and both refusals were run on a build of the pin with these messages.[^
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `tests/test_check_redo_floor.py` (`test_check_redo_floor_python`) | a floor planted in `hydro_u` only, a NaN with the limiter off, and one floored block of a six-block Mesh: every arm rolls back, restores `hydro_u` and `hydro_w`, and halves the step | exact restore; $10^{-12}$ relative on the halving | contract; the halving is exact (step 6) |
-| `tests/test_check_redo_parallel.cpp` (`test_check_redo_parallel.release`, 2 ranks) | one decision across ranks; both roll back | exact | contract |
+| `tests/test_check_redo_floor.py` (`test_check_redo_floor_python`) | a floor planted in `hydro_u` only, a NaN with the limiter off, and one floored block of a six-block Mesh: every arm rolls back, restores `hydro_u` and `hydro_w`, and halves the step; no rejection, repeated or not, changes the cycle; an accepted step after a change of the conserved species refreshes `hydro_w` in place and leaves `hydro_u` unchanged, on one block and on the Mesh | exact restore; $10^{-12}$ relative on the halving | contract; the halving is exact (step 6) |
+| `tests/test_check_redo_parallel.cpp` (`test_check_redo_parallel.release`, 2 ranks) | one decision across ranks; both roll back; an accepted step refreshes `hydro_w` on every rank and keeps the cycle the caller set | exact | contract |
 | `tests/test_check_redo_saturation.py` (`test_check_redo_saturation_python`, CUDA twin) | a saturation failure alone redoes with cause 16; a failure counted between steps is not the step's | logical | contract |
 | `tests/test_forcing.cpp` (`test_forcing.release`), limiter cases | NaN or patch marks redo; a round-off repair does not | logical | see @sec-ch08 |
 | `tests/test_uranus_cycle1_abort.cpp` (`test_uranus_cycle1_abort.release`) | a pressure floor above the initial pressure ends the run with a non-zero exit | exit status | contract |

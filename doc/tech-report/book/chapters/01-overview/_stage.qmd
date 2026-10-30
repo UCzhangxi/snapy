@@ -103,7 +103,9 @@ import no snapy.
 
 `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}) first publishes the
 stage to the hydro module, and on stage zero saves the step-start state and, when the gravity-work fixer is on,
-resets its bookkeeping. The
+resets its bookkeeping. With `implicit_radial`[^rg-4ddc775769de] diffusion on the cubed sphere it first takes a radial conduction
+half step and refills the ghosts, and takes the second half step after the last stage's average
+(@sec-ch09-csdiffusion). The
 hydro call (@sec-ch01-hydro) returns a time-integrated increment; the scalar call (@sec-ch01-scalar) then uses the
 hydro dry-mass flux and the implicit dry transfer. Native dry sources carry the tracers before the callbacks; user dry
 sources carry them after all callbacks, from the saved pre-callback scalar increment. A callback result may contain
@@ -229,6 +231,8 @@ multi-rank snapy run is claimed.
 [^rg-e6248a941ab9]: $\Delta\mathbf U^{(0)}$ — the explicit stage increment handed to the implicit solve
 
 [^rg-902e93eb3066]: $V_i$ — cell volume
+
+[^rg-4ddc775769de]: implicit_radial — whether radial heat conduction on the cubed sphere is solved implicitly, split around the explicit step (default false)
 
 [^rg-28386113293d]: CUDA — NVIDIA's parallel computing platform
 <!-- end reader glossary notes -->

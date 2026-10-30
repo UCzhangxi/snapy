@@ -148,6 +148,7 @@ Regenerate every figure: `python3 tools/render_figures.py` (to `build/figures/<c
 | figure | section file | code | data (written by) |
 |---|---|---|---|
 | `fig-ch09-coriolis-projection` | `09-diffusion-forcing/_coriolis.qmd` | `snapy_report/ch09/figures/fig_coriolis_projection.py` | - |
+| `fig-ch09-csdiffusion-stencil` | `09-diffusion-forcing/_csdiffusion.qmd` | `snapy_report/ch09/figures/fig_csdiffusion_stencil.py` | - |
 | `fig-ch09-deps` | `09-diffusion-forcing.qmd` | `snapy_report/ch09/figures/fig_deps.py` | - |
 | `fig-ch09-framework-order` | `09-diffusion-forcing/_framework.qmd` | `snapy_report/ch09/figures/fig_framework_order.py` | - |
 | `fig-ch09-heating-column` | `09-diffusion-forcing/_heating.qmd` | `snapy_report/ch09/figures/fig_heating_column.py` | - |

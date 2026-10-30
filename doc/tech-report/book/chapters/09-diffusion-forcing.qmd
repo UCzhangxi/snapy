@@ -9,7 +9,7 @@ status: draft
 This chapter covers every source term snapy adds to the stage increment besides the flux divergence and constant
 gravity: the forcing loop that parses, installs and sums them; user stage forcings written in TorchScript; the
 Coriolis force; the isotropic viscosity and heat conduction, with their face coefficient at walls and their
-optional $x_1$[^rg-c8bfcda97fa3] profiles; prescribed heating and cooling; the bottom relaxations of temperature, velocity and
+optional $x_1$[^rg-c8bfcda97fa3] profiles, and its operator on the cubed sphere; prescribed heating and cooling; the bottom relaxations of temperature, velocity and
 composition; and the sponge layers. All of them are explicit and act through one increment, and every native
 module reads the same stage-entry state, so their order does not change the result. Constant gravity is the first module of the same loop; it and its work
 are @sec-ch06; sedimentation is @sec-ch10-sed; the tracers that ride the dry-air part of these sources are
@@ -32,6 +32,7 @@ make_fig()
 | Coriolis (@sec-ch09-coriolis) | `coriolis`[^rg-a120d4a05e2c] | off | exact pointwise | `test_forcing` |
 | Viscosity and conduction (@sec-ch09-viscosity) | `diffusion`[^rg-99ba37d5e955] | off | 2 (1 at walls) | `test_diffusion` |
 | Wall face coefficient (@sec-ch09-wallcoef) | automatic | on at named walls | 2 | `test_diffusion` |
+| Viscosity and conduction, cubed sphere (@sec-ch09-csdiffusion) | `diffusion` on `gnomonic-equiangle`, `implicit_radial`[^rg-6e268ff2bb5e] | off | 2 (heat, measured) | `test_diffusion_cubed_sphere` |
 | $x_1$ coefficient profiles (@sec-ch09-x1profile) | `nu_scale_x1`, `kappa_scale_x1`[^rg-b8850622db19] | none | 2 | `test_diffusion_x1_scale` |
 | Heating and cooling (@sec-ch09-heating) | `body-heat`[^rg-2bba8eca06fc], `top-cool`[^rg-71e8e000ef00], `bot-heat`[^rg-51f6f7de69f0] | off | exact pointwise | `test_forcing` |
 | Bottom relaxation (@sec-ch09-relax) | `relax-bot-temp`[^rg-67ddb6f61b5a], `-velo`, `-comp` | off | 1 in time | `test_forcing` |
@@ -53,6 +54,8 @@ relaxations; all are explicit. Full ctest names and tolerances are in each schem
 {{< include 09-diffusion-forcing/_wallcoef.qmd >}}
 
 {{< include 09-diffusion-forcing/_x1profile.qmd >}}
+
+{{< include 09-diffusion-forcing/_csdiffusion.qmd >}}
 
 {{< include 09-diffusion-forcing/_heating.qmd >}}
 
@@ -80,6 +83,8 @@ The derived round-off checks use one shared provenance note.[^ch09-roundoff]
 [^rg-a120d4a05e2c]: coriolis — Coriolis-force options
 
 [^rg-99ba37d5e955]: diffusion — viscosity and heat-diffusion options
+
+[^rg-6e268ff2bb5e]: implicit_radial — whether radial heat conduction on the cubed sphere is solved implicitly, split around the explicit step (default false)
 
 [^rg-b8850622db19]: kappa_scale_x1 — piecewise-linear vertical multiplier for thermal transport
 
