@@ -55,7 +55,7 @@ def one_stage(block, nvar, vapour, pressure):
 ```
 
 1. Write the vapour and the condensate entries. Their values are those of the deck at the pin
-   ([`examples/bryan.yaml:15-18`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/examples/bryan.yaml#L15-L18), [`examples/bryan.yaml:20-23`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/examples/bryan.yaml#L20-L23)).
+   ([`examples/bryan.yaml:15-18`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/examples/bryan.yaml#L15-L18), [`examples/bryan.yaml:20-23`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/examples/bryan.yaml#L20-L23)).
 
 ```python
 vapour = {
@@ -72,7 +72,7 @@ cloud = {
 }
 ```
 
-2. Name it in a reaction, with a saturation formula of kintera ([`examples/bryan.yaml:75-78`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/examples/bryan.yaml#L75-L78)).
+2. Name it in a reaction, with a saturation formula of kintera ([`examples/bryan.yaml:75-78`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/examples/bryan.yaml#L75-L78)).
 
 ```python
 reactions = [{
@@ -114,17 +114,17 @@ print("N6 condensate: condensed", condensed, "kg m^-3 in one stage")
   `phase: gas` ([`kintera src/thermo/nucleation.cpp:33-38`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/thermo/nucleation.cpp#L33-L38)), so leave the phase empty or give `liquid` or `solid`.
 - Formula: `rate-constant: {formula: ...}` names one of kintera's saturation functions
   ([`kintera src/func_table.cpp:19-20`](https://github.com/chengcli/kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77/src/func_table.cpp#L19-L20)).
-- When: once per step, on the last stage, whenever the reaction list is non-empty ([`src/mesh/meshblock.cpp:817-818`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L817-L818)):
+- When: once per step, on the last stage, whenever the reaction list is non-empty ([`src/mesh/meshblock.cpp:848-849`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/src/mesh/meshblock.cpp#L848-L849)):
 
   ```cpp
   if (stage == pintg->stages.size() - 1 && phydro->options->eos()->thermo() &&
       phydro->options->eos()->thermo()->reactions().size() > 0)
   ```
 
-- What it writes: only the species rows, `hydro_u.narrow(0, ICY, ny) = yfrac * rho;` ([`src/mesh/meshblock.cpp:837`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L837)); the energy row is not written,
+- What it writes: only the species rows, `hydro_u.narrow(0, ICY, ny) = yfrac * rho;` ([`src/mesh/meshblock.cpp:868`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/src/mesh/meshblock.cpp#L868)); the energy row is not written,
   as step 5 checks.
 - Failure: a cell the solve leaves unadjusted makes the block redo the step with a smaller `dt`
-  ([`src/mesh/meshblock.cpp:1283`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L1283)).
+  ([`src/mesh/meshblock.cpp:1314`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/src/mesh/meshblock.cpp#L1314)).
 
 CI checks the contract, and the runtime test runs on a pin build.
 
@@ -195,7 +195,7 @@ cmake --build build --parallel
 pip install .
 ```
 
-[^ch10-func-table]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 and kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; deck: the check itself; run: `python3 src/snapy_report/ch10/checks/func_table_check.py`,
+[^ch10-func-table]: [sha: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f and kintera@c55b13b2204997d2d09e04498558ab9495d8ee77; deck: the check itself; run: `python3 src/snapy_report/ch10/checks/func_table_check.py`,
     CPU, `c++` (GCC 11.5.0), 1 process; Python 3.11.13]. Output `func_table_check.out`, lines `[C1]`–`[C5]`; the
     crash of `[C5]` is undefined behaviour, observed as exit status -11 on this build.
 <!-- end reader-reference: condensate-contract -->

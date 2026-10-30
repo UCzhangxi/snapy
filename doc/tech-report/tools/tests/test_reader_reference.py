@@ -30,7 +30,7 @@ def test_missing_and_duplicate_blocks_fail_even_when_generating(tmp_path, count)
 
 def test_pin_values_distinguish_the_two_riemann_paths():
     v = g.source_values(g.REPORT)
-    assert v['sha'] == 'ccf40f9565642c32be69f4b9ef0cfa6daff3f201'
+    assert v['sha'] == 'c0c38593d3d3f37bebe204a590610fd7daa05a5f'
     assert (v['no_block'], v['no_type']) == ('hllc', 'roe')
     assert v['no_block_cite'].endswith('/src/riemann/riemann_solver.hpp#L33)')
     assert v['no_type_cite'].endswith('/src/riemann/riemann_solver.cpp#L27)')

@@ -15,4 +15,4 @@ def test_dropin_checks_are_equation_specific():
 def test_notation_generator_uses_current_pin():
     text = n.fragment(n.NOTATION.read_text(), n.BOOK)
     assert 'e894700ff7aee30b52882e5202b16461413780b0' not in text
-    assert 'ccf40f9565642c32be69f4b9ef0cfa6daff3f201' in text
+    assert 'c0c38593d3d3f37bebe204a590610fd7daa05a5f' in text

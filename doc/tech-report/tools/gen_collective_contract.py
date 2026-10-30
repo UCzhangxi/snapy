@@ -8,7 +8,7 @@ import code_anchors
 
 REPORT = Path(__file__).resolve().parent.parent
 TARGET = 'book/chapters/14-parallelism-io/_howto.qmd'
-PIN = 'ccf40f9565642c32be69f4b9ef0cfa6daff3f201'
+PIN = 'c0c38593d3d3f37bebe204a590610fd7daa05a5f'
 
 
 def generate(report):
