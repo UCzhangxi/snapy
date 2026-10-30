@@ -116,17 +116,27 @@ tag at `ccf40f9` now counts against its chapter.
 - 34 tags of report-port checks were moved to `c0c3859`: each command was re-run from the
   report directory with Python 3.12.10, numpy 2.5.4, sympy 1.14.0, its output was
   byte-identical to the committed `.out`, and no section they sit in cites a changed body;
-  the tag now names that environment. Chapters 8 and 9 were left to their owners.
+  the tag now names that environment. Chapter 8 was left to its owner.
+- The ch09 `_framework` tag was moved too, because `tools/tests/test_provenance.py` requires
+  that forcing port to name the pin: it ports `HydroImpl::forward` block (6) of
+  `src/hydro/hydro_forward.cpp`, which is identical at both pins, and its output reproduced
+  byte for byte. The ch09 text was not touched.
 - The ch10 condensate tag is written by `gen_species_contract.py` with its `PIN`, and moved
   with it; its check reproduced byte for byte.
 - ch07 `_vic-assembly` and `_vic-redistribute` (at `6fbb397`) moved to the new pin: their
   checks gained `[C7]` for `#329`, and `[C1]`–`[C6]` print the same numbers.
-- 36 tags stay at `ccf40f9`: the sections cite a body this move changed (ch01 `_options`,
+- 33 tags stay at `ccf40f9`: the sections cite a body this move changed (ch01 `_options`,
   ch02 `_saturation`, ch06 `_dwork`, `_fixer`, ch07 `_exchange`, ch11 `_extrapolation`,
   `_outflow`, `_periodic`, `_registry`, `_solids`, ch12 `_mass-covariance`, `_matrix`,
   `_yaml`, ch13 `_cycle`, `_redo-view`, ch14 `_msgmatch`, `_netcdf`, `_pnetcdf`, `_repro`,
-  `_restart`, ch15 `_invariants` (4)), or they are in chapter 8 (9) or 9 (1). Their checks
-  all reproduced byte for byte here; they move when their owner re-reads the section.
+  `_restart`, ch15 `_invariants` (4)), or they are in chapter 8 (9). Their checks all
+  reproduced byte for byte here; they move when their owner re-reads the section.
+- The chapter 7 ctest table was re-run at the pin and its tag moved: 17 of 18 entries pass,
+  including `test_vic_partial_tangential.release`; `test_straka` ran (73.7 s) and then failed in
+  post-processing (`ncrcat` not installed), so it is reported as not evaluated.
+- After this, `ratchet_gate.py update` and `check_provenance.py --update` were run: 39 tags name
+  the new pin, and the provenance baseline is 92 failing tags: 62 before, plus the 33 tags
+  kept at `ccf40f9`, less the three ch07 records that moved from `6fbb397`.
 - `vic_sweep_check.py` stays at `6fbb397`: its re-run differs from the committed output in one
   round-off digit (`[C1]` N = 5: 3.0e-16 here, 4.4e-16 committed).
 
