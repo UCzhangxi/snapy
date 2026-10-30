@@ -36,7 +36,7 @@ can exceed its row count.
 
 1. **Start with the configured registry.** CTest's `--show-only=json-v1` returns
    names and the CMake call stack that created each command. For example,
-   `setup_test` ([`macro_setup_test.cmake:8-34`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/cmake/macros/macro_setup_test.cmake#L8-L34))
+   `setup_test` ([`macro_setup_test.cmake:8-34`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/cmake/macros/macro_setup_test.cmake#L8-L34))
    ultimately calls `add_test`. A source file by itself is not a registration.
 2. **Partition by origin.** The index generator assigns a command to $D$ if any
    backtrace frame is in the configured build's `_deps` directory; otherwise it
@@ -48,7 +48,7 @@ can exceed its row count.
    This documents the index generator's classification, not a solver equation.
 3. **Recover the displayed count.** Subtracting the dependency count gives
    $N_S=N_R-N_D$. The refresh at the code pin gives
-   $1052-927=125$: 125 snapy rows and 927 Eigen registrations. These are
+   $1066-927=139$: 139 snapy rows and 927 Eigen registrations. These are
    configuration-specific measurements, not constants of snapy.[^appc-provenance]
 4. **Keep count accuracy separate from solver accuracy.** Sorting names changes
    no membership and therefore no count. Python integer counts and SymPy integer
@@ -70,12 +70,12 @@ that this table displays, not that the command has no environment or timeout.
 ### Code
 
 The table below links every registration to its defining call at
-chengcli/snapy `ccf40f9565642c32be69f4b9ef0cfa6daff3f201`. The C++ helper
+chengcli/snapy `c0c38593d3d3f37bebe204a590610fd7daa05a5f`. The C++ helper
 `setup_test` appends the lower-case build type to the name, while
-`snapy_add_python_test` ([`CMakeLists.txt:220-237`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/tests/CMakeLists.txt#L220-L237))
+`snapy_add_python_test` ([`CMakeLists.txt:275-292`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/tests/CMakeLists.txt#L275-L292))
 appends `_python`. A parallel helper invokes `torchrun`; the absence of a
 `PROCESSORS` note does not prove that a command uses only one process:
-`setup_parallel_test` ([`macro_setup_parallel_test.cmake:1-34`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/cmake/macros/macro_setup_parallel_test.cmake#L1-L34)).
+`setup_parallel_test` ([`macro_setup_parallel_test.cmake:1-34`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/cmake/macros/macro_setup_parallel_test.cmake#L1-L34)).
 
 **How to use this index.** Copy the full name, including its suffix, and first
 check that it exists in your own configured build. For example, from the build
@@ -93,7 +93,7 @@ when reproducing a run: the compact table deliberately omits machine paths and
 most execution properties. For Python tests, set `SNAPY_TEST_PYTHONPATH` when
 configuring to the installation built from the intended source; otherwise CMake
 warns that tests import the installed snapy and do not constrain the checkout:
-`SNAPY_TEST_PYTHONPATH` ([`CMakeLists.txt:410-424`](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/tests/CMakeLists.txt#L410-L424)).
+`SNAPY_TEST_PYTHONPATH` ([`CMakeLists.txt:468-482`](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/tests/CMakeLists.txt#L468-L482)).
 A skipped command is not a pass. In particular, some entries use exit code 125
 as their skip condition, shown in Notes.
 
@@ -105,7 +105,7 @@ are integer counts, names and generated text.
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| [C1] CTest JSON and plain listing | Both listings contain the same 1052 distinct names; the reduced fixture has 125 snapy entries and 927 dependency entries | exact | Integer partition of one configured registry |
+| [C1] CTest JSON and plain listing | Both listings contain the same 1066 distinct names; the reduced fixture has 139 snapy entries and 927 dependency entries | exact | Integer partition of one configured registry |
 | [C2] `python tools/gen_test_index.py --check`, in the report directory (@sec-appa-refresh) | The committed fragment equals the generator output from the committed fixture | byte-for-byte | Deterministic generation contract |
 | [C3] Registration citations | Each row's helper occurs at its cited line in the pinned source | exact | CMake backtrace from the clean checkout |
 | [C4] SymPy snippet below | Inclusion–exclusion, rearrangement and measured count substitution agree | symbolic zero | Exact integer arithmetic, no floating-point tolerance |
@@ -126,8 +126,8 @@ ns, nd, overlap = sp.symbols("ns nd overlap", integer=True, nonnegative=True)
 union = ns + nd - overlap
 assert sp.simplify(union.subs(overlap, 0) - (ns + nd)) == 0
 assert sp.simplify((ns + nd) - nd - ns) == 0
-assert sp.Integer(1052) - sp.Integer(927) == sp.Integer(125)
-assert sp.Integer(125) + sp.Integer(927) == sp.Integer(1052)
+assert sp.Integer(1066) - sp.Integer(927) == sp.Integer(139)
+assert sp.Integer(139) + sp.Integer(927) == sp.Integer(1066)
 print("[C4] PASS: 4 exact identities")
 ```
 
@@ -142,14 +142,14 @@ chapter's Tests layer for those. For measured verification see @sec-ch15, and fo
 configuration combinations see @sec-ch12-matrix.
 
 [^appc-provenance]: Inventory refreshed from a clean checkout of chengcli/snapy
-    `6fbb39750f62b83df096058a4746e77d0a634bc5` using CMake/CTest 3.31.8,
-    Release, `BUILD_TESTS=ON`, `BUILD_EXAMPLES=OFF`, `CUDA=OFF`,
-    `FULL_TESTS=OFF`, `NETCDF=ON`, `UCX=ON`. The committed
+    `c0c38593d3d3f37bebe204a590610fd7daa05a5f` with `cmake -S snapy-pin -B snapy-pin/build -G Ninja
+    -DCMAKE_BUILD_TYPE=Release -DNETCDF=ON -DPNETCDF=OFF` (configure only, no build), then
+    `python3 tools/gen_test_index.py --refresh snapy-pin/build`; CMake/CTest 4.4.4, torch 2.10.0,
+    kintera 2.6.4, commux found (so `UCX=ON`). Recorded switches: Release, `BUILD_TESTS=ON`,
+    `BUILD_EXAMPLES=OFF`, `CUDA=OFF`, `FULL_TESTS=OFF`, `NETCDF=ON`, `UCX=ON`. The committed
     `tools/ctest-index.json` records the reduced registration data; the table
-    fragment is its generated output. At `ccf40f9565642c32be69f4b9ef0cfa6daff3f201` the
-    inventory was carried forward from the `tests/CMakeLists.txt` diff alone (two
-    registrations added, the later definition lines shifted), not re-configured;
-    no other file that registers tests changed. [C1]–[C4] were run with Python 3.11.13
-    and SymPy 1.14.0. No solver test verdict is claimed.
+    fragment is its generated output. [C1] is `ctest --show-only=json-v1` (1066 entries, 1066
+    distinct names) against `ctest -N` (`Total Tests: 1066`) in that build directory. [C1]–[C4]
+    were run with Python 3.12.10 and SymPy 1.14.0. No solver test verdict is claimed.
 
 {{< include 17-appendices/_appc-test-index.qmd >}}
