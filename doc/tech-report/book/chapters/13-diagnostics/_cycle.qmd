@@ -37,7 +37,9 @@ $x_{1,i}$[^rg-1443f7d5a753] and $\epsilon_{\mathrm m}$[^rg-3eba0bd97326] are def
 `mass0=` is the dry mass, and `masst=` adds every species. `ke=` is the kinetic energy, and `ie=` (block line) or
 `energy=` (Mesh line) is the integrated total energy $E_{\mathrm{tot}}=\sum_iV_iE_i$, with $E$[^rg-9750bb6bd4f2] the total energy
 density. `pe=` is the potential energy in a constant $x_1$[^rg-27e526b3a6fc] gravity. All are read from the conserved state
-`hydro_u`, never from the primitives, which can be one stage stale when the line is printed. Which energy sum
+`hydro_u`, never from the primitives `hydro_w`. The example drivers print the line after `check_redo` has rewritten
+`hydro_w` from the accepted `hydro_u` (@sec-ch07-redo); a driver that skips `check_redo` would leave `hydro_w` one
+stage behind, and the line does not depend on it. Which energy sum
 to compare between two lines depends on the gravity-work form: @tbl-ch06-conserves-summary
 (@sec-ch06-conserves) gives, for each form, the invariant that is exact on a closed column and the logged sum
 (`ie=` plus `pe=`, and `fixgrav=` with the fixer) that measures it.
@@ -64,7 +66,8 @@ kinetic energy (`[C2]`). With $g_1 = -10$ and $\rho = 2.5$, pe is $25\sum_i x_{1
 Why the line measures the state the step starts from, in three steps:
 
 1. *It reads the conserved state.* `ke` is formed from `u`, the conserved `hydro_u`, divided by the total density
-   `rho` of the same state, and `pe` from that `rho`; the primitives, which can be one stage stale, are not read.
+   `rho` of the same state, and `pe` from that `rho`; the primitives are not read, so the line does not depend on
+   whether the driver refreshed them.
 2. *It weighs the total density.* `rho` is the dry row plus every species row, so moving mass between dry gas and
    species changes neither integral (`[C2]`).
 3. *It is printed before the step.* The driver calls `print_cycle_info` at the top of the cycle, so the sums are
@@ -91,8 +94,10 @@ from snapy_report.ch13.figures.fig_cycle_line import make_fig
 make_fig()
 ```
 
-The example driver prints the line at the top of each cycle, after the cycle counter is incremented and the
-step is chosen, so the sums describe the state at the start of the step, through `print_cycle_info`
+The example driver prints the line at the top of each cycle, after the step is chosen and before the cycle counter
+is advanced, which happens only after an accepted step; so `cycle=` is the number of steps accepted so far, a redo
+prints the same `cycle=` again with a larger `redo=`, and the sums describe the state at the start of the step,
+through `print_cycle_info`
 ({{< code examples/run_hydro.cpp main >}}). The
 line starts with `cycle=`, `redo=`, `time=` and `dt=`, and it stops there when the state holds no `hydro_u`
 ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}).

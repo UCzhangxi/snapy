@@ -39,7 +39,7 @@ The PnetCDF writer always writes float32 (`ncmpix_iput_vara_float`), so every va
 
 ### Numerical method
 
-`PNetcdfOutput`'s constructor rejects `double_precision: true`, so a misconfigured run fails at setup and not at its
+`PNetcdfOutput`'s constructor rejects `double_precision: true` and any slice list, so a misconfigured run fails at setup and not at its
 first output (`PNetcdfOutput`, {{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}}). `write_output_file` skips the final write,
 repeats the precision check, and throws if the process holds more than one block
 ({{< code src/output/pnetcdf.cpp PNetcdfOutput::write_output_file >}}). Each block then posts its own slab of each variable with
@@ -67,6 +67,9 @@ outputs:
 2. *`double_precision: true`*, at construction: "double_precision is not implemented for the parallel-netcdf writer;
    it would silently write NC_FLOAT". The check runs at setup, not at the first output.
 3. *More than one block per process*: "PNetcdfOutput currently requires blocks_per_process=1".
+4. *Any `x1_slice`, `x2_slice` or `x3_slice` list*, at construction: "Slice lists require type: netcdf with block
+   combining." ({{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}}). The collective writer has no path
+   for the selected planes; slices are written by the NetCDF writer (@sec-ch14-netcdf).
 
 The output-entry refusals of @sec-ch14-netcdf apply first.
 

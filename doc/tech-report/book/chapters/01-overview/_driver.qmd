@@ -79,15 +79,16 @@ make_fig()
 **Why the loop is safe to repeat.** Four facts of the code make a redo exact and an accepted step well defined. The
 round-off that enters is bounded in step 3.
 
-1. *A rejected step leaves the clock alone.* `current_time += dt` runs only after `check_redo` returned zero
-   ({{< code examples/run_hydro.cpp main >}}), so a repeated or an ended step never advances the clock.
+1. *A rejected step leaves the clock alone.* `++block->cycle` and `current_time += dt` run only after `check_redo`
+   returned zero ({{< code examples/run_hydro.cpp main >}}), so a repeated or an ended step advances neither the
+   cycle count nor the clock; `apply_redo` does not touch the cycle.
 2. *A redo restores the saved state.* `apply_redo` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}})
    copies the step-start buffers back and increments `current_redo`, and the next `max_time_step` reads it.
 3. *The halving is exact.* `max_time_step` returns $2^{-n_{\mathrm{redo}}}\,C\,\Delta t_{\mathrm{bound}}$. Multiplying
    a double by $2^{-n_{\mathrm{redo}}}$ changes only its exponent, so it is exact until underflow; the one product
    $C\,\Delta t_{\mathrm{bound}}$ is rounded once, with relative error at most
    $\delta_{\mathrm{mach}} = 2^{-53}$. The MIN reduction across ranks selects one of the operands and adds no error.
-4. *Outputs follow accepted steps only.* `make_outputs` runs after the clock increment and writes when the
+4. *Outputs follow accepted steps only.* `make_outputs` runs after the cycle and clock increments and writes when the
    clock has reached the output's next time ({{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}}).
 
 ### Code
@@ -111,7 +112,7 @@ round-off that enters is bounded in step 3.
    repeat, negative to stop, zero to accept; `apply_redo` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_redo >}})
    counts the redo and restores the saved state.
 4. Write: `make_outputs` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::make_outputs >}}) after the accepted
-   clock increment; `finalize` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}) at the end.
+   cycle and clock increments; `finalize` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::finalize >}}) at the end.
 
 **How to use it.** The driver reads the integration block of the card; the three snapy keys and the six
 keys pyharp reads are the only ones accepted ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::from_yaml overload=1 >}}):
@@ -136,7 +137,6 @@ driver of your own repeats the loop of `main` ({{< code examples/run_hydro.cpp m
 
 ```cpp
   while (!block->pintg->stop(block->cycle, current_time)) {
-    ++block->cycle;
     auto dt = block->max_time_step(vars);
     block->print_cycle_info(vars, current_time, dt);
 
@@ -174,6 +174,7 @@ driver of your own repeats the loop of `main` ({{< code examples/run_hydro.cpp m
     if (err < 0) break;     // terminate simulation
 
     // make outputs
+    ++block->cycle;
     current_time += dt;
     block->make_outputs(vars, current_time);
   }
@@ -182,7 +183,7 @@ driver of your own repeats the loop of `main` ({{< code examples/run_hydro.cpp m
 The first two lines inside the loop are step 1 of the walk-through; `print_cycle_info` writes the cycle log of
 @sec-ch13 and changes no state. The `for` loop is step 2. The kinetics block is the example's own chemistry update,
 with kintera's implicit solver ({{< code examples/run_hydro.cpp main >}}). It is not part of the block API[^rg-12b6d47ad2b9]. It runs on
-the state the stages left, before `check_redo`. The `check_redo` lines are step 3 and the last two lines step 4.
+the state the stages left, before `check_redo`. The `check_redo` lines are step 3 and the last three lines step 4.
 
 ### Tests
 
@@ -215,7 +216,7 @@ been run for this report at the pin: **pending a pinned ctest run**.
     ctest reports for the one test, 8.87 s, of which the test itself took 8.69 s; reps: 1, a single ctest run; torch
     2.10.0, kintera 2.6.2, Python 3.11.13]. 1 of 1 passed, 8.9 s.
 
-[^ch01-driver-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself; run:
+[^ch01-driver-run]: [sha: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f; deck: the check itself; run:
     `python3 src/snapy_report/ch01/checks/driver_check.py`,
     CPU, double, 1 process; Python 3.11.13, numpy 2.4.6; output identical to the committed file]. Output
     `driver_check.out`, lines `[C1]` to `[C3]`.

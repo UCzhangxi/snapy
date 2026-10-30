@@ -16,7 +16,8 @@ diffusivity $\kappa$[^rg-e72046dad063] [$\mathrm{m^2\,s^{-1}}$] multiplied by th
 `dynamic: true` the two numbers are a dynamic viscosity $\mu$[^rg-6149e61825cb] [$\mathrm{Pa\,s}$] and a conductivity, still written
 $\kappa$ but in $\mathrm{W\,m^{-1}\,K^{-1}}$ (appendix A, notation group 8), and no density enters. The heat flux acts on the
 temperature, not on the potential temperature, so a resting adiabatic column, which is neutrally stable, is heated
-in the interior and at the walls (Limits).
+in the interior and at the walls (Limits). This section is the operator of Cartesian grids; on the gnomonic cubed
+sphere the same keys select the operator of @sec-ch09-csdiffusion.
 
 For numerical diffusion/dissipation, see the Roe solver's fallback to the local Lax–Friedrichs flux in @sec-ch04-roe:
 its dissipative term is half the largest left/right signal speed times the conserved-state jump
@@ -32,14 +33,14 @@ enters the stage increment; @eq-ch09-viscosity-flux.
 
 **Placement.** Every RK stage, third in the forcing loop; its time-step bound joins the hyperbolic one.
 
-**Activation.** `forcing/diffusion: {nu_iso, kappa_iso, dynamic, nu_scale_x1, kappa_scale_x1}`; defaults 0, 0,
-`false`, none, none. Acts only through a positive coefficient. Requires a `cartesian` grid,
+**Activation.** `forcing/diffusion: {nu_iso, kappa_iso, dynamic, nu_scale_x1, kappa_scale_x1, temperature_inner, temperature_outer}`; defaults 0, 0,
+`false`, none, none, 0, 0. Acts only through a positive coefficient. Runs on a `cartesian` grid (cubed sphere: @sec-ch09-csdiffusion);
 $n_{\mathrm{ghost}}\ge2$ for viscosity, and a positive reference $c_v$[^rg-0527910bf49b] for conduction.
 
 **Guarantee / limits.** Momentum and total energy conserved; second order in the interior, first order in the wall
 normal-stress kernel; conduction acts on $T$, not on the potential temperature.
 
-**Evidence.** Report checks and source-test assertions are listed below; solver ctests were not run at the pin.
+**Evidence.** Report checks and the ctest run at the pin are listed in the Tests layer.
 :::
 
 **Data details.** In: the cell-centre velocity $\mathbf v$ [$\mathrm{m\,s^{-1}}$], temperature $T$ [$\mathrm{K}$],
@@ -53,8 +54,10 @@ $n_1 = 64$, a random shear at $n_1 = 48$, a resting dry adiabat at $n_1$[^rg-ca9
 {{< code tests/test_diffusion.cpp DeviceTest.transverse_velocity_uses_viscous_laplacian >}} ($10^{-5}$); a sine mode
 decays as $e^{-\nu t}$ over 100 steps, {{< code tests/test_diffusion.cpp DeviceTest.viscous_sine_mode_matches_analytic_decay >}}
 ($3\times10^{-4}$); the bound uses the larger coefficient,
-{{< code tests/test_diffusion.cpp DeviceTest.timestep_uses_largest_diffusivity >}} ($10^{-12}$); these ctests were not
-run at the pin. Check: `python3 src/snapy_report/ch09/checks/viscosity_check.py`, output `viscosity_check.out` lines `[C1]`–`[C8]`, re-run at the pin: all PASS, output identical [^env-viscosity].
+{{< code tests/test_diffusion.cpp DeviceTest.timestep_uses_largest_diffusivity >}} ($10^{-12}$); a prescribed wall
+temperature keeps a linear profile at rest and injects the expected heat,
+{{< code tests/test_diffusion.cpp DeviceTest.cartesian_fixed_temperature_preserves_linear_conduction >}} ($10^{-9}$);
+these ctests pass at the pin.[^vis-ctest] Check: `python3 src/snapy_report/ch09/checks/viscosity_check.py`, output `viscosity_check.out` lines `[C1]`–`[C8]`, re-run at the pin: all PASS, output identical [^env-viscosity].
 
 Local symbols: $\boldsymbol\Pi$ [Pa] the viscous stress tensor ($\tau$[^rg-d9c30f993349] is a named relaxation
 time in appendix A); $F^{(m_b)}_a$ [Pa] and $F^{(E)}_a$ [W m$^{-2}$] the momentum and energy fluxes through a face normal to
@@ -65,12 +68,14 @@ $\nu$, $\mu$, $\kappa$, $c_v$, $c_{p,\mathrm d}$, $c_{v,\mathrm d}$, $R_{\mathrm
 
 The module adds its own time-step bound, $\Delta t\le \Delta x_{\min}^2/(2n_{\mathrm{dim}}K_{\Delta t})$, with $\Delta x_{\min}$ the smallest cell width over the active directions, which the solver takes
 together with the hyperbolic bound before the Courant factor is applied (@sec-ch07-cfl). The YAML parser refuses
-the keys `K` and `type`.
+the keys `K` and `type`. Two keys, `temperature_inner`[^rg-a3880ab85786] and `temperature_outer`[^rg-900e6f628025], replace the conductive flux through a
+reflecting $x_1$ wall by the flux to a prescribed wall temperature (Numerical method); 0, the default, leaves the
+wall insulating. The keys `wall_velocity`[^rg-78156b20840f] and `implicit_radial` act only on the cubed sphere.
 
 ### Derivation
 
-All quantities in this layer are per unit volume; $h$ is the cell width, uniform in each direction (the module
-refuses every grid but Cartesian). Units: $\mathbf v$ [$\mathrm{m\,s^{-1}}$], $T$ [$\mathrm{K}$], momentum fluxes
+All quantities in this layer are per unit volume; $h$ is the cell width, uniform in each direction (this operator
+runs on Cartesian grids only; the module refuses every grid but Cartesian and the cubed sphere). Units: $\mathbf v$ [$\mathrm{m\,s^{-1}}$], $T$ [$\mathrm{K}$], momentum fluxes
 [$\mathrm{Pa}$], energy fluxes [$\mathrm{W\,m^{-2}}$].
 
 #### Continuous fluxes
@@ -211,7 +216,12 @@ divergence, their neighbours in the tangential directions: one ghost layer for c
 face average of a centred difference reaches two cells), hence the setup check $n_{\mathrm{ghost}}\ge2$. Ghosts are
 filled by the boundary functions and the block exchange before the stage (@sec-ch11). Faces at a reflecting $x_1$
 wall take the one-sided coefficient of @sec-ch09-wallcoef; every other face, including seams between blocks, takes
-the two-cell average. The module runs in every Runge–Kutta stage, explicit, third in the forcing loop
+the two-cell average. With `temperature_inner` (or `temperature_outer`) $T_w>0$ at a wall named `reflecting_inner`
+(`reflecting_outer`), the temperature difference across the wall face is replaced by the half-cell difference to the
+wall, $\partial_1T\rvert_{\mathrm{wall}}=(T_c-T_w)/(x_{1,c}-x_{1,f})$, with $c$ the wall cell and $f$ the wall face, and
+the wall-face coefficient is unchanged; the reflecting ghosts, which the hydrostatic balance reads, are not altered
+({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}). A linear profile between two such walls is then a
+discrete equilibrium. The module runs in every Runge–Kutta stage, explicit, third in the forcing loop
 (@sec-ch09-framework). Evidence for the orders: interior second order from `[C2]`, `[C3]` and `[C8]` (fitted slope
 2.00 over three resolutions); the wall coefficient second order from @sec-ch09-wallcoef; the order of the full
 operator at a wall through the solver is **not measured**.
@@ -235,10 +245,14 @@ forcing:
    'nu_iso' and 'kappa_iso'." ({{< code src/forcing/diffusion.cpp >}}), and any other unknown key, by `check_keys` ({{< code src/forcing/diffusion.cpp >}}).
 2. *A coefficient that is not a finite number $\ge0$*, with "DiffusionOptions: KEY must be a finite number >= 0"
    ({{< code src/forcing/diffusion.cpp >}}); *`dynamic` other than the literal `true` or `false`* ({{< code src/forcing/diffusion.cpp >}}).
-3. *At setup, with a positive coefficient:* a non-Cartesian grid, "[Diffusion] Only cartesian coordinates are
-   supported."; viscosity with fewer than two ghosts, "[Diffusion] Isotropic viscosity requires nghost >= 2.";
+3. *At setup, with a positive coefficient:* a grid other than Cartesian or the cubed sphere, "[Diffusion] Supported
+   coordinates: cartesian, gnomonic-equiangle."; viscosity with fewer than two ghosts, "[Diffusion] Isotropic viscosity requires nghost >= 2.";
    conduction without a positive reference $c_v$ ({{< code src/forcing/diffusion.cpp >}}). The stencil needs two ghosts, and the face
-   coefficient needs $c_v$.
+   coefficient needs $c_v$. *At setup, always:* a negative or non-finite wall temperature; a positive wall
+   temperature on a Cartesian grid whose $x_1$ boundary on that side is not named `reflecting_inner` or
+   `reflecting_outer`, "[Diffusion] Cartesian prescribed temperatures require reflecting x1 walls."; and
+   `wall_velocity: no-slip` on a Cartesian grid, "[Diffusion] The no-slip wall option requires gnomonic-equiangle."
+   ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}}).
 4. *At run time*, a non-finite coefficient or a non-positive bound in `max_time_step` ({{< code src/forcing/diffusion.cpp >}}).
 
 **The code, mapped to @eq-ch09-viscosity-flux** (`DiffusionImpl::forward`, per direction and velocity row):
@@ -279,12 +293,13 @@ du -= dt * coord->divergence(fluxes[0], fluxes[1], fluxes[2]);
 1. `DiffusionOptionsImpl::from_yaml` refuses `K` and `type`, checks the keys, and requires finite non-negative
    coefficients and a literal `true`/`false` for `dynamic`
    ({{< code src/forcing/diffusion.cpp DiffusionOptionsImpl::from_yaml >}}).
-2. `DiffusionImpl::reset` refuses a non-Cartesian grid when a coefficient is positive, viscosity with fewer than two
-   ghosts, and conduction without a positive reference $c_v$ ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}});
+2. `DiffusionImpl::reset` refuses a grid other than Cartesian or the cubed sphere when a coefficient is positive, the
+   wall options of item 3, viscosity with fewer than two ghosts, and conduction without a positive reference $c_v$
+   ({{< code src/forcing/diffusion.cpp DiffusionImpl::reset >}});
    it then builds the $x_1$ profiles (@sec-ch09-x1profile).
-3. `forward` forms the cell divergence `div_vel` and `rho_cv`, then, per active direction, the face coefficient, the
-   stress rows and their work, `momentum_flux`, and the heat flux from `dtdn`
-   ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
+3. `forward` hands a cubed-sphere block to `forward_cubed_sphere` (@sec-ch09-csdiffusion); on a Cartesian block it forms the cell divergence `div_vel` and `rho_cv`, then, per active direction, the face coefficient, the
+   stress rows and their work, `momentum_flux`, and the heat flux from `dtdn`, with the wall value of `dtdn` replaced
+   where a wall temperature is set ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 4. It subtracts $\Delta t$ times the `divergence` of the three flux arrays
    ({{< code src/forcing/diffusion.cpp DiffusionImpl::forward >}}).
 5. `max_time_step` returns @eq-ch09-viscosity-dt ({{< code src/forcing/diffusion.cpp DiffusionImpl::max_time_step >}});
@@ -296,7 +311,8 @@ The derived round-off checks [D4, D5, D5n] pass.[^ch09-roundoff]
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
-| `tests/test_diffusion.cpp` (`test_diffusion.release`), five `diffusion_options.*` cases | legacy keys, non-bool `dynamic`, negative or non-numeric coefficients, curved grids and conduction without $c_v$ are refused | exact (throws) | parser and setup contracts |
+| `tests/test_diffusion.cpp` (`test_diffusion.release`), six `diffusion_options.*` cases | legacy keys, non-bool `dynamic`, negative or non-numeric coefficients, a spherical-polar grid, conduction without $c_v$, and a wall temperature without a `reflecting_inner` wall or on a periodic $x_1$ are refused | exact (throws) | parser and setup contracts |
+| same, `cartesian_fixed_temperature_preserves_linear_conduction` | with walls at 300 K and 360 K a linear $T$ gives no tendency; raising the lower wall by 5 K injects $\kappa\,\Delta T/(h/2)$ per unit wall area, 20 in the test's units, with `dynamic: true`, $\kappa=2$ | $10^{-9}$ (float64), $10^{-3}$ (float32) | round-off |
 | same, `uniform_state_has_zero_tendency` | a uniform state gives zero tendency | rtol, atol $10^{-6}$ | float32 arm |
 | same, `transverse_velocity_uses_viscous_laplacian` | $v_2=x_1^2$ gives the uniform $\Delta m_2 = 0.1$ of $\nu\rho\,\partial_1^2v_2\,\Delta t$ in every interior cell | $10^{-5}$ | float32 arm |
 | same, `temperature_uses_conductive_laplacian` | $T=x_1^2$ gives $\Delta E = 0.05\,c_v$ in an interior cell; mass and momentum untouched | $10^{-3}$ absolute | float32 on a value of order $10^2$ |
@@ -310,8 +326,8 @@ The derived round-off checks [D4, D5, D5n] pass.[^ch09-roundoff]
 : Tests of the isotropic viscosity and heat conduction. {#tbl-ch09-viscosity-tests}
 
 ::: {.callout-important title="Check"}
-**Evidence.** The check numbers come from the port named in the footnote. ctest cases: **pending a pinned ctest
-run**. A data figure of the sine-mode decay against $e^{-\nu t}$ from the ctest is **pending** the same run.
+**Evidence.** The check numbers come from the port named in the footnote. ctest cases: `test_diffusion.release`
+passes at the pin.[^vis-ctest] A data figure of the sine-mode decay against $e^{-\nu t}$ from the ctest is **pending** the same run.
 **Coverage.** The `DeviceTest` cases run on CPU in float32 and float64 and on CUDA in both when a device is present
 (`tests/device_testing.hpp`). No multi-rank test of the module.
 :::
@@ -319,7 +335,7 @@ run**. A data figure of the sine-mode decay against $e^{-\nu t}$ from the ctest 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-Cartesian grids only. `kappa_iso` conducts on $T$, so a resting adiabat drifts. Immersed solids give a wrong face
+This operator: Cartesian grids; the cubed sphere has its own (@sec-ch09-csdiffusion); other grids are refused. `kappa_iso` conducts on $T$, so a resting adiabat drifts. Immersed solids give a wrong face
 coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer diffusion.
 :::
 
@@ -341,6 +357,8 @@ coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer 
 
 
 [^env-viscosity]: Recorded run environment: Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
+
+[^vis-ctest]: [sha: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f; deck: `tests/test_diffusion.yaml` as each case modifies it; run: `ctest -j1 -V -R '^test_diffusion\.release$'` in `build/tests` of the Release build at the pin described in @sec-ch09-csdiffusion's footnote (snapy 2.12.6.dev0, torch 2.10.0+cu126, CUDA 12.6); 57 cases pass, the `DeviceTest` cases on CPU and CUDA in float32 and float64, one process]
 
 <!-- reader glossary notes -->
 [^rg-8453b354c365]: nu_iso — isotropic viscosity coefficient, interpreted according to dynamic
@@ -364,6 +382,12 @@ coefficient by a factor of about 500 (@sec-ch09-wallcoef). No species or tracer 
 [^rg-90ec1bf7716b]: $\vartheta$ — local phase $\pi h/\lambda_w$ of a wave of wavelength $\lambda_w$ in a Fourier error estimate; notation only; see @sec-appa
 
 [^rg-778cd93f3ca5]: $\lambda_w$ — a wavelength (named); notation only; see @sec-appa
+
+[^rg-a3880ab85786]: temperature_inner — prescribed temperature of the inner x1 wall for heat conduction, in K; 0 (default) leaves the wall insulating
+
+[^rg-900e6f628025]: temperature_outer — prescribed temperature of the outer x1 wall for heat conduction, in K; 0 (default) leaves the wall insulating
+
+[^rg-78156b20840f]: wall_velocity — viscous condition at the radial walls on the cubed sphere: stress-free (default) or no-slip
 
 [^rg-b169a835b08c]: cfl — Courant-number limit for the time step
 

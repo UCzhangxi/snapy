@@ -160,3 +160,13 @@ $(\rho,\rho v_1,E)$ blocks before and after the fold; $\mathbf e_\rho$ for the d
 for the right-hand-side term the sweep subtracts. `_vic-redistribute.qmd` defines $\mathcal T^{\mathrm c}_{i+1/2}$ for the
 total clamped face transfer and $v_{a,\mathrm{don}}$ for the donor's tangential velocity. The editor owns registration;
 NOTATION.md is unchanged.
+
+## Chapter 9 cubed-sphere diffusion local symbols (draft)
+
+`book/chapters/09-diffusion-forcing/_csdiffusion.qmd` defines, after its glance box: $\mathbf X$ (Cartesian position),
+$\mathbf a_j$, $\mathbf a^j$ (covariant basis of $(x_1,x_2,x_3)$ and its reciprocal), $\hat{\mathbf n}$ (unit face
+normal), $\mathbf t$ (traction), $K_{\mathrm c}$ (conductivity; $k$ is the reaction index), $\Delta n_{\mathrm s}$ (normal
+distance across a block edge; $\sigma$ is the cell variance), $\mathcal G^{ab}$ (inverse unit-sphere panel metric;
+$g_{ab}$ is the normalised panel metric), $b_{\mathrm{SD}}$ (the SDIRK stage coefficient; $\gamma$ and $\beta$ are taken)
+and $\mathsf M$, $\mathsf K$, $\mathbf S$ (the radial solve's matrices and source). NOTATION.md is unchanged; the
+editor owns their registration.

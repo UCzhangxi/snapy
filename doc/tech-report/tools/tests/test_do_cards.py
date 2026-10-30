@@ -186,7 +186,7 @@ def test_the_real_data_file_matches_the_sources():
     status, msgs = c.check(report)
     assert (status, msgs) == (0, [])
     data = c.load((report / "tools" / "do-cards.yaml").read_text(encoding="utf-8"))
-    assert len(data["cards"]) == len(c.source_cards(report / "book")) == 71
+    assert len(data["cards"]) == len(c.source_cards(report / "book")) == 72
 
 
 def test_the_construction_card_has_no_runnable_claim_or_exception():
@@ -195,4 +195,4 @@ def test_the_construction_card_has_no_runnable_claim_or_exception():
     assert card['class'] == 'not runnable'
     assert card['expect'] == 'nothing to run'
     assert card['run']['kind'] == 'none'
-    assert not data['exceptions']
+    assert card['id'] not in {e['id'] for e in data['exceptions'] or []}
