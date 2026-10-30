@@ -20,6 +20,10 @@ the section's fenced YAML examples count by their paths. Path matches win, then 
 tools/reader-glossary.json names as the key's definition, then the most mentions, then book order. A key no
 section names is marked "no section"; the page gives no explanation of its own.
 
+Each "read at" link names its anchor symbol (STYLE 3.1, tools/check_citations.py): an identifier that is on the
+cited line, chosen at --refresh from the source: the key itself, the key with `_` for `-` (an `ADD_ARG` member),
+else the first call on the line (`check_keys`, `ADD_ARG`, ...), else its first identifier.
+
     python3 tools/gen_deck_keys.py --refresh [<snapy checkout>]  # re-extract tools/deck-keys.json at code_pin.yml
     python3 tools/gen_deck_keys.py                               # rewrite the fragment from the JSON and the book
     python3 tools/gen_deck_keys.py --check                       # exit 1 if the fragment is stale
@@ -245,6 +249,24 @@ def _matches(pattern: str, path: str) -> bool:
     return len(a) == len(b) and all(x == y or x.startswith("<") for x, y in zip(a, b))
 
 
+_IDENT = re.compile(r"[A-Za-z_]\w*")
+
+
+def _on_line(name: str, text: str) -> bool:
+    """`name` occurs in `text` as check_citations looks for an anchor: not inside a longer identifier."""
+    return re.search(r"(?<![\w])" + re.escape(name) + r"(?![\w])", text) is not None
+
+
+def _anchor(line: str, key: str) -> str | None:
+    """An anchor symbol for a link to `line`: the key, its `_` spelling, a call on the line, or an identifier."""
+    for name in (key, key.replace("-", "_")):
+        if _on_line(name, line):
+            return name
+    calls = re.findall(r"([A-Za-z_]\w*)\s*\(", line)
+    names = calls or [n for n in _IDENT.findall(line) if len(n) > 2] or _IDENT.findall(line)
+    return names[0] if names else None
+
+
 def extract(tree: Path) -> list[dict]:
     """One record per (block path, key) accepted by a check_keys call under src/."""
     files = sorted(p for p in (tree / "src").rglob("*.cpp") if p.relative_to(tree).parts[:2] != ("src", "input"))
@@ -287,6 +309,12 @@ def extract(tree: Path) -> list[dict]:
                         rec["default"] = {"kind": "block", "value": "", "file": rel, "line": _line(text, pos)}
                 if not rec["default"]["line"]:  # no read found: point at the list that accepts the key
                     rec["default"].update(file=rel, line=_line(text, pos))
+                f, n = (rel, _line(text, pos)) if reader != "snapy" else (rec["default"]["file"],
+                                                                         rec["default"]["line"])
+                cited = (tree / f).read_text(errors="replace").split("\n")[n - 1]
+                anchor = _anchor(cited, k)
+                if anchor:
+                    rec["anchor"] = anchor
                 rows.append(rec)
     return rows
 
@@ -463,9 +491,11 @@ def render(data: dict, secs, defining: dict[str, str] = {}) -> tuple[str, dict]:
         for i in sorted(idx, key=lambda i: (rows[i]["path"], rows[i]["reader"] != "snapy", rows[i]["key"])):
             r, d = rows[i], rows[i]["default"]
             key = f"`{r['path']}/{r['key']}`"
-            where = _link(repo, sha, d["file"], d["line"])
+            anchor = f"`{r['anchor']}` " if r.get("anchor") else ""
+            where = anchor + _link(repo, sha, d["file"], d["line"])
             if r["reader"] != "snapy":
-                where = f"{r['reader']} (listed at {_link(repo, sha, *r['check'].split(':')[:1], int(r['check'].split(':')[1]))})"
+                where = (f"{r['reader']} (listed at {anchor}"
+                         f"{_link(repo, sha, *r['check'].split(':')[:1], int(r['check'].split(':')[1]))})")
             sec = linked[i]
             out.append(f"| {key} | {_cell_default(d)} | {where} | {'@' + sec[0] if sec else 'no section'} |")
         out += ["", f": Keys of the `{top}` block{'s' if len({rows[i]['path'] for i in idx}) > 1 else ''}. "
