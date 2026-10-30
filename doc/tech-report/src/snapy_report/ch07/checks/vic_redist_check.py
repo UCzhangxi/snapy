@@ -3,7 +3,9 @@
 What is checked: vic_constituent_column and vic_redistribute_cell (src/implicit/vic_redistribute_impl.h:77-185)
 and the clamp-residual diagnostic (src/implicit/implicit_hydro.cpp:394-414) at
 snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, ported in vic_port.py. A column of 12 layers with dry gas and
-two species. Claims C1-C6; C6 is exact (sympy).
+two species. Claims C1-C6; C6 is exact (sympy). C7 is the tangential-momentum carry of the partial matrix,
+vic_tangential_momentum_column (src/implicit/vic_redistribute_impl.h:171-186 at
+snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f), ported in vic_port.tangential_momentum_column.
 
 Run: python3 vic_redist_check.py   (numpy and sympy; exits with the number of failed claims)
 """
@@ -116,11 +118,40 @@ def check_C6_telescoping_in_closed_form():
                   "closed form", "6 cells, symbolic: T_top = %s" % sp.simplify(T))
 
 
+def check_C7_tangential_momentum_rides_on_the_transfers():
+    """Partial matrix (N = 3): every face moves its total transfer times the donor's tangential velocity. Each
+    column sum is unchanged; a uniform wind stays uniform when the explicit increments carry it and the solve adds
+    no net column mass (no clamp); without the carry it does not; a wind-free column is left bit for bit."""
+    du, w, d0, vol = column()
+    d0 = d0 - ((d0 - du.sum(1)) * vol).sum() / vol.sum()          # Delta M_col = 0
+    M, mass, mark, moved, top, R = vp.constituent_column(du, w, d0, vol)
+    rho = w[:, 0]
+    v = np.array([400., -30.])
+    du_t = du.sum(1)[:, None] * v                                  # explicit increments that carry the wind
+    carried = vp.tangential_momentum_column(du_t.copy(), np.tile(v, (N, 1)), moved, vol)
+    rho1 = rho + du.sum(1) + mass.sum(1)
+    vel = (rho[:, None] * v + carried) / rho1[:, None]
+    vel0 = (rho[:, None] * v + du_t) / rho1[:, None]
+    e_vel = np.abs(vel - v).max() / np.abs(v).max()
+    e_vel0 = np.abs(vel0 - v).max() / np.abs(v).max()
+    flux = np.abs((carried - du_t) * vol[:, None]).sum(0)
+    e_sum = (np.abs(((carried - du_t) * vol[:, None]).sum(0)) / flux).max()
+    zero = np.full((N, 2), -0.)
+    still = vp.tangential_momentum_column(zero.copy(), np.zeros((N, 2)), moved, vol)
+    bitwise = np.array_equal(still, zero) and np.signbit(still).all()
+    ok = mark.max() == 0 and e_vel < 1e-12 and e_sum < 1e-14 and e_vel0 > 1e-6 and bitwise
+    return report("C7", ok, "the partial matrix's tangential momentum rides on the clamped face transfers at the donor's "
+                  "velocity: column sums kept, a uniform wind kept, a wind-free column untouched",
+                  "v = (400, -30) m/s, Delta M_col = 0, no clamp: velocity change %.1e relative with the carry, %.1e "
+                  "without; column sum %.1e of the moved momentum; wind-free -0. kept: %s"
+                  % (e_vel, e_vel0, e_sum, bitwise))
+
+
 def main():
     checks = [check_C1_top_face_telescopes_to_zero, check_C2_every_constituent_is_conserved,
               check_C3_cell_change_is_the_face_divergence, check_C4_drained_donor_stays_nonnegative,
               check_C5_species_keep_margin,
-              check_C6_telescoping_in_closed_form]
+              check_C6_telescoping_in_closed_form, check_C7_tangential_momentum_rides_on_the_transfers]
     sys.exit(sum(not c() for c in checks))
 
 

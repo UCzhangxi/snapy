@@ -1,7 +1,7 @@
 ## Step acceptance and redo: six causes, one collective decision, halving up to `max_redo` (`check_redo`) {#sec-ch07-redo}
 
 <!-- PROVENANCE
-pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+pin: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: OUTLINE.md 7.4; src/mesh/meshblock.cpp; src/mesh/mesh.cpp; examples/run_hydro.cpp;
          sources/canoe__POSITIVITY_TECH_REPORT.md §9-10; sources/gh__ISSUE_THREADS_251-294.md (#263)
 status: draft
@@ -53,7 +53,8 @@ $$ {#eq-ch07-redo-dt}
    encodes the result as a bit mask with bits 1, 2, 4, 8, 16, 32 for floor, clamp, limiter, NaN, saturation and
    VIC solve. For 0/1 flags `MAX` is OR, so every rank sees the same mask and takes the same branch (`[C1]`).
 3. **Full restore.** A redo copies the step-start state back into `hydro_u`, recomputes `hydro_w` from it,
-   restores the passive scalars, decrements the cycle and drops the gravity-work fix booked during the step.
+   restores the passive scalars and drops the gravity-work fix booked during the step. The cycle count is not
+   touched: the driver advances it only after an accepted step.
 4. **Global halving.** $\Delta t_{n_{\mathrm{redo}}}$ is formed after the `MIN` reduction of @eq-ch07-cfl-dt, so every rank
    takes the same smaller step.
 5. **Past the limit.** Past $n_{\mathrm{redo}}^{\max}$ a VIC solve failure (bit 32) still restores the step before
@@ -83,9 +84,9 @@ make_fig()
 The six flags are one device tensor, `local_redo_flag_tensor` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}), read to the host once by
 `read_redo_flags` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}}). A seventh entry carries the vapour-repair
 failures counted on the device during the step (@sec-ch08-fixvapor); the copy zeroes the count, and
-`read_redo_flags` raises the limiter's error when it is nonzero. The floor test recomputes the primitives from `hydro_u` on a
-copy, because `hydro_w` is one stage stale after the last stage, and compares them with $1.001$ times the floors in a
-negated form, so a NaN counts as a hit. The clamp flag is the VIC dry-clamp mark, the limiter and NaN flags are the
+`read_redo_flags` raises the limiter's error when it is nonzero. The floor test recomputes the primitives from a copy of `hydro_u`
+into `hydro_w`, which keeps them for the output and the next step (a rejected step restores both fields in
+`apply_redo`), and compares them with $1.001$ times the floors in a negated form, so a NaN counts as a hit. The clamp flag is the VIC dry-clamp mark, the limiter and NaN flags are the
 two limiter marks, the saturation flag drains kintera's failure count, and the VIC flag is the solve latch, taken as a tensor without a read of its own. A Mesh
 with several local blocks on one device stacks the blocks' flag tensors and reads their maximum once (on mixed
 devices it ORs the flags block by block), reduces once, and applies the decision to every block; it checks
@@ -132,10 +133,14 @@ dynamics:
     int err = block->check_redo(vars);
     if (err > 0) continue;  // redo this step with smaller dt
     if (err < 0) break;     // terminate simulation
+
+    // make outputs
+    ++block->cycle;
 ```
 
 `err` is the decision of steps 1 to 5: `continue` re-enters the loop, which forms $\Delta t_{n_{\mathrm{redo}}}$ of
-@eq-ch07-redo-dt from the restored state, and `break` is the stop of step 5. What is refused, and why:
+@eq-ch07-redo-dt from the restored state, and `break` is the stop of step 5. Both skip `++block->cycle`, so only an
+accepted step advances the cycle (step 3). What is refused, and why:
 
 - A misspelt floor key such as `density_floor` stops with "unknown key 'dynamics/equation-of-state/density_floor'",
   because a silently ignored floor would leave the default in place ({{< code src/eos/equation_of_state.cpp EquationOfStateOptionsImpl::from_yaml >}};

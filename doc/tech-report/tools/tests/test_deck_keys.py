@@ -98,3 +98,18 @@ def test_yaml_example_paths():
 
 def test_committed_fragment_is_current():
     assert g.main(["--check"]) == 0
+
+
+def test_anchor_is_on_the_cited_line():
+    """The anchor a link names is an identifier of the cited line (STYLE 3.1): the key, its `_` spelling, or a call."""
+    assert g._anchor('  op->alpha() = node["alpha"].as<double>(1.e-6);', "alpha") == "alpha"
+    assert g._anchor("  ADD_ARG(bool, at_face) = false;", "at-face") == "at_face"
+    assert g._anchor('  check_keys(node, "foo",', "flag") == "check_keys"
+    assert g._anchor("", "flag") is None
+
+
+def test_every_read_at_link_of_the_committed_fragment_names_its_anchor():
+    """check_citations needs an anchor symbol for each line link; the committed App. I gives every one."""
+    import check_citations as cc
+    links = [c for c in cc.find_citations(g.FRAGMENT) if c.form == "url" and c.ranges]
+    assert links and all(c.anchor for c in links), [c.text for c in links if not c.anchor][:3]

@@ -66,7 +66,7 @@ def test_unsourced_audit_disposition():
 
 @pytest.mark.parametrize('metadata', [
     {'source': 'https://github.com/chengcli/snapy/blob/main/src/snap.h#L1'},
-    {'source': 'https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/snap.h#L1',
+    {'source': 'https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/src/snap.h#L1',
      'notation_only': True},
 ])
 def test_glossary_source_refuses_ambiguous_provenance(tmp_path, metadata):
@@ -84,7 +84,7 @@ def test_theta_diagnostic_source(term):
     entries = {e['term']: e for e in g.glossary_entries(REPORT)}
     meaning = entries[term]['meaning']
     assert ('https://github.com/chengcli/snapy/blob/'
-            'ccf40f9565642c32be69f4b9ef0cfa6daff3f201/'
+            'c0c38593d3d3f37bebe204a590610fd7daa05a5f/'
             'src/output/load_diag_output_data.cpp#L98-L104') in meaning
     assert 'notation only' not in meaning
     if term == r'$\theta_p$':

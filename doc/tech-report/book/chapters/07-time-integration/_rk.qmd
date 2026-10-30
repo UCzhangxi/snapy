@@ -1,7 +1,7 @@
 ## Explicit SSP Runge-Kutta stages in Shu-Osher form (`integration/type`) {#sec-ch07-rk}
 
 <!-- PROVENANCE
-pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
+pin: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f (chengcli/snapy); pyharp@4721715855e937c1e8b218e964c0655f46e56e29
 sources: OUTLINE.md 7.1; src/mesh/meshblock.cpp; pyharp src/integrator/integrator.cpp; sources/canoe__POSITIVITY_TECH_REPORT.md §3
 status: draft
 -->
@@ -140,11 +140,16 @@ One stage of `MeshBlockImpl::advance_local` ({{< code src/mesh/meshblock.cpp Mes
 
 1. publish the stage index for the VIC, `rk_stage` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
 2. at stage 0, save the step-start state `_hydro_u0` and reset the per-step marks and counters
-   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
+   ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); with the implicit radial diffusion of @sec-ch09
+   (`implicit_radial`), its `begin_step`, the physical boundaries and the ghost exchange come first, so the saved
+   state is the one after that diffusion step;
 3. the hydro tendency, `phydro->forward`, which includes the forcing loop and the VIC
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
-4. the passive-scalar tendency and the user stage forcings (@sec-ch09);
-5. the average @eq-ch07-rk-stage and the conserved-variable limiter, `apply_conserved_limiter_`
+4. the passive-scalar tendency and the user stage forcings (@sec-ch09); with species and the equation-of-state
+   limiter on, the species part of the user forcings' increment is clipped so that it takes no species density below
+   zero, nor below what the increment before the user forcings already gave (@sec-ch08; {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
+5. the average @eq-ch07-rk-stage, at the last stage the implicit radial diffusion's `finish_step` when it is on,
+   and the conserved-variable limiter, `apply_conserved_limiter_`
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}); on a block with no species and no passive
    scalars the limiter is skipped before the last stage, because the next stage's conversion to primitives applies
    the same pointwise limiter; the scalars get the same average, `_scalar_s0` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}});
@@ -266,7 +271,7 @@ assertion on the weights.
 
 [^rg-0ebf34f7decd]: YAML — YAML Ain't Markup Language, the structured input format used for decks
 
-[^rg-4d1d8f105ddf]: $\mathbf U^{(s)}$ — state after RK stage $s$; [source](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/mesh/meshblock.cpp#L772-L777)
+[^rg-4d1d8f105ddf]: $\mathbf U^{(s)}$ — state after RK stage $s$; [source](https://github.com/chengcli/snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f/src/mesh/meshblock.cpp#L800-L808)
 
 [^rg-323f7dcf8b09]: $\mathcal L$ — the semi-discrete right-hand side (all explicit operators); notation only; see @sec-appa
 

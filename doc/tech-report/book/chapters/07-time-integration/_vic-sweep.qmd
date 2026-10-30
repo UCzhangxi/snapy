@@ -1,7 +1,7 @@
 ## Block Thomas sweep and back substitution: one serial pass up, one down, per column (`ForwardSweep`) {#sec-ch07-vic-sweep}
 
 <!-- PROVENANCE
-pin: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201 (chengcli/snapy)
+pin: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f (chengcli/snapy)
 sources: OUTLINE.md 7.9; src/implicit/forward_sweep_impl.h; src/implicit/vic_redistribute_impl.h;
          src/implicit/vic_solve_failure.h; src/implicit/implicit_dispatch.cpp; src/implicit/implicit_dispatch.cu;
          src/math/lubksb.h; src/hydro/hydro_forward.cpp; tests/test_lu_failure.cpp
@@ -12,13 +12,14 @@ status: draft
 
 The right-hand side is the explicit increment of the stage over the step handed to the solve. So the sweep returns
 the corrected increment $\boldsymbol\delta = (\mathsf I+\Delta t_c\mathsf M)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$, which is the
-explicit one, in the solved variables of @sec-ch07-vic-stage, when $\Delta t_c\to0$. Every block it inverts is first
+explicit one, in the solved variables of @sec-ch07-vic-stage, when $\Delta t_c\to0$. For the partial system the
+assembly's tangential term is subtracted from the right-hand side first (@eq-ch07-vic-fold). Every block it inverts is first
 factored by `ludcmp` with the pivot guard of @sec-ch07-vic-pivot. A refused block marks the whole column as failed.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Solves one column's block-tridiagonal system: forward elimination, then back substitution; @eq-ch07-vic-sweep.
 
-**Data.** Reads $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$ and $\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t_c$; writes $\boldsymbol\delta_i$[^rg-9741895ca2fa], or NaN in a failed column.
+**Data.** Reads $\mathsf A_i$, $\mathsf B_i$, $\mathsf C_i$, $\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t_c$ and, for $N=3$, the assembly's $\mathbf f^{\mathrm{tan}}_i$; writes $\boldsymbol\delta_i$[^rg-9741895ca2fa], or NaN in a failed column.
 
 **Placement.** Every stage with a VIC, after the assembly.
 
@@ -29,7 +30,9 @@ factored by `ludcmp` with the pivot guard of @sec-ch07-vic-pivot. A refused bloc
 **Evidence.** @tbl-ch07-vic-sweep-tests; `test_lu_failure.release`, `vic_sweep_check.py` `[C1]`–`[C6]`.
 :::
 
-Local symbols: $\mathbf f_i=\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t_c$ is the right-hand side of row $i$;
+Local symbols: $\mathbf f_i=\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t_c$ is the right-hand side of row $i$ for $N=5$, and
+$\mathbf f_i=\Delta\mathbf U^{(0)}_{\mathrm{sv},i}/\Delta t_c-\mathbf f^{\mathrm{tan}}_i$ for $N=3$, with $\mathbf f^{\mathrm{tan}}_i$ the
+tangential term of @eq-ch07-vic-fold;
 $\tilde{\mathsf C}_i$ the reduced upper block and $\tilde{\boldsymbol\delta}_i$ the forward value of row $i$; $\mathsf M$ the column
 operator without $\mathsf I/\Delta t_c$ (@sec-ch07-vic-stage); $n_{\mathrm{lay}}$ the number of layers of the column;
 $\zeta_n=n(\epsilon_{\mathrm m}/2)/(1-n\epsilon_{\mathrm m}/2)$ bounds the relative error of $n$ roundings. $\boldsymbol\delta_i$
@@ -63,7 +66,8 @@ $\tilde{\mathsf C}_i$ in `a[i]` and overwrites `delta[i]` in place. Steps 1 to 3
    $\Delta t_c$, since the kernel receives `dt_corr` for both (`rhs(1) = DU(IVX + dir, i) / dt` in
    {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). Multiplying the system by $\Delta t_c$ gives
    $\boldsymbol\delta=(\mathsf I+\Delta t_c\mathsf M)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$, which tends to
-   $\Delta\mathbf U^{(0)}_{\mathrm{sv}}$ as $\Delta t_c\to0$ (`[C2]`). At the second rk3 stage, $\Delta t_c=\Delta t/4$, and the
+   $\Delta\mathbf U^{(0)}_{\mathrm{sv}}$ as $\Delta t_c\to0$ (`[C2]`). For $N=3$ the same holds with $\Delta t_c\mathbf f^{\mathrm{tan}}_i$
+   subtracted from $\Delta\mathbf U^{(0)}_{\mathrm{sv},i}$; that term is zero when every $v_a$ and $\tilde m_a$ is. At the second rk3 stage, $\Delta t_c=\Delta t/4$, and the
    result differs from $(\mathsf I+\Delta t\mathsf M)^{-1}\Delta\mathbf U^{(0)}_{\mathrm{sv}}$ by 3.7 relative at $\Delta t=10$ s
    (`[C5]`).
 5. *Accuracy.* On 60 layers the two passes match a dense solve within $10^{-11}$ relative for both $N=3$ and $N=5$ (`[C1]`).
@@ -93,7 +97,10 @@ make_fig()
 ```
 
 `ForwardSweep` builds the right-hand side `rhs` of each layer from the explicit increment, with the density row
-summed over the species ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=5$ it factors the eliminated block and
+summed over the species ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=3$, called with `rhs_in_delta`, it
+then subtracts the $\mathbf f^{\mathrm{tan}}_i$ the assembly left in `delta[i]`, through `correct`, before `delta[i]` is
+overwritten; an exact zero entry is skipped, so a wind-free column's `rhs` is unchanged bit for bit. `vic_solve_cpu`
+passes `rhs_in_delta` as `N == 3` ({{< code src/implicit/implicit_dispatch.cpp vic_solve_cpu >}}). For $N=5$ it factors the eliminated block and
 solves for $\tilde{\mathsf C}_i$ and $\tilde{\boldsymbol\delta}_i$ together with the multi-column `lubksb`
 ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). For $N=3$ it checks the factorisation with `ludcmp` and
 keeps the explicit inverse ({{< code src/implicit/forward_sweep_impl.h ForwardSweep >}}). After every layer it checks that $\tilde{\mathsf C}_i$ and $\tilde{\boldsymbol\delta}_i$ are
@@ -112,6 +119,7 @@ On CUDA the sweep is one thread per column, and the assembly and the final cell 
 |---|---|---|---|
 | forward elimination | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `ForwardSweep` | |
 | right-hand side | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `rhs` | |
+| $N=3$: subtract $\mathbf f^{\mathrm{tan}}_i$ | {{< code src/implicit/forward_sweep_impl.h ForwardSweep >}} | `correct` | `implicit-scheme` 1 |
 | multi-column LU solve | {{< code src/math/lubksb.h lubksb overload=2 >}} | `lubksb` | |
 | failed-column sentinel | {{< code src/implicit/vic_solve_failure.h vic_fail_column >}} | `vic_fail_column` | |
 | back substitution | {{< code src/implicit/vic_redistribute_impl.h vic_backward_substitute >}} | `vic_backward_substitute` | |
@@ -150,6 +158,8 @@ $\tilde{\mathsf C}_i$ of @eq-ch07-vic-sweep, with `rhs` $=\mathbf f_i$. The back
 on random diagonally dominant columns and on a 2-layer assembled column.[^ch07-vic-sweep-run] `[C1]` and `[C2]` are
 steps 5 and 4; `[C3]` fills all 100 entries of a column with a singular block at layer 12 of 20 with NaN; `[C4]`
 moves 30 of 30 layers with one change at the bottom; `[C5]` is the $\Delta t_c$ of step 4; `[C6]` steps 1 to 3. The
+check's port takes the right-hand side as given, so it covers the $N=3$ path with $\mathbf f^{\mathrm{tan}}_i=0$; the
+subtraction itself is exercised by `vic_assembly_check.py` `[C7]` (@sec-ch07-vic-assembly). The
 CPU and CUDA sweeps share the header; only the CPU path ran.
 
 [^ch07-vic-sweep-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: random diagonally dominant columns

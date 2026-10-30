@@ -246,7 +246,7 @@ def outputs(notation: str, book: Path) -> tuple[str, dict[str, str]]:
         "the first scheme, in book order, whose maths contains the symbol (an exact match after spaces and one-character "
         "braces are dropped; \"—\" where none does, which a different spelling also gives); \"code\" is the name the "
         "code uses, at "
-        "chengcli/snapy `ccf40f9565642c32be69f4b9ef0cfa6daff3f201` and kintera "
+        "chengcli/snapy `c0c38593d3d3f37bebe204a590610fd7daa05a5f` and kintera "
         "`c55b13b2204997d2d09e04498558ab9495d8ee77`.",
         "",
     ]

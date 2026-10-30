@@ -149,3 +149,14 @@ use $n_{\mathrm{dep}}$ for deposition depth, $L_{\mathrm{spg}}$ and $\alpha_{\ma
 $\mathsf D$ and $\ell$ for the user-forcing dictionary and module index, $\boldsymbol\Pi$ and $K_{\Delta t}$ for viscous
 stress and the time-step coefficient, $\alpha_{\mathrm f}$ for wall extrapolation, and $c_0$, $\eta$ for the constant
 profile product and its relative face excess. The full units and meanings are in the eight local-symbol paragraphs.
+
+## Chapter 7 local symbols, partial VIC (draft)
+
+`_vic-assembly.qmd` defines, for the $m_a$ fold of the partial system: $a\in\{2,3\}$ for a tangential direction;
+$\tilde m_{a,i}$ for the part of the explicit tangential-momentum increment that the explicit mass increment does
+not carry; $\mathsf A_i[m_a]$, $\mathsf B_i[m_a]$, $\mathsf C_i[m_a]$ for the $m_a$ columns of the full blocks restricted
+to the rows $(\rho,\rho v_1,E)$; $\mathsf A^{(3)}_i$ and $\mathsf A^{\mathrm f}_i$ (and the same for $\mathsf B$, $\mathsf C$) for the
+$(\rho,\rho v_1,E)$ blocks before and after the fold; $\mathbf e_\rho$ for the density column; and $\mathbf f^{\mathrm{tan}}_i$
+for the right-hand-side term the sweep subtracts. `_vic-redistribute.qmd` defines $\mathcal T^{\mathrm c}_{i+1/2}$ for the
+total clamped face transfer and $v_{a,\mathrm{don}}$ for the donor's tangential velocity. The editor owns registration;
+NOTATION.md is unchanged.
