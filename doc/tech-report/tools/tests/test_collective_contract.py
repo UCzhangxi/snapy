@@ -17,7 +17,7 @@ def test_clean_contract():
      'snapy.distributed.set_process_group(None)'),
     ('BACKEND=gloo torchrun', 'torchrun'),
     ('c10d::ReduceOp::MIN', 'c10d::ReduceOp::MAX'),
-    ('process_group.cpp#L215', 'process_group.cpp#L214'),
+    ('process_group.cpp#L216', 'process_group.cpp#L215'),
 ])
 def test_contract_drift(tmp_path, old, new):
     target = tmp_path / c.TARGET
