@@ -11,11 +11,12 @@ reviewer:
 ### Summary
 
 A passive scalar is a quantity the flow carries without acting on it. snapy stores each scalar as a density and
-transports it as a ratio to the dry-air density. The ratio rides exactly on the dry-mass flux the hydro operator has
-just computed. This section follows that call, which runs after the hydro call in every stage.
+transports it as a ratio to the dry-air density. The ratio at a face is the reconstructed scalar density over the
+reconstructed dry density, and it rides on the dry-mass flux the hydro operator has just computed. This section
+follows that call, which runs after the hydro call in every stage.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** N/A, a code map: reconstruct the ratio to dry density, upwind it with the hydro dry-mass flux.
+**Purpose.** Form the face ratio $r_{n,f} = \hat\rho_{n,f}/\hat\rho_{\mathrm d,f}$ (@eq-ch01-scalar-face) and upwind it with the hydro dry-mass flux.
 
 **Data.** In: `scalar_s` [$\mathrm{kg\,m^{-3}}$], `hydro_u` and the hydro fluxes. Out: the scalar stage increment.
 
@@ -23,9 +24,9 @@ just computed. This section follows that call, which runs after the hydro call i
 
 **Activation.** `scalar/names` or `scalar/nvar` (default 0); `upper-bound`[^rg-0ed3cc23ed9a] default $-1$ (off).
 
-**Guarantee / limits.** A map; the ratio divides by the conserved dry density, so that density must be positive.
+**Guarantee / limits.** A uniform ratio stays uniform; the face ratio is fifth order with `cp5` and `weno5` on a smooth column; a face whose reconstructed dry density is not positive takes the donor cell's ratio.
 
-**Evidence.** `test_scalar.<b>`: shape, finiteness and the bound ($10^{-5}$ float32, $10^{-12}$ float64); see Tests.
+**Evidence.** `test_scalar.release`, `test_scalar_stratified_python` (fitted orders); see Tests.
 :::
 
 Local symbols: $\rho_n$[^rg-0d8fe044c8ef] is the density of passive scalar $n$ (`scalar_s`) and $r_n = \rho_n/\rho_{\mathrm{d}}$ its
@@ -33,15 +34,41 @@ mixing ratio per unit dry mass (`scalar_r`).
 
 ### Derivation
 
-No separate derivation: this section describes an interface or control-flow path, and the operators are derived
-in their owning chapters.
+Write $\mathcal R$[^rg-17fdbadd9e74] for the face reconstruction of the scalar block, applied to cell averages along one axis, and
+$\hat q_f = \mathcal R[q]_f$ for its value at face $f$. The scalar block forms the face ratio from two
+reconstructions, one of the scalar density and one of the dry density
+({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}, `face_r`):
+
+$$
+r_{n,f} = \begin{cases} \mathcal R[\rho_n]_f\,/\,\mathcal R[\rho_{\mathrm d}]_f, & \mathcal R[\rho_{\mathrm d}]_f > 0,\\
+\rho_{n,i}/\rho_{\mathrm d,i}, & \text{otherwise, with } i \text{ the cell on that side of } f. \end{cases}
+$$ {#eq-ch01-scalar-face}
+
+1. *Uniform ratio.* `ScalarImpl::reset` sets `scale = true` on the interpolant it builds, whatever the card says
+   ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}). With `scale`[^rg-21be26a14922] on, the nonlinear weights see the stencil
+   values divided by their own magnitude, so the interpolant is homogeneous of degree one: $\mathcal R[c\,q] =
+   c\,\mathcal R[q]$ for a constant $c > 0$. A uniform ratio $r$ gives $\rho_n = r\rho_{\mathrm d}$ cell by cell, so
+   $\mathcal R[\rho_n]_f = r\,\mathcal R[\rho_{\mathrm d}]_f$ and @eq-ch01-scalar-face returns $r$[^rg-adc74081119b] on every face.
+2. *Order.* Each reconstruction of a smooth density is accurate to the order $p$ of the interpolant, so the
+   quotient is $r_n(x_f) + O(\Delta x^p)$ wherever $\rho_{\mathrm d}$[^rg-c3e134f8e620] is bounded away from zero. Reconstructing the
+   ratio of cell averages, $\overline{\rho_n}/\overline{\rho_{\mathrm d}}$, would not be: that quotient differs from the
+   cell average of $r_n$ by $O(\Delta x^2)$ wherever both $\rho_{\mathrm d}$ and $r_n$ vary, which caps the face
+   ratio at second order.
+3. *Donor fallback.* Where the reconstructed dry density is not positive the quotient is undefined or of the wrong
+   sign; the cell ratio of the side the state belongs to replaces it, which is first order there.
+
+The fitted orders are measured by `test_scalar_stratified_python` (Tests).
 
 ### Numerical method
 
-`ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}) requires `hydro_u` and forms the ratio
-of the scalar density to the conserved dry density. It reconstructs the ratio in $x_1$ and feeds the face pair to the
-Riemann solver together with the hydro's $x_1$ dry-mass flux. The lateral directions reconstruct the ratio and
-exchange the cross-panel face states with interpolation off. They take the hydro's lateral mass fluxes, with the
+`ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}) requires `hydro_u` and forms the face
+ratio of @eq-ch01-scalar-face from the reconstructed scalar and dry densities. In $x_1$ it uses `precon1`, which
+`ScalarImpl::reset` builds with the coordinate's per-face $x_1$ rows when `x1_row_faces` returns faces for the
+interpolant (a stretched $x_1$, or `weno5`/`cp5` on a spherical-polar or gnomonic $x_1$), and which is the same module
+as the lateral `precon` otherwise ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}},
+{{< code src/coord/coordinate.cpp CoordinateImpl::x1_row_faces >}}). It feeds the face pair to the Riemann solver
+together with the hydro's $x_1$ dry-mass flux. The lateral directions form the same face ratio and exchange the
+cross-panel face states with interpolation off. They take the hydro's lateral mass fluxes, with the
 scalar's own covariance row when the face-flux covariance is on (@sec-ch12-flux-covariance). The donor factor of the
 positivity limiter is exchanged raw and passed through the physical boundary functions in the `sync_theta` closure
 before the fluxes are scaled (@sec-ch08). The parent block combines the stage and carries the implicit dry transfer
@@ -67,9 +94,10 @@ make_fig()
 
 1. The scalar is advected as a ratio so that it rides on the hydro's dry-mass flux exactly. The Riemann call for the
    scalar receives the hydro's $x_1$ flux of `IDN` as the mass flux
-   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). A uniform ratio is thus transported as a uniform ratio.
-2. The ratio is formed by one division per cell, $r_n = \rho_n/\rho_{\mathrm{d}}$, rounded once. The relative error is at
-   most $\delta_{\mathrm{mach}} = 2^{-53}$, and the product that forms the flux from it adds one more.
+   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). A uniform ratio is thus transported as a uniform ratio
+   (Derivation, step 1).
+2. The face ratio costs two reconstructions and one division per face instead of one reconstruction of a ratio
+   formed per cell, and the donor fallback costs a `where` over the face states.
 3. The donor factor is exchanged raw, because the donor of a seam face is the neighbour's edge cell and an
    interpolated ghost is not its factor (@sec-ch11-exchange).
 
@@ -79,19 +107,24 @@ make_fig()
 |---|---|---|---|
 | scalar | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `forward` | `scalar:` |
 | limiter sync | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | EOS limiter or covariance on |
+| face ratio | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `face_r` | none |
+| interpolants | {{< code src/scalar/scalar.cpp ScalarImpl::reset >}} | `precon1` | `scalar/reconstruct` |
+| per-face $x_1$ rows | {{< code src/coord/coordinate.cpp CoordinateImpl::x1_row_faces >}} | `x1_row_faces` | `geometry`, `scalar/reconstruct/type` |
 | options | {{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}} | `from_yaml` | `scalar/*` |
 | inherit | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `recon23` | `scalar/reconstruct` |
 | transfer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `mass_corr` | `implicit-scheme` |
 
 : Implementation anchors for the scalar transport. {#tbl-ch01-scalar-code}
 
-1. Form the ratio, reconstruct, upwind with the dry-mass fluxes: `forward`
+1. Build `precon` with `scale` forced on, and `precon1` with the per-face $x_1$ rows when the coordinate has them:
+   `reset` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}).
+2. Reconstruct the scalar and dry densities, form the face ratio, upwind with the dry-mass fluxes: `forward`
    ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
-2. Exchange and bound the donor factor: `sync_theta` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
-3. Read the count, bound and reconstruction: `from_yaml`
+3. Exchange and bound the donor factor: `sync_theta` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+4. Read the count, bound and reconstruction: `from_yaml`
    ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}); the inherited reconstruction is
    set in {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}.
-4. Carry the implicit dry transfer in the parent: `mass_corr`
+5. Carry the implicit dry transfer in the parent: `mass_corr`
    ({{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}).
 
 **How to use it.** Name the scalars, or give their count; the bound is off unless set
@@ -108,21 +141,30 @@ scalar:
 ```
 
 Refused: a key other than `verbose`, `nvar`, `upper-bound`, `names`, `reconstruct` and `riemann-solver`; inside
-`reconstruct` anything but `shock`[^rg-e1a0b3afb85c], `type` and `scale`[^rg-21be26a14922]. Also refused: a Riemann solver other than `upwind`, and
-`upper-bound: 0` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}). The ratio and the $x_1$ flux are these lines
-of `ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
+`reconstruct` anything but `shock`[^rg-e1a0b3afb85c] and `type`, so a card that sets `scalar/reconstruct/scale` is refused as an
+unknown key ({{< code src/scalar/scalar_options.cpp ScalarOptionsImpl::from_yaml >}}); the scalar interpolant runs
+with `scale` on whatever the card says. Also refused: a Riemann solver other than `upwind`, and
+`upper-bound: 0` ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}). The face ratio and the $x_1$ flux are these
+lines of `ScalarImpl::forward` ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
 
 ```cpp
 auto rho = other.at("hydro_u")[IDN].unsqueeze(0);
-auto r = u / rho;
+auto face_r = [&](int dim) {
+  auto recon = dim == DIM1 ? precon1 : precon;
+  auto rf = recon->forward(rho, dim), r = u / rho;  // donor r if rf <= 0
+  return torch::where(rf > 0., recon->forward(u, dim) / rf,
+                      torch::stack({r.roll(1, dim), r}));
+};
 if (_flux1.defined()) {
-  auto rlr = precon->forward(r, DIM1);
+  auto rlr = face_r(DIM1);
   _flux1.set_(
       priemann->forward(rlr[ILT], rlr[IRT], DIM1, pmb->phydro->flux1()[IDN]));
 ```
 
-`rho` is the conserved dry density, `r` the ratio, and the last call upwinds the reconstructed pair with the
-hydro's dry-mass flux.
+`rho` is the conserved dry density, `rf` its face pair, and `face_r` returns the pair of
+@eq-ch01-scalar-face: the quotient where `rf` is positive, else the cell ratio `r` of the side the state comes from
+(`r.roll(1, dim)` for the left state, `r` for the right). The last call upwinds the pair with the hydro's dry-mass
+flux.
 
 ### Tests
 
@@ -130,14 +172,25 @@ hydro's dry-mass flux.
 |---|---|---|---|
 | `test_scalar.<b>` | the scalar density is seeded with the right shape and the increment is finite | `allclose` defaults; exact shape | the API contract |
 | `test_scalar.<b>` | the ratio stays within its upper bound and the density nonnegative | $10^{-5}$ float32; $10^{-12}$ float64 | test constants |
+| `test_scalar_stratified_python` | the face ratio of @eq-ch01-scalar-face is at least order 4.5 with `cp5` and `weno5` on a smooth stratified column ($n_1$[^rg-b2378306863a] 40 to 160), and finite at a 10:1 and a 100:1 density contact | fitted order $\ge4.5$; finite | test bound |
+| `test_scalar_flux_covariance_python`, `test_scalar_cov_x1_split_python` | a tracer carried as a scalar equals the same tracer carried as a hydro species; four $x_1$ blocks equal one | $10^{-12}$; $10^{-13}$ relative | round-off |
 
 : Source assertions for the scalar transport. {#tbl-ch01-scalar-tests}
 
 The assertions are {{< code tests/test_scalar.cpp DeviceTest.initialize_and_transport_scalar >}} and
 {{< code tests/test_scalar.cpp DeviceTest.scalar_upper_bound_holds_both_sides >}}.
 
-The ctest runs on CPU and, through the shared device list, on CUDA when the build has it. It has not been run
-for this report at the pin: **pending a pinned ctest run**. No report check exists for this section.
+The C++ ctest runs on CPU and, through the shared device list, on CUDA when the build has it. At 68f4e066 all four
+pass on CPU; `test_scalar_stratified_python` fits orders 4.99 and 5.00 (`cp5`, $n_1$ 40 to 80 and 80 to 160) and
+5.09 and 4.99 (`weno5`), and no non-finite face ratio at either contact.[^sca-run68] The CUDA cases were not run. No
+report check exists for this section.
+
+[^sca-run68]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the tests' own cards; run:
+    `env CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 PYTHONPATH="$SITE" ctest -V -R '^test_scalar'` in a CPU Release
+    source build at the pin, with `$SITE` the snapy Python package built from the same checkout against that build,
+    CPU, double, 1 process; Python 3.11.13, torch 2.10.0, kintera 2.6.6, GCC 11.5.0]. Output line `order cp5, weno5:
+    [4.988962983537853, 5.000130558829113, 5.090603911650287, 4.993282686908261] non-finite at 10:1, 100:1 contact:
+    [False, False]`.
 
 ### Limits
 
@@ -152,6 +205,14 @@ established by the cited tests. The upper-bound and positivity mechanisms are do
 
 [^rg-0d8fe044c8ef]: $\rho_n$ — density of passive scalar $n$, $\rho_{\mathrm d} r_n$ (`scalar_s`)
 
+[^rg-17fdbadd9e74]: $\mathcal R$ — universal gas constant [J mol$^{-1}$ K$^{-1}$]; the only molar quantity in this table
+
+[^rg-21be26a14922]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+
+[^rg-adc74081119b]: $r$ — $x_1$ on a spherical-polar grid (radius) [m]
+
+[^rg-c3e134f8e620]: $\rho_{\mathrm{d}}$ — dry-air density [kg m$^{-3}$]
+
 [^rg-5f6c85feb7ba]: names — names of the passive scalars, one per scalar (in the `scalar` block)
 
 [^rg-ee49227d4789]: limiter — whether the enclosing component enables its limiter
@@ -160,5 +221,5 @@ established by the cited tests. The upper-bound and positivity mechanisms are do
 
 [^rg-e1a0b3afb85c]: shock — whether reconstruction uses its shock handling
 
-[^rg-21be26a14922]: scale — scaling in the enclosing component: a reconstruction switch or values of a thermal-transport profile
+[^rg-b2378306863a]: $n_1, n_2, n_3$ — interior cells per block in each direction
 <!-- end reader glossary notes -->

@@ -45,7 +45,15 @@ sets the default dtype to float64 and the thread counts to one, and reads the pa
 ({{< code python/csrc/pymesh.cpp bind_mesh >}}) binds `MeshBlock.forward` with the GIL released around the C++ call,
 so a Python driver reaches the stage and exchange order of @sec-ch01-block-forward unchanged. `bind_layout`
 ({{< code python/csrc/pylayout.cpp bind_layout >}}) binds `set_process_group`, which the launch helper uses to hand
-torch's default process group to the layout. {{< code pyproject.toml >}} declares the build requirements (torch pinned
+torch's default process group to the layout. For a stretched $x_1$ (@sec-ch03-globalgrid), `bind_coord`
+({{< code python/csrc/pycoord.cpp bind_coord >}}) exposes the option `x1f_interior` and the queries `stretched_x1`,
+`x1f_ghosts` and `global_x1f` on `CoordinateOptions`; `bind_recon` ({{< code python/csrc/pyrecon.cpp bind_recon >}})
+adds `Reconstruct.set_x1_faces`, which installs per-face $x_1$ rows from a face vector of $n_{c1}+1$ increasing
+entries (buffers `interp1.cm_x1`, `interp1.cp_x1`, `interp2.cm_x1`, `interp2.cp_x1`; refused for interpolants other
+than `weno5` and `cp5`), and the free builders `weno5_x1_coeffs` and `cp5_x1_coeffs`, which return the rows of a face
+vector with no block, `(cm, cp)` of $n_f-5$ rows of 48 and 5 columns; `bind_hydro`
+({{< code python/csrc/pyhydro.cpp bind_hydro >}}) gives `balance_column` the argument `stretched=False`
+(@sec-ch05-balcol). The stubs are in {{< code python/snapy/reconstruction.pyi >}}. {{< code pyproject.toml >}} declares the build requirements (torch pinned
 to one version, kintera, and on Linux commux and pinc) apart from the run-time requirements. It also declares the two
 console scripts `pd-combine` and `pd-inspect`. The Python ctests import the package under `SNAPY_TEST_PYTHONPATH` when
 that cache path is set ({{< code tests/CMakeLists.txt >}}; @sec-ch12-build). Import and binding introduce no spatial
@@ -79,6 +87,9 @@ make_fig()
 | module | {{< code python/csrc/snapy.cpp PYBIND11_MODULE >}} | `load_restart` | none |
 | mesh | {{< code python/csrc/pymesh.cpp bind_mesh >}} | `forward` | none |
 | layout | {{< code python/csrc/pylayout.cpp bind_layout >}} | `set_process_group` | none |
+| stretched $x_1$ options | {{< code python/csrc/pycoord.cpp bind_coord >}} | `x1f_interior` | none |
+| per-face $x_1$ rows | {{< code python/csrc/pyrecon.cpp bind_recon >}} | `set_x1_faces` | none |
+| `balance_column` | {{< code python/csrc/pyhydro.cpp bind_hydro >}} | `stretched` | none |
 | packaging | {{< code pyproject.toml >}} | `dependencies` | none |
 | scripts | {{< code pyproject.toml >}} | `pd-combine` | none |
 | test path | {{< code tests/CMakeLists.txt >}} | `SNAPY_TEST_PYTHONPATH` | `SNAPY_TEST_PYTHONPATH` |
@@ -133,7 +144,15 @@ The assertions are the top-level `assert` statements of {{< code tests/test_pyth
 
 Both tests run on CPU, one process; `test_python_import_path_python` exits 125 when the cache path is unset.
 Neither has been run for this report at the pin: **pending a pinned ctest run**. No report check exists for this
-section.
+section. No ctest calls the stretched-$x_1$ bindings from Python (the C++ tests of @sec-ch03-globalgrid cover the
+functions they bind); they were called once at the pin, from the package built from the source tree, and returned
+rows of the documented shapes and the four `_x1` buffers.[^py-bind68]
+
+[^py-bind68]: snapy@68f4e066974ede87e4379285c4fba895b970b7f1 built from source (CPU Release; the Python package by
+    `pip install --no-deps --no-build-isolation --target $SITE .` against that build), Python 3.11.13, torch 2.10.0;
+    `PYTHONPATH=$SITE python` calling `weno5_x1_coeffs` and `cp5_x1_coeffs` on a 13-face vector (shapes (8, 48) and
+    (8, 5)), `CoordinateOptions().stretched_x1()` (False), and `Reconstruct(op).set_x1_faces` on a `weno5` module; a
+    one-off call, not a committed check.
 
 ### Limits
 

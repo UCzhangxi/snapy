@@ -79,6 +79,24 @@ step 2 below; $\langle\cdot\rangle$ a cell average (appendix A, notation group 4
 4. *Three cells are needed.* The one-sided stencil spans three cells, so a block with fewer than three $x_1$ cells
    would read a ghost; `HydroImpl::reset` refuses it.
 
+#### Stretched $x_1$
+
+On a keyed stretched $x_1$ (@sec-ch03-globalgrid) both slopes are the three-point derivatives of the quadratic
+through the centroids, exact for a quadratic. With $h_-=x_{1,i}-x_{1,i-1}$ and $h_+=x_{1,i+1}-x_{1,i}$ the centred one is
+
+$$
+\partial^{\mathrm h}_1q_i=-\frac{h_+}{h_-(h_-+h_+)}\,q_{i-1}+\frac{h_+-h_-}{h_-h_+}\,q_i+\frac{h_-}{h_+(h_-+h_+)}\,q_{i+1},
+$$ {#eq-ch04-x1masscov-nu}
+
+and with $a=x_{1,i+s}-x_{1,i}$, $b=x_{1,i+2s}-x_{1,i}$ the one-sided wall slope is
+$-\tfrac{a+b}{ab}q_i+\tfrac{b}{a(b-a)}q_{i+s}-\tfrac{a}{b(b-a)}q_{i+2s}$. On equal spacings the two reduce to the
+uniform forms above. The uniform branch keeps those forms as written, so a uniform deck is unchanged; the stretched
+branch is taken from the deck's key, not from the widths (`x1_cov_d1_centred`, `x1_cov_one_sided`,
+{{< code src/hydro/x1_mass_covariance.hpp x1_cov_d1_centred >}}, {{< code src/hydro/x1_mass_covariance.hpp x1_cov_one_sided >}}).
+`test_stretched_x1_ref.release` checks @eq-ch04-x1masscov-nu exact on a quadratic. The prefactor stays
+$h_i^2/12$, the leading term of the uniform derivation; on a stretched grid the order of the corrected gap is not
+derived or measured here.
+
 #### Round-off
 
 1. *At rest the correction is an exact zero.* $\partial^{\mathrm h}_1v_1$ of a zero velocity is an exact zero, so the
@@ -104,7 +122,7 @@ make_fig()
 shallow water), after the hydrostatic reference has been subtracted from $p$ and $\rho$ and before
 `precon1->forward`. Without gravity the branch is not taken and the switch does nothing.
 
-**Ghosts and seams.** `d1_centred` copies its end values from the neighbours, so the outermost ghost slopes are
+**Ghosts and seams.** `x1_cov_d1_centred` copies its end values from the neighbours, so the outermost ghost slopes are
 not centred; the corrected interior is what the reconstruction reads at the faces it owns. At an internal $x_1$
 seam the ghosts are the neighbour's cells and the centred difference is used.
 
@@ -131,12 +149,14 @@ SNAP_X1_MASS_COVARIANCE=1 ./straka.release straka_single.yaml
     if (x1_mass_covariance()) {
       velocity = wx1[IVX].clone();
       ...
-      auto rho_1 = d1_centred(density, x1v);
+      bool stretched = pmb->pcoord->options->stretched_x1();
+      auto rho_1 = x1_cov_d1_centred(density, x1v, stretched);
       ...
       if (phys_x1inner && !is_outflow(pmb->options->bfuncs()[0]))
-        rho_1.select(-1, is).copy_(one_sided(is, 1));
+        rho_1.select(-1, is).copy_(
+            x1_cov_one_sided(density, x1v, is, 1, stretched));
       ...
-      auto w_1 = d1_centred(velocity, x1v);
+      auto w_1 = x1_cov_d1_centred(velocity, x1v, stretched);
       wx1[IVX] -= dx1f * dx1f / 12. * rho_1 * w_1 / density;
       ...
     }
@@ -153,7 +173,7 @@ of the correction; the reconstruction reads the corrected velocity and the last 
 | the switch, read once | {{< code src/hydro/hydro.cpp HydroImpl::x1_mass_covariance >}} | `get_env` | default `"0"` |
 | the correction block | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_mass_covariance` | switch on, gravity on |
 | the centred difference | {{< code src/hydro/x1_mass_covariance.hpp x1_cov_d1_centred >}} | `x1_cov_d1_centred` | |
-| one-sided wall slope | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `one_sided` | physical, not outflow |
+| one-sided wall slope | {{< code src/hydro/x1_mass_covariance.hpp x1_cov_one_sided >}} | `x1_cov_one_sided` | physical, not outflow |
 | the three-cell check | {{< code src/hydro/hydro.cpp HydroImpl::reset >}} | `TORCH_CHECK` | switch on, $g_1\ne0$ |
 
 : Code map of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-code}
@@ -165,17 +185,23 @@ of the correction; the reconstruction reads the corrected velocity and the last 
 | `test_x1_seam_split_x1_mass_covariance.release` | with the switch on, a block of 2 $x_1$ cells is refused with the message above and one of 3 is accepted | exact (throws or not) | a setup contract |
 | `derivation_check.py` `[C15]` (this report) | @eq-ch04-x1masscov-gap; centred and one-sided slopes second order; corrected gap fourth order | exact | sympy |
 | `covariance_check.py` `[C4]`–`[C6]` (this report) | measured orders 2.00 and 3.99; exact zero at rest; wall slope order 1.98 | fitted orders; bitwise | stated in the check |
+| `test_stretched_x1_ref.release`, `covariance_slopes_exact_for_quadratic` | @eq-ch04-x1masscov-nu and the one-sided slope are exact on a quadratic on unequal spacings | round-off | exactness for degree 2 |
+| `test_stretched_x1_ref_x1_mass_covariance.release`, `x1_mass_covariance_switch_runs` | with the switch, a reflecting deck on a keyed stretched $x_1$ builds and steps | runs | setup contract |
 
 : Tests of the $x_1$ mass-flux covariance. {#tbl-ch04-x1masscov-tests}
 
 `[C15]` holds symbolically; `covariance_check.py` gives the orders quoted in the derivation and an exact zero at
-rest.[^x1c-run] The ctest entry passes at the pin on CPU (@tbl-ch04-ctest-run). No ctest measures the effect of the
+rest.[^x1c-run] The three ctest entries pass at 68f4e066 on CPU.[^x1c-ctest68] No ctest measures the effect of the
 correction on a flow.
 
-[^x1c-run]: [sha: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f; deck: the checks themselves; run:
+[^x1c-ctest68]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the tests' own columns; run:
+    `env CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 ctest -V -R 'test_x1_seam_split_x1_mass_covariance|^test_stretched_x1_ref'`
+    in a CPU Release source build at the pin, CPU, double, 1 process; torch 2.10.0, kintera 2.6.6, GCC 11.5.0].
+
+[^x1c-run]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the checks themselves; run:
     `python3 src/snapy_report/ch04/checks/derivation_check.py`
-    and `python3 src/snapy_report/ch04/checks/covariance_check.py`, CPU, double, 1 process; Python 3.12.10, numpy 2.5.4, sympy 1.14.0; output identical to the committed files]. `covariance_check.py` ports `d1_centred` and the
-    correction line, unchanged between the sha its header names and the code pin.
+    and `python3 src/snapy_report/ch04/checks/covariance_check.py`, CPU, double, 1 process; Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed files]. `covariance_check.py` ports the uniform slopes, now the
+    uniform branch of `x1_cov_d1_centred` and `x1_cov_one_sided` with the same arithmetic, and the correction line.
 
 ### Limits
 
@@ -185,7 +211,9 @@ correction on a flow.
 3. **One error, not all of them.** The face mass flux is as accurate as the reconstruction; for `dc` or `plm` that
    is below fourth order.
 4. **Outflow boundaries keep the centred stencil**, whose ghost may not continue the column; not analysed.
-5. **No flow test.** Only the setup check is a ctest.
+5. **No flow test.** Only the setup checks and the slope exactness are ctests.
+6. **Stretched $x_1$.** The slopes are exact for quadratics, but the $h_i^2/12$ prefactor and the fourth-order claim
+   come from the uniform derivation; on a stretched grid the corrected gap's order is not measured.
 
 <!-- reader glossary notes -->
 [^rg-03001039acf8]: $h_i$ — $x_1$ width of cell $i$, $x_{1,i+1/2}-x_{1,i-1/2}$; written $\Delta x_1$ where the direction must be explicit
