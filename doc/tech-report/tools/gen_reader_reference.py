@@ -167,7 +167,7 @@ def glossary_entries(report):
         source = item.get('source')
         notation_only = item.get('notation_only', False)
         if source is not None and (notation_only or not isinstance(source, str) or not re.fullmatch(
-                r'https://github\.com/chengcli/(?:snapy/blob/c0c38593d3d3f37bebe204a590610fd7daa05a5f|'
+                r'https://github\.com/chengcli/(?:snapy/blob/68f4e066974ede87e4379285c4fba895b970b7f1|'
                 r'kintera/blob/c55b13b2204997d2d09e04498558ab9495d8ee77)/[^\s#]+#L\d+(?:-L\d+)?', source)):
             raise ValueError(f'invalid pinned glossary source for {term}')
         if not isinstance(notation_only, bool):
