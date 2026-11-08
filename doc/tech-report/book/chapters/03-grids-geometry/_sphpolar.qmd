@@ -218,7 +218,11 @@ The coefficient averages, the centroid and the two source identities are checked
 ### Numerical method
 
 `x1v` and `x2v` hold the centroids of @eq-ch03-sphpolar-centroids, `x3v` the midpoint; the widths `dx1f`, `dx2f`,
-`dx3f` are face differences of the sliced faces, ghosts included, and `dx1v`, `dx2v`, `dx3v` centroid spacings. The
+`dx3f` are face differences of the sliced faces, ghosts included, and `dx1v`, `dx2v`, `dx3v` centroid spacings. On a
+stretched $x_1$ declared by `geometry/x1f` or `geometry/cells/x1rat` (@sec-ch03-globalgrid) the radial faces are the
+deck's, with ghost widths mirrored at each end, and every formula above takes them as they are; the coordinate
+accepts a stretched $x_1$ only when the declared $x_2$ bounds exclude both poles, $0<x_2^{\min}$ and
+$x_2^{\max}<\pi$ ({{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}}). The
 transverse lengths used by diffusion and the curl, `center_width2` $= r\,\Delta\theta$ and `center_width3`
 $= r\sin\theta\,\Delta\varphi$, are taken at the centroids. All are built once in `reset`; a mesh generator triggers a
 rebuild from the moved faces. The sources run in every stage, in `forward`, after the flux divergence and before the
@@ -344,6 +348,8 @@ terms. They were not run for this chapter at the pin (missing evidence).
 ::: {.callout-warning title="Limits"}
 - The $m_2$ and $m_3$ angular-momentum terms are untested: no test at the pin checks them (read from the tests).
 - `nx2` = 1 uses a midpoint for `x2v`, not the polar centroid.
+- A stretched $x_1$ is refused on a grid whose $x_2$ bounds reach a pole; `test_stretched_x1_ref.release`
+  (`refuses_spherical_polar`, `refuses_the_off_pole_block_of_a_pole_deck`) passes at 68f4e066 on CPU (@sec-ch03-globalgrid).
 :::
 
 A hypothesis from reading the code, not measured: the angular-momentum terms of `forward` multiply `coord_src2_i`,

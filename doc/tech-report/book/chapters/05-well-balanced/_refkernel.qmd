@@ -13,8 +13,9 @@ status: draft
 The kernel is the reference of @eq-ch05-wbx1-split. Its face pressures are the discrete hydrostatic balance itself,
 summed from an anchor at the top of the column, so the rest balance of the well-balanced reconstruction holds
 identically. Its cell pressure is the cell average of a quintic through six face pressures, which matches the
-cell average of a smooth hydrostatic pressure to sixth order up to the same column constant; on a non-uniform grid it
-is a log-mean instead, exact only for an isothermal cell. Its density reference is the cell pressure times a
+cell average of a smooth hydrostatic pressure to sixth order up to the same column constant. On a stretched $x_1$
+(the keys of @sec-ch03-globalgrid) the quintic is built on the actual face positions, with one row of six weights
+per cell; on a non-uniform grid without those keys it is a log-mean instead, exact only for an isothermal cell. Its density reference is the cell pressure times a
 smoothed $\chi$[^rg-93ea0f4be52f]: smoothed, because an unsmoothed ratio makes the density perturbation a copy of the pressure
 perturbation and the entropy mode would bypass the reconstruction.
 
@@ -27,7 +28,7 @@ perturbation and the entropy mode would bypass the reconstruction.
 
 **Activation.** No key of its own: always with the well-balanced path (@sec-ch05-wbx1).
 
-**Guarantee / limits.** $p_{\mathrm{sf}}$ exact up to one constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ if uniform; $\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
+**Guarantee / limits.** $p_{\mathrm{sf}}$ exact up to one constant; $p_{\mathrm{ref}}$ $O(\Delta x_1^6)$ on a uniform or keyed stretched $x_1$, log-mean otherwise; $\rho_{\mathrm{sf}}$ $O(\Delta x_1^2)$.
 
 **Evidence.** The Tests layer below, @tbl-ch05-refkernel-tests.
 :::
@@ -113,8 +114,28 @@ In the two cells next to an array end or a clamped wall the same average is take
 and the face mean is kept. Because the faces are exact up to $c$, $p_{\mathrm{ref},i}=\overline p_i+c+O(\Delta
 x_1^6)$ (`[C13]`: fitted order 5.87 on an isothermal column, $n_1$ = 8, 16, 32).
 
-On a non-uniform grid, where the relative spread of the face widths is $10^{-10}$ of their mean or more (`[C20]`),
-the cell pressure is the log-mean
+On a stretched $x_1$ declared by `geometry/x1f` or `geometry/cells/x1rat`, the cell pressure is the same cell
+average of the degree-5 interpolant through six face pressures, with weights built from the widths. With the six
+faces of cell $i$'s window at $x_{s+k-1/2}$, $k=0,\dots,5$, the normalized positions are
+$t_k=(x_{s+k-1/2}-x_{i-1/2})/\Delta x_{1,i}$ and the weights are the cell averages of the Lagrange basis,
+
+$$
+p_{\mathrm{ref},i}=\sum_{m=0}^{5} w_{i,m}\,p_{\mathrm{sf},s+m-1/2},\qquad
+w_{i,m}=\int_0^1\prod_{k\ne m}\frac{t-t_k}{t_m-t_k}\,dt ,
+$$ {#eq-ch05-refkernel-stretched}
+
+evaluated by three-point Gauss–Legendre on $[0,1]$, which is exact for the degree-5 integrand. The window start $s$ is
+the uniform one: $i-2$ in the interior, the six owned faces next to a clamped wall in its two cells, the six array-end
+faces at a seam end (`hydro_ref_x1_six_face_start`); a cell with no window keeps the face mean. The rows are built
+once per block in long double and cached (`hydro_ref_x1_stretched_rows`,
+{{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_stretched_rows >}}), and the kernel applies them with the same
+$[\min,\max]$ guard as `w6` (`kX1RefStretched`, {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}).
+On equal widths the rows are `w6` and `w6e` to $4\epsilon_{\mathrm m}$, and on a geometric adiabat column the cell
+error of every cell is within a factor 2 of that of a uniform patch of its own width (worst ratio 1.363,
+`test_stretched_x1_ref.release`).[^ch05-ref-run68]
+
+On a non-uniform grid without those keys (faces rebuilt by a mesh generator), where the relative spread of the face
+widths is $10^{-10}$ of their mean or more (`[C20]`), the cell pressure is the log-mean
 
 $$
 p_{\mathrm{ref},i} = \frac{g\,\overline{\rho}_i\,\Delta x_{1,i}}{\ln(p_{\mathrm{sf},i-1/2}/p_{\mathrm{sf},i+1/2})},
@@ -196,7 +217,11 @@ middle face of a polytrope against fifth-order linear reconstruction and finds t
 
 [^ch05-ref-off]: `docs/derivations/wb-ref4.md@68f4e066974ede87e4379285c4fba895b970b7f1` §2.
 
-*Exact and truncated.* Exact: the scan step, hence the rest balance. $O(\Delta x_1^6)$: the uniform cell pressure.
+*Exact and truncated.* Exact: the scan step, hence the rest balance. $O(\Delta x_1^6)$: the uniform cell pressure and
+the keyed stretched one, @eq-ch05-refkernel-stretched. On a keyed stretched $x_1$ the face ratio is the
+distance-weighted mean of the two smoothed cell ratios,
+$\chi^{s}_{i-1/2}=(\Delta x_{1,i}\chi^{s}_{i-1}+\Delta x_{1,i-1}\chi^{s}_i)/(\Delta x_{1,i-1}+\Delta x_{1,i})$, the linear
+interpolant at the face position; on equal widths it is the plain mean.
 $O(\Delta x_1^2)$: the log-mean on non-isothermal cells, the smoothed ratio and the face density reference.
 
 ### Numerical method
@@ -204,7 +229,8 @@ $O(\Delta x_1^2)$: the log-mean on non-isothermal cells, the smoothed ratio and 
 The stencils are shown in @fig-ch05-refkernel-scan. The scan is serial along each column; the per-cell part reads six face
 pressures and five ratios. The kernel runs once per $x_1$ sweep, in every RK stage, on cell averages (on plain means
 under @sec-ch05-x1cent), including ghost cells: ghosts get face pressures from the upward scan and, without the wall
-clamp, ghost ratios enter the binomial. Uniformity is decided once per block from its own `dx1f`.
+clamp, ghost ratios enter the binomial. A keyed stretched $x_1$ takes the stretched rows; otherwise uniformity is
+decided once per block from its own `dx1f`.
 
 ```{python}
 #| label: fig-ch05-refkernel-scan
@@ -216,7 +242,9 @@ make_fig()
 ```
 
 **Paths.** CPU and CUDA run the same header functions: one CPU loop over columns, one CUDA block per column whose
-thread 0 scans and whose threads then fill the cells. The MPS path rebuilds the same quantities with tensor
+thread 0 scans and whose threads then fill the cells; a block has $\min(256,\ 32\lceil n_{c1}/32\rceil)$ threads, so a
+short column does not launch idle warps ({{< code src/hydro/hydro_dispatch.cu hydro_ref_x1_cuda >}}). The MPS path
+is refused on a stretched $x_1$ (@sec-ch03-globalgrid). The MPS path rebuilds the same quantities with tensor
 operations (cumulative sums, a padded binomial), and `test_hydro_ref_x1` compares it with the CPU path.
 
 **Order.** As in the Derivation layer, interior; at walls see @sec-ch05-wallclamp; at seams the reference is the
@@ -225,7 +253,7 @@ neighbour's (@sec-ch05-seam).
 ### Code
 
 **A minimal input.** The kernel has no key of its own. What changes it is the grid, which decides between the
-six-face rows and the log-mean, and the wall clamp of @sec-ch05-wallclamp:
+uniform six-face rows, the stretched rows and the log-mean, and the wall clamp of @sec-ch05-wallclamp:
 
 <!-- reader glossary keys -->Keys in this fragment: `geometry`[^rg-0b6ed904d635], `bounds`[^rg-3827ed63a294], `x1min`[^rg-38beaf923aaf], `x1max`[^rg-42c1f5f0e621], `cells`[^rg-685062850ece], `nx1`[^rg-00028555ebb0], `nghost`[^rg-9b5c07bc3418].
 ```yaml
@@ -280,18 +308,23 @@ line keeps the result only inside the cell's own two face pressures, otherwise `
 | what | code link | symbol | switch |
 |--------|----------|----------|------|
 | the call and the uniform test | {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}} | `x1_uniform_` | spread $<10^{-10}$ |
+| stretched rows | {{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_stretched_rows >}} | `hydro_ref_x1_stretched_rows` | `geometry/x1f`, `geometry/cells/x1rat` |
+| window start | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_six_face_start >}} | `hydro_ref_x1_six_face_start` | `wb-wall-clamp` |
+| grid kinds | {{< code src/hydro/hydro_dispatch.hpp X1RefGrid >}} | `kX1RefStretched` | |
 | scan and anchor | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_scan_impl >}} | `hydro_ref_x1_scan_impl` | |
 | binomial ratio | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}} | `hydro_ref_x1_rop_smooth` | |
-| cell pressure, both grids | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `use_six_faces` | uniform |
+| cell pressure, all grids | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `use_six_faces` | uniform, stretched |
 | thin-block and fit guards | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `fits` | |
 | density references | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `dsf` | |
 | CPU path | {{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_cpu >}} | `hydro_ref_x1_cpu` | |
 | MPS tensor path | {{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_mps >}} | `hydro_ref_x1_mps` | |
 | CUDA kernel | {{< code src/hydro/hydro_dispatch.cu hydro_ref_x1_cuda_kernel >}} | `hydro_ref_x1_cuda_kernel` | CUDA build |
+| CUDA launch | {{< code src/hydro/hydro_dispatch.cu hydro_ref_x1_cuda >}} | `threads` | CUDA build |
 
 : Code map of the reference kernel. {#tbl-ch05-refkernel-code}
 
-1. `HydroImpl::_hydro_ref_x1` classifies the block once as uniform or not and caches it in `x1_uniform_`
+1. `HydroImpl::_hydro_ref_x1` takes `kX1RefStretched` when the coordinate is keyed stretched and builds the rows
+   once (`x1_rows_`); otherwise it classifies the block once as uniform or not and caches it in `x1_uniform_`
    ({{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}).
 2. It reads whether each $x_1$ end is a physical boundary and calls the dispatch stub `call_hydro_ref_x1` with the
    wall-clamp option
@@ -300,7 +333,7 @@ line keeps the result only inside the cell's own two face pressures, otherwise `
    ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_impl >}}).
 4. In the cell function, the guards `thin` and `fits` decide whether one-sided rows may be used
    ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
-   then the cell pressure is formed by `use_six_faces` or the log-mean
+   then the cell pressure is formed by `use_six_faces`, the stretched rows or the log-mean
    ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
    and the two density references by @eq-ch05-refkernel-dens.
 5. The fourth-order replacement (@sec-ch05-wbref4) and the seam exchange (@sec-ch05-seam) follow in `_hydro_ref_x1`.
@@ -318,6 +351,11 @@ the one-sided rows unusable (`fits` false), and the face mean is kept.
 | same, `the_wall_reference_does_not_depend_on_the_blocks_x1_size` | the wall-cell reference is the same on blocks of different $x_1$ size | $10^{-14}$ relative | round-off |
 | same, `cuda_matches_cpu` | CUDA equals CPU | per dtype | round-off |
 | `tests/test_hydro_options.cpp` (`test_hydro_options.release`), `wb_wall_clamp_ships_enabled`, `wb_wall_clamp_reaches_the_x1_reference` | the clamp defaults on and changes the reference | differ by more than $10^{-13}$ | non-vacuity |
+| `tests/test_stretched_x1_ref.cpp` (`test_stretched_x1_ref.release`), `iv_rows_on_uniform_faces_are_the_uniform_weights` | on equal widths the stretched rows and starts are `w6`, `w6e` | $4\epsilon_{\mathrm m}$ | row construction across compilers |
+| same, `iv_adiabat_cells_within_2x_uniform` | per cell, the stretched cell-pressure error on a geometric adiabat is at most twice a uniform patch's | ratio $\le2$ | test bound |
+| same, `keyed_column_balances_to_1e13` | `balance_column` with `stretched=true` reaches the stretched kernel's balance | residual $<10^{-13}$ | test bound |
+| `tests/test_hydro_ref_x1_rf_wall.cpp` (`test_hydro_ref_x1_rf_wall.release`) | the face ratio is the distance-weighted mean; the wall continuation counts physical distance; on equal widths the step is the ghost index | per case | round-off |
+| `test_hydro_ref_x1_stretched_cuda.release` | CUDA stretched kernel equals CPU | per dtype | round-off |
 | this chapter's check | `[C1]`–`[C3]`, `[C9]`, `[C10]`, `[C13]`, `[C14]`, `[C20]` | per claim | stated in the check |
 
 : Tests of the reference kernel. {#tbl-ch05-refkernel-tests}
@@ -334,9 +372,20 @@ spacing counts as uniform and a $10^{-6}$ stretching does not.
 the kernels being the same at the pin; deck: the check itself.[^ch05-ref-chk] At the pin
 `test_hydro_ref_x1.release` (6 passed, `cuda_matches_cpu` skipped) and `test_hydro_options.release` (11 passed, the
 `_cuda` case skipped) pass.[^ch05-ref-run]
-**Coverage.** CPU in the run above; CUDA cases exist but were not run (**pending: a CUDA run at the pin**; the CPU build has no CUDA); the MPS
-path itself is compared only through its CPU execution; multi-rank through @sec-ch05-seam.
+At 68f4e066 `test_stretched_x1_ref.release` (18 passed, 4 skipped that need a switch, run by the `_wb_ref4`,
+`_x1_centroid`, `_x1_mass_covariance` and `_radial_exact_off` variants, all passed) and
+`test_hydro_ref_x1_rf_wall.release` (4 passed) pass; `keyed_column_balances_to_1e13` prints a residual of
+$7.25\times10^{-15}$ after 20 sweeps at $n_1=128$, ratio 1.02.[^ch05-ref-run68]
+**Coverage.** CPU in the runs above; CUDA cases exist but were not run (**pending: a CUDA run at the pin**; the CPU
+build has no CUDA, and `test_hydro_ref_x1_stretched_cuda.release` is registered disabled there); the MPS path itself
+is compared only through its CPU execution and is refused on a stretched $x_1$; multi-rank through @sec-ch05-seam.
 :::
+
+[^ch05-ref-run68]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the tests' own columns; run:
+    `env CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 ctest -V -R '^test_stretched_x1_ref|^test_hydro_ref_x1'` in a CPU
+    Release source build at the pin (`cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DCUDA=OFF -DNETCDF=ON
+    -DPNETCDF=OFF -DUCX=ON`), CPU, double, 1 process; torch 2.10.0, kintera 2.6.6, GCC 11.5.0].
+    Output lines `keyed nx1 = 128: residual 7.251e-15 after 20 sweeps` and `worst ratio 1.363`.
 
 [^ch05-ref-chk]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5, the formulas the check ports, as its header
     records them; deck: the
@@ -348,22 +397,20 @@ path itself is compared only through its CPU execution; multi-rank through @sec-
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-On a stretched $x_1$ grid the cell pressure is the log-mean, exact only for isothermal cells, so a column at rest is
-at rest to round-off only after `balance_column`.
+A column at rest on any grid is at rest to round-off only after `balance_column` with the same grid classification
+(@sec-ch05-balcol). On a non-uniform grid that is not keyed stretched the cell pressure is the log-mean, exact only
+for isothermal cells.
 :::
 
-1. **Non-uniform grids.** The log-mean is a different operator from the six-face rows, not a lower-order version of
-   them, and the reconstruction weights are uniform-spacing on every grid. A stretched-grid rest residual is
-   reported, the same for every density form; it is not measured at the pin.[^ch05-ref-stretch] The face
-   interpolation uses the fixed rationals only on a uniform block and the log-mean otherwise.
+1. **Non-uniform grids without the keys.** The log-mean is a different operator from the six-face rows, not a
+   lower-order version of them. It is reached only by faces a mesh generator rebuilds; a keyed stretched $x_1$ takes
+   @eq-ch05-refkernel-stretched. No rest residual of the log-mean path is measured at the pin.
 2. **No positivity guard on $\chi$.** The ratio divides by the cell pressure without a guard.[^ch05-ref-guard] Not
    measured at the pin.
-3. **One classification per block.** A grid uniform over part of the column gives different operators to different
+3. **One classification per block.** The keyed stretched classification is a property of the deck, the same in
+   every block. Without the keys a grid uniform over part of the column gives different operators to different
    blocks; `balance_column` must make the same choice (@sec-ch05-balcol).
 4. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.
-
-[^ch05-ref-stretch]: $7.37\times10^{-4}$, reported in chengcli/snapy#250 (`sources/gh__ISSUE_THREADS_138-250.md`) on
-    code before the pin and tracked in chengcli/snapy#280.
 
 [^ch05-ref-guard]: Noted in chengcli/snapy#250 §2.
 

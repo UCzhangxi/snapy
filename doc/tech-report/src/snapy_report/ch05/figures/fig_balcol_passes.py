@@ -2,7 +2,7 @@
 
 Per pass: the largest relative pressure change the saturation adjustment makes to the column balance_column has just
 projected, and the number of projection sweeps. Data: data/bryan_balance_ic.json, printed by ctest
-test_bryan_balance_ic at snapy@e894700ff7aee30b52882e5202b16461413780b0 (chengcli/snapy), CPU, double.
+test_bryan_balance_ic at snapy@68f4e066974ede87e4379285c4fba895b970b7f1 (chengcli/snapy), CPU, double.
 """
 import numpy as np
 

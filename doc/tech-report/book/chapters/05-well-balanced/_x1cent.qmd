@@ -150,7 +150,11 @@ velocity, `SNAP_X1_MASS_COVARIANCE` subtracts the covariance part (@sec-ch04-x1m
 *Why a resting column of $r^2$ means stays at rest.* Four steps, each a line of the code.
 
 1. *The maps read plain means.* `HydroImpl::forward` hands `wx1 = x1_plain_means(...)` to `_hydro_ref_x1` and to the
-   reconstruction, and the conserved state keeps its $r^2$ means: `wx1` is a separate tensor.
+   reconstruction, and the conserved state keeps its $r^2$ means: `wx1` is a separate tensor. Plain means are
+   averages in $r$, so under the switch `HydroImpl::reset` gives the $x_1$ reconstruction of a spherical-polar block
+   the per-face rows of the $r$ faces `x1f` on a keyed stretched $x_1$, and leaves it on its uniform weights
+   otherwise; it does not use the volume-coordinate rows that `x1_row_faces` returns without the switch
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
 2. *The seam ghosts are the neighbour's.* `_x1_ghost_rows(wx1, ...)` replaces the off-centre ghost windows, so a split
    column converts like one block.
 3. *The source is the exact $r$-moment.* With the face pressures defined, `SphericalPolarImpl::forward` adds
@@ -282,8 +286,9 @@ solution `wgt = solve(M, rhs)` with `rhs` the plain moments $(1,0,\tfrac1{12},0,
 2. On a spherical-polar block `HydroImpl::forward` builds the view with `x1_plain_means` and exchanges its seam ghost
    rows with `_x1_ghost_rows`
    ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
-3. The reference and the reconstruction of @sec-ch05-wbx1 read the view; `SNAP_WB_REF4` acts through
-   `wb_ref4_enabled` (@sec-ch05-wbref4).
+3. The reference and the reconstruction of @sec-ch05-wbx1 read the view, the reconstruction with the $r$-face rows on
+   a keyed stretched $x_1$ (`plain`, {{< code src/hydro/hydro.cpp HydroImpl::reset >}}); `SNAP_WB_REF4` acts
+   through `wb_ref4_enabled` (@sec-ch05-wbref4).
 4. After the Riemann solve the face-pressure ghost rows are exchanged with `_x1_ghost_rows`
    ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 5. `SphericalPolarImpl::forward` adds `x1_pressure_source` in place of the plain-difference correction

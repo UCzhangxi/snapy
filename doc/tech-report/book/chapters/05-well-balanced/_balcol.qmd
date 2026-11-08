@@ -36,8 +36,10 @@ Local symbols: $C$ [Pa] the gauge, the perturbation of the top cell; $\varepsilo
 acceleration a leftover face imbalance gives; $g=-g_1>0$ as in @sec-ch05-refkernel. $\chi$, $p'$, $p_{\mathrm{ref}}$ and
 $\epsilon_{\mathrm m}$ are defined in @sec-appa.
 
-Under `SNAP_WB_REF4` on a non-uniform grid it iterates against the switched cell pressure, which is the fixed point
-the solver then enforces. Under `SNAP_X1_CENTROID_EXACT` it balances only a column declared Cartesian.
+A column of unequal widths, or one passed with `stretched=true`, is balanced against the stretched cell pressure
+of @eq-ch05-refkernel-stretched, built from its widths exactly as a block builds it; equal widths take the uniform
+rows. `SNAP_WB_REF4` changes no cell pressure (@sec-ch05-wbref4), so it does not change the fixed point. Under
+`SNAP_X1_CENTROID_EXACT` it balances only a column declared Cartesian.
 
 *Aliases.* "the balance-ic projection" (the bryan example's `balance-ic`[^rg-204491bad492]).[^ch05-bal-src]
 
@@ -109,8 +111,10 @@ truncated beyond that.
 ### Numerical method
 
 What the projection does is shown in @fig-ch05-balcol-gauge. Each sweep is one call of the reference kernel on the column
-(CPU, CUDA or MPS, with the column's device), plus the switched cell pressure of @sec-ch05-wbref4 when that switch is on
-and the column is non-uniform; uniformity is decided with the solver's test on the column's own widths.
+(CPU, CUDA or MPS, with the column's device). The grid kind is decided once: the stretched rows
+(`kX1RefStretched`) when `stretched` is true or the column's widths spread by $10^{-10}$ of their mean or more, the
+uniform rows otherwise; the stretched rows are built once, from the column's widths, with both ends treated as clamped
+walls ({{< code src/hydro/balance_column.cpp balance_column >}}).
 
 ```{python}
 #| label: fig-ch05-balcol-gauge
@@ -128,7 +132,7 @@ $4\epsilon_{\mathrm{m}}$ and $\max\lvert\Delta p/p\rvert\le10^{-13}$), within `b
 @fig-ch05-balcol-passes shows the passes at the pin.[^ch05-bal-fig]
 
 [^ch05-bal-fig]: Data `src/snapy_report/ch05/data/bryan_balance_ic.json`, from `ctest -V -R 'test_bryan_balance_ic'` in the build directory
-    (`tests/run_bryan_balance_ic.cmake` on `examples/bryan.cpp`, default case) of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
+    (`tests/run_bryan_balance_ic.cmake` on `examples/bryan.cpp`, default case) of a CPU Release source build of snapy@68f4e066974ede87e4379285c4fba895b970b7f1 (torch 2.10.0, kintera 2.6.6, GCC 11.5.0), 2026-11-08, double, 1 rank.
 
 ```{python}
 #| label: fig-ch05-balcol-passes
@@ -199,7 +203,7 @@ stored $1/\chi_i$.
 |--------|----------|----------|------|
 | refusals: gravity, shape, clamp, geometry | {{< code src/hydro/balance_column.cpp balance_column >}} | `TORCH_CHECK` | `wall_clamp` |
 | at least five cells, positive state | {{< code src/hydro/balance_column.cpp balance_column >}} | `nc1` | |
-| uniform test and switched pressure | {{< code src/hydro/balance_column.cpp balance_column >}} | `ref4` | `SNAP_WB_REF4` |
+| grid kind and stretched rows | {{< code src/hydro/balance_column.cpp balance_column >}} | `x1_grid` | `stretched` |
 | the sweep loop | {{< code src/hydro/balance_column.cpp balance_column >}} | `sweeps` | `rtol`, `max_iter` |
 | failure to converge | {{< code src/hydro/balance_column.cpp balance_column >}} | `err` | |
 | declaration and defaults | {{< code src/hydro/balance_column.hpp balance_column >}} | `balance_column` | |
@@ -213,8 +217,8 @@ stored $1/\chi_i$.
    ({{< code src/hydro/balance_column.cpp balance_column >}}).
 2. The column length `nc1` must be at least 5 and $p$, $\rho$ positive; $1/\chi_i$ is stored
    ({{< code src/hydro/balance_column.cpp balance_column >}}).
-3. Uniformity is decided and, for a switched non-uniform column, the stencils of @sec-ch05-wbref4 are built into
-   the flag `ref4`
+3. The grid kind `x1_grid` is decided from `stretched` and the widths, and for a stretched column the rows of
+   @eq-ch05-refkernel-stretched are built once with `hydro_ref_x1_stretched_rows`
    ({{< code src/hydro/balance_column.cpp balance_column >}}).
 4. The loop runs @eq-ch05-balcol-res and @eq-ch05-balcol-iter, counting `sweeps`, and raises if the pressure turns
    non-positive
@@ -225,7 +229,8 @@ stored $1/\chi_i$.
 Errors a user can hit: the clamp off, fewer than five cells, a non-positive input, any `geometry` other than
 `"cartesian"` (the empty default included) under `SNAP_X1_CENTROID_EXACT`, a diverging column, and no convergence within `max_iter`. The caller also owns four
 conditions the function cannot check, listed in its header: physical $x_1$ ends, at least five cells per block of the
-later run, the same uniform classification in every block, and the saturation loop for moist columns.
+later run, the same classification in every block (pass `stretched` as the coordinate's `stretched_x1()`), and the
+saturation loop for moist columns.
 
 ### Tests
 
@@ -240,6 +245,7 @@ later run, the same uniform classification in every block, and the saturation lo
 | same, `x1_centroid_switch_implies_the_ref4_predicate`, `x1_centroid_switch_balances_only_a_cartesian_column` | switch predicates and the geometry refusal | exact | contract |
 | same, `a_moist_column_with_one_condensable_comes_out_at_rest` | moist column balanced and at rest after one step | $<10^{-10}$; marched $>10^{-6}$ | `rtol`; non-vacuity |
 | `test_balance_column_wb_ref4`, `test_balance_column_x1_centroid` | the same tests with each switch set | as above | as above |
+| `tests/test_stretched_x1_ref.cpp` (`test_stretched_x1_ref.release`), `keyed_column_balances_to_1e13`; `balance_column_wb_ref4_runs` in `test_stretched_x1_ref_wb_ref4.release` | a geometric column ($n_1=128$, ratio 1.02) with `stretched=true` converges, with and without `SNAP_WB_REF4` | residual $<10^{-13}$ | test bound |
 | `test_bryan_balance_ic` | one allowed pass fails with the cap error; the default converges; the dry case projects once | exit status, output match | contract |
 
 : Tests of `balance_column`. {#tbl-ch05-balcol-tests}
@@ -254,16 +260,23 @@ $1.5\times10^{-16}$.[^ch05-bal-chk]
     sympy 1.14.0]. Output `src/snapy_report/ch05/checks/wbref_check.out`, line `[C15]`.
 
 ::: {.callout-important title="Test"}
-**Evidence.** All pass at the pin.[^ch05-bal-run] The moist test prints audit residual $3.357\times10^{-1}$ before and
-$8.896\times10^{-11}$ after, in 13 sweeps, and $\max\lvert v_1\rvert/(g\Delta t)$ after one step $2.57\times10^{-11}$
-balanced against $2.05\times10^{-2}$ marched, identical in all three arms. The bryan default case stops after pass 6
-with saturation changes falling from $8.75\times10^{-8}$ to $1.33\times10^{-14}$ (@fig-ch05-balcol-passes). The fixed
-point is checked by `[C15]`.
+**Evidence.** All pass at the pin.[^ch05-bal-run68] The moist test prints audit residual $3.357\times10^{-1}$ before
+and $8.896\times10^{-11}$ after, in 13 sweeps, and $\max\lvert v_1\rvert/(g\Delta t)$ after one step
+$2.57\times10^{-11}$ balanced against $2.05\times10^{-2}$ marched, identical in the plain and `_wb_ref4` arms. The
+bryan default case stops after pass 6 with saturation changes falling from $8.75\times10^{-8}$ to $1.38\times10^{-14}$
+(@fig-ch05-balcol-passes). The keyed stretched column reaches a residual of $7.25\times10^{-15}$ after 20 sweeps. The
+fixed point is checked by `[C15]`.
 **Coverage.** CPU; the `_cuda` cases exist and were not run (**pending: a CUDA run at the pin**); no multi-rank case
 (the function works on the columns of one block).
 :::
 
-[^ch05-bal-run]: `ctest -V -R 'test_balance_column|test_bryan_balance_ic'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank.
+[^ch05-bal-run68]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the tests' own columns and
+    `tests/run_bryan_balance_ic.cmake`; run: `env CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 ctest -V -R
+    '^test_balance_column|^test_bryan_balance_ic|^test_stretched_x1_ref'` in a CPU Release source build at the pin
+    (`cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DCUDA=OFF -DNETCDF=ON -DPNETCDF=OFF -DUCX=ON`), CPU, double,
+    1 process; torch 2.10.0, kintera 2.6.6, GCC 11.5.0]. Output lines `moist column: audit before 3.356992e-01, after
+    8.895698e-11`, `balanced 2.574376e-11, marched 2.054521e-02`, `pass 6 ... max|dp/p| 1.379978e-14`,
+    `keyed nx1 = 128: residual 7.251e-15 after 20 sweeps`.
 
 ### Limits
 
@@ -275,7 +288,9 @@ balanced under `SNAP_X1_CENTROID_EXACT`.
 
 1. **Free gauge.** Nothing ties the result to the input's surface pressure or mass; callers re-pin inside their own
    loop.
-2. **Classification.** The uniform test is made once for the whole column and must match every block's own test.
+2. **Classification.** The column takes the stretched rows whenever its widths are unequal, while a block whose
+   faces are unequal but not keyed takes the log-mean (@sec-ch05-refkernel); such a column's fixed point is not the
+   one the block enforces. A keyed stretched grid is classified the same everywhere.
 3. **Moist columns.** The caller must iterate with saturation adjustment, as the bryan example does.
 4. **No convergence proof.** Convergence is observed (`[C15]`, the tests), not proven.
 5. **Untested combinations.** See the switch coverage matrix, @sec-ch12-matrix.

@@ -84,7 +84,10 @@ the built grid.
 ### Numerical method
 
 Widths `dx1f`, `dx2f`, `dx3f` are cell quantities, one per cell including ghosts; `x1v` holds the midpoints; `dx1v`
-(the centre spacing) equals the width. All are built once in `reset` from the global width. The divergence takes the
+(the centre spacing) equals the width. All are built once in `reset` from the global width, except on a stretched
+$x_1$: there `x1_metrics_` takes `dx1f` as the face differences, `x1v` as the face midpoints and `dx1v` as the
+midpoint differences of the global faces with their mirrored ghosts
+({{< code src/coord/coordinate.cpp CoordinateImpl::x1_metrics_ >}}). The divergence takes the
 face fluxes $\mathbf F_a$[^rg-e63dc7183ace] (face averages, from the Riemann solver), multiplies them by the face areas, differences
 them across each interior cell and divides by $V_i$; ghost cells receive no divergence. @fig-ch03-cartesian-cell
 draws one cell with its three face areas.
@@ -102,16 +105,16 @@ A mesh generator (`reset_coordinates`) may move the faces; the Cartesian overrid
 and centre spacings from the moved faces, so the grid need not be uniform and @eq-ch03-cartesian-metric uses the
 local widths ({{< code src/coord/cartesian.cpp CartesianImpl::reset_coordinates >}} for the $x_1$ part).
 
-**Not provided:** a key or procedure for building a stretched $x_1$ grid (for example, one refined near the
-surface); at the pin no YAML key and no Python binding reaches `reset_coordinates`, and no built driver or test
-calls it, so there is no supported way to request one to describe. The limits of this path are in
-@sec-ch03-globalgrid.
+A stretched $x_1$ grid (for example, one refined near the surface) is requested in the deck, with
+`geometry/x1f` (a face list) or `geometry/cells/x1rat` (a geometric ratio); @sec-ch03-globalgrid derives the faces
+and lists what such a deck must satisfy. No YAML key and no Python binding reaches `reset_coordinates`.
 
 ### Code
 
 | what | code link | symbol | switch |
 |---|---|---|---|
 | widths, centres, zero cosine | {{< code src/coord/cartesian.cpp CartesianImpl::reset >}} | `reset` | `type: cartesian` |
+| $x_1$ widths and centres | {{< code src/coord/coordinate.cpp CoordinateImpl::x1_metrics_ >}} | `x1_metrics_` | `geometry/x1f`, `geometry/cells/x1rat` |
 | face areas and volume | {{< code src/coord/coordinate.cpp CoordinateImpl::cell_volume >}} | `cell_volume` | none |
 | flux divergence | {{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}} | `divergence` | none |
 | stage operator (no source) | {{< code src/coord/coordinate.cpp CoordinateImpl::forward >}} | `forward` | none |
@@ -123,8 +126,9 @@ In step order (@tbl-ch03-cartesian-code):
 
 1. `create` builds a `Cartesian` module when `type` is `cartesian`; an unknown type stops setup with "Unknown
    coordinate type" ({{< code src/coord/coordinate.cpp CoordinateImpl::create >}}).
-2. `reset` sets the three cosine buffers to zero and the widths, midpoints and centre spacings from the global width
-   ({{< code src/coord/cartesian.cpp CartesianImpl::reset >}}).
+2. `reset` sets the three cosine buffers to zero, the $x_1$ widths, midpoints and centre spacings from
+   `x1_metrics_` (the global width on a uniform $x_1$, the faces on a stretched one), and those of $x_2$, $x_3$ from
+   the global width ({{< code src/coord/cartesian.cpp CartesianImpl::reset >}}).
 3. In each stage, `forward` returns the `divergence` of the three fluxes and ignores the face pressure
    ({{< code src/coord/coordinate.cpp CoordinateImpl::forward >}}); `divergence` forms the area-weighted differences over the interior cells
    and divides by `cell_volume` ({{< code src/coord/coordinate.cpp CoordinateImpl::divergence >}}).

@@ -28,7 +28,7 @@ leaves the face density reference first order at the three faces next to each wa
 
 **Activation.** `dynamics/wb-wall-clamp`, default `true`; with `SNAP_WB_REF4` its cubic wall values take over.
 
-**Guarantee / limits.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 on a uniform grid; stretched grids not covered.
+**Guarantee / limits.** $\rho_{\mathrm{sf}}$ second order at faces 0-2 on a uniform grid; on a keyed stretched $x_1$ the step count is a physical distance (@eq-ch05-wallclamp-steps); its order is not measured.
 
 **Evidence.** The Tests layer below, @tbl-ch05-wallclamp-tests.
 :::
@@ -96,7 +96,22 @@ $$ {#eq-ch05-wallclamp-cont}
 
 and $\chi_0$ if the value is not positive; the top wall is the mirror image. @eq-ch05-wallclamp-cont is
 `hydro_ref_x1_wall_rop`
-({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}).
+({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}). An integer $\ell$ is raised by repeated
+multiplication and a non-integer one by `pow`, so on a uniform grid, where $\ell$ is the ghost index, no `pow` call
+enters the result.
+
+On a keyed stretched $x_1$ the step $\ell$ is not the ghost index but the distance from the wall cell's centre to the
+mirrored ghost centre, in units of the wall-cell-to-neighbour centre spacing,
+
+$$
+\ell_k=\frac{\tfrac12\Delta x_{1,0}+\sum_{m=1}^{k-1}\Delta x_{1,m-1}+\tfrac12\Delta x_{1,k-1}}{\tfrac12(\Delta x_{1,0}+\Delta x_{1,1})},
+\qquad k=1,2,
+$$ {#eq-ch05-wallclamp-steps}
+
+with $l=0$ the wall cell and $l=1$ its neighbour: ghost $-m$ mirrors cell $m-1$, so its width is $\Delta x_{1,m-1}$
+(@sec-ch03-globalgrid), and the continuation is linear (or ln-linear) in $x_1$, not in index; on equal widths
+$\ell_k=k$ (`hydro_ref_x1_wall_steps`, {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_steps >}};
+`test_hydro_ref_x1_rf_wall.release`).
 The binomial reproduces a linear profile exactly, so with the linear branch the $O(\alpha_\chi)$ errors
 of @eq-ch05-wallclamp-repeat vanish at faces 0-2; the ln-linear branch differs from it by $O(\alpha_\chi^2)$, errors
 $\tfrac{31}{32}\alpha_\chi^2/\chi_0$, $\tfrac14\alpha_\chi^2/\chi_0$, $\tfrac1{32}\alpha_\chi^2/\chi_0$ (`[C5]`, exact series). Either way faces 0-2 keep
@@ -110,8 +125,8 @@ Why the code switches branch, in four steps.
 2. *The ln-linear branch can diverge.* $\chi_0(\chi_0/\chi_1)^{\ell}$ grows without bound as the neighbour empties,
    $\chi_1\to0$.
 3. *The code takes the branch that stays closer to $\chi_0$.* `hydro_ref_x1_wall_rop` returns
-   `r0 * pow(r0 / r1, k)` when `r1 > r0` and `r0 + k * (r0 - r1)` otherwise, and the wall value `r0` if the result
-   is not positive.
+   `r0 * qk` with `qk` $=(\chi_0/\chi_1)^{\ell}$ when `r1 > r0` and `r0 + k * (r0 - r1)` otherwise, and the wall value
+   `r0` if the result is not positive.
 4. *So the continuation is bounded and positive.* For $\chi_1\ge0$ it lies in
    $[\chi_0(\chi_0/\chi_1)^\ell,\ \chi_0(1+\ell)]$ (`[C6]`, 60000 random samples, none outside).
 
@@ -190,12 +205,16 @@ only on a side that is a physical boundary, so a seam or a periodic side is neve
 ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}):
 
 ```cpp
-T e = r1 > r0 ? r0 * pow(r0 / r1, T(k)) : r0 + T(k) * (r0 - r1);
+T q = r0 / r1, qk = k == floor(k) ? q : pow(q, k);
+for (int n = 1; k == floor(k) && n < k; ++n) qk *= q;
+T e = r1 > r0 ? r0 * qk : r0 + k * (r0 - r1);
 return e > T(0) ? e : r0;
 ```
 
-`r0` and `r1` are $\chi_0$ and $\chi_1$, and `k` is $\ell$; the first branch is the ln-linear case
-$\chi_1>\chi_0$ and the second the linear case of @eq-ch05-wallclamp-cont. The `return` line is the fallback to
+`r0` and `r1` are $\chi_0$ and $\chi_1$, and `k` is $\ell$ (a real number: the ghost index, or
+@eq-ch05-wallclamp-steps on a keyed stretched $x_1$); the first two lines form $(\chi_0/\chi_1)^\ell$, by repeated
+multiplication for an integer $\ell$; the third line's first branch is the ln-linear case $\chi_1>\chi_0$ and the second
+the linear case of @eq-ch05-wallclamp-cont. The `return` line is the fallback to
 $\chi_0$. `hydro_ref_x1_rop_smooth` calls it for every stencil index past the owned range when the wall side owns
 two cells (`ext_lo`, `ext_hi`), and repeats the wall cell otherwise.
 
@@ -205,6 +224,7 @@ two cells (`ext_lo`, `ext_hi`), and repeats the wall cell otherwise.
 | its default | {{< code src/hydro/hydro.hpp HydroOptionsImpl::wb_wall_clamp >}} | `wb_wall_clamp` | default `true` |
 | @eq-ch05-wallclamp-cont | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}} | `hydro_ref_x1_wall_rop` | |
 | continuation inside the binomial | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}} | `ext_lo` | |
+| @eq-ch05-wallclamp-steps | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_steps >}} | `hydro_ref_x1_wall_steps` | `geometry/x1f`, `geometry/cells/x1rat` |
 | clamp gates of the rows | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `clamp_in` | clamp on, physical side |
 | one-sided rows | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `w6e` | |
 | ratio range and continuation flags | {{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}} | `ext_hi` | two owned cells |
@@ -219,7 +239,8 @@ two cells (`ext_lo`, `ext_hi`), and repeats the wall cell otherwise.
    ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}).
 3. The owned range `jlo`..`jhi` and the flags `ext_lo`, `ext_hi` are set
    ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_cell_impl >}}),
-   and the binomial replaces each index past the wall by `hydro_ref_x1_wall_rop`
+   and the binomial replaces each index past the wall by `hydro_ref_x1_wall_rop`, with the step of
+   @eq-ch05-wallclamp-steps on a keyed stretched $x_1$ and the ghost index otherwise
    ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}).
 4. The MPS path applies the same rule to its padded ratio with `wall_rop`
    ({{< code src/hydro/hydro_dispatch.cpp hydro_ref_x1_mps >}}).
@@ -272,14 +293,21 @@ run (no MPS device; the derivation note says the same); multi-rank only through 
 [^ch05-wall-run]: `ctest -V -R 'test_wb_ref_wall|test_face_floor|test_hydro_ref_x1|test_straka_redo'` in the build directory of a CPU Release build of snapy@6fbb39750f62b83df096058a4746e77d0a634bc5 (snapy 2.11.10.dev1+g6fbb397, torch 2.10.0+cu128, kintera 2.6.2.dev4+g914389b40), 2026-10-12, double, 1 rank;
     deck `tests/test_wb_ref_wall.cpp` `order_table`, polytrope $T=1-\beta z$, $g=R=1$, one pressure scale height.
 
+[^ch05-wall-run68]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the test's own columns; run:
+    `env CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 ctest -V -R '^test_hydro_ref_x1_rf_wall|^test_wb_ref_wall'` in a CPU
+    Release source build at the pin, CPU, double, 1 process; torch 2.10.0, kintera 2.6.6, GCC 11.5.0]. Both pass.
+
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-The continuation is in cell index, not in physical spacing, so on a stretched grid the wall faces are not covered by
-the second-order argument. With `wb-wall-clamp: false`, `balance_column` cannot be used.
+On a keyed stretched $x_1$ the continuation is in physical distance, but the binomial itself still weights its five
+cells by index, so the second-order argument for faces 0-2 is not carried over; with `wb-wall-clamp: false`,
+`balance_column` cannot be used.
 :::
 
-1. **Stretched grids.** The continuation, like the binomial, assumes uniform spacing. Not measured.
+1. **Stretched grids.** The step of @eq-ch05-wallclamp-steps is tested for its values
+   (`test_hydro_ref_x1_rf_wall.release`, 4 passed at 68f4e066[^ch05-wall-run68]); the order of the face density
+   reference at a stretched wall is not measured. A non-uniform grid without the keys continues by index.
 2. **MPS.** The tensor path implements the same rule and is compared with the CPU path only when run on CPU.
 3. **Straka at CFL 1.6.** `test_straka_redo` is a robustness test past the stability limit. The derivation note's
    ensembles are not measured at the pin, and its ensemble of perturbation amplitude $10^{-4}$ does not separate the

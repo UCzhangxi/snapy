@@ -17,7 +17,9 @@ $n^{\mathrm{glob}}_a$ the declared global cell count of axis $a$ (count); $\Delt
 $a$ [m or rad]; $o_a$ the global index of a block's first interior cell on axis $a$ (count); $X_{a,m}$ entry $m$ of
 the global face array of axis $a$; $n_a$ the block's interior cell count on axis $a$ (count);
 $x^{\mathrm{blk}}_{a,\min}$ the block's lower bound on axis $a$ [m or rad]; $n_b$ the number of blocks on axis $a$
-(count); $b_a$ the block's index along axis $a$, from 0 (count); $n_g$[^rg-e176f04ce147] the ghost cells per side (`nghost`[^rg-6f20f9603219], count).
+(count); $b_a$ the block's index along axis $a$, from 0 (count); $n_g$[^rg-e176f04ce147] the ghost cells per side (`nghost`[^rg-6f20f9603219], count);
+$q$ the width ratio of a geometric stretched $x_1$ (`x1rat`[^rg-83f2464f46a0], -); $F_k$, $k=0,\dots,n^{\mathrm{glob}}_1$, the interior
+faces of a stretched $x_1$; $n_e$ the ghost faces the stretched global array carries per end (count).
 
 ### Summary
 
@@ -25,19 +27,20 @@ $x^{\mathrm{blk}}_{a,\min}$ the block's lower bound on axis $a$ [m or rad]; $n_b
 **Purpose.** Every block's faces are a slice of one global face array per axis (@eq-ch03-globalgrid-slice), so a
 face shared by two blocks, or seen under two decompositions, is the same double.
 
-**Data.** In: YAML `geometry: {type, bounds, cells}` and `distribute: {nb1, nb2, nb3}`. Out: the block's face
-positions [m or rad], ghosts included, and its integer offset.
+**Data.** In: YAML `geometry: {type, bounds, cells, x1f}` (with `cells/x1rat`) and `distribute: {nb1, nb2, nb3}`.
+Out: the block's face positions [m or rad], ghosts included, and its integer offset.
 
 **Placement.** Setup (`repartition`, `reset`).
 
 **Activation.** No switch; always on; a block built without a declared global grid adopts itself as the global grid.
-Requires each global count divisible by the blocks on its axis.
+Requires each global count divisible by the blocks on its axis. `geometry/x1f` or `geometry/cells/x1rat` (not both)
+makes $x_1$ stretched; default uniform.
 
 **Guarantee / limits.** Exact (bitwise) for faces built from the global grid; a mesh generator passed to
 `reset_coordinates` rebuilds the faces from the block's own bounds and bypasses the invariant.
 
-**Evidence.** `test_coordinate`, `test_cubed_sphere_exchange`, `test_local_horizontal_cells_python`; check
-`[C16]`; the ctest entries were not run for this chapter at the pin (missing evidence).
+**Evidence.** `test_coordinate`, `test_stretched_x1`, `test_deck_x1_wiring`, `test_stretched_x1_ref` (pass at the
+pin); `test_cubed_sphere_exchange`, `test_local_horizontal_cells_python`; check `[C16]`.
 :::
 
 The scheme is always on. The YAML card declares the global bounds and cell counts; `distribute` declares the number of
@@ -48,7 +51,8 @@ The vertical grid and which way is up: $x_1$ is always the vertical axis, a heig
 radius [m] on a spherical-polar or cubed-sphere grid (@sec-appa-conventions). Up is increasing $x_1$: the $x_1$
 faces run from `x1min`[^rg-651c23886373] at the bottom to `x1max`[^rg-358e9c8d45a7] at the top, the first interior cell is the lowest, and gravity
 pointing down is a negative `grav1`[^rg-a20bd6efce5e] (@sec-ch06-cell). The vertical faces are a slice of one global face array,
-evenly spaced by $\Delta x_1$ (@eq-ch03-globalgrid-slice) unless a mesh generator rebuilds them, as derived below.
+evenly spaced by $\Delta x_1$ (@eq-ch03-globalgrid-slice), or stretched when the deck gives `geometry/x1f` or
+`geometry/cells/x1rat` (@eq-ch03-globalgrid-x1rat), unless a mesh generator rebuilds them, as derived below.
 
 ### Derivation
 
@@ -89,6 +93,30 @@ block boundaries `repartition` produces for $n_b = 2$ to $24$: rounding recovers
 them, while truncation is a whole cell low at two, the first being $n_b = 12$, $b_a = 1$, where it gives 7 instead
 of 8 (`[C16]`).[^gg-c16]
 
+#### Stretched $x_1$
+
+A deck may replace the evenly spaced $x_1$ faces by its own. `geometry/x1f` is the list of the
+$n^{\mathrm{glob}}_1+1$ interior faces $F_0<\dots<F_{n^{\mathrm{glob}}_1}$. `geometry/cells/x1rat` is the width ratio
+$q>0$ of a geometric series of faces between the bounds,
+
+$$
+F_k = x^{\min}_1+\left(x^{\max}_1-x^{\min}_1\right)\frac{q^k-1}{q^{\,n^{\mathrm{glob}}_1}-1},\qquad
+F_{n^{\mathrm{glob}}_1}=x^{\max}_1,
+$$ {#eq-ch03-globalgrid-x1rat}
+
+evaluated as `expm1(k ln q)/expm1(n ln q)` ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}). The
+widths $F_{k+1}-F_k=(x^{\max}_1-x^{\min}_1)\,q^k(q-1)/(q^{n}-1)$ have the constant ratio $q$, and $q=1$ is the uniform
+grid, for which the code keeps the evenly spaced path. Either way the faces become the axis's global faces, and the
+global bounds become $F_0$ and $F_{n^{\mathrm{glob}}_1}$.
+
+The ghost faces mirror the interior widths: the global array carries $n_e=\max(n_g,3)+1$ ghost faces at each end,
+$F_{-m}=2F_0-F_m$ and $F_{n+m}=2F_n-F_{n-m}$ for $m=1,\dots,n_e$, so ghost cell $-m$ has the width of interior cell
+$m-1$ ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::global_x1f >}}). $n_e$ does not depend on $n_g$ below 3,
+so the global faces of two decks that differ only in `nghost` are the same (`global_faces_do_not_depend_on_nghost`).
+A block is a slice of that array, as in @eq-ch03-globalgrid-slice, starting at the entry of its first face; its offset
+is the index of the global face nearest its lower bound, `_face_index`, and the slice must start and end exactly on
+global faces (`_resolve_x1_faces`), so two blocks again share every face as one double.
+
 [^gg-c16]: `python3 src/snapy_report/ch03/checks/geometry_check.py`, output `src/snapy_report/ch03/checks/geometry_check.out`,
     line `[C16]`; a numpy port of `CoordinateImpl::block_faces_` and `CoordinateOptionsImpl::_offset` at the pin,
     CPU[^rg-254534abaa24], double; Python 3.11.13, numpy 2.4.6, sympy 1.14.0.
@@ -101,7 +129,10 @@ interior cell. An axis with $n_a \le 1$ is degenerate: it has two faces and no g
 array without the ghost extension, so that $x^{\min}_a + n^{\mathrm{glob}}_a\Delta x_a$, which need not round to
 $x^{\max}_a$, is never formed. Cell widths on Cartesian and gnomonic grids are the global $\Delta x_a$
 (@sec-ch03-cartesian, @sec-ch03-gnomonic); on spherical-polar they are differences of the sliced faces
-(@sec-ch03-sphpolar). The construction runs once, when a block is built; it is not part of any stage.
+(@sec-ch03-sphpolar). On a stretched $x_1$ the $x_1$ widths are face differences on every type, the centres are the
+face midpoints (spherical-polar: its centroids), and the centre spacings `dx1v` are differences of the midpoints of
+the global faces, mirrored ghosts included ({{< code src/coord/coordinate.cpp CoordinateImpl::x1_metrics_ >}}).
+The construction runs once, when a block is built; it is not part of any stage.
 @fig-ch03-globalgrid-slice shows the slice for two decompositions.
 
 ```{python}
@@ -118,7 +149,8 @@ itself; otherwise the block must lie inside the global interval within a toleran
 $16\,\epsilon_{\mathrm{m}}\max(\lvert x^{\min}_a\rvert, \lvert x^{\max}_a\rvert, \lvert x^{\max}_a - x^{\min}_a\rvert)$, with
 $\epsilon_{\mathrm{m}}$[^rg-fbe9686e1f06] the double-precision machine epsilon, and must be exactly $n_a$ global cells: both its ends must sit on
 global faces within that tolerance. The tolerance covers the accumulation in `repartition`, which reaches the last
-upper bound by adding block widths.
+upper bound by adding block widths. A stretched $x_1$ is split into equal cell counts per $x_1$ block, each block's
+bounds read off the face list, so there is no accumulation and the $x_1$ ends must match global faces exactly.
 
 ### Code
 
@@ -133,6 +165,13 @@ upper bound by adding block widths.
 | block bounds | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}} | `repartition` | `distribute` |
 | axis check | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::_resolve_axis >}} | `_resolve_axis` | none |
 | face slice | {{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}} | `block_faces_` | none |
+| stretched keys and checks | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}} | `x1rat` | `geometry/x1f`, `geometry/cells/x1rat` |
+| width-ratio bound, ghost count | {{< code src/coord/coordinate.hpp CoordinateOptionsImpl >}} | `kX1MaxWidthRatio`, `x1f_ghosts` | none |
+| stretched global faces | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::global_x1f >}} | `global_x1f` | stretched $x_1$ |
+| stretched block check | {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::_resolve_x1_faces >}} | `_resolve_x1_faces` | stretched $x_1$ |
+| stretched $x_1$ metric | {{< code src/coord/coordinate.cpp CoordinateImpl::x1_metrics_ >}} | `x1_metrics_` | stretched $x_1$ |
+| geometry refusal | {{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}} | `sph` | stretched $x_1$ |
+| boundary and device refusals | {{< code src/hydro/hydro.cpp HydroImpl::_check_stretched_x1 >}} | `_check_stretched_x1` | stretched $x_1$ |
 | mesh generator | {{< code src/coord/coordinate.cpp CoordinateImpl::reset_coordinates >}} | `reset_coordinates` | none |
 
 : Code map of the global grid. {#tbl-ch03-globalgrid-code}
@@ -142,6 +181,9 @@ In step order (@tbl-ch03-globalgrid-code):
 1. `from_yaml` reads `geometry.type` (default `cartesian`), the bounds (default $[0,1]$ on each axis, with `x2min_pi`[^rg-e074f181bf79]
    style keys multiplied by $\pi$) and the cell counts into the global fields
    ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}). Unknown keys are refused by `check_keys`.
+   With `x1f` or `cells/x1rat` it builds the interior face list (@eq-ch03-globalgrid-x1rat), checks that it
+   increases strictly and that adjacent widths differ by at most `kX1MaxWidthRatio` $=1.5$, and stores it as
+   `x1f_interior`, which makes `stretched_x1()` true.
 2. A card with `bounds`[^rg-7888cc7a7f34] and no `cells`[^rg-7e4292ba0a15] declares one cell per axis spanning the bounds, and sets the block bounds to
    the same interval: `global_nx1` is set to 1 ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
 3. Each global count must be divisible by the blocks on its axis; otherwise setup stops with "Number of total x1
@@ -149,14 +191,20 @@ In step order (@tbl-ch03-globalgrid-code):
    `nb1` and its siblings ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
 4. `nghost` is read (default 1) and `interp_order`[^rg-5ae45a042270] (default 2); then `repartition` sets the block's bounds from its
    layout location, with $x_1$ forced to the first block on the cubed sphere, and its counts to
-   $n^{\mathrm{glob}}_a/n_b$ ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}}).
-5. `resolve_global_grid` runs `_resolve_axis` on each axis: adopt the block when the global count is 0, else
+   $n^{\mathrm{glob}}_a/n_b$ ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::repartition >}}). On a stretched
+   $x_1$ the $x_1$ bounds are faces $l_1 n$ and $(l_1+1)n$ of the list, $n=n^{\mathrm{glob}}_1/n_{b}$. After the
+   repartition a stretched $x_1$ is checked to have $n^{\mathrm{glob}}_1\ge n_e$ and more than one cell per block, and
+   each live axis to have at least $n_g$ cells per block.
+5. `resolve_global_grid` runs `_resolve_axis` on each axis (`_resolve_x1_faces` for a stretched $x_1$): adopt the
+   block when the global count is 0, else
    check inside-ness and the exact cell count ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::_resolve_axis >}}, {{< code src/coord/coordinate.cpp CoordinateOptionsImpl::resolve_global_grid >}}). The two refusals a user can hit
    read "block x2 = [...] lies outside the declared global x2 grid" and "... is not exactly n cells of the declared
    global x2 grid".
 6. The constructor calls `block_faces_` per axis with the global bounds and count and the block's count and offset
    ({{< code src/coord/coordinate.cpp CoordinateImpl::CoordinateImpl >}}); `block_faces_` slices the global `linspace`
-   ({{< code src/coord/coordinate.cpp CoordinateImpl::block_faces_ >}}).
+   ({{< code src/coord/coordinate.cpp CoordinateImpl::block_faces_ >}}). On a stretched $x_1$ it first refuses any type
+   other than `cartesian`, `gnomonic-equiangle` or a spherical-polar grid with $0<x_2^{\min}$, $x_2^{\max}<\pi$, then
+   slices `global_x1f` ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::global_x1f >}}).
 7. Each coordinate type's `reset` then builds widths and centres from these faces (the metric schemes of this
    chapter).
 
@@ -172,13 +220,32 @@ geometry:
 distribute: {layout: slab, nb2: 2, blocks_per_process: 2}   # nx2 must divide by nb2
 ```
 
+A stretched $x_1$ of 64 cells whose widths grow by 2% per cell from the bottom wall; the $x_1$ boundaries must be
+reflecting:
+
+```yaml
+geometry:
+  type: cartesian
+  bounds: {x1min: 0., x1max: 3.e5, x2min: 0., x2max: 1.e4, x3min: 0., x3max: 1.e4}
+  cells: {nx1: 64, nx2: 1, nx3: 1, nghost: 3, x1rat: 1.02}   # or geometry/x1f: [65 faces], not both
+```
+
 Two or more blocks in one process are built through `Mesh` (`MeshOptions.from_yaml`); a single `MeshBlock` of a
 multi-block layout stops with "MeshBlockImpl: world_size (1) does not match layout partitioning (2)." Refused, each
 with its message:
 
-- a key outside `geometry: {type, bounds, cells}`, `bounds` (the six bounds and the four `_pi` forms) or `cells`
-  (`nx1`, `nx2`, `nx3`, `nghost`, `interp_order`): "unknown key 'geometry/cells/nx4'. Valid keys: nx1, nx2, nx3,
-  nghost, interp_order.";
+- a key outside `geometry: {type, bounds, cells, x1f}`, `bounds` (the six bounds and the four `_pi` forms) or `cells`
+  (`nx1`, `nx2`, `nx3`, `nghost`, `interp_order`, `x1rat`): "unknown key 'geometry/cells/nx4'. Valid keys: nx1, nx2,
+  nx3, nghost, interp_order, x1rat.";
+- on a stretched $x_1$: both keys ("geometry: give cells/x1rat or x1f, not both"); `x1f` without `cells` ("geometry/x1f
+  needs geometry/cells/nx1"); a list of other than $n^{\mathrm{glob}}_1+1$ faces; a list whose ends differ from
+  `x1min`/`x1max` when those are given; $q\le0$; faces not strictly increasing; adjacent widths differing by more
+  than a factor 1.5 ("... outside the stage-1 bound [1/1.5, 1.5]"); $n^{\mathrm{glob}}_1<\max(n_g,3)+1$ or a single
+  $x_1$ cell per block; a global count not divisible by the $x_1$ blocks; a geometry other than `cartesian`,
+  `gnomonic-equiangle` or a pole-free spherical-polar grid;
+- at the first step of a stretched deck ({{< code src/hydro/hydro.cpp HydroImpl::_check_stretched_x1 >}}): an MPS[^rg-11c0286d8103]
+  device, a layout that wraps $x_1$ periodically, and a physical $x_1$ boundary that is not `reflecting` ("a stretched
+  x1 ... needs reflecting x1 boundaries: its ghost faces mirror the interior widths");
 - a count that does not divide by its blocks: "Number of total x2 grids must be divisible by the number of mesh
   blocks in x2 direction" (the $x_3$ message reads "Number of totla x3 grids …");
 - block options that do not sit on the declared grid (programmatic options only; the YAML path computes the block
@@ -190,11 +257,11 @@ The keys, the divisibility test and the defaults are these lines of `from_yaml`
 $n_a = n^{\mathrm{glob}}_a/n_b$ cells and its offset $o_a$ of @eq-ch03-globalgrid-offset:
 
 ```cpp
-  check_keys(node, "geometry", {"type", "bounds", "cells"});
+  check_keys(node, "geometry", {"type", "bounds", "cells", "x1f"});
   op->type(node["type"].as<std::string>("cartesian"));
     ...
   check_keys(node["cells"], "geometry/cells",
-             {"nx1", "nx2", "nx3", "nghost", "interp_order"});
+             {"nx1", "nx2", "nx3", "nghost", "interp_order", "x1rat"});
   op->global_nx1() = node["cells"]["nx1"].as<int>(1);
   op->global_nx2() = node["cells"]["nx2"].as<int>(1);
   op->global_nx3() = node["cells"]["nx3"].as<int>(1);
@@ -223,6 +290,9 @@ $n_a = n^{\mathrm{glob}}_a/n_b$ cells and its offset $o_a$ of @eq-ch03-globalgri
 | `test_coordinate` | programmatic blocks span the caller's bounds | $10^{-15}\Delta x_a$ | round-off of one spacing |
 | `test_local_horizontal_cells_python` | the horizontal setter leaves every axis resolved | $10^{-12}\Delta x_a$ | set in the script |
 | `test_cubed_sphere_exchange` | gnomonic `x2f`, `dx2f` equal across nb2 = 1, 2, 4 | bitwise | as above |
+| `test_stretched_x1` | a face list gives mirrored ghosts and its metrics; `x1rat` gives @eq-ch03-globalgrid-x1rat and `x1rat: 1` the uniform grid; blocks slice the global faces; the global faces do not depend on `nghost`; bad keys and an uneven $x_1$ split are refused | per case, round-off or exact | the construction |
+| `test_deck_x1_wiring` | an `x1rat` deck and a face-list deck install the block faces on the $x_1$ reconstruction; a uniform deck installs nothing | exact | contract |
+| `test_stretched_x1_ref` | reflecting decks, uniform and stretched, build and step; periodic and outflow $x_1$ and a polar spherical-polar deck are refused | throws or not | contract |
 
 : Tests of the global grid. C++ entries carry the build suffix (`.release`). {#tbl-ch03-globalgrid-tests}
 
@@ -241,22 +311,29 @@ Python setter test checks the resolved counts and the faces of each axis in `AXE
 ({{< code tests/test_local_horizontal_cells.py AXES >}}, {{< code tests/test_local_horizontal_cells.py NG >}}). The gnomonic case is `subdivided_panel_exchange_matches_one_block`
 ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}).
 
-All four entries run on CPU; the gnomonic comparison also has a CUDA[^rg-7dab1148c3f0] case in the same binary, which skips without a
-GPU[^rg-326ea2f442e6]. None runs on more than one rank. No number is quoted from them here: they were not run for this chapter at
-the pin (missing evidence). How far per-block spacing would move the faces is not measured at the pin.
+All entries run on CPU; the gnomonic comparison also has a CUDA[^rg-7dab1148c3f0] case in the same binary, which skips without a
+GPU[^rg-326ea2f442e6]. None runs on more than one rank. At the pin `test_coordinate`, `test_stretched_x1` (8 passed),
+`test_deck_x1_wiring` (3 passed) and `test_stretched_x1_ref` (18 passed, 4 skipped that need a switch) pass on
+CPU;[^gg-run68] `test_cubed_sphere_exchange` and `test_local_horizontal_cells_python` were not run for this chapter
+(missing evidence). How far per-block spacing would move the faces is not measured at the pin.
+
+[^gg-run68]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the tests' own cards; run:
+    `env CUDA_VISIBLE_DEVICES= OMP_NUM_THREADS=1 ctest -V -R '^test_coordinate\.|^test_stretched_x1|^test_deck_x1_wiring'`
+    in a CPU Release source build at the pin (`cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DCUDA=OFF
+    -DNETCDF=ON -DPNETCDF=OFF -DUCX=ON`), CPU, double, 1 process; torch 2.10.0, kintera 2.6.6, GCC 11.5.0].
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 - A mesh generator passed to `reset_coordinates` rebuilds the faces from the block's own bounds, outside the
   global-slice invariant ({{< code src/coord/coordinate.cpp CoordinateImpl::reset_coordinates >}}).
-- The checks "Number of x1 grids must be greater than the ghost zone size" never fire: they run before
-  `repartition` sets the block count, so they read `nx1` at its default of 1 ({{< code src/coord/coordinate.cpp CoordinateOptionsImpl::from_yaml >}}).
+- A stretched $x_1$ needs reflecting $x_1$ walls, no periodic $x_1$, no MPS device, a width ratio of adjacent cells
+  within 1.5, equal cell counts per $x_1$ block, and one of the three geometries above; each is refused otherwise.
 :::
 
 The mesh-generator path is reached only by code that calls `reset_coordinates`; no test at the pin exercises it with
-a decomposed grid (not measured). The dead `nghost` checks are read from the code; a block narrower than its ghost
-zone is therefore not refused here, and what happens instead was not measured. Bitwise decomposition invariance of
+a decomposed grid (not measured). The interpolants the $x_1$ reconstruction accepts on a stretched $x_1$, and their
+order there, are those of @sec-ch04; this section covers only the grid. Bitwise decomposition invariance of
 the faces is tested for $x_2$ splits of 2 and 3 blocks on Cartesian and of 2 and 4 blocks per panel on the cubed
 sphere; $x_1$ and $x_3$ splits of the faces are not tested on their own. The switch combinations that are tested are
 listed in the switch coverage matrix, @sec-ch12-matrix.
@@ -265,6 +342,8 @@ listed in the switch coverage matrix, @sec-ch12-matrix.
 [^rg-e176f04ce147]: $n_g$ — ghost cells on each side
 
 [^rg-6f20f9603219]: nghost — number of ghost cells at each boundary
+
+[^rg-83f2464f46a0]: x1rat — ratio of adjacent $x_1$ cell widths of a geometric stretched $x_1$ (in `geometry/cells`)
 
 [^rg-651c23886373]: x1min — lower bound of the first coordinate
 
@@ -303,6 +382,8 @@ listed in the switch coverage matrix, @sec-ch12-matrix.
 [^rg-5502021766c8]: nb2 — number of blocks along the second coordinate direction
 
 [^rg-78b664d1ce43]: blocks_per_process — number of blocks assigned to each process
+
+[^rg-11c0286d8103]: MPS — Metal Performance Shaders
 
 [^rg-7dab1148c3f0]: CUDA — NVIDIA's parallel computing platform
 
