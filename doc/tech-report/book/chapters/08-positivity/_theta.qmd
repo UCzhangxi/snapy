@@ -59,6 +59,7 @@ $$
 \mathrm{out}_i = \sum_{f} \max(\pm A_f F_f,\, 0),\qquad
 \Theta_i = \min\!\left(1,\ \frac{u_i V_i}{\Delta t\,\mathrm{out}_i}\right),
 $$ {#eq-ch08-theta-def}
+<!-- equation-check: eq-ch08-theta-def positivity_check.py [C2] -->
 
 with the sign chosen so that only genuinely outgoing contributions count: inflow is not charged. Here $u_i$ is the
 cell's tracer density, $V_i$ its volume, $A_f F_f$ a face area times its normal flux, and $\Delta t$ the stage time
@@ -77,6 +78,7 @@ $$
 V_i\,(u_i + \Delta t\,\Delta u_i) = u_iV_i - \Delta t\,\Theta_i\,\mathrm{out}_i + \Delta t\,\mathrm{in}_i
 \;\ge\; u_iV_i - (1-\eta)\max(u_i,0)V_i + \Delta t\,\mathrm{in}_i ,
 $$ {#eq-ch08-theta-bound}
+<!-- equation-check: eq-ch08-theta-bound positivity_check.py [C10] -->
 
 which is $\eta\,u_iV_i + \Delta t\,\mathrm{in}_i \ge 0$ given $u_i \ge 0$ at stage entry. A cell that enters negative
 has no available mass, so $\Theta_i = 0$ on every face it drains, and it stays negative unless its inflow covers the
@@ -114,9 +116,10 @@ the dry mass flow summed over the faces of cell $i$,
 $$
 \Theta^{\mathrm d}_i = \min\!\left(1,\ \frac{(1-\eta)\,\rho_{\mathrm d,i}V_i}{\Delta t\,\mathrm{out}^{\mathrm d}_i}\right).
 $$ {#eq-ch08-theta-dry}
+<!-- equation-check: eq-ch08-theta-dry relative_check.py [C1] -->
 
 $\Theta^{\mathrm d}_i < 1$ means the stage drains more dry air from the cell than it holds, which happens at a mass
-Courant number above one. The dry density is not limited, so its explicit value goes negative there, and the stage
+Courant number above one. The dry density is not limited, so its explicit value can go negative there, and the stage
 relies on what follows to bring it back: the implicit $x_1$[^rg-8de83003300b] correction and the inflow along $x_2$ and $x_3$. That
 reliance is the code's stated premise ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, the comment above
 `td`); this section does not prove it.
@@ -138,6 +141,8 @@ $$
 \qquad
 \Xi_{n,i} = \begin{cases}\min\!\left(1,\ \max\!\left(0,\ r^{\min}_{n,i}/r_{n,i}\right)\right), & r_{n,i}>0,\\ 0, & r_{n,i}\le 0,\end{cases}
 $$ {#eq-ch08-theta-relax}
+<!-- equation-check: eq-ch08-theta-relax relative_check.py [C2] -->
+<!-- equation-check: eq-ch08-theta-relax relative_check.py [C4] -->
 
 where $r^{\min}_{n,i}$ is the smallest $r_n$[^rg-9d4612fa1068] of the two neighbours along $x_1$ and, for each of $x_2$ and $x_3$ that has
 more than one cell, of the two neighbours along it. @eq-ch08-theta-relax is the block after `flux_positivity_theta` in
@@ -180,6 +185,7 @@ five steps.
    V_i\,(u_i + \Delta t\,\Delta u_i) \;\ge\; \eta\,u_iV_i + \Delta t\,\mathrm{in}_i
    - \Xi_{n,i}\,r_{n,i}\big(\Delta t\,\mathrm{out}^{\mathrm d}_i - (1-\eta)\rho_{\mathrm d,i}V_i\big),
    $$ {#eq-ch08-theta-bound-relaxed}
+   <!-- equation-check: eq-ch08-theta-bound-relaxed relative_check.py [C3] -->
    with equality where the species is limited ($\Theta_i<1$) and $\Theta_i/\Theta^{\mathrm d}_i\le1$. The explicit species update may therefore be negative
    in a cell where the dry air is over-drained, by at most $\Xi_{n,i}r_{n,i}$ times the dry over-drain, which is
    no more than the poorer neighbour's ratio times it. That it ends non-negative rests on the refill of step 4, which
@@ -196,8 +202,8 @@ step 3, `[C2]` the uniform-ratio and empty-neighbour limits, `[C3]` @eq-ch08-the
 case $\Theta_i/\Theta^{\mathrm d}_i\le1$, all in sympy, and `[C4]` a numpy port of `flux_positivity_share`.[^ch08-rel-run]
 
 [^ch08-rel-run]: [sha: snapy@3c891cb20614260351944fb8007cbc9bd50d22a3; deck: the check itself, symbolic and seed 7;
-    run: `python3 src/snapy_report/ch08/checks/relative_check.py`, CPU[^rg-2951cd52e369], double, 1 process; Python 3.12.3, numpy 2.2.4,
-    sympy 1.14.0]. Output `relative_check.out`, lines `[C1]`–`[C4]`.
+    run: `python3 src/snapy_report/ch08/checks/relative_check.py`, CPU[^rg-2951cd52e369], double, 1 process; Python 3.13.15, numpy 2.5.4,
+    sympy 1.14.0; output identical to the committed file]. Output `relative_check.out`, lines `[C1]`–`[C4]`.
 
 ### Numerical method
 
