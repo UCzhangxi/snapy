@@ -109,8 +109,10 @@ With both walls sealed the column's condensate mass changes only by what the adv
 ### Numerical method
 
 The flux is added to `flux1` after the $x_1$ Riemann solve and before the $x_1$ seam faces are made single-valued.
-With the limiter on and species present its condensate part is saved as `fsed1`, so the positivity limiter can
-carry the right energy and momentum with it ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+With species present and either the limiter or the face-flux covariance switch on (the switch is on by default),
+its condensate part is saved as `fsed1`, so the positivity limiter can carry the right energy and momentum with it
+and keeps a cell the settling flux drains out of the relaxation of @eq-ch08-theta-relax
+({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}; @sec-ch08-carry).
 With the ideal-moist EOS and contiguous tensors a fused CPU or CUDA kernel computes velocity and flux in one pass;
 otherwise a tensor path does the same in separate operations
 ({{< code src/sedimentation/sed_hydro.cpp SedHydroImpl::forward >}}). MPS[^rg-7722eb7d31ba] has its own kernel,
@@ -197,10 +199,10 @@ lines the prescribed velocity and the clamp.
 |---|---|---|---|
 | `test_forcing.release` | fused equals tensor path; sealing | $10^{-10}$ rel.; exact | test thresholds |
 | `test_sedimentation_guards.release` | gravity required; rising from below | $10^{-9}$ rel. | test threshold |
-| `test_sedimentation_cubed_seam.release` | 2-rank seam, mass conserved | $10^{-12}$ rel. | test threshold |
+| `test_sedimentation_cubed_seam.release` | 2-rank seam, mass conserved; the momentum and energy sums of the mixed seam flux equal 99901.855127834307 and 499161.89154918579 | $10^{-12}$ rel.; $10^{-7}$ and $5\times10^{-3}$ abs. | test thresholds |
 | `test_two_cards_species.release` | velocity after a second card | $10^{-10}$ (f64) | test threshold |
 
-: Tests of sedimentation; all pass at the pin (@tbl-ch10-ctest-run). {#tbl-ch10-sed-tests}
+: Tests of sedimentation; the run of @tbl-ch10-ctest-run is recorded at the sha in its footnote. {#tbl-ch10-sed-tests}
 
 The fused kernel must equal the tensor path to $10^{-10}$ relative and settle (negative flux) inside the column
 ({{< code tests/test_forcing.cpp forcing.fused_sedimentation_matches_tensor_path >}}).
@@ -213,9 +215,14 @@ A rising cloud must be taken from the cell below, mass and energy fluxes to $10^
 ({{< code tests/test_sedimentation_guards.cpp expect_rising_cloud_taken_from_below >}}).
 On two ranks of a cubed sphere, the condensate mass is conserved to $10^{-12}$ relative and two seam sums are pinned
 to $10^{-7}$ and $5\times10^{-3}$ absolute
-({{< code tests/test_sedimentation_cubed_seam.cpp main >}});
-the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX[^rg-b90e03039e3e] result. Every ctest named here that the CPU build registers passed at the pin (@tbl-ch10-ctest-run); the CUDA and Gloo arms are not
-registered in that build and were not run.
+({{< code tests/test_sedimentation_cubed_seam.cpp main >}}). The sums are those of a mixed cloud flux, advected up
+and settling down, so they lock the two donors of the carry (@sec-ch08-carry). The vapour there has one ratio
+everywhere over over-drained dry air, so the relaxation of @eq-ch08-theta-relax withholds none of it, and the pinned
+values are those of that rule, as the test's comment states;
+the Gloo arm `test_sedimentation_cubed_seam_gloo` must reproduce the UCX[^rg-b90e03039e3e] result. Every ctest named here that the CPU build registers passed in the run of @tbl-ch10-ctest-run, at the sha its
+footnote records; the CUDA and Gloo arms are not registered in that build and were not run. At the pin,
+`test_sedimentation_cubed_seam.release` pins the values above and has not been run for this report (missing
+evidence).
 
 ### Limits
 
