@@ -135,6 +135,8 @@ The two end strips are the edge values of @eq-ch11-exchange-corner; the last lin
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `test_cubed_sphere_exchange.release` | A panel subdivided into blocks exchanges to the same coordinates and density as one block per panel | exact equality | test assertion |
+| `test_cubed_sphere_exchange.release` | `is_custom_noop` is true for the registered `custom_inner` and `custom_outer` only, not for `reflecting_inner`, an empty function or a caller's lambda | exact equality | test assertion |
+| `test_cubed_sphere_exchange.release` | After each of six cubed-sphere blocks runs its exchange, the radial ghost rows inside the panel halos equal the reflecting mirror with `IVX` negated when the tangential faces hold the built-in `custom`, and keep their sentinel when they hold a caller's function or the block is `slab` | exact equality | test assertion |
 | `test_mesh_exchange_python` | A received scalar ghost strip identifies its neighbour block | exact equality | test assertion |
 | `boundary_check.py` (report only) | `[C4]` as described below | exact | symbolic, rational or integer identity |
 
@@ -142,6 +144,16 @@ The two end strips are the edge values of @eq-ch11-exchange-corner; the last lin
 
 The panel assertions are `torch::equal` in
 {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block >}}.
+The identity assertions are in
+{{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.custom_noop_callback_identity >}}. The corner-refresh
+assertions are `torch::equal` in the helper `check_radial_halo_refresh`, which
+`radial_walls_refresh_exchange_owned_horizontal_halos`
+({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.radial_walls_refresh_exchange_owned_horizontal_halos >}}),
+`radial_refresh_preserves_genuine_custom_horizontal_callbacks`
+({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.radial_refresh_preserves_genuine_custom_horizontal_callbacks >}})
+and `radial_refresh_does_not_reclassify_slab_custom_noops`
+({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.radial_refresh_does_not_reclassify_slab_custom_noops >}})
+call; their deck is described in @sec-ch03-cornerrefresh.
 
 The neighbour assertion is the top-level `assert` in {{< code tests/test_mesh_exchange.py >}}.
 
