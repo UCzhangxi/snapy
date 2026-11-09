@@ -116,7 +116,8 @@ slabs; the one call of a `reflecting` wall also rewrites the other $x_1$ ghost r
 seam it repairs is a block seam on `slab` and `cubed` and a panel seam on the cubed sphere; the cells it rewrites are
 the same in both. On a cubed-sphere block with `reflecting` radial walls and the built-in `custom` on all four
 tangential faces, one call per wall writes the radial ghost rows of all four panel halos at once. The $x_2$-$x_3$
-diagonal corner columns are not the refresh's: the exchange synthesises them (@sec-ch03-exchange).
+diagonal corner columns get only their interior cells from the exchange (@sec-ch03-exchange); that call mirrors
+them into their radial ghost rows too.
 @fig-ch03-cornerrefresh-wall shows the cells it rewrites.
 
 ```{python}
@@ -241,7 +242,7 @@ The deck is the card of `write_card` ({{< code tests/test_cubed_sphere_exchange.
 `reflecting` on both $x_1$ faces and `custom` on the four tangential faces, one block per panel, all six in one process,
 edited to $n_{x_1} = 8$ and $n_g = 3$ with $n_{x_2} = n_{x_3} = 8$. Every $x_1$ ghost cell starts at the sentinel
 $-777$, each block runs its own `exchange_ghost_zones` on a thread, and the assertions skip the $x_2$-$x_3$ diagonal
-corners, which the exchange fills. The caller's-lambda case installs one empty lambda on faces 2 to 5 and leaves the
+corners, which the face exchange also leaves out. The caller's-lambda case installs one empty lambda on faces 2 to 5 and leaves the
 boundary names `custom`. The slab case keeps the same cards on one `slab` block with `type: cartesian`, so its
 `custom` faces are outer edges that construction keeps. None of the four cases has a `_cuda` twin; they run on CPU
 in one process.
@@ -269,7 +270,8 @@ function other than `reflecting`, so the per-slab branch is not asserted on the 
 - The refresh's `physical` and `is_physical_boundary` disagree on a cubed-sphere panel edge that holds the built-in
   no-op: the refresh calls it exchange-owned, the predicate calls it physical (@sec-ch03-physfaces).
 - On `slab` and `cubed` a `custom` face that construction keeps, an outer edge, counts as physical while writing
-  nothing, so nothing writes its $x_1$-wall corners (read from the code; the slab case above asserts the skip).
+  nothing, so the refresh skips its $x_1$-wall corners: they keep what the $x_1$ function wrote in `apply_boundaries`
+  from a ghost column that nothing writes (read from the code; the slab case above asserts the skip).
 :::
 
 The `Mesh`-level sync is a plain exchange ({{< code src/mesh/mesh.cpp MeshImpl::exchange_ghost_zones >}} for `exchange_ghost_zones`). A user boundary
