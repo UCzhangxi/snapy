@@ -9,7 +9,7 @@ import code_anchors
 
 REPORT = Path(__file__).resolve().parent.parent
 TARGET = 'book/chapters/09-diffusion-forcing/_howto.qmd'
-PIN = '68f4e066974ede87e4379285c4fba895b970b7f1'
+PIN = 'fb003523dd39d7a91fc2442e06076640631e5290'
 
 
 def generate(report):
