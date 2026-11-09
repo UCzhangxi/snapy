@@ -2,7 +2,7 @@
 
 <!-- PROVENANCE
 pin: snapy@fb003523dd39d7a91fc2442e06076640631e5290 (chengcli/snapy)
-sources: OUTLINE.md 11.6; src/bc/bc_func.cpp; src/bc/rectify_solid.cpp; src/mesh/meshblock_options.cpp
+sources: OUTLINE.md 11.6; src/bc/bc_func.cpp; src/bc/rectify_solid.cpp; src/mesh/meshblock_options.cpp; src/mesh/meshblock.cpp
 status: draft
 author: Jiheng Hu
 reviewer:
@@ -12,7 +12,9 @@ reviewer:
 
 Both callbacks exist for a caller that writes the ghosts itself. A `custom` face keeps a non-null entry in
 the callback table, so every physical-face predicate of @sec-ch11-registry is true there while the
-callback writes nothing; the user code or layout that installed it owns the fill. A `solid` face is the
+callback writes nothing; the user code or layout that installed it owns the fill. The corner refresh after an
+exchange is the one exception: on a cubed-sphere block it treats an $x_2$ or $x_3$ face that holds the built-in
+`custom` no-op as owned by the panel exchange (@sec-ch03-cornerrefresh). A `solid` face is the
 mask-fill primitive: on a Boolean mask, one means solid, and the rectification of @sec-ch11-solids uses the
 callback to declare every ghost slab solid before it sweeps.
 Neither callback introduces a PDE[^rg-8c4d78431fa1] discretization.
@@ -48,7 +50,11 @@ assuming a thermodynamic meaning [check `src/snapy_report/ch11/checks/boundary_c
 ### Numerical method
 
 Custom keeps a non-null callback slot for a user or layout operation and is called like any other callback
-by the physical fills and the corner refresh of @sec-ch11-timing. Solid acts on all rows of the tensor it is
+by the physical fills and the corner refresh of @sec-ch11-timing. On an $x_2$ or $x_3$ face of a cubed-sphere block
+the built-in no-op also marks the face as exchange-owned for that refresh, which then re-applies the $x_1$ functions
+inside the face's ghost slab. `is_custom_noop` recognises the no-op by function identity, so a function a caller
+installs on the face keeps it physical even when the face's name is still `custom`
+({{< code src/bc/bc_func.cpp is_custom_noop >}}; @sec-ch03-cornerrefresh). Solid acts on all rows of the tensor it is
 given and skips a collapsed direction. `InternalBoundaryImpl::rectify_solid`
 ({{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}) applies the solid callbacks to
 its mask on every direction with more than one cell before the directional sweeps, and after the sweeps
@@ -100,6 +106,7 @@ The assignment is the constant map in the Derivation layer. On a Boolean mask it
 | solidbc | [`bc_func.cpp:68-87`](https://github.com/chengcli/snapy/blob/fb003523dd39d7a91fc2442e06076640631e5290/src/bc/bc_func.cpp#L68-L87) | `solid_inner` | `solid` |
 | rectify | {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}} | `rectify_solid` | `boundary-condition/internal/max-iter` |
 | classify | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | none |
+| no-op by identity | {{< code src/bc/bc_func.cpp is_custom_noop >}} | `is_custom_noop` | `custom` on $x_2$/$x_3$, cubed sphere |
 
 : Implementation sites for custom. {#tbl-ch11-custom-code}
 
@@ -144,8 +151,9 @@ assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-A custom no-op does not supply missing physical ghost data, and a non-null custom face still passes the
-physical-face predicate. Using solid on a hydro tensor writes literal ones; it does not construct a no-slip
+A custom no-op does not supply missing physical ghost data, and a non-null custom face still passes
+`is_physical_boundary`; only the corner refresh on a cubed-sphere block treats the built-in no-op on $x_2$ or $x_3$
+as exchange-owned (@sec-ch03-cornerrefresh). Using solid on a hydro tensor writes literal ones; it does not construct a no-slip
 or thermodynamic wall. The callbacks a caller passes to the rectification must be callable: the loop does not
 guard null entries.
 

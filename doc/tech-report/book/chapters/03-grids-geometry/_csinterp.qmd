@@ -181,6 +181,8 @@ inline int cs_interp_margin(int nghost) { return nghost; }
 |---|---|---|---|
 | `test_cubed_sphere_exchange` | faces, `dx2f` and the density after one RK[^rg-96cd21fc6070] stage are equal for nb2 = 1, 2, 4 in one process | bitwise | decomposition must not change a ghost |
 | `test_cubed_sphere_exchange` | a communication tag that would collide is refused | exact | tag arithmetic |
+| `test_cubed_sphere_exchange` | `is_custom_noop` accepts the registered `custom_inner` and `custom_outer` and refuses `reflecting_inner`, an empty function and a caller's lambda | exact | Boolean result |
+| `test_cubed_sphere_exchange` | after the block exchange of six panels, the radial ghost rows inside the panel halos are the reflecting mirror with built-in `custom` faces, and keep their sentinel with a caller's function on those faces or on a `slab` block | bitwise | @sec-ch03-cornerrefresh |
 | `test_exchange` | ghosts across panel edges carry the neighbour's payload, two ranks | value bounds | payloads identify the sender |
 | `test_cubed_sphere_vertical_velocity_exchange_python` | a radial velocity crosses every edge unchanged | $10^{-12}$ | @sec-ch03-exchange |
 
@@ -191,7 +193,13 @@ the deck is the card written by `write_card`, $8\times8$ cells per panel, `nb2` 
 process ({{< code tests/test_cubed_sphere_exchange.cpp write_card >}}). Its CUDA twin
 `subdivided_panel_exchange_matches_one_block_cuda` is in the same binary and skips without a GPU
 ({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.subdivided_panel_exchange_matches_one_block_cuda >}}). The tag case is `rejects_tags_that_collide_with_the_variable_offset`
-({{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}). They were not run for this chapter at the pin (missing
+({{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}).
+The same binary holds the four cases of the radial-wall corner refresh at panel seams, which test the exchange's
+caller rather than the interpolation: `custom_noop_callback_identity`
+({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.custom_noop_callback_identity >}}) and the three
+`check_radial_halo_refresh` cases, for example `radial_walls_refresh_exchange_owned_horizontal_halos`
+({{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.radial_walls_refresh_exchange_owned_horizontal_halos >}});
+their deck and assertions are in @sec-ch03-cornerrefresh. They were not run for this chapter at the pin (missing
 evidence).
 
 ### Limits

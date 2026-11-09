@@ -82,6 +82,7 @@ make_fig()
 | face of an offset; physical predicate | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_physical_boundary >}} | `is_physical_boundary` | none |
 | wall whitelist | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | none |
 | the no-op panel-edge bfuncs, defined by the `BC_FUNCTION` macro | {{< code src/bc/bc_func.cpp >}} | `custom_inner`, `custom_outer` | `custom` |
+| the no-op recognised by identity (corner refresh only) | {{< code src/bc/bc_func.cpp is_custom_noop >}} | `is_custom_noop` | `custom` |
 | $x_1$ wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | none |
 | exchange skips physical faces | {{< code src/layout/layout.cpp LayoutImpl::serialize >}} | `is_physical_boundary` | none |
 
@@ -142,6 +143,9 @@ at the pin (missing evidence).
 ::: {.callout-warning title="Limits"}
 - On the cubed sphere the tangential faces carry whatever the card names, `reflecting` by default; only `custom`
   leaves the panel edges to the exchange. `is_physical_boundary` is true at panel edges either way.
+- The corner refresh is the one place that answers differently: its own `physical` treats an $x_2$ or $x_3$ face of
+  a cubed-sphere block that holds the built-in `custom` no-op as exchange-owned, recognising the no-op by function
+  identity with `is_custom_noop`, not by name (@sec-ch03-cornerrefresh).
 :::
 
 Code that loops over every installed bfunc applies the panel-edge function: harmless for `custom`, but with the
@@ -149,5 +153,7 @@ default `reflecting` a six-panel run with tangential flow differs from the `cust
 in momentum after 5 cycles (measured on a source build of the pin; at rest the two agree); code that
 asks `is_physical_boundary` on $x_2$ or $x_3$ of a cubed sphere would classify a panel edge as physical (inferred from
 the code; at the pin the only tangential callers are in the generic layout, which the cubed sphere does not use for
-its own exchange; not measured). The switch combinations that are tested are listed in
+its own exchange; not measured). The corner refresh does not ask `is_physical_boundary`: it reads the installed
+functions through its own `physical` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}}), so on
+a cubed-sphere panel edge holding the built-in no-op the two answers differ. The switch combinations that are tested are listed in
 the switch coverage matrix, @sec-ch12-matrix.
