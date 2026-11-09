@@ -2,7 +2,7 @@
 
 <!-- PROVENANCE
 pin: snapy@3c891cb20614260351944fb8007cbc9bd50d22a3 (chengcli/snapy)
-sources: OUTLINE.md 8.2 and 8.3
+sources: OUTLINE.md 8.2 and 8.3; chengcli/snapy#338 (the split under the covariance switch, the settling guard)
 status: draft
 -->
 
@@ -24,7 +24,7 @@ that keeps the books straight.
 
 **Guarantee / limits.** The withheld mass keeps its own enthalpy and momentum; nothing is said about its kinetic energy.
 
-**Evidence.** `[C6]`, `[C12]` of this chapter's check; `test_flux_positivity_carry.<b>` (relative $10^{-12}$).
+**Evidence.** `[C6]`, `[C12]` of this chapter's check; `test_flux_positivity_carry.<b>`, `test_tracer_ratio_python` (Tests).
 :::
 
 Local symbols: $F$ is the unscaled species face flux, $\Theta_d$ the factor of the face's donor and $\mathrm{d}m$ the
@@ -53,10 +53,32 @@ momentum over two thousand face sets.
 The donor is chosen per face and per part of the flux, not per cell. In $x_1$ the flux carries two physically distinct
 pieces, an advected part and a settling part from sedimentation, and they need not move in the same direction. A
 species may be advected upward while settling downward through the same face. Each part therefore takes its own donor,
-which is why the code applies the withholding twice in $x_1$ and once elsewhere. The settling part is kept apart only
-with `limiter: true`: the stage records it as `fsed1` only then
-({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). When the covariance gate alone runs the limiter, the $x_1$ flux is withheld as one net flux with one donor,
-settling included.
+which is why the code applies the withholding twice in $x_1$ and once elsewhere. The stage records the settling part
+as `fsed1` whenever species are present and either `limiter` is true or the face-flux covariance switch is on
+(`carry`, {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The limiter itself runs when `limiter` is true
+or a covariance row was added on $x_2$ or $x_3$ (@sec-ch08-theta), and a row is added only with that switch on, so
+whenever the limiter runs on a column with sedimentation, the settling part is withheld with its own donor.
+
+**The settling guard.** The same record keeps a settling-drained cell out of the relaxation of
+@eq-ch08-theta-relax. That relaxation lets a species leave past its content by the share its poorer neighbour
+repays, on the premise that what refills the over-drained dry air brings the species back at that neighbour's ratio.
+Settling mass is not carried by the dry air, so nothing refills it. Where the settling flux of species $n$ leaves cell
+$i$, through its upper face where `fsed1` is positive or its lower face where it is negative, the stage sets the
+repaid share to zero, $\Xi_{n,i} = 0$ (`masked_fill_`, {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
+By step 1 of @sec-ch08-theta that leaves the plain factor, $\Theta'_i = \Theta_i$, so the bound
+@eq-ch08-theta-bound holds unchanged for that species in that cell. The guard is per species: a vapour with no
+settling flux in the same cell is still relaxed.
+
+**A worked case.** The carry test's column moves up at 2 m s$^{-1}$ with $\Delta t = \Delta x/(1\ \mathrm{m\,s^{-1}})$,
+so every face drains its lower cell of twice what it holds, of species and of dry air alike. Then
+$\Theta_i = \Theta^{\mathrm d}_i = (1-\eta)/2$ by @eq-ch08-theta-def and @eq-ch08-theta-dry, and
+$\min(\Theta_i/\Theta^{\mathrm d}_i, 1) = 1$. Beside a neighbour ten times poorer, $\Xi_{n,i} = 0.1$, and
+@eq-ch08-theta-relax gives
+$$
+\Theta'_i = \tfrac{1-\eta}{2} + 0.1\left(1 - \tfrac{1-\eta}{2}\right) = 0.55 - 0.45\,\eta ,
+$$
+so $45\%$ of each species flux is withheld there, up to the margin $\eta = 4096\,\epsilon_{\mathrm m}$. With a
+uniform ratio instead, $\Xi_{n,i} = 1$, $\Theta'_i = 1$, and nothing is withheld, so the carry has nothing to carry.
 
 ### Numerical method
 
@@ -69,8 +91,9 @@ the lower or upper cell according to the sign of the part being withheld.
 
 The $x_1$ split is `sed` ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}): when a sedimentation flux is given, the
 advected part is the net flux minus it, and `withhold` is called once on each. The other two
-directions have no settling flux and take the single branch, and so does $x_1$ when no settling flux was recorded,
-which is the case under the covariance gate with `limiter: false`.
+directions have no settling flux and take the single branch, and so does $x_1$ when no settling flux was recorded:
+without sedimentation, with the $x_1$ flux disabled, or with both `limiter` and the covariance switch off, in which
+case the limiter does not run either.
 
 The species enthalpy comes from the equation of state at `species_enthalpy`
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}), computed on the primitive state with ghosts included.
@@ -82,9 +105,10 @@ is a measurement, not a derivation, and it is recorded as such.
 1. The share $(1 - \Theta_d)$ is taken from the donor of the *net* flux, the same choice `flux_positivity_scale_`
    makes, so the mass accounted for is the mass actually withheld
    ({{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}}).
-2. With `limiter: true`, in $x_1$ the species flux is split into an advected part $F - F_{\mathrm{sed}}$ and a
-   settling part $F_{\mathrm{sed}}$, each with its own donor; the two may cross the face in opposite directions. Under
-   the covariance gate with `limiter: false` the settling flux is not recorded, and both parts take the net donor.
+2. Whenever the limiter runs with sedimentation, in $x_1$ the species flux is split into an advected part
+   $F - F_{\mathrm{sed}}$ and a settling part $F_{\mathrm{sed}}$, each with its own donor; the two may cross the face
+   in opposite directions. The split is recorded under `limiter: true` and under the covariance switch alike
+   ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}, `carry`).
 3. The enthalpy is computed on the primitive state with ghosts included and is not exchanged; the code comment records
    that exchanging it changed no bit ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
 4. The energy correction is `flux[IPR] -= (share*part*h).sum(0)` with `share` $=1-\Theta_d$
@@ -103,14 +127,27 @@ is a measurement, not a derivation, and it is recorded as such.
 | the carry | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `flux_positivity_carry_` | tracer limiter running, species enthalpy defined |
 | the withheld share, from the net donor | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `share` | |
 | energy and momentum subtraction | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `withhold` | |
-| the $x_1$ advected and settling split | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `fsed` | $x_1$ only, `limiter: true` |
+| the $x_1$ advected and settling split | {{< code src/hydro/flux_positivity.cpp flux_positivity_carry_ >}} | `fsed` | $x_1$ only |
+| when the settling part is recorded | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `carry` | `limiter` or the covariance switch, species present |
+| the settling guard on the relaxation | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `masked_fill_` | settling part recorded |
 | the species enthalpy | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `species_enthalpy` | |
 
 : Code map of the carry. {#tbl-ch08-carry-code}
 
 **How to use it.** There is no switch of its own. The carry runs whenever the tracer limiter runs, under
 `limiter: true` or under the covariance gate of @sec-ch08-theta, and the equation of state returns a species enthalpy.
-The $x_1$ advected and settling split needs `limiter: true`. These are the lines of the stage
+The $x_1$ advected and settling split is recorded with `limiter: true` or with the covariance switch on, its
+default ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
+
+```cpp
+    if (psed && !options->disable_flux_x1()) {
+      bool carry = (options->eos()->limiter() || flux_covariance()) && ny > 0;
+      auto fadv = carry ? _flux1.narrow(0, ICY, ny).clone() : torch::Tensor();
+      psed->forward(w, _flux1);
+      if (carry) fsed1 = _flux1.narrow(0, ICY, ny) - fadv;
+```
+
+These are the lines of the stage that carry and scale
 ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}):
 
 ```cpp
@@ -129,6 +166,9 @@ the $x_1$ species flux. The carry runs first because it needs the unscaled fluxe
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_flux_positivity_carry.cpp` (`test_flux_positivity_carry.<b>`) | the carry of energy and momentum with withheld mass | relative $10^{-12}$ | set in the shared helper the test cases call, as $10^{-12}$ times the larger of the face value and the increment ({{< code tests/test_flux_positivity_carry.cpp expect_carried >}}); the file gives no reason |
+| `test_flux_positivity_carry.<b>` (the deck) | every case except the next runs a column whose vapour and cloud fall off along $x_1$ by the factors 1, 0.1, 0.01, 0.01, 0.1, 1, so each limited donor has a poorer $x_1$ neighbour and the relaxation leaves a cut; `expect_carried` requires at least one limited species face | as row 1 | the deck is `forward_once` ({{< code tests/test_flux_positivity_carry.cpp forward_once >}}); the worked case of the Derivation gives the $45\%$ cut its comment states |
+| `test_flux_positivity_carry.<b>` (`uniform_ratio_is_not_withheld`) | the same column with a uniform species ratio: the $x_1$ fluxes and the stage increment with the limiter on equal those with it off | exact (`torch::equal`) | at a uniform ratio $\Theta' = 1$ (Derivation), so the limited arm computes the same numbers ({{< code tests/test_flux_positivity_carry.cpp flux_positivity.uniform_ratio_is_not_withheld >}}) |
+| `test_tracer_ratio_python` (the settling arm) | eight cells rising at 2 m s$^{-1}$ with the cloud settling at 1 m s$^{-1}$, limiter off and on: no cell exports more cloud than it holds, no cloud update is negative, and the $x_1$ cloud flux sums of the two arms agree | $10^{-12}\times0.02$ on the export; exact on the sign; $10^{-14}$ relative on the sums | set inline in the test ({{< code tests/test_tracer_ratio.py settling >}}); the file gives no derivation |
 | this chapter's check | `[C6]` the withheld energy and momentum match the withheld mass at the same face and donor; `[C12]` the round-off of the energy correction | round-off | the check's own bounds: `positivity_check.py` `check_C6` asserts the worst energy and momentum residual below $10^{-13}$; `check_C12` asserts the derived $(N_y+3)$ bound |
 
 : Tests of the carry. {#tbl-ch08-carry-tests}
@@ -137,8 +177,10 @@ The chapter's check ports the withholding on random face sets.[^ch08-carry-run] 
 the unscaled-minus-scaled mass flux times the donor's enthalpy to $1.8\times10^{-15}$, and the momentum to
 $8.9\times10^{-16}$, over 2000 face sets. `[C12]`: against exact rationals the energy correction stays within
 $1.88$, $2.68$, $2.86$ and $3.67$ units of $\tfrac12\epsilon_{\mathrm m}(\lvert F_{\mathrm{IPR}}\rvert + \sum_n\lvert\mathrm{d}m_n\hat h_n\rvert)$ for
-$N_y = 1, 2, 4, 8$, below the bounds $4$, $5$, $7$ and $11$. `test_flux_positivity_carry.<b>` has not been run for this report at
-the pin: **pending a pinned ctest run**.
+$N_y = 1, 2, 4, 8$, below the bounds $4$, $5$, $7$ and $11$. `test_flux_positivity_carry.<b>` and
+`test_tracer_ratio_python` have not been run for this report at the pin: **pending a pinned ctest run**. The settling
+arm's deck is the six-cell card of `test_flux_positivity_carry.yaml`, widened to eight cells and $n_{x_2}=4$ with
+periodic $x_2$ and $x_3$ (`carry` and `settling` in {{< code tests/test_tracer_ratio.py settling >}}).
 
 [^ch08-carry-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the check itself, synthetic numpy states;
     run: `python3 src/snapy_report/ch08/checks/positivity_check.py`, CPU, double, 1 process; Python 3.14.7, numpy 2.5.1;
@@ -156,7 +198,10 @@ the pin: **pending a pinned ctest run**.
 1. **Kinetic energy.** The withheld energy is the species enthalpy times the mass. Whether the kinetic energy of the
    withheld mass is accounted for consistently with the momentum correction is not something this chapter measures. No
    test in the repository isolates it.
-2. **Opposite donors are tested.** `withheld_mixed_flux_keeps_each_parts_energy_and_momentum` and its CUDA[^rg-addac7a45546] variant in
+2. **The settling guard is coarse.** It switches the relaxation off for a species in every cell its settling flux
+   leaves, also for the advected part of that species there, which the dry refill would bring back. The cut it keeps is
+   not measured.
+3. **Opposite donors are tested.** `withheld_mixed_flux_keeps_each_parts_energy_and_momentum` and its CUDA[^rg-addac7a45546] variant in
    `test_flux_positivity_carry.<b>` construct upward net cloud flux with downward settling. They check each part's
    donor energy and momentum, with relative tolerance $10^{-12}$
    ({{< code tests/test_flux_positivity_carry.cpp withheld_mixed_flux_keeps_each_parts_energy_and_momentum >}}).
