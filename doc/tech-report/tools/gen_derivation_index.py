@@ -226,7 +226,7 @@ def scheme_rows(s: Scheme, statements: dict[str, str], checks_dir: Path) -> list
         clines = sorted(set(_CLINE.findall(after)), key=lambda c: int(c[2:-1]))
         specific = [f"`{script}` `{tag}`" for eq, script, tag in tagged if eq == label
                     and chk_dir and (chk_dir / script).exists()]
-        check = ", ".join([f"`{c}`" for c in scripts] + [f"`{c}`" for c in clines] + specific) or "none"
+        check = ", ".join([f"`{c}`" for c in scripts] + [f"`{c}`" for c in clines if scripts or not specific] + specific) or "none"
         rows.append(Row(s.chapter, s.label, title, label, stmt, code, check, source, label in statements))
     return rows
 
