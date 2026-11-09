@@ -2,7 +2,7 @@
 
 <!-- PROVENANCE
 pin: snapy@3c891cb20614260351944fb8007cbc9bd50d22a3 (chengcli/snapy)
-sources: OUTLINE.md 8.4; chengcli/snapy#307 PR body
+sources: OUTLINE.md 8.4; chengcli/snapy#307 PR body; chengcli/snapy#338 (the relaxation)
 status: draft
 -->
 
@@ -13,7 +13,7 @@ section exists because the call is a separate one, in a separate module, with it
 it in the hydro path will not find it.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Apply the limiter of @sec-ch08-theta to the passive scalars, and optionally to the complement $b\rho_{\mathrm d} - \rho_n$.
+**Purpose.** Apply the limiter of @sec-ch08-theta, with its relaxation, to the passive scalars; optionally limit the complement $b\rho_{\mathrm d} - \rho_n$.
 
 **Data.** In: `scalar_s`, its three fluxes, the hydro dry-mass flux, $\Delta t$. Out: the scalar fluxes scaled in place, a hit count.
 
@@ -21,13 +21,13 @@ it in the hydro path will not find it.
 
 **Activation.** `equation-of-state/limiter: true` or the scalar's own covariance row; `scalar/upper-bound` $> 0$ adds the second pass.
 
-**Guarantee / limits.** Non-negative scalars per stage; the upper bound only under a mass Courant number below one and explicit dry transport.
+**Guarantee / limits.** Non-negative scalars per stage where the dry air is not over-drained; the upper bound needs a mass Courant number below one.
 
-**Evidence.** `test_scalar.<b>` (`scalar_upper_bound_holds_both_sides`, $10^{-12}$ in float64); no report check.
+**Evidence.** `test_scalar.<b>`, `test_tracer_ratio_python`; `relative_check.py` of @sec-ch08-theta (Tests).
 :::
 
 Local symbols: $b$ is the configured bound; $F_n$ and $F_{\mathrm{dry}}$ the scalar and dry-mass face fluxes. The scalar
-density $\rho_n$[^rg-8230405761eb], the dry density $\rho_{\mathrm d}$[^rg-670f2d9bf0d5] and the ratio $r_n = \rho_n/\rho_{\mathrm d}$ are defined in @sec-appa.
+density $\rho_n$[^rg-8230405761eb], the dry density $\rho_{\mathrm d}$ and the ratio $r_n = \rho_n/\rho_{\mathrm d}$ are defined in @sec-appa.
 
 ### Derivation
 
@@ -40,7 +40,10 @@ then adds the change in complement flux back to $F_n$. Thus it blends toward the
 bound's advecting flux, rather than stopping a plateau at the bound
 ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
 
-The lower-bound argument of @sec-ch08-theta applies to the first pass. With the second
+The lower-bound argument of @sec-ch08-theta applies to the first pass, including its relaxation where the dry air
+is over-drained (@eq-ch08-theta-relax): the scalar's ratio is $r_n = \rho_n/\rho_{\mathrm d}$, the dry-air factor is
+built from the dry density and the hydro dry-mass fluxes, and the bound there is @eq-ch08-theta-bound-relaxed.
+Unlike the hydro species, the scalar path has no settling flux, so no cell is excluded from the relaxation. With the second
 pass enabled, preserving both bounds requires a mass Courant number below one and dry
 density updated by the same explicit mass-flux divergence. The code explicitly excludes
 implicit corrections and dry-mass forcing from that premise. This chapter's `positivity_check.py` numpy checks
@@ -60,8 +63,12 @@ because that row can export tracer a cell does not hold, as for the hydro specie
 
 **Why the same function, and why the second pass is conditional.** Three facts of the code.
 
-1. The scalar call uses `flux_positivity_theta` unchanged, so the per-stage guarantee of @sec-ch08-theta carries over
-   with its bound ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}).
+1. The scalar call builds its factors with `flux_positivity_theta` and then relaxes them exactly as the hydro species
+   are relaxed, @eq-ch08-theta-relax, with $\Theta^{\mathrm d}$ from `rho` and the dry-density rows of the hydro
+   fluxes, and $\Xi$ from `u / rho` through `flux_positivity_share`
+   ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}). So the per-stage guarantee of @sec-ch08-theta carries
+   over in its relaxed form: @eq-ch08-theta-bound where $\Theta^{\mathrm d} = 1$, @eq-ch08-theta-bound-relaxed where the
+   dry air is over-drained. There is no settling guard on this path, because scalars have no settling flux.
 2. The factors are exchanged with interpolation off and then passed through the boundary functions, which is the ghost
    fill the limiter's contract requires. An interpolated ghost is not the neighbour's factor.
 3. The complement $b\rho_{\mathrm d} - \rho_n$ has the flux $bF_{\mathrm{dry}} - F_n$. Limiting it keeps $r_n \le b$ only when the dry
@@ -73,6 +80,8 @@ because that row can export tracer a cell does not hold, as for the hydro specie
 | what | code link | symbol | switch |
 |---|---|---|---|
 | the scalar limiter call | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `flux_positivity_theta` | limiter on |
+| the relaxation, @eq-ch08-theta-relax | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `td` | $0<\Theta^{\mathrm d}<1$ |
+| the repaid share | {{< code src/hydro/flux_positivity.cpp flux_positivity_share >}} | `flux_positivity_share` | |
 | the factor exchange | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `sync_theta` | |
 | the gate, with the scalar's covariance row | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `cov` | `limiter` or the scalar's row |
 | the complement limiter | {{< code src/scalar/scalar.cpp ScalarImpl::forward >}} | `upper_bound` | |
@@ -97,27 +106,46 @@ Refused: `upper-bound: 0`, and a positive `upper-bound` without `equation-of-sta
 ({{< code src/scalar/scalar.cpp ScalarImpl::forward >}}):
 
 ```cpp
-  if (pmb->phydro->options->eos()->limiter() || cov) {
+  bool lim = pmb->phydro->options->eos()->limiter();
+  if (lim || cov) {
     auto theta = flux_positivity_theta(u, _flux1, _flux2, _flux3, pcoord, dt);
+    ...
+    {
+      auto m = [&](torch::Tensor const& f, torch::Tensor const& mass) {
+        return f.defined() ? mass[IDN].unsqueeze(0) : torch::Tensor();
+      };
+      auto ph = pmb->phydro;
+      auto td = flux_positivity_theta(rho, m(_flux1, ph->flux1()),
+                                      m(_flux2, ph->flux2()),
+                                      m(_flux3, ph->flux3()), pcoord, dt);
+      auto phi = flux_positivity_share(u / rho);
+      theta = torch::where((td < 1.) & (td > 0.),
+                           theta + phi * ((theta / td).clamp_max(1.) - theta),
+                           theta);
+    }
     _positivity_hits += (theta.index(cells) < 1.).sum();
     flux_positivity_scale_(sync_theta(theta), _flux1, _flux2, _flux3, pcoord);
   }
 ```
 
 `cov` records that the scalar added its own covariance row, `cells`[^rg-3520b86c4f97] is the interior, and `sync_theta` is the
-exchange-and-fill of the factors.
+exchange-and-fill of the factors. `m` takes the dry-density row of the hydro flux on each face the scalar has, `td` is
+$\Theta^{\mathrm d}$ and `phi` is $\Xi$. The hit count is taken after the relaxation, so it counts the cells whose
+relaxed factor is below one.
 
 ### Tests
 
 | test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
 |---|---|---|---|
 | `tests/test_scalar.cpp` (`test_scalar.<b>`) | `scalar_upper_bound_holds_both_sides`: both bounds hold, a top-hat moves downstream, a uniform channel is preserved | $10^{-5}$ in float32, $10^{-12}$ in float64 | set inline in the test ({{< code tests/test_scalar.cpp >}}); the file gives no reason |
+| `test_tracer_ratio_python` (and `_cuda`) | a passive tracer that starts uniform stays uniform where the limiter fires, and stays non-negative beside an empty neighbour and under a sideways drain, on the decks of @tbl-ch08-theta-tests | $10^{-12}$ relative; exact on the sign | set inline in the test ({{< code tests/test_tracer_ratio.py uniform >}}); see @tbl-ch08-theta-tests |
 | `test_scalar_flux_covariance_python`, `test_scalar_cov_x1_split_python` | passive scalars with `limiter: false` and the covariance on, so the call runs; they assert the scalar against the species and the split | their own | @sec-ch04-fluxcov; they do not assert the limiter's counters |
 
 : Tests of the passive-scalar limiter. {#tbl-ch08-scalar-tests}
 
 The registrations are in {{< code tests/CMakeLists.txt >}}. No report check covers the scalar call: the shared
-first pass is covered by the checks of @sec-ch08-theta, and the two-pass bound is **missing evidence**. The
+first pass and its relaxation are covered by the checks of @sec-ch08-theta (`positivity_check.py`,
+`relative_check.py`), and the two-pass bound is **missing evidence**. The
 ctests have not been run for this report at the pin: **pending a pinned ctest run**.
 
 ### Limits
@@ -126,6 +154,8 @@ ctests have not been run for this report at the pin: **pending a pinned ctest ru
 - The upper bound is optional (`upper-bound` defaults to -1, disabled). A positive value requires
   the EOS limiter; zero is rejected ({{< code src/scalar/scalar.cpp ScalarImpl::reset >}}).
 - With the complement pass enabled, both bounds depend on the transport premises above.
+- Where the dry air is over-drained the lower bound is @eq-ch08-theta-bound-relaxed and rests on the dry refill, as in
+  @sec-ch08-theta.
 :::
 
 1. **Untested path.** The two scalar covariance tests run the call, but no test asserts on its counters or its
@@ -133,8 +163,6 @@ ctests have not been run for this report at the pin: **pending a pinned ctest ru
 
 <!-- reader glossary notes -->
 [^rg-8230405761eb]: $\rho_n$ — density of passive scalar $n$, $\rho_{\mathrm d} r_n$ (`scalar_s`)
-
-[^rg-670f2d9bf0d5]: $\rho_{\mathrm{d}}$ — dry-air density [kg m$^{-3}$]
 
 [^rg-3974a5b369de]: scalar — passive-scalar options
 
