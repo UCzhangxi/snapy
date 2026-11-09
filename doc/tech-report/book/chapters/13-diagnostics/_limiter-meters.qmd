@@ -2,7 +2,7 @@
 
 <!-- PROVENANCE
 pin: snapy@3c891cb20614260351944fb8007cbc9bd50d22a3 (chengcli/snapy)
-sources: OUTLINE.md 13.2; src/hydro/hydro_forward.cpp; src/hydro/flux_positivity.cpp; src/hydro/flux_positivity.hpp;
+sources: OUTLINE.md 13.2; src/hydro/hydro_forward.cpp (with the relaxation of chengcli/snapy#338); src/hydro/flux_positivity.cpp; src/hydro/flux_positivity.hpp;
          src/hydro/hydro.cpp; src/mesh/meshblock.cpp; tests/test_cycle_diagnostics.cpp;
          sources/gh__PR_BODIES_202-219.md
 status: draft
@@ -44,8 +44,11 @@ two- or three-dimensional moist run the limiter acts and the meters count at the
 
 For a species of density $\rho_y$ in cell $i$, with $D_i$ the mass its faces would remove in the stage step
 $\Delta t$, the limiter factor is
-$\Theta_i = \min\big(1, (1-4096\epsilon_{\mathrm m})\,\rho_{y,i}V_i/D_i\big)$ where $D_i > 0$, and 1 elsewhere. The mass held
-back is $(1-\Theta_i)D_i$. An entry is severe when
+$\Theta_i = \min\big(1, (1-4096\epsilon_{\mathrm m})\,\rho_{y,i}V_i/D_i\big)$ where $D_i > 0$, and 1 elsewhere. Where the
+dry air of the cell is itself over-drained in the stage, the stage relaxes that factor toward the dry air's before the
+census (@eq-ch08-theta-relax), so the census reads the relaxed factor: below, $\Theta_i$ is the factor after the
+relaxation, a hit is an entry whose relaxed factor is below 1, and $D_i$ is still the unrelaxed drain of the species.
+The mass held back is $(1-\Theta_i)D_i$. An entry is severe when
 
 $$
 \Theta_i < 0.9 \quad\text{and}\quad (1-\Theta_i)\,D_i > n_{\mathrm{ulp}}\,\epsilon_{\mathrm m}\,\mathcal M_i ,
@@ -76,7 +79,9 @@ In the code, @eq-ch13-limiter-severe is the census into `_positivity_severe`
 
 ### Numerical method
 
-See @fig-ch13-limiter-meters for the settling column of the check.
+See @fig-ch13-limiter-meters for the settling column of the check. The check ports the plain factor: its column has
+no dry mass flux, so the dry-air factor is 1 there and the relaxation of @eq-ch08-theta-relax leaves $\Theta$
+unchanged; a settling cell would keep its plain factor in any case (@sec-ch08-carry).
 
 ```{python}
 #| label: fig-ch13-limiter-meters
