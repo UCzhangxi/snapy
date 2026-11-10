@@ -15,8 +15,8 @@ time-integration chapter covers the solve). Gravity enters it twice. The momentu
 energy row's momentum column hold the gravity source Jacobian $\Phi$[^rg-1f2c44c9087e], the linearisation of the body force
 $\rho g_1$ and of the cell work $\rho v_1g_1$. With `gravity-work: face` the energy row is changed so that it
 books the face form of the mass the solve itself moves; booked after the solve instead, that work makes a tall
-column blow up at large implicit steps. Where it sets in depends on the acoustic Courant number and on $N\Delta t$
-(@tbl-ch06-vic-onset); the 45-cell column where it was found blew up at acoustic Courant 65.6.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
+column blow up at large implicit steps. Where it sets in depends on the acoustic Courant number and on $N\Delta t$,
+with $N$ the buoyancy (Brunt–Väisälä) frequency [s$^{-1}$], so that $N\Delta t$ is the time step in units of the buoyancy period over $2\pi$ (@tbl-ch06-vic-onset); the 45-cell column where it was found blew up at acoustic Courant 65.6.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
 only the dissipative part of the face form. After the solve two corrections book the work of the mass that the
 solve's projection and its availability clamp moved differently from what the matrix assumed, so the booked
 energy matches the mass actually moved.
@@ -38,8 +38,9 @@ energy matches the mass actually moved.
 Local symbols: $\mathbf e_{m_1}$ the unit row vector of the normal-momentum unknown;
 $[\mathsf X]_\rho$ and $[\mathsf X]_E$ the mass and energy rows of a block $\mathsf X$; $m_{1,i}=\mathbf e_{m_1}\mathbf q_i$ the
 normal momentum of cell $i$ (appendix A $m_1$). $\mathsf A_i$[^rg-47f774f5b4d6], $\mathsf B_i$, $\mathsf C_i$, $\mathsf A^\pm$,
-$\omega^{\mathrm{lo}}_i$[^rg-26618cb146eb], $\omega^{\mathrm{hi}}_i$ and $\boldsymbol\delta_i$ are defined in @sec-appa. $N\Delta t$ is the dimensionless product the linear model of @tbl-ch06-vic-onset reports
-the blow-up onset in; its $N$ is that model's own symbol and has no other meaning here.
+$\omega^{\mathrm{lo}}_i$[^rg-26618cb146eb], $\omega^{\mathrm{hi}}_i$ and $\boldsymbol\delta_i$ are defined in @sec-appa. $N$ is the buoyancy (Brunt–Väisälä) frequency of the column [s$^{-1}$], and $N\Delta t$
+the dimensionless time step in which @tbl-ch06-vic-onset gives the blow-up onset; the same letter is squared in the
+spurious stratification $N^2_{\mathrm{eff}}$ of @sec-ch05-wbref4.
 
 Under `face-wallc` the face work stays outside the operator and is swapped in after the solve, with the wall cells
 keeping the cell work; setup warns about it. With the corrected-PE switch on, the energy row also carries part of
@@ -222,7 +223,8 @@ $E_{\mathrm{tot}}+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` al
 
 ::: {.callout-warning title="Limits"}
 `face-wallc` with an implicit scheme books the face work after the solve, and a tall column then blows up. The onset
-depends on the acoustic Courant number and on $N\Delta t$ (@tbl-ch06-vic-onset); acoustic Courant about 66 is the
+depends on the acoustic Courant number and on $N\Delta t$, the time step in units of the buoyancy period over $2\pi$
+(@tbl-ch06-vic-onset); acoustic Courant about 66 is the
 onset of the one 45-cell column it was found on, not a general threshold.
 :::
 
@@ -233,13 +235,15 @@ onset of the one 45-cell column it was found on, not a general threshold.
 | 100 | about 20 |
 
 : Onset of the after-solve (`face-wallc`) blow-up of a tall column under an implicit scheme, from a linear model of
-the column.[^ch06-vic-onset] $N\Delta t$ is the product the model reports, with $N$ as that model names it. The
+the column.[^ch06-vic-onset] $N\Delta t$ is the time step in units of the buoyancy period over $2\pi$, with $N$ the buoyancy (Brunt–Väisälä)
+frequency of the column. The
 table is to be extended from the archived onset table, which covers acoustic Courant 1 to 200. {#tbl-ch06-vic-onset}
 
-[^ch06-vic-onset]: [source: linear-model result relayed in the project discussion thread 1794212148.557499. No deck,
-    script, sha or command is recorded in the repository for it, so the three rows are **missing evidence** until the
-    archived onset table (acoustic Courant 1 to 200) and the model that produced it are committed with their run
-    record.]
+[^ch06-vic-onset]: [source: linear-model result in the project discussion thread 1794212148.557499, archived there as a
+    bundle whose onsets for acoustic Courant 1 to 200 are a CSV, sha256 `3a959ec3…8d7e7a` (abbreviated as recorded in
+    the thread; the full digest is not given there). The bundle is not in the repository, and no deck, script, sha or
+    command for it is recorded here, so the three rows are **missing evidence** until that CSV and the model that
+    produced it are committed with their run record; the table is to be extended from it.]
 
 - The rows are a linearisation about the stage state.
 - The VIC closes each column as a reflecting wall whatever the $x_1$ boundary (time-integration chapter).
