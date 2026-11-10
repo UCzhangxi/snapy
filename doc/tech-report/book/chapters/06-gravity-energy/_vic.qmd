@@ -15,7 +15,8 @@ time-integration chapter covers the solve). Gravity enters it twice. The momentu
 energy row's momentum column hold the gravity source Jacobian $\Phi$[^rg-1f2c44c9087e], the linearisation of the body force
 $\rho g_1$ and of the cell work $\rho v_1g_1$. With `gravity-work: face` the energy row is changed so that it
 books the face form of the mass the solve itself moves; booked after the solve instead, that work makes a tall
-column blow up at acoustic Courant about 66.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
+column blow up at large implicit steps. Where it sets in depends on the acoustic Courant number and on $N\Delta t$
+(@tbl-ch06-vic-onset); the 45-cell column where it was found blew up at acoustic Courant 65.6.[^ch06-vic-283] With `gravity-work: cell` the energy row adds
 only the dissipative part of the face form. After the solve two corrections book the work of the mass that the
 solve's projection and its availability clamp moved differently from what the matrix assumed, so the booked
 energy matches the mass actually moved.
@@ -37,13 +38,17 @@ energy matches the mass actually moved.
 Local symbols: $\mathbf e_{m_1}$ the unit row vector of the normal-momentum unknown;
 $[\mathsf X]_\rho$ and $[\mathsf X]_E$ the mass and energy rows of a block $\mathsf X$; $m_{1,i}=\mathbf e_{m_1}\mathbf q_i$ the
 normal momentum of cell $i$ (appendix A $m_1$). $\mathsf A_i$[^rg-47f774f5b4d6], $\mathsf B_i$, $\mathsf C_i$, $\mathsf A^\pm$,
-$\omega^{\mathrm{lo}}_i$[^rg-26618cb146eb], $\omega^{\mathrm{hi}}_i$ and $\boldsymbol\delta_i$ are defined in @sec-appa.
+$\omega^{\mathrm{lo}}_i$[^rg-26618cb146eb], $\omega^{\mathrm{hi}}_i$ and $\boldsymbol\delta_i$ are defined in @sec-appa. $N\Delta t$ is the dimensionless product the linear model of @tbl-ch06-vic-onset reports
+the blow-up onset in; its $N$ is that model's own symbol and has no other meaning here.
 
 Under `face-wallc` the face work stays outside the operator and is swapped in after the solve, with the wall cells
 keeping the cell work; setup warns about it. With the corrected-PE switch on, the energy row also carries part of
 that scheme's work (@sec-ch06-dwork).[^ch06-vic-src]
 
-[^ch06-vic-283]: The tall-column blow-up is recorded in chengcli/snapy#283.
+[^ch06-vic-283]: The tall-column blow-up is recorded in chengcli/snapy#283. [source: `sources/gw__GRAVITY_WORK_TECH_REPORT_draft.md`
+    §5.2: a balanced isothermal column at rest, 45 cells of 29.9 km, rk3, WENO5[^rg-21ac94b75174], LMARS[^rg-d3152948490d], implicit scheme 9; at
+    $\Delta t$ = 997 s (vertical acoustic Courant 65.6) $\max\lvert w\rvert$ grows 2.7 times per step, at
+    $\Delta t$ = 100 s (Courant 6.6) it stays at rest. That is one column, not a general threshold.]
 
 [^ch06-vic-src]: The face work in the operator came in with chengcli/snapy#283, the projection and clamp work with
     chengcli/snapy#285.
@@ -136,9 +141,10 @@ forcing:
 
 1. *An `implicit-scheme` other than 0, 1 or 9* is refused ("Unsupported implicit scheme"): there are only two solvers
    ({{< code src/implicit/implicit_hydro.cpp ImplicitOptionsImpl::type >}}).
-2. *A face form whose work is not in the operator* (`face-wallc`) is warned about at setup: a tall column at acoustic
-   Courant about 66 blows up when the face work sits outside the linearised operator
-   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}).
+2. *A face form whose work is not in the operator* (`face-wallc`) is warned about at setup
+   ({{< code src/hydro/hydro.cpp HydroImpl::reset >}}). The message says that "a tall column at acoustic Courant ~66
+   blows up" when the face work sits outside the linearised operator. That number is the 45-cell column where the
+   problem was found; in general the onset depends on the Courant number and on $N\Delta t$ (@tbl-ch06-vic-onset).
 
 **The code, mapped to @eq-ch06-vic-rows**
 ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}), the general branch:
@@ -215,9 +221,25 @@ $E_{\mathrm{tot}}+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` al
 ### Limits
 
 ::: {.callout-warning title="Limits"}
-`face-wallc` with an implicit scheme books the face work after the solve; a tall column at acoustic Courant about
-66 blows up that way.
+`face-wallc` with an implicit scheme books the face work after the solve, and a tall column then blows up. The onset
+depends on the acoustic Courant number and on $N\Delta t$ (@tbl-ch06-vic-onset); acoustic Courant about 66 is the
+onset of the one 45-cell column it was found on, not a general threshold.
 :::
+
+| acoustic Courant number | $N\Delta t$ at onset |
+|---|---|
+| 1 | 2.3 to 2.9 |
+| 10 | about 7 |
+| 100 | about 20 |
+
+: Onset of the after-solve (`face-wallc`) blow-up of a tall column under an implicit scheme, from a linear model of
+the column.[^ch06-vic-onset] $N\Delta t$ is the product the model reports, with $N$ as that model names it. The
+table is to be extended from the archived onset table, which covers acoustic Courant 1 to 200. {#tbl-ch06-vic-onset}
+
+[^ch06-vic-onset]: [source: linear-model result relayed in the project discussion thread 1794212148.557499. No deck,
+    script, sha or command is recorded in the repository for it, so the three rows are **missing evidence** until the
+    archived onset table (acoustic Courant 1 to 200) and the model that produced it are committed with their run
+    record.]
 
 - The rows are a linearisation about the stage state.
 - The VIC closes each column as a reflecting wall whatever the $x_1$ boundary (time-integration chapter).
@@ -229,6 +251,10 @@ $E_{\mathrm{tot}}+P$. `implicit_gravity_work_holds_under_rk3_stage_weighting` al
 [^rg-47f774f5b4d6]: $\mathsf A_i, \mathsf B_i, \mathsf C_i$ — the diagonal, lower and upper blocks of row $i$ of the block-tridiagonal system
 
 [^rg-26618cb146eb]: $\omega^{\mathrm{lo}}_i, \omega^{\mathrm{hi}}_i$ — the implicit face-work weights $\tfrac12A_{i\mp1/2}\lvert x_{1,i}-x_{1,i\mp1/2}\rvert/V_i$
+
+[^rg-21ac94b75174]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
+
+[^rg-d3152948490d]: LMARS — low-Mach approximate Riemann solver
 
 [^rg-ccef979766bf]: integration — time-integration options
 <!-- end reader glossary notes -->
