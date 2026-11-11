@@ -320,7 +320,7 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
       grav1 != 0. && phydro->options->grav()->gravity_work() == "cell";
   if (diffusive_work) adir |= kVicDiffusiveCell;
 
-  // SNAP_GRAVITY_WORK_RADIAL_EXACT: the energy row also carries the corrected
+  // gravity-work: face: the energy row also carries the corrected
   // potential energy's work g1 sigma^2 s[drho] of the mass this solve moves
   // (derivation sec 7, eq. 7). Booked only after the solve, that work is
   // explicit in a fixed fraction of the face work of a grid-scale density
@@ -546,32 +546,7 @@ torch::Tensor ImplicitHydroImpl::forward_masked(torch::Tensor du,
   w[IVY] -= w[IVZ] * cos_theta;
   pcoord->flux2global1_(du);
 
-  // face-wallc retains its legacy post-solve swap. Face mode already books
-  // the metric-weighted work inside the matrix on every coordinate system.
-  if (grav1 != 0. && phydro->options->grav()->gravity_work() != "cell" &&
-      !face_work) {
-    int is = pcoord->il();
-    int ie = pcoord->iu() + 1;
-
-    auto face_mass = _mass_corr[IVZ];
-    auto x1v = pcoord->x1v.slice(0, is, ie);
-    auto dphi_top = -grav1 * (pcoord->x1f.slice(0, is + 1, ie + 1) - x1v);
-    auto dphi_bot = -grav1 * (pcoord->x1f.slice(0, is, ie) - x1v);
-    auto volume = pcoord->cell_volume();
-    auto face_gravity_work = -(dphi_top * face_mass.slice(-1, is + 1, ie + 1) -
-                               dphi_bot * face_mass.slice(-1, is, ie)) /
-                             volume.slice(-1, is, ie);
-    auto matrix_gravity_work = dt * grav1 * du[IVX].slice(-1, is, ie);
-    auto swap = face_gravity_work - matrix_gravity_work;
-    // face-wallc: the x1 wall cells keep the matrix's cell work
-    if (phydro->options->grav()->gravity_work() == "face-wallc") {
-      if (phydro->is_x1_wall(0)) swap.select(-1, 0).zero_();
-      if (phydro->is_x1_wall(1)) swap.select(-1, ie - is - 1).zero_();
-    }
-    du[IPR].slice(-1, is, ie) += swap;
-  }
-
-  // SNAP_GRAVITY_WORK_RADIAL_EXACT: the matrix books the face form for the
+  // gravity-work: face: the matrix books the face form for the
   // mass this solve moved and the tridiagonal part of the corrected potential
   // energy's remainder (derivation sec 7) for its raw density change; add the
   // rest, so the remainder is g1 sigma^2 s[du - du0] and E + P closes over the
