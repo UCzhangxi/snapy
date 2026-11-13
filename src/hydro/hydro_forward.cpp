@@ -304,7 +304,7 @@ static void conv4_x1_weights(torch::Tensor x1f, int n,
 // conversion-order 4 at a reflecting x1 wall: ghost averages of the polynomial
 // through the four owned averages next to the wall, plus q(0) = 0 (c = 1) or
 // q'(0) = 0 (c = 2); E[side][c] maps those four (narrow order) to the ghosts
-static torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
+torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
   x1f = x1f.to(torch::kCPU, torch::kFloat64);
   auto E = torch::zeros({2, 3, ng, 4}, torch::kFloat64);
   for (int s : {0, 1}) {
@@ -327,6 +327,23 @@ static torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
     }
   }
   return E;
+}
+
+torch::Tensor wall4_fill(torch::Tensor a, torch::Tensor const& E, int c, int i0,
+                         int i1, bool const* wall, bool pos,
+                         torch::Tensor ref) {
+  int g = E.size(2);
+  auto trips = torch::zeros({}, a.options().dtype(torch::kLong));
+  for (int s : {0, 1}) {
+    if (!wall[s]) continue;
+    auto old = a.narrow(-1, s ? i1 + 1 : i0 - g, g);
+    auto x = a.narrow(-1, s ? i1 - 3 : i0, 4).matmul(E[s][c].t());
+    auto t = ref.defined() ? x + ref.narrow(-1, s ? i1 + 1 : i0 - g, g) : x;
+    auto bad = pos ? t <= 0. : torch::zeros_like(t, torch::kBool);
+    trips += bad.sum();
+    old.copy_(torch::where(bad, old, x));
+  }
+  return trips;
 }
 
 torch::Tensor conv4_admissible(torch::Tensor const& a, bool prim,
@@ -369,16 +386,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     wall4[f] = wall4[f] && i1 - i0 >= 3;
   }
   auto fill4 = [&](torch::Tensor a, int c, bool pos, torch::Tensor ref) {
-    int g = pmb->pcoord->options->nghost();
-    for (int s : {0, 1}) {
-      if (!wall4[s]) continue;
-      auto old = a.narrow(-1, s ? i1 + 1 : i0 - g, g);
-      auto x = a.narrow(-1, s ? i1 - 3 : i0, 4).matmul(wall4_E_[s][c].t());
-      auto t = ref.defined() ? x + ref.narrow(-1, s ? i1 + 1 : i0 - g, g) : x;
-      auto bad = pos ? t <= 0. : torch::zeros_like(t, torch::kBool);
-      _conv4_trips += bad.sum();
-      old.copy_(torch::where(bad, old, x));
-    }
+    _conv4_trips += wall4_fill(a, wall4_E_, c, i0, i1, wall4, pos, ref);
   };
   // x1 point values u - L u, the primitives there, and back to cell averages:
   // w = W(u - L u) + L W(u), fourth order where W(u) is second
