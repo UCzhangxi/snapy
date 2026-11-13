@@ -23,9 +23,10 @@ slab     moist EOS, limiter on, 32 x 8 with periodic x2 on two x1 blocks in one 
          the tracer ratio within 1e-13, every seam ghost of w, corners included, bitwise the neighbour's
          converted cell, and the sum of vapour^2 after 30 steps within 1e-10 of the screened run's (u - L u with
          negative vapour falls back before the EOS; without that the state moves by 1.6e-6).
-wall     one stage-0 step of rho = 1 + .2 sin(2 z), v = .01 sin(pi z), p = 1.5 - z + .1 cos(2 z) + .05 cos(pi z)
-         under g = 1 (gravity-only wall path; rho slopes, p_z + g rho = 0 at both walls) between reflecting walls,
-         nx1 = 64, 128: the mass tendency error in the three cells at each wall falls at order >= 2.5 (mirror: ~1).
+wall     one stage-0 step of rho = T (1 + d), p = T^2 (1 + d)^G, T = 1 - z/2, d = 1e-3 sin^4(pi z), v = .01
+         sin(pi z), g = 1 (gravity-only wall path; p_z + g rho = 0 at both walls; WENO unscaled: scaling near v = 0
+         costs an order), reflecting walls, nx1 = 64, 128: the mass tendency error in the three cells at each wall
+         falls at order >= 2.5 (mirror: ~1).
 
   python test_conversion_order.py [--device cpu|cuda] [--arms order,...]
 """
@@ -45,12 +46,12 @@ RD = 8.314462618 / 29.e-3
 
 
 def mesh(key, nx=64, geo="cartesian", x1f=None, nb1=1, nx2=1, limiter=False, moist=False, tracer=False, grav=0.,
-         straka=False, tfloor=1.e-12, x1bc="reflecting"):
+         straka=False, tfloor=1.e-12, x1bc="reflecting", scale=True):
     bounds = {"x1min": 0., "x1max": 1., "x2min": 0., "x2max": 1., "x3min": 0., "x3max": 1.}
     bounds.update({"spherical-polar": {"x1min": 1., "x1max": 2., "x2min": 1., "x2max": 2.},
                    "gnomonic-equiangle": {"x1min": 1., "x1max": 2., "x2min": -.05, "x2max": .05,
                                           "x3min": -.05, "x3max": .05}}.get(geo, {}))
-    weno = {"type": "weno5", "scale": True, "shock": False}
+    weno = {"type": "weno5", "scale": scale, "shock": False}
     eos = {"type": "ideal-gas", "gammad": G, "limiter": limiter, "density-floor": 1.e-10, "pressure-floor": 1.e-10}
     cfg = {"geometry": {"type": geo, "bounds": bounds, "cells": {"nx1": nx, "nx2": nx2, "nx3": 1, "nghost": NG}},
            "boundary-condition": {"external": {f"x{d}-{s}": x1bc if d == 1 else "periodic"
@@ -249,11 +250,12 @@ def arm_gravity(device):
 
 
 def arm_wall(device):
-    rho, v, p = (lambda r: 1. + .2 * torch.sin(2. * r)), (lambda r: .01 * torch.sin(torch.pi * r)), \
-        (lambda r: 1.5 - r + .1 * torch.cos(2. * r) + .05 * torch.cos(torch.pi * r))
+    T, d = (lambda r: 1. - r / 2.), (lambda r: 1.e-3 * torch.sin(torch.pi * r) ** 4)
+    rho, v, p = (lambda r: T(r) * (1. + d(r))), (lambda r: .01 * torch.sin(torch.pi * r)), \
+        (lambda r: T(r) ** 2 * (1. + d(r)) ** G)
     err = []
     for nx in (64, 128):
-        m = mesh(4, nx, grav=1.)
+        m = mesh(4, nx, grav=1., scale=False)
         state, blocks = start(m, lambda xf, *_: averages(xf, rho, v, p)[0], device)
         u0, xf = interior(state, blocks, "hydro_u", kIDN), torch.linspace(0., 1., nx + 1, dtype=torch.float64)
         m.set_cycle(1)
