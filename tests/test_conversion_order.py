@@ -23,6 +23,8 @@ slab     moist EOS, limiter on, 32 x 8 with periodic x2 on two x1 blocks in one 
          the tracer ratio within 1e-13, every seam ghost of w, corners included, bitwise the neighbour's
          converted cell, and the sum of vapour^2 after 30 steps within 1e-10 of the screened run's (u - L u with
          negative vapour falls back before the EOS; without that the state moves by 1.6e-6).
+wall     one stage-0 step of rho = 1 + .2 cos(pi z), v = .01 sin(pi z), p = 1 + .1 cos(pi z) between reflecting
+         walls, nx1 = 64, 128: the mass tendency error in the three cells at each wall falls at order >= 3.5.
 
   python test_conversion_order.py [--device cpu|cuda] [--arms order,...]
 """
@@ -245,6 +247,22 @@ def arm_gravity(device):
     return fit(err) >= 3.8
 
 
+def arm_wall(device):
+    rho, v, p = (lambda r: 1. + .2 * torch.cos(torch.pi * r)), (lambda r: .01 * torch.sin(torch.pi * r)), \
+        (lambda r: 1. + .1 * torch.cos(torch.pi * r))
+    err = []
+    for nx in (64, 128):
+        m = mesh(4, nx)
+        state, blocks = start(m, lambda xf, *_: averages(xf, rho, v, p)[0], device)
+        u0, xf = interior(state, blocks, "hydro_u", kIDN), torch.linspace(0., 1., nx + 1, dtype=torch.float64)
+        m.set_cycle(1)
+        m.forward(state, 1.e-2, 0)
+        e = (interior(state, blocks, "hydro_u", kIDN) - u0) / 1.e-2 + (rho(xf) * v(xf)).diff() * nx
+        err.append(float(torch.cat([e[:3], e[-3:]]).abs().max()))
+    print(f"wall key 4: mass tendency error in the wall cells {err} order {np.log2(err[0] / err[1]):.2f}")
+    return np.log2(err[0] / err[1]) >= 3.5
+
+
 def arm_theta(device):
     g = 9.8
     cp = G * RD / (G - 1)
@@ -319,12 +337,13 @@ def arm_slab(device):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
-    ap.add_argument("--arms", default="order,radial,gravity,theta,mass,floor,slab")
+    ap.add_argument("--arms", default="order,radial,gravity,theta,mass,floor,slab,wall")
     a = ap.parse_args()
     if a.device == "cuda" and not torch.cuda.is_available():
         raise SystemExit(125)
     arms = {"order": lambda d: arm_order(d, 0.) and arm_order(d, .8), "radial": arm_radial, "gravity": arm_gravity,
-            "theta": arm_theta, "mass": arm_mass, "floor": arm_floor, "slab": arm_slab}
+            "theta": arm_theta, "mass": arm_mass, "floor": arm_floor, "slab": arm_slab,
+            "wall": arm_wall}
     bad = []
     for name in a.arms.split(","):
         t0 = time.time()
