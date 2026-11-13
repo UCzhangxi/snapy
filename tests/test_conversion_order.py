@@ -23,8 +23,9 @@ slab     moist EOS, limiter on, 32 x 8 with periodic x2 on two x1 blocks in one 
          the tracer ratio within 1e-13, every seam ghost of w, corners included, bitwise the neighbour's
          converted cell, and the sum of vapour^2 after 30 steps within 1e-10 of the screened run's (u - L u with
          negative vapour falls back before the EOS; without that the state moves by 1.6e-6).
-wall     one stage-0 step of rho = 1 + .2 cos(pi z), v = .01 sin(pi z), p = 1 + .1 cos(pi z) between reflecting
-         walls, nx1 = 64, 128: the mass tendency error in the three cells at each wall falls at order >= 3.5.
+wall     one stage-0 step of rho = 1 + .2 cos(pi z), v = .01 sin(pi z), p = 1 + .1 cos(pi z) under g = 1 (so p - pref
+         has a slope at both walls) between reflecting walls, nx1 = 64, 128: the mass tendency error in the three
+         cells at each wall falls at order >= 3.5.
 
   python test_conversion_order.py [--device cpu|cuda] [--arms order,...]
 """
@@ -252,7 +253,7 @@ def arm_wall(device):
         (lambda r: 1. + .1 * torch.cos(torch.pi * r))
     err = []
     for nx in (64, 128):
-        m = mesh(4, nx)
+        m = mesh(4, nx, grav=1.)
         state, blocks = start(m, lambda xf, *_: averages(xf, rho, v, p)[0], device)
         u0, xf = interior(state, blocks, "hydro_u", kIDN), torch.linspace(0., 1., nx + 1, dtype=torch.float64)
         m.set_cycle(1)
