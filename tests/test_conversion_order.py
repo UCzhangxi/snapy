@@ -23,9 +23,9 @@ slab     moist EOS, limiter on, 32 x 8 with periodic x2 on two x1 blocks in one 
          the tracer ratio within 1e-13, every seam ghost of w, corners included, bitwise the neighbour's
          converted cell, and the sum of vapour^2 after 30 steps within 1e-10 of the screened run's (u - L u with
          negative vapour falls back before the EOS; without that the state moves by 1.6e-6).
-wall     one stage-0 step of rho = 1 + .2 sin(2 z), v = .01 sin(pi z), p = 1 + .1 sin(2 z) under g = 1 (the
-         gravity-only wall path; rho and p - pref have a slope at both walls) between reflecting walls, nx1 = 64,
-         128: the mass tendency error in the three cells at each wall falls at order >= 2.5 (mirror: ~1).
+wall     one stage-0 step of rho = 1 + .2 sin(2 z), v = .01 sin(pi z), p = 1.5 - z + .1 cos(2 z) + .05 cos(pi z)
+         under g = 1 (gravity-only wall path; rho slopes, p_z + g rho = 0 at both walls) between reflecting walls,
+         nx1 = 64, 128: the mass tendency error in the three cells at each wall falls at order >= 2.5 (mirror: ~1).
 
   python test_conversion_order.py [--device cpu|cuda] [--arms order,...]
 """
@@ -250,7 +250,7 @@ def arm_gravity(device):
 
 def arm_wall(device):
     rho, v, p = (lambda r: 1. + .2 * torch.sin(2. * r)), (lambda r: .01 * torch.sin(torch.pi * r)), \
-        (lambda r: 1. + .1 * torch.cos(torch.pi * r))
+        (lambda r: 1.5 - r + .1 * torch.cos(2. * r) + .05 * torch.cos(torch.pi * r))
     err = []
     for nx in (64, 128):
         m = mesh(4, nx, grav=1.)
