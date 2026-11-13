@@ -75,8 +75,11 @@ std::tuple<torch::Tensor, double, int> balance_column(
     auto c = (x(2) - x(1)).square() / 4. / (x(3) - x(0));
     auto kp = c / (x(3) - x(1)), km = c / (x(2) - x(0));
     // L a = h^2/24 q'' on the owned cells, hydro_forward.cpp's lap
-    auto E = wall4_weights(f, 1, n, 1).to(w.options());  // the solver's ghosts
-    bool walls[2] = {true, true};
+    auto const& bf = eos->phydro->pmb->options->bfuncs();  // the column's BCs
+    bool walls[2] = {n > 3 && is_reflecting(bf[0]),
+                     n > 3 && is_reflecting(bf[1])};
+    auto E = walls[0] || walls[1] ? wall4_weights(f, 1, n, 1).to(w.options())
+                                  : torch::Tensor();  // the solver's ghosts
     auto lap = [&](torch::Tensor const& a) {
       auto a0 = a.narrow(-1, 1, n);
       return kp * (a.narrow(-1, 2, n) - a0) - km * (a0 - a.narrow(-1, 0, n));

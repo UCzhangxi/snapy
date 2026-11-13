@@ -332,10 +332,10 @@ torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
 torch::Tensor wall4_fill(torch::Tensor a, torch::Tensor const& E, int c, int i0,
                          int i1, bool const* wall, bool pos,
                          torch::Tensor ref) {
-  int g = E.size(2);
   auto trips = torch::zeros({}, a.options().dtype(torch::kLong));
   for (int s : {0, 1}) {
     if (!wall[s]) continue;
+    int g = E.size(2);
     auto old = a.narrow(-1, s ? i1 + 1 : i0 - g, g);
     auto x = a.narrow(-1, s ? i1 - 3 : i0, 4).matmul(E[s][c].t());
     auto t = ref.defined() ? x + ref.narrow(-1, s ? i1 + 1 : i0 - g, g) : x;
@@ -386,7 +386,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     wall4[f] = wall4[f] && i1 - i0 >= 3;
   }
   auto fill4 = [&](torch::Tensor a, int c, bool pos, torch::Tensor ref) {
-    _conv4_trips += wall4_fill(a, wall4_E_, c, i0, i1, wall4, pos, ref);
+    if (wall4[0] || wall4[1])  // key 2 and wall-less blocks never enter
+      _conv4_trips += wall4_fill(a, wall4_E_, c, i0, i1, wall4, pos, ref);
   };
   // x1 point values u - L u, the primitives there, and back to cell averages:
   // w = W(u - L u) + L W(u), fourth order where W(u) is second
