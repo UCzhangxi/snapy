@@ -602,13 +602,6 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       // floor=false: reconstruction-stage floors would clamp legitimately
       // negative perturbations.
       wtmp = precon1->forward(wx1, DIM1, /*floor=*/false);
-      // key 4: the wall face mirrors its owned side, so v* = 0 (no mass flux)
-      for (int s : {0, 1}) {
-        if (!wall4[s]) continue;
-        int i = s ? iu + 1 : is, o = s ? ILT : IRT;
-        wtmp[1 - o].select(-1, i).copy_(wtmp[o].select(-1, i));
-        wtmp[1 - o][IVX].select(-1, i).neg_();
-      }
 
       wx1[IPR].copy_(pressure);
       wx1[IDN].copy_(density);
@@ -638,6 +631,13 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
           {density.narrow(-1, 0, 1), density.narrow(-1, 0, n1 - 1)}, -1);
       wtmp[ILT][IDN].copy_(torch::where(dl > 0., dl, rho_below));
       wtmp[IRT][IDN].copy_(torch::where(dr > 0., dr, density));
+      // key 4, after the floors: the wall face mirrors its owned side, v* = 0
+      for (int s : {0, 1}) {
+        if (!wall4[s]) continue;
+        int i = s ? iu + 1 : is, o = s ? ILT : IRT;
+        wtmp[1 - o].select(-1, i).copy_(wtmp[o].select(-1, i));
+        wtmp[1 - o][IVX].select(-1, i).neg_();
+      }
     } else {
       wtmp = precon1->forward(wx1, DIM1);
       if (grav1) {
