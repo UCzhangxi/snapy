@@ -302,11 +302,11 @@ static void conv4_x1_weights(torch::Tensor x1f, int n,
 }
 
 // conversion-order 4 at a reflecting x1 wall: ghost averages of the polynomial
-// through the four owned averages next to the wall, plus q(0) = 0 (c = 1) or
-// q'(0) = 0 (c = 2); E[side][c] maps those four (narrow order) to the ghosts
+// through the four owned averages next to the wall, plus q(0) = 0 if c = 1;
+// E[side][c] maps those four (narrow order) to the ghosts
 static torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
   x1f = x1f.to(torch::kCPU, torch::kFloat64);
-  auto E = torch::zeros({2, 3, ng, 4}, torch::kFloat64);
+  auto E = torch::zeros({2, 2, ng, 4}, torch::kFloat64);
   for (int s : {0, 1}) {
     int w = s ? iu + 1 : is, d = s ? -1 : 1;
     auto y = (x1f - x1f[w]) / (x1f[w + d] - x1f[w]);
@@ -317,7 +317,7 @@ static torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
     std::vector<torch::Tensor> a, b;
     for (int k = 0; k < 4; ++k) a.push_back(row(s ? iu - 3 + k : is + k));
     for (int k = 0; k < ng; ++k) b.push_back(row(s ? iu + 1 + k : is - ng + k));
-    for (int c : {0, 1, 2}) {
+    for (int c : {0, 1}) {
       int n = 4 + (c > 0);
       auto A = torch::zeros({n, n}, torch::kFloat64);
       A.narrow(0, 0, 4) = torch::stack(a).narrow(1, 0, n);
@@ -361,10 +361,13 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   // not positive keeps the mirror and counts as a conversion trip
   int i0 = pmb->pcoord->il(), i1 = pmb->pcoord->iu();
   bool wall4[2];
-  for (int f : {0, 1})
+  for (int f : {0, 1}) {
     wall4[f] = options->conversion_order() == 4 && u.size(DIM1) > 1 &&
-               i1 - i0 >= 3 && is_x1_wall(f) &&
-               is_reflecting(pmb->options->bfuncs()[f]);
+               is_x1_wall(f) && is_reflecting(pmb->options->bfuncs()[f]);
+    if (wall4[f] && i1 - i0 < 3)
+      TORCH_WARN_ONCE("fewer than 4 x1 cells: wall ghosts stay mirrored");
+    wall4[f] = wall4[f] && i1 - i0 >= 3;
+  }
   auto fill4 = [&](torch::Tensor a, int c, bool pos, torch::Tensor ref) {
     int g = pmb->pcoord->options->nghost();
     for (int s : {0, 1}) {
@@ -564,7 +567,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
               .narrow(-1, iu + 1, ng)
               .copy_(wx1[c].narrow(-1, iu + 1 - ng, ng).flip(-1));
         }
-        fill4(wx1[c], c == IPR ? 2 : 0, true, c == IPR ? pref : dref);
+        // key 4 one-sided rho', p', v ghosts: this path runs only with gravity
+        fill4(wx1[c], 0, true, c == IPR ? pref : dref);
       }
 
       torch::Tensor velocity;
