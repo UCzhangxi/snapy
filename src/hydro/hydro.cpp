@@ -2,7 +2,7 @@
 
 // C/C++
 #include <algorithm>
-#include <cctype>
+#include <cstdlib>
 
 // snap
 #include <snap/snap.h>
@@ -30,6 +30,15 @@ void HydroImpl::reset() {
       options->conversion_order() == 2 || options->conversion_order() == 4,
       "[Hydro] dynamics/conversion-order must be 2 or 4, got ",
       options->conversion_order());
+  // the environment switches these deck keys replaced are not read any more
+  if (std::getenv("SNAP_FLUX_COVARIANCE"))
+    TORCH_WARN_ONCE(
+        "SNAP_FLUX_COVARIANCE is ignored; set the deck key "
+        "dynamics/flux-covariance instead");
+  if (std::getenv("SNAP_X1_MASS_COVARIANCE"))
+    TORCH_WARN_ONCE(
+        "SNAP_X1_MASS_COVARIANCE is ignored; set the deck key "
+        "dynamics/x1-mass-covariance instead");
 
   //// ---- (1) set up equation-of-state model ---- ////
   peos = EquationOfStateImpl::create(options->eos(), this);
@@ -132,9 +141,9 @@ void HydroImpl::reset() {
         pmb->pcoord) {
       int nx1 = pmb->pcoord->options->nx1();
       TORCH_CHECK(nx1 >= 3,
-                  "SNAP_X1_MASS_COVARIANCE needs at least 3 x1 cells per "
-                  "block, got ",
-                  nx1, "; unset it");
+                  "dynamics/x1-mass-covariance needs at least 3 x1 cells "
+                  "per block, got ",
+                  nx1, "; set it to false");
     }
   }
 
@@ -158,15 +167,6 @@ void HydroImpl::reset() {
   //// ---- (6) set up implicit solver ---- ////
   if (options->icorr()) {
     picorr = ImplicitHydroImpl::create(options->icorr(), this);
-    if (options->grav() && options->grav()->grav1() != 0. &&
-        options->grav()->gravity_work() != "cell" && !face_work_in_operator()) {
-      TORCH_WARN(
-          "gravity-work: ", options->grav()->gravity_work(),
-          " with an implicit scheme: the face work "
-          "sits outside the implicit operator, which linearises the cell "
-          "work; a tall column at acoustic Courant ~66 blows up "
-          "(chengcli/snapy#283). gravity-work: cell is consistent with it.");
-    }
     if (options->verbose()) {
       SINFO(Hydro) << "Implicit correction type: " << picorr->options->type()
                    << "\n";
@@ -279,29 +279,6 @@ bool HydroImpl::gravity_work_fixer() const {
          g->gravity_work_fixer();
 }
 
-bool HydroImpl::flux_covariance() {
-  // read once: the term is a scheme choice for the whole run, and every block
-  // must make the same one or the shared faces stop being single-valued; on
-  // unless SNAP_FLUX_COVARIANCE is set to 0/false/off/no or empty
-  static const bool on = [] {
-    auto v = get_env("SNAP_FLUX_COVARIANCE", "1");
-    std::transform(v.begin(), v.end(), v.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return !(v.empty() || v == "0" || v == "false" || v == "off" || v == "no");
-  }();
-  return on;
-}
-
-bool HydroImpl::x1_mass_covariance() {
-  static const bool on = [] {
-    auto v = get_env("SNAP_X1_MASS_COVARIANCE", "0");
-    std::transform(v.begin(), v.end(), v.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return !(v.empty() || v == "0" || v == "false" || v == "off" || v == "no");
-  }();
-  return on;
-}
-
 bool HydroImpl::radial_exact_work() const {
   auto g = options->grav();
   auto const& type = pmb->pcoord->options->type();
@@ -375,7 +352,7 @@ double HydroImpl::max_time_step(torch::Tensor w, torch::Tensor solid) const {
   }
 
   auto dt_min = torch::tensor({1.e9, 1.e9, 1.e9},
-                              torch::dtype(torch::kFloat64).device(w.device()));
+                              torch::dtype(w.dtype()).device(w.device()));
 
   auto icorr = options->icorr();
 

@@ -293,7 +293,7 @@ static void conv4_x1_weights(torch::Tensor x1f, int n,
               "dynamics/conversion-order 4 needs nc1 >= 4 cells and nc1 + 1 "
               "x1 faces, got ",
               n, " and ", x1f.size(0));
-  x1f = x1f.to(torch::kCPU, torch::kFloat64);
+  x1f = x1f.cpu().to(torch::kFloat64);
   auto f = [&](int s) { return x1f.narrow(0, s, n - 2); };
   auto c = (f(2) - f(1)).square() / 4. / (f(3) - f(0));
   k[0] = (c / (f(3) - f(1))).to(opts);
@@ -313,6 +313,7 @@ torch::Tensor conv4_admissible(torch::Tensor const& a, bool prim,
 torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                                  Variables const& other) {
   enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };
+  auto wide = u.is_mps() ? torch::kFloat32 : torch::kFloat64;  // MPS: no f64
   bool has_solid = other.count("solid");
   auto start = std::chrono::high_resolution_clock::now();
   _check_stretched_x1(u);
@@ -916,13 +917,11 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         auto out = fsed1.clamp_min(0.).roll(-1, DIM1) + (-fsed1).clamp_min(0.);
         phi.masked_fill_(out > 0., 0.);
       }
-      theta = torch::where((td < 1.) & (td > 0.),
-                           theta + phi * ((theta / td).clamp_max(1.) - theta),
-                           theta);
+      theta = flux_positivity_relax(theta, td, phi);
     }
     // census of interior (cell, species) entries, before the ghost fill
     auto cells = pmb->part({0, 0, 0}, PartOptions().exterior(false));
-    auto ti = theta.index(cells).to(torch::kFloat64);
+    auto ti = theta.index(cells).to(wide);
     _positivity_hits += (ti < 1.).sum();
     // severe: theta < 0.9 AND the withheld mass is above round-off of the
     // cell's gas mass. An empty cell drained by a round-off face flux has
@@ -944,31 +943,16 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       vc.v3 = pc->x3f._version();
     }
     auto cell_mass = (dry_density(u) + uy.sum(0)) * vc.val;
-    auto withheld = ((1. - theta) * drain).index(cells).to(torch::kFloat64);
-    auto above =
-        withheld > positivity_roundoff(u.scalar_type()) *
-                       cell_mass.unsqueeze(0).index(cells).to(torch::kFloat64);
+    auto withheld = ((1. - theta) * drain).index(cells).to(wide);
+    auto above = withheld > positivity_roundoff(u.scalar_type()) *
+                                cell_mass.unsqueeze(0).index(cells).to(wide);
     _positivity_severe += ((ti < 0.9) & above).sum();
     torch::minimum_out(_positivity_min, _positivity_min, ti.min());
 
-    // Raw copy, never interpolated: the donor of a panel-seam face is the
-    // neighbour's edge cell, and an interpolated ghost is not its factor.
-    Variables tvars;
-    tvars["hydro_theta"] = theta;
     // the energy each species carries, from w, ghosts included: exchanging it
     // with theta changed no bit, so it is not exchanged (#238)
     auto hspec = peos->species_enthalpy(w);
-    SyncOptions topts;
-    topts.interpolate(false).type(kScalar);
-    pmb->exchange(tvars, topts);
-
-    BoundaryFuncOptions bops;
-    bops.nghost(pmb->pcoord->options->nghost());
-    bops.type(kScalar);
-    for (int i = 0; i < pmb->options->bfuncs().size(); ++i) {
-      if (pmb->options->bfuncs()[i] == nullptr) continue;
-      pmb->options->bfuncs()[i](theta, 3 - i / 2, bops);
-    }
+    flux_positivity_sync_theta_(pmb, theta, "hydro_theta");
 
     // theta's depth is not its consequence: measure the flux it removes
     auto f1_pre = f1.defined() ? f1.abs() : torch::Tensor();
@@ -983,8 +967,8 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     if (f1_pre.defined()) {
       // non-negative while every bfunc keeps the ghost theta in [0,1]
       auto cut = f1_pre - f1.abs();
-      _lim_flux += f1_pre.index(cells).sum().to(torch::kFloat64);
-      _lim_cut += cut.index(cells).sum().to(torch::kFloat64);
+      _lim_flux += f1_pre.index(cells).sum().to(wide);
+      _lim_cut += cut.index(cells).sum().to(wide);
     }
 
     if (options->verbose()) {
@@ -1160,17 +1144,14 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                  volume.slice(-1, is, ie);
         int js = pmb->pcoord->jl(), je = pmb->pcoord->ju() + 1;
         int ks = pmb->pcoord->kl(), ke = pmb->pcoord->ku() + 1;
-        gwfix_stage =
-            e.slice(-2, js, je).slice(-3, ks, ke).sum().to(torch::kFloat64);
+        gwfix_stage = e.slice(-2, js, je).slice(-3, ks, ke).sum().to(wide);
         // the fixer drops these faces, so it checks that no mass crossed them
         for (int f : {0, 1}) {
           if (!is_x1_wall(f)) continue;
           int i = f == 0 ? is : ie;
           auto m = area1.select(-1, i) * total_mass_flux1.select(-1, i).abs();
-          _gwfix_wall += dt * m.slice(-1, js, je)
-                                  .slice(-2, ks, ke)
-                                  .sum()
-                                  .to(_gwfix_wall.device(), torch::kFloat64);
+          _gwfix_wall +=
+              dt * m.slice(-1, js, je).slice(-2, ks, ke).sum().to(wide);
         }
       }
     } else {
@@ -1233,7 +1214,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       return ((d[IPR] + phi * m) * pmb->pcoord->cell_volume())
           .index(in3)
           .sum()
-          .to(torch::kFloat64);
+          .to(wide);
     };
     torch::Tensor epe0;
     if (gwfix_stage.defined()) epe0 = epe(du);
