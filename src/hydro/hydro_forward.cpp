@@ -301,16 +301,17 @@ static void conv4_x1_weights(torch::Tensor x1f, int n,
   k[1] = (c / (f(2) - f(0))).to(opts);
 }
 
-// conversion-order 4 at a reflecting x1 wall: E[side][c] maps the four owned
+// conversion-order 4 at a reflecting x1 wall: E[side][c] maps the five owned
 // averages next to the wall (narrow order) to the ghosts. c = 0: the cubic
-// through them. Parity ghosts, the mirrored cell plus twice the opposite-parity
-// part of a fit: c = 1 odd v + v''(0) z^2 (least squares on the four cells),
-// c = 2 even rho' - rho'_z(0) z - rho'_zzz(0) z^3 / 6 (the cubic), c = 3 even
-// p' - p'_zzz(0) z^3 / 6 (a0 + a2 z^2 + a3 z^3 through the three wall cells)
+// through the four wall cells. Parity ghosts, the mirrored cell plus twice the
+// opposite-parity part of a fit: c = 1 odd v + v''(0) z^2 (least squares on
+// four cells), c = 2 even rho' - rho'_z(0) z - rho'_zzz(0) z^3 / 6
+// (least-squares cubic on five), c = 3 even p' - p'_zzz(0) z^3 / 6 (a0 + a2 z^2
+// + a3 z^3 through the three wall cells)
 torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
   TORCH_CHECK(ng <= 4, "key-4 wall ghosts mirror at most 4 cells");
   x1f = x1f.to(torch::kCPU, torch::kFloat64);
-  auto E = torch::zeros({2, 4, ng, 4}, torch::kFloat64);
+  auto E = torch::zeros({2, 4, ng, 5}, torch::kFloat64);
   for (int s : {0, 1}) {
     int w = s ? iu + 1 : is, d = s ? -1 : 1;
     auto y = (x1f - x1f[w]) / (x1f[w + d] - x1f[w]);
@@ -319,18 +320,20 @@ torch::Tensor wall4_weights(torch::Tensor x1f, int is, int iu, int ng) {
       return (y[j + 1].pow(m) - y[j].pow(m)) / m / (y[j + 1] - y[j]);
     };
     std::vector<torch::Tensor> a, b;
-    for (int k = 0; k < 4; ++k) a.push_back(row(s ? iu - 3 + k : is + k));
+    for (int k = 0; k < 5; ++k) a.push_back(row(s ? iu - 4 + k : is + k));
     for (int k = 0; k < ng; ++k) b.push_back(row(s ? iu + 1 + k : is - ng + k));
-    auto A = torch::stack(a), Cr = A.narrow(1, 0, 4).inverse();
-    E[s][0] = torch::stack(b).narrow(1, 0, 4).matmul(Cr);
-    auto Cv = at::linalg_pinv(A.narrow(1, 1, 3)), P = A.narrow(0, s, 3);
+    auto A = torch::stack(a).narrow(1, 0, 4), A4 = A.narrow(0, s, 4);
+    auto Cr = at::linalg_pinv(A), Cv = at::linalg_pinv(A4.narrow(1, 1, 3));
+    E[s][0].narrow(1, s, 4) =
+        torch::stack(b).narrow(1, 0, 4).matmul(A4.inverse());
+    auto P = A.narrow(0, 2 * s, 3);
     auto Cp = P.index_select(1, torch::tensor({0, 2, 3})).inverse();
     for (int k = 0; k < ng; ++k) {
-      int m = s ? 3 - k : ng - 1 - k;  // the ghost's mirror cell
+      int m = s ? 4 - k : ng - 1 - k;  // the ghost's mirror cell
       E[s][1][k][m] = -1., E[s][2][k][m] = E[s][3][k][m] = 1.;
-      E[s][1][k] += 2. * a[m][2] * Cv[1];
+      E[s][1][k].narrow(0, s, 4) += 2. * a[m][2] * Cv[1];
       E[s][2][k] -= 2. * (a[m][1] * Cr[1] + a[m][3] * Cr[3]);
-      E[s][3][k].narrow(0, s, 3) -= 2. * a[m][3] * Cp[2];
+      E[s][3][k].narrow(0, 2 * s, 3) -= 2. * a[m][3] * Cp[2];
     }
   }
   return E;
@@ -344,7 +347,7 @@ torch::Tensor wall4_fill(torch::Tensor a, torch::Tensor const& E, int c, int i0,
     if (!wall[s]) continue;
     int g = E.size(2);
     auto old = a.narrow(-1, s ? i1 + 1 : i0 - g, g);
-    auto x = a.narrow(-1, s ? i1 - 3 : i0, 4).matmul(E[s][c].t());
+    auto x = a.narrow(-1, s ? i1 - 4 : i0, 5).matmul(E[s][c].t());
     auto t = ref.defined() ? x + ref.narrow(-1, s ? i1 + 1 : i0 - g, g) : x;
     auto bad = pos ? t <= 0. : torch::zeros_like(t, torch::kBool);
     trips += bad.sum();
@@ -388,9 +391,9 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   for (int f : {0, 1}) {
     wall4[f] = options->conversion_order() == 4 && u.size(DIM1) > 1 &&
                is_x1_wall(f) && is_reflecting(pmb->options->bfuncs()[f]);
-    if (wall4[f] && i1 - i0 < 3)
-      TORCH_WARN_ONCE("fewer than 4 x1 cells: wall ghosts stay mirrored");
-    wall4[f] = wall4[f] && i1 - i0 >= 3;
+    if (wall4[f] && i1 - i0 < 4)
+      TORCH_WARN_ONCE("fewer than 5 x1 cells: wall ghosts stay mirrored");
+    wall4[f] = wall4[f] && i1 - i0 >= 4;
   }
   auto fill4 = [&](torch::Tensor a, int c, bool pos, torch::Tensor ref) {
     if (wall4[0] || wall4[1])  // key 2 and wall-less blocks never enter
