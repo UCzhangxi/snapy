@@ -111,6 +111,10 @@ struct CoriolisOptionsImpl {
   ADD_ARG(double, omega1) = 0.;
   ADD_ARG(double, omega2) = 0.;
   ADD_ARG(double, omega3) = 0.;
+  //! beta plane (Cartesian, radius > 0): omega1 -> omega1 sin(lat0 + y/radius)
+  ADD_ARG(double, lat0) = 0.;  // degrees
+  ADD_ARG(double, radius) = 0.;
+  ADD_ARG(int, yaxis) = 3;  // 3: (x2, x3) = (east, north); 2: (north, east)
 
   ADD_ARG(std::string, type) = "xyz";
   ADD_ARG(bool, traditional) = false;

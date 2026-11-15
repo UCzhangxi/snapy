@@ -22,7 +22,8 @@ CoriolisOptions CoriolisOptionsImpl::from_yaml(YAML::Node const &forcing) {
 
   auto node = forcing["coriolis"];
   check_keys(node, "forcing/coriolis",
-             {"type", "omega1", "omega2", "omega3", "traditional"});
+             {"type", "omega1", "omega2", "omega3", "traditional", "lat0",
+              "radius", "y-axis"});
   auto op = CoriolisOptionsImpl::create();
 
   op->type() = node["type"].as<std::string>("xyz");
@@ -33,6 +34,11 @@ CoriolisOptions CoriolisOptionsImpl::from_yaml(YAML::Node const &forcing) {
   op->omega2() = node["omega2"].as<double>(0.);
   op->omega3() = node["omega3"].as<double>(0.);
   op->traditional() = node["traditional"].as<bool>(false);
+  op->lat0() = node["lat0"].as<double>(0.);
+  op->radius() = node["radius"].as<double>(0.);
+  op->yaxis() = node["y-axis"].as<int>(3);
+  TORCH_CHECK(op->yaxis() == 2 || op->yaxis() == 3,
+              "CoriolisOptions: y-axis must be 2 or 3");
 
   return op;
 }
@@ -90,6 +96,11 @@ void CoriolisXYZImpl::reset() {
 
   if (pcoord->options->type() == "cartesian") {
     omega1 = omegaz * ones_like(mesh[0]);
+    if (options->radius() > 0.) {  // x2 north flips the frame's handedness
+      auto y = mesh[3 - options->yaxis()] / options->radius();
+      omega1 = (options->yaxis() == 2 ? -omegaz : omegaz) *
+               (options->lat0() * M_PI / 180. + y).sin();
+    }
     omega2 = omegax * ones_like(mesh[0]);
     omega3 = omegay * ones_like(mesh[0]);
   } else if (pcoord->options->type() == "cylindrical") {

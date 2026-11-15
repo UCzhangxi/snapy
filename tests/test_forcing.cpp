@@ -218,6 +218,57 @@ TEST(forcing_options, parse_coriolis_traditional) {
   EXPECT_TRUE(traditional_op->traditional());
 }
 
+// beta plane on the test block: y = x2v in [-1.5, 2.5] (ghosts included)
+torch::Tensor beta_du(std::string const& keys, torch::Tensor const& w,
+                      double dt = 0.1) {
+  static auto block = make_block();
+  auto op = CoriolisOptionsImpl::from_yaml(
+      YAML::Load("coriolis: {omega1: 0.7" + keys + "}"));
+  return CoriolisXYZ(op, block->phydro.get())
+      ->forward(torch::zeros_like(w), w, torch::Tensor(), dt);
+}
+std::string const kBeta = ", lat0: 30., radius: 5., y-axis: 2";
+
+double beta_f(double y) { return 1.4 * std::sin(M_PI / 6. + y / 5.); }
+
+TEST(forcing, coriolis_beta_plane_f_plane_limit_is_bitwise) {
+  auto w = make_primitive(make_block());
+  EXPECT_TRUE(
+      torch::equal(beta_du(", lat0: 90., radius: 1.e300", w), beta_du("", w)));
+}
+
+TEST(forcing, coriolis_beta_plane_matches_reference_f) {
+  auto w = make_primitive(make_block());
+  auto du = beta_du(kBeta, w);
+  auto ex = torch::zeros_like(du);
+  auto y = make_block()->pcoord->x2v;
+  for (int j = 0; j < y.size(0); ++j) {  // x2 north: (dv, du) = (-f u, f v)
+    ex[IVY].select(1, j).fill_(-0.1 * beta_f(y[j].item<double>()) * 3.);
+    ex[IVZ].select(1, j).fill_(0.1 * beta_f(y[j].item<double>()) * 2.);
+  }
+  EXPECT_LT(((du - ex).abs().max() / ex.abs().max()).item<double>(), 1.e-14);
+}
+
+TEST(forcing, coriolis_beta_plane_inertial_period) {
+  auto w = make_primitive(make_block());  // rho = 1: momentum = velocity
+  w[IVY] = 0.;
+  w[IVZ] = 1.;
+  double h = 1.e-3, t = 2.;         // f t < pi on every row
+  for (int n = 0; n < 2000; ++n) {  // RK4, Coriolis only
+    auto k1 = beta_du(kBeta, w, h);
+    auto k2 = beta_du(kBeta, w + 0.5 * k1, h);
+    auto k3 = beta_du(kBeta, w + 0.5 * k2, h);
+    auto k4 = beta_du(kBeta, w + k3, h);
+    w.narrow(0, IVY, 2) += (k1 + 2. * k2 + 2. * k3 + k4).narrow(0, IVY, 2) / 6.;
+  }
+  auto y = make_block()->pcoord->x2v;
+  for (int j = 0; j < y.size(0); ++j) {  // (v, u) = (-sin f t, cos f t)
+    auto c = w.select(2, j).select(-1, 0).select(-1, 0);
+    double ft = std::atan2(-c[IVY].item<double>(), c[IVZ].item<double>());
+    EXPECT_NEAR(ft / (beta_f(y[j].item<double>()) * t), 1., 1.e-3) << j;
+  }
+}
+
 TEST(forcing, meshblock_registers_parent_dependent_modules) {
   auto options = MeshBlockOptionsImpl::from_yaml("test_diffusion_moist.yaml");
   options->hydro()->bodyHeat() = BodyHeatOptionsImpl::from_yaml(
