@@ -237,6 +237,19 @@ TEST(forcing, coriolis_beta_plane_f_plane_limit_is_bitwise) {
       torch::equal(beta_du(", lat0: 90., radius: 1.e300", w), beta_du("", w)));
 }
 
+TEST(forcing, coriolis_beta_plane_refuses_ignored_keys) {
+  auto w = make_primitive(make_block());
+  EXPECT_THROW(beta_du(", lat0: 30., radius: -5.", w), c10::Error);
+  EXPECT_THROW(beta_du(", lat0: 30.", w), c10::Error);
+  EXPECT_THROW(beta_du(", type: 123" + kBeta, w), c10::Error);
+  EXPECT_THROW(beta_du(kBeta + ", omega2: 0.1", w), c10::Error);
+  EXPECT_THROW(
+      CoriolisXYZ(CoriolisOptionsImpl::from_yaml(
+                      YAML::Load("coriolis: {omega1: 0.7" + kBeta + "}")),
+                  make_cubed_sphere_block(0, "ideal-gas")->phydro.get()),
+      c10::Error);
+}
+
 TEST(forcing, coriolis_beta_plane_matches_reference_f) {
   auto w = make_primitive(make_block());
   auto du = beta_du(kBeta, w);

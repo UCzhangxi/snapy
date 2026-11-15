@@ -39,6 +39,10 @@ CoriolisOptions CoriolisOptionsImpl::from_yaml(YAML::Node const &forcing) {
   op->yaxis() = node["y-axis"].as<int>(3);
   TORCH_CHECK(op->yaxis() == 2 || op->yaxis() == 3,
               "CoriolisOptions: y-axis must be 2 or 3");
+  TORCH_CHECK(op->radius() >= 0., "CoriolisOptions: radius must be >= 0");
+  TORCH_CHECK(!(node["lat0"] || node["radius"]) ||
+                  (op->type() == "xyz" && op->radius() > 0.),
+              "CoriolisOptions: lat0 and radius need type xyz and radius > 0");
 
   return op;
 }
@@ -82,6 +86,11 @@ CoriolisXYZImpl::CoriolisXYZImpl(CoriolisOptions const &options_,
 void CoriolisXYZImpl::reset() {
   TORCH_CHECK(phydro, "[CoriolisXYZ] Parent Hydro is null");
   auto pcoord = phydro->pmb->pcoord;
+  TORCH_CHECK(options->radius() == 0. || pcoord->options->type() == "cartesian",
+              "CoriolisXYZ: lat0 and radius need a Cartesian grid");
+  TORCH_CHECK(options->radius() == 0. ||
+                  (options->omega2() == 0. && options->omega3() == 0.),
+              "CoriolisXYZ: radius > 0 needs omega2 = omega3 = 0");
 
   cubed_sphere = false;
   shallow_water = false;
