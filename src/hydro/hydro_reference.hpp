@@ -47,10 +47,10 @@ class HydroReferenceX1Operator {
     auto d = dx1f.cpu().to(torch::kFloat64);
     // upward (dynamics/wb-wall-reference): every grid takes the rows path
     grid_ = stretched || upward ? kX1RefStretched
-                      : ((d.max() - d.min()).item<double>() <
-                                 1.e-10 * d.mean().item<double>()
-                             ? kX1RefUniform
-                             : unequal);
+                                : ((d.max() - d.min()).item<double>() <
+                                           1.e-10 * d.mean().item<double>()
+                                       ? kX1RefUniform
+                                       : unequal);
     if (grid_ == kX1RefStretched) {
       rows_ = hydro_ref_x1_stretched_rows(dx1f, iu, phys_in, phys_out,
                                           wall_clamp, upward);

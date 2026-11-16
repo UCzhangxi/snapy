@@ -7,8 +7,8 @@
 // snap
 #include <snap/snap.h>
 
-#include <snap/input/check_keys.hpp>
 #include <snap/coord/x1_centroid.hpp>
+#include <snap/input/check_keys.hpp>
 #include <snap/mesh/meshblock.hpp>
 
 #include "internal_boundary.hpp"

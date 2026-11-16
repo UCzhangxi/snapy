@@ -323,7 +323,8 @@ torch::Tensor hydro_ref_x1_stretched_rows(torch::Tensor const& dx1f, int iu,
   for (int i = 0; i < nc1; ++i) {
     int start =
         hydro_ref_x1_six_face_start(i, nc1, iu, phys_in, phys_out, wall_clamp);
-    if (upward && i >= il && i <= iu && iu - 4 >= il) start = std::min(i, iu - 4);
+    if (upward && i >= il && i <= iu && iu - 4 >= il)
+      start = std::min(i, iu - 4);
     r[i][0] = start;
     if (start < 0) continue;
     long double t[6];

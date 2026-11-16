@@ -51,9 +51,10 @@ HydroOptions HydroOptionsImpl::from_yaml(std::string const& filename,
           dyn, "dynamics",
           {"equation-of-state", "reconstruct", "riemann-solver", "verbose",
            "disable-flux-x1", "disable-flux-x2", "disable-flux-x3",
-           "wb-wall-clamp", "wb-wall-reference", "conversion-order", "anomaly", "flux-covariance",
-           "x1-mass-covariance", "perturbation-flux", "precision",
-           "conserve-axial-momentum", "conserve-axial-momentum-closure"});
+           "wb-wall-clamp", "wb-wall-reference", "conversion-order", "anomaly",
+           "flux-covariance", "x1-mass-covariance", "perturbation-flux",
+           "precision", "conserve-axial-momentum",
+           "conserve-axial-momentum-closure"});
       op->verbose() = dyn["verbose"].as<bool>(verbose);
       op->disable_flux_x1() = dyn["disable-flux-x1"].as<bool>(false);
       op->disable_flux_x2() = dyn["disable-flux-x2"].as<bool>(false);
@@ -65,7 +66,8 @@ HydroOptions HydroOptionsImpl::from_yaml(std::string const& filename,
       if (ref == "false" || ref == "off" || ref == "no") ref = "main";
       TORCH_CHECK(ref == "auto" || ref == "upward" || ref == "main",
                   "dynamics/wb-wall-reference must be auto, upward or main, "
-                  "got '", ref, "'");
+                  "got '",
+                  ref, "'");
       op->wb_wall_reference() = ref;
       op->conversion_order() = dyn["conversion-order"].as<int>(2);
       op->anomaly() = dyn["anomaly"].as<bool>(false);
