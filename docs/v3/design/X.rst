@@ -370,8 +370,8 @@ z. -9 (mesh.cpp): ``check_same_variables`` 47-62 as one key-set comparison
    (+7).
 i. -81 (meshblock_options.cpp): six face-parsing blocks 104-212 become one
    loop; keeps x1 periodic for "cubed" only and the null padding (+28).
-j. -22 (meshblock_options.cpp): slice checks 65-86 repeat those in
-   ``reset()`` 202-230; a bad slice now fails at construction.
+j. -22 (meshblock_options.cpp): slice checks 65-86 repeat the bounds and
+   order checks in ``reset()`` 203-230; a bad slice now fails at construction.
 I1. -6 (pyharp/src/integrator/integrator.cpp): the dead ``call_average3``
     include 6 and comment 113-122; the ``out=`` path of section 8 adds 5.
 I2. -43 (pyharp/src/integrator/integrator_dispatch.cpp): dead; its only
@@ -398,6 +398,14 @@ D2. -17 (pydisort/src/disort.cpp): ``set_flags`` 49-93 becomes a map from
 Added counts for I5, D1 and D2 come from clang-format (Google style) on a
 draft. Without h1-h2 the cut is 621 (10.8%). If O's options schema replaces
 ``from_yaml``, i and j are O's: with h1-h2 kept, then 650 (11.3%).
+If Cheng drops the FP32 storage emulation, the cut is 753 + 202 = 955
+(16.7%): ``fp32_storage.*`` (175), ``src/mesh/meshblock.cpp:22``,
+``src/mesh/meshblock.cpp:618`` and ``src/mesh/meshblock.cpp:620-634`` (17),
+``src/mesh/meshblock.hpp:207-213`` (7), ``src/mesh/mesh.cpp:403-405`` (3);
+nothing replaces it. The other 138
+precision lines stay: ``fp64_store.hpp`` (``src/hydro/hydro.hpp:329``) and
+``tensor_cast_cache.hpp`` (``src/coord/coordinate.hpp:399``) serve FP32
+arithmetic.
 
 .. csv-table:: joint, not counted
    :header: "File", "Lines now", "Lines after", "Owner and request"
@@ -502,17 +510,53 @@ K (Isaac):
   (``src/mesh/meshblock.cpp:969-970``)?
 - Output buffers for saturation adjustment, to make G2 capturable?
 
-O (Jiachen):
+O (Jiachen), answers to O rev 1 (``7dac5f4a``, section 14, X1-X3):
 
-- Request: move output off ``AthenaArray`` (``src/output/output_type.hpp:99``)
-  and delete ``src/interface`` (1,008 lines) in your PR; X needs nothing from it.
-- Request: take the restart loader (``src/mesh/meshblock.cpp:1603-1833``) and
-  the cycle diagnostics (``src/mesh/meshblock.cpp:1226-1346``,
-  ``src/mesh/cycle_diagnostics.hpp``) into your design. X asks only that
-  restart loads into the fixed buffers in the storage dtype, and that the
-  diagnostics' host reads stay at step end.
-- Does your options schema replace ``from_yaml``
-  (``src/mesh/meshblock_options.cpp:13-223``)? Then items i and j are yours.
+- X1, yes: the dt choice and the diagnostic reads sit outside captured
+  segments (sections 3 and 7); output, flushes and restart writes run in the
+  host phase after the global accept, as ``V3_ROADMAP.md:101`` requires.
+- X2, not in the first release: dt and the stage weights stay host doubles
+  (section 6), dt is chosen at step start, and a changed dt recaptures (section 7, ``V3_ROADMAP.md:124-129``).
+  Post-step consumers run after the accept, outside graphs, so no dt is
+  baked in. A device dt scalar comes with parameterized graphs; X will share
+  that buffer with O's ``observe`` then.
+- X3, X's executor: after ``read_restart`` the Mesh calls
+  ``StageExecutor::invalidate()`` (skeleton ``stage_executor.hpp``), which
+  drops graphs and captured workspaces; restart never serializes them
+  (``V3_ROADMAP.md:80``). MeshBlock only loads into the fixed buffers.
+
+Requests to O, and where the two drafts differ:
+
+- Move output off ``AthenaArray`` (``src/output/output_type.hpp:99``) and
+  delete ``src/interface``. O rev 1 deletes only ``stride_iterator.hpp``
+  (140) and leaves ``athena_arrays.hpp`` (669) and ``init_from_tensor.hpp``
+  (199) unlisted.
+- Take restart and cycle diagnostics. Ranges differ: X lists
+  ``src/mesh/meshblock.cpp:1603-1833`` and ``src/mesh/meshblock.cpp:1226-1346``;
+  O lists 1603-1830 and 1226-1339. The extra lines are the end of
+  ``_init_from_restart`` (1831-1833) and the ``print_cycle_info`` wrapper
+  (1341-1346). ``src/mesh/cycle_diagnostics.hpp`` is in neither of O's
+  tables. X asks that restart load into the fixed buffers in the storage
+  dtype and that the diagnostics' host reads stay at step end.
+- ``src/utils/fp32_storage.*``, ``fp64_store.hpp`` and
+  ``tensor_cast_cache.hpp`` (313) are counted in both drafts; X counts them
+  as the precision code. O's cut in them (env parsing to option rows,
+  ``fp32_storage.cpp`` 119 to 95) and O's move of ``signal_handler.*`` (213)
+  into ``src/mesh`` change X's rows; the kickoff decides which lane counts
+  them.
+- Slice validation has three sites: ``src/output/output_type.cpp:90-98``
+  (slice and sum), ``src/mesh/meshblock.cpp:203-230`` (all checks) and
+  ``src/mesh/meshblock_options.cpp:65-86`` (bounds and order). O asks the
+  owner of ``meshblock.cpp``, which is X, to drop 203-230 once O's generated
+  option checks hold them; X will, uncounted until those checks land. Item j
+  drops the third now; if the schema replaces ``from_yaml``, j is O's
+  (section 9 variant).
+
+C:
+
+- Rev 2 is to specify the register, FP32 and graph contracts: please
+  reference X's precision and graph contracts (sections 6 and 7) rather
+  than define a second one.
 
 12. Skeleton index
 ------------------
