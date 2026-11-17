@@ -57,7 +57,7 @@ struct GraphKey {
 
 //! deck: integration.execution and integration.execution-strict (names: G7)
 struct ExecutionOptions {
-  std::string execution = "eager";  // eager | cuda-graph
+  std::string execution = "eager";  // eager | cuda-graph (CUDA only; else eager)
   bool strict = false;  // true: reject before launch if any segment is eager
 };
 
@@ -88,7 +88,7 @@ class StageExecutor {
 
  private:
   std::vector<StageSchedule> schedules_;
-  std::map<GraphKey, torch::cuda::CUDAGraph*> graphs_;
+  std::map<GraphKey, at::cuda::CUDAGraph*> graphs_;
   ExecutionOptions options_;
   MeshImpl* mesh_;
 };

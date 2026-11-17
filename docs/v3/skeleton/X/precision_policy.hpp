@@ -17,10 +17,12 @@ enum class Quantity {
   kReference,    // reference and geometry masters
   kPrimitive,    // hydro_w totals
   kGauge,        // gauges, total face pressure
-  kReduction,    // dt, budgets, fixer sums
+  kReduction,    // dt, budgets, closure sums
   kImplicit,     // vertical implicit correction (FP64 fallback)
   kThermo,       // kintera totals, saturation
-  kRegister,     // flux-register step accumulator
+  kRegister,     // FluxRegister storage (R); its step_field is FP64
+  kSource,       // stage-local source accumulator, FP64
+  kDiagnostic,   // counters int64/bool, sums FP64 (MPS: FP32)
   kCount
 };
 
@@ -41,7 +43,8 @@ class PrecisionPolicy {
 
   //! x in the compute dtype of q; returns x itself when it already is
   torch::Tensor cast(Quantity q, torch::Tensor const& x) const;
-  //! x rounded to the storage dtype of q (the only place storage rounding occurs)
+  //! x rounded to the storage dtype of q (the only storage rounding but
+  //! EF's anomaly floor, src/eos/equation_of_state.cpp:37-46)
   torch::Tensor store(Quantity q, torch::Tensor const& x) const;
 
   //! part of every GraphKey: a policy change invalidates graphs

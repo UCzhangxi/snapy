@@ -32,23 +32,28 @@ struct BlockRestart;    // owner O (question to O)
 struct BlockOutput;     // owner O (question to O)
 
 //! state that must be reset at stage 0 and on every rollback, registered by
-//! its owner instead of listed in the stage driver (now 722-738)
+//! its owner instead of listed in the stage driver (now 722-738); its tensors
+//! are allocated once at setup, so a captured graph keeps their addresses
 struct StepReset {
   std::string name;   // e.g. "limiter.marks", "register", "vic.dry_clamp"
   std::string owner;
-  std::function<void()> reset;
+  std::function<void()> reset;          // in place only: zero_, fill_
+  std::function<void()> commit, drop;   // optional: step accepted, rejected
+};
+
+//! one retry flag, stacked with the others in one fixed dtype; causes by name
+struct RetryFlag {
+  std::string name, owner, cause;
+  torch::Tensor flag;   // 0-d, on the device
 };
 
 //! the global corrections leave the block: one Mesh phase for 1 and N blocks
-//! (now src/mesh/mesh.cpp:367-402 and src/mesh/meshblock.cpp:983-1004)
+//! (now src/mesh/mesh.cpp:367-402 and src/mesh/meshblock.cpp:983-990)
+class Fixer;  // lane R (flux_register.hpp, 543ff84f): partial_sums, apply
+//! the registry is X's: partial_sums() of every fixer, one FP64 collective,
+//! then apply(), which posts cell_amount; A's AxialClosureFixer first
 struct GlobalCorrection {
-  std::string name;   // "axial-closure" (every stage), "gravity-work-fixer" (last)
-  bool last_stage_only;
-  //! this block's partial sums, on the device, FP64 (MPS: FP32)
-  std::function<torch::Tensor(MeshBlockImpl&)> partial;
-  //! applies the fix from the reduced sums; a bound violation sets a device
-  //! flag read with the retry flags instead of aborting mid-stage
-  std::function<void(MeshBlockImpl&, torch::Tensor const& global, double dt)> apply;
+  std::vector<std::shared_ptr<Fixer>> fixers;  // every stage, inside exact
 };
 
 }  // namespace snap

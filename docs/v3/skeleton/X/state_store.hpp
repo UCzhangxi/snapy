@@ -20,6 +20,11 @@ class StateStore {
   torch::Tensor& scalar_s();
   torch::Tensor& u0();
   torch::Tensor& s0();
+  //! fixed copy of hydro_u for the retry test (now the clone at
+  //! src/mesh/meshblock.cpp:1517), filled with copy_
+  torch::Tensor& scratch();
+  //! ARK form only (section 3): kex[i], kim[i], one pair per stage
+  std::vector<torch::Tensor>& ark_stages();
 
   //! stage 0: u0 = hydro_u, s0 = scalar_s (copy_, no allocation)
   void backup();
@@ -33,7 +38,7 @@ class StateStore {
   int generation() const;
 
  private:
-  torch::Tensor hydro_u_, scalar_s_, u0_, s0_;
+  torch::Tensor hydro_u_, scalar_s_, u0_, s0_, scratch_;
   int generation_;
 };
 

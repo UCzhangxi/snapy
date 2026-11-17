@@ -1,7 +1,7 @@
 Lane X: execution (precision, CUDA graphs, mesh, integrator, radiation)
 =======================================================================
 
-Owner: Xi Zhang. Round-2 reviewers: Zoey (EF), Isaac (K).
+Owner: Xi Zhang. Round-2 reviewers: as assigned in the lane X thread.
 Every ``file:line`` below is at the pins of section 1. "Hypothesis" marks a
 claim not yet settled by a test; its gate is named next to it.
 
@@ -11,18 +11,18 @@ claim not yet settled by a test; its gate is named next to it.
 Pins: snapy ``9e5de2d4``, kintera ``3f5ff938``, pyharp ``6bc01d53``,
 pydisort ``9e7f0075``.
 
-Lane files, 5,733 lines: snapy ``src/mesh/*`` (3,266) and the precision
-code ``src/utils/fp32_storage.hpp``, ``fp32_storage.cpp``, ``fp64_store.hpp``,
-``tensor_cast_cache.hpp`` (313); pyharp ``src/integrator`` (564); pydisort
-``src`` (1,590). Each directory is counted with::
+Lane files, the brief's baseline of 4,274 lines: snapy ``src/mesh/*``
+(3,266) and ``src/interface/*`` (1,008). Each directory is counted with::
 
   git ls-files src/mesh | grep -E '\.(cpp|hpp|h|c|cu|cuh)$' | xargs cat | wc -l
 
+Provider side, outside the percentage, where touched files do not grow:
+pyharp ``src/integrator`` (564) and pydisort ``src`` (1,590). The precision
+code in ``src/utils`` (``fp32_storage.*``, ``fp64_store.hpp``,
+``tensor_cast_cache.hpp``, 313 lines) is designed here and counted in lane O.
+
 Snapy has no CUDA-graph source at the pin; the prototype is a test,
 ``tests/straka_cuda_graph.py``.
-
-``src/interface/*`` (1,008 lines) serves output and is O's; section 9 lists it
-as joint and does not count it.
 
 Out of scope here: the hydro pipeline (R), exchanges (S), EOS and limiters
 (EF), kintera (K), output and restart format (O). This design states what
@@ -40,7 +40,7 @@ lines in ``src/mesh`` 23 to 26).
 
    "precision switch", "src/hydro/hydro.hpp:332; option read at src/hydro/hydro_options.cpp:67"
    "precision branches in the lane", "src/mesh/meshblock.cpp:35, src/mesh/meshblock.cpp:41, src/mesh/meshblock.cpp:448, src/mesh/meshblock.cpp:534-538, src/mesh/meshblock.cpp:1798"
-   "FP32 storage emulation (env)", "src/utils/fp32_storage.hpp:12-26; applied at src/mesh/meshblock.cpp:621-642"
+   "FP32 storage emulation (env; removed, Cheng)", "src/utils/fp32_storage.hpp:12-26; applied at src/mesh/meshblock.cpp:621-642"
    "RK backup buffers, FP64 at creation", "src/mesh/meshblock.cpp:306-312"
    "backup retyped on first use", "src/mesh/meshblock.cpp:719-721, src/mesh/meshblock.cpp:741-743"
    "state rebinding per stage", "src/mesh/meshblock.cpp:901-902, src/mesh/meshblock.cpp:921-922"
@@ -51,7 +51,7 @@ lines in ``src/mesh`` 23 to 26).
    "exchange split pack/launch/unpack", "src/mesh/meshblock.cpp:664-685; callers src/hydro/hydro_forward.cpp:1017, src/scalar/scalar.cpp:120-146"
    "cubed-sphere two-round exchange", "src/mesh/meshblock.cpp:651-658"
    "axial closure (host copy, 2 reads, 1 branch)", "src/mesh/meshblock.cpp:1014-1034"
-   "gravity-work fixer (host sums, branch, abort)", "src/mesh/meshblock.cpp:1036-1109"
+   "gravity-work fixer (host sums, branch, abort; removed, Cheng)", "src/mesh/meshblock.cpp:1036-1109"
    "multi-block global phase", "src/mesh/mesh.cpp:350-407"
    "block worker pool and streams", "src/mesh/mesh.cpp:66-227, src/mesh/mesh.cpp:284-297"
    "global dt", "src/mesh/mesh.cpp:325-348; per block src/mesh/meshblock.cpp:576-595"
@@ -96,35 +96,99 @@ Data flow of one step::
     [compute: hydro fwd (R) | seam exchanges (S) split it]
     [compute: scalar, forcings, RK combine out=hydro_u, limiter, solid]
     [global: device partial sums] -> host allreduce -> [global: apply]
-    [boundaries, storage rounding]
+    [boundaries]
   host: one read of the stacked retry flags -> MAX allreduce
         -> accept, or restore u0/s0 + reset registers on all blocks
+
+Without a process group (one rank: ``src/layout/layout.hpp:213-217``,
+``src/mesh/meshblock.cpp:986``) there is no allreduce, and the host segment
+of the global phase is absent: the device sums feed the device apply in the
+same graph.
+
+Two tableaux (IMEX-ARK; higher-order IMEX is reopened for V3). Today a stage
+is the Shu-Osher combine ``w0 u0 + w1 u1 + w2 dt L(u1)`` (weights
+``pyharp/src/integrator/integrator.hpp:20-29``), and the vertical implicit
+correction runs inside it with dt scaled by the stage's ``w2``
+(``src/hydro/hydro_forward.cpp:1568-1572``, stage published at
+``src/mesh/meshblock.cpp:703-705``): one linearized solve per stage, not an
+additive Runge-Kutta method, so its order in the stiff part is not
+established (hypothesis: first order). The executor takes a second stage
+form, an ARK pair:
+
+- ``StageTableau`` (section 12): explicit ``aex`` (strictly lower), implicit
+  ``aim`` (lower, diagonal ``gamma_i``), weights ``bex``, ``bim``, nodes ``c``,
+  design order ``p``; host doubles fixed for the run, baked into a graph
+  keyed by stage, as ``StageWeights`` are.
+- Storage: ``StateStore`` holds ``kex[i]`` and ``kim[i]`` (2s state buffers,
+  allocated at ``reset()``, dtype a section 6 row).
+- Stage i: ``rhs = u0 + dt sum_{j<i} (aex_ij kex_j + aim_ij kim_j)``; the
+  implicit owner solves ``u_i = rhs + gamma_i dt F_I(u_i)`` (today's
+  correction with ``dt_corr = gamma_i dt``); then ``kex_i = F_E(u_i)`` and
+  ``kim_i = (u_i - rhs) / (gamma_i dt)`` (``F_I(u_i)`` when ``gamma_i = 0``).
+- Step end: ``u = u0 + dt sum_i (bex_i kex_i + bim_i kim_i)``; the register's
+  step transfer weights explicit and implicit face fluxes by ``bex`` and
+  ``bim`` (question to R, section 11).
+- The Shu-Osher path stays as it is and remains the reference of the
+  bitwise gates; the ARK form is a second mode chosen by integrator type.
+
+Candidate pairs, the owner's choice: ARS(2,2,2) and ARS(4,4,3) (Ascher,
+Ruuth and Spiteri 1997), ARK3(2)4L[2]SA (Kennedy and Carpenter 2003). With
+one linearized solve per stage the method is linearly implicit (W-type);
+whether it keeps the design order needs Newton iterations or a tableau that
+meets the extra W-method conditions (hypothesis; the order gate of section 5
+decides).
 
 4. Flux-register contract (executor side)
 -----------------------------------------
 
-- Storage: allocated by ``StateStore`` at ``reset()``, fixed address, never
-  in restart (derived state). Its dtype is a ``PrecisionPolicy`` row; the
-  step accumulator is FP64 (hypothesis; question to R).
+Names and signatures are lane R's header (``docs/v3/skeleton/R/flux_register.hpp``
+at ``543ff84f``, provisional).
+
+- Storage: ``FluxRegister::reset(coord, policy, nvar, weights, req)`` takes
+  fixed storage from ``StateStore`` at ``reset()``, never in restart
+  (derived state). Its dtype is a ``PrecisionPolicy`` row; ``step_field`` is
+  FP64.
 - Posts: device ops inside compute segments (R's pipeline stages).
-- Begin stage: the executor calls ``begin_stage(stage, weights)`` with
-  pyharp's ``IntegratorWeight`` (``pyharp/src/integrator/integrator.hpp:20-29``).
-  The weights are host doubles fixed per stage, so a graph keyed by stage
-  bakes them in.
+- Begin stage: the executor calls ``begin_stage(int stage, StageWeights
+  const&)`` with every stage's pyharp ``IntegratorWeight``
+  (``pyharp/src/integrator/integrator.hpp:20-29``), since the step
+  coefficient needs ``w1`` of later stages. The table is host doubles fixed
+  for the run, so a graph keyed by stage still bakes it in; X adopts R's
+  signature. ``end_stage(dt)`` runs in the same segment, dt a host double.
 - Reads: the register's exchange is an exchange phase (pack, host, unpack);
   it ends the posting segment.
 - Corrects: a device op in the segment after the unpack, before the RK
   combine (now ``src/mesh/meshblock.cpp:901``) if corrected per stage, or
   before the last stage's limiter (now ``src/mesh/meshblock.cpp:909``) if
   corrected per step. R chooses; both fit the schedule.
-- Reset: at stage 0 and on every rollback, in the same registered reset list
-  as the limiter marks (now ``src/mesh/meshblock.cpp:735``).
-- Monitor: a device tensor stacked into the step-end retry read
-  (``src/mesh/meshblock.cpp:1566``), so no extra host read.
+- Reset: ``begin_stage(0)`` zeroes the step; ``rollback()`` is an entry of
+  the registered reset list, with the limiter marks (now
+  ``src/mesh/meshblock.cpp:735``).
+- Monitor: R's ``RegisterMonitor``; ``retry_flags()`` is stacked into the
+  step-end retry read (``src/mesh/meshblock.cpp:1566``), so no extra host
+  read.
+- Fixers: the ``Fixer`` base is R's (``partial_sums``, ``apply``); the
+  registry and its one FP64 collective per stage are X's global phase. A's
+  ``AxialClosureFixer`` is the first client.
 - Ordering: post before pack; unpack before correct; correct before the
-  storage rounding (``src/mesh/mesh.cpp:404-405``) and the stage-end
-  exchange (``src/mesh/mesh.cpp:406``).
+  stage-end exchange (``src/mesh/mesh.cpp:406``).
 - No added full-field copy: the register holds face data only.
+
+The ten register requirements, by number:
+
+.. csv-table::
+   :header: "Req.", "Requirement", "X's answer"
+
+   "1", "one owner of every face flux", "not this lane (R)"
+   "2", "named increments in a declared order", "not this lane (R); posts stay inside one compute segment, in program order"
+   "3", "stage weights into the step transfer", "``begin_stage(int stage, StageWeights const&)``, host doubles for the run; a graph keyed by stage bakes them in; the ARK form adds ``bex``, ``bim`` (section 3)"
+   "4", "divergence reads the register", "not this lane (R, C)"
+   "5", "two entries per shared face", "not this lane (R, S); X schedules the register's exchange as an exchange phase"
+   "6", "one device monitor, no host read in a segment", "``RegisterMonitor::retry_flags()`` joins the step-end retry read (``src/mesh/meshblock.cpp:1566``); section 7 bans host reads in segments"
+   "7", "every fixer and floor registers its addition", "``Fixer`` is R's; X keeps the registry and its collective; fixers post ``cell_amount``"
+   "8", "stated dtype, fixed storage", "``StateStore`` allocates at ``reset()``; dtype is a ``PrecisionPolicy`` row, the step accumulator FP64 (section 6)"
+   "9", "no added full-field copy per stage", "face data only; ``out=`` removes today's copies (section 8)"
+   "10", "rebuilt, never in restart", "derived state: ``reset()`` at set-up, ``rollback()`` in the reset list"
 
 5. Invariants and gates
 -----------------------
@@ -137,9 +201,12 @@ Data flow of one step::
    "state addresses fixed", "data_ptr of hydro_u, scalar_s, u0, s0 unchanged over 10 steps with a retry", "exact"
    "no host sync inside a segment", "replay under torch.cuda.set_sync_debug_mode('error')", "exact"
    "graph replay equals eager", "Straka, both precisions, dt changes, a retry", "bitwise (hypothesis); else the tolerance stated by the test"
+   "flags survive replay", "a limiter repair and a vapor failure injected on replay N >= 2 reach the retry flags", "exact"
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
-   "global corrections unchanged", "closure and fixer on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
+   "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
+   "ARK form reduces to Shu-Osher", "rk3 as a Butcher tableau with ``aim = 0``, both precisions", "relative 1e-14 in FP64 (summation order differs)"
+   "IMEX order", "each tableau: a smooth one-column acoustic-gravity wave, vertical implicit on, FP64, dt, dt/2, dt/4 against dt/16 at a fixed grid; also implicit Courant 10-100", "observed order at least p - 0.2; bounded in the stiff limit"
 
 6. FP32 contract
 ----------------
@@ -154,13 +221,22 @@ Data flow of one step::
    "reference and geometry masters", "FP64, cached casts", "per use", "anomalies cancel against them"
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
-   "dt, budget and fixer sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/mesh/meshblock.cpp:1057)"
+   "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
    "vertical implicit correction", "FP32", "FP32, FP64 fallback", "fallback on solve failure"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
+   "ARK stage derivatives kex, kim", "= storage", "= compute", "FP64 if the order gate fails in FP32 (hypothesis)"
    "flux register step accumulator", "FP64 (hypothesis)", "FP64", "sum over stages; question to R"
+   "source accumulator", "FP64, one stage-local field", "FP64", "per-source budgets; today FP32 runs only (src/hydro/hydro_forward.cpp:1364-1374); A uses it in both precisions"
+   "diagnostics", "int64/bool counters, FP64 sums (MPS: FP32)", "same", "replaces the ad hoc dtype at src/hydro/hydro_forward.cpp:373"
 
-Mechanism: ``PrecisionPolicy`` replaces the 30 ``fp32()`` calls in ``src``
+``store()`` is the one storage rounding, except EF's anomaly floor, which
+rounds on purpose (``src/eos/equation_of_state.cpp:37-46``, used at
+``src/eos/equation_of_state.cpp:247``). MPS has no FP64: there every FP64
+row holds FP32 (``src/hydro/hydro_forward.cpp:373``), anomaly storage is
+refused (``src/utils/fp64_store.hpp:49``), and runs are eager.
+
+Mechanism: ``PrecisionPolicy`` replaces the 29 callers of ``fp32()`` in ``src``
 (hydro, EOS and mesh files) with ``policy.cast(Quantity, x)``. The lane's own five
 calls go in X1; the others go with their lanes' PRs. ``u0``/``s0`` are
 created in the storage dtype, so ``src/mesh/meshblock.cpp:719-720`` and
@@ -185,8 +261,9 @@ utils 7; each owner rules on its own).
    "src/mesh/meshblock.cpp:901-902, src/mesh/meshblock.cpp:921-922", "allocation + rebinding", "pyharp out= into fixed storage", "G1"
    "src/mesh/meshblock.cpp:950-981", "saturation adjustment", "eager segment until kintera capture", "G2"
    "src/mesh/meshblock.cpp:1017-1018, src/mesh/meshblock.cpp:1023", "host copy, 2 reads, 1 branch", "device sums and mask; allreduce is a boundary", "G1/G4"
-   "src/mesh/meshblock.cpp:1061, src/mesh/meshblock.cpp:1075, src/mesh/meshblock.cpp:1080", "copy to host, branch", "device; last stage only", "G1/G4"
-   "src/mesh/meshblock.cpp:1097", "abort on bound", "device flag, read with the retry flags; abort at step end", "G1"
+   "src/mesh/meshblock.cpp:1061, src/mesh/meshblock.cpp:1075, src/mesh/meshblock.cpp:1080", "copy to host, branch", "removed with the gravity-work fixer (Cheng)", "G1/G4"
+   "src/mesh/meshblock.cpp:1097", "abort on bound", "removed with the gravity-work fixer (Cheng)", "G1"
+   "src/implicit/implicit_hydro.cpp:476-487", "finiteness screen: ``item<double>()`` every stage with the implicit correction", "segment end until its owner turns it into a device flag in the retry read", "G3"
    "src/mesh/meshblock.cpp:1517", "full-field clone in the retry test", "question to EF", "G1"
    "src/mesh/meshblock.cpp:1566, src/mesh/meshblock.cpp:1591", "one read, MAX allreduce", "stays: step end", "G1/G4"
    "src/mesh/meshblock.cpp:1288-1295, src/mesh/meshblock.cpp:1319-1337", "diagnostic reads", "stay: output cadence, outside", "G7"
@@ -194,13 +271,58 @@ utils 7; each owner rules on its own).
    "src/mesh/meshblock.cpp:1628-1712", "restart reads", "stay: not in a step", "-"
 
 Segment list of one RK stage, Cartesian: exchange (pack | host | unpack);
-compute split at each within-stage exchange that R and S declare (now
-``src/hydro/hydro_forward.cpp:1017``, ``src/hydro/hydro_forward.cpp:1029``,
-``src/scalar/scalar.cpp:120-146``); scalar, forcings, RK combine, limiter,
-solid fill; last stage: saturation adjustment (eager until G2); global phase
-(closure each stage, fixer last stage); boundaries and storage rounding.
-Cubed sphere adds the second exchange round (``src/mesh/meshblock.cpp:651-658``)
-and S's corner fill as further boundaries.
+compute, split at every within-stage exchange below; scalar, forcings, RK
+combine, limiter, solid fill; last stage: the limiter again
+(``src/mesh/meshblock.cpp:952``) and saturation adjustment (eager until G2); global phase (the axial closure when on); boundaries. Cubed sphere adds
+the second exchange round (``src/mesh/meshblock.cpp:651-658``) and S's corner
+fill.
+
+Within-stage exchanges at the pin. Each is a boundary (pack | host |
+unpack) only when its condition holds; the single-block Cartesian default
+crosses none. Lane S's exchange table (``docs/v3/design/S.rst`` section 3.3,
+branch ``v3-design/S`` at ``fe1612b1``: rows 0-30, 16r and 17p) owns their
+order, packing and rounds; X cuts one boundary per blocking round, keyed by
+S's rows.
+
+.. csv-table:: within-stage boundaries
+   :header: "Site", "When", "What", "S rows"
+
+   "src/hydro/hydro_forward.cpp:1017, src/hydro/hydro_forward.cpp:1029", "cubed sphere", "x2, x3 face states (C's B4)", "11-12"
+   "src/scalar/scalar.cpp:120-146", "cubed sphere", "scalar face states", "20-21"
+   "src/hydro/hydro_forward.cpp:489-503", "conversion-order 4", "primitive ghosts, then boundary functions (C's B1)", "3-4"
+   "src/hydro/hydro.cpp:636, src/hydro/hydro.cpp:712", "x1 split", "reference anchor relay, serial down the column: a host segment (C's B2)", "6-7"
+   "src/hydro/hydro.cpp:727-776", "x1 split", "reference ghost rows (C's B3)", "8"
+   "src/hydro/hydro_forward.cpp:666, src/hydro/hydro_forward.cpp:953, src/hydro/hydro_forward.cpp:1059-1065, :1096-1097, :1131-1132", "x1 split, with the centroid switch or covariance", "x1 seam rows (C's B5)", "5, 10, 13-16"
+   "src/hydro/hydro_forward.cpp:245-253, src/hydro/hydro_forward.cpp:1490", "x1 split, with scalar covariance or the seam work term", "x1 seam rows; not in C's list", "19, 22-25"
+   "src/hydro/hydro_forward.cpp:1227", "positivity limiter", "hydro theta (EF); after #370 also hspec and, cubed sphere, donor velocities", "17, 17p"
+   "src/scalar/scalar.cpp:205, src/scalar/scalar.cpp:239", "scalar limiter; 205 only with an upper bound", "scalar theta (EF), through src/scalar/scalar.cpp:179", "26-27"
+   "src/eos/equation_of_state.cpp:340-347, from src/mesh/meshblock.cpp:909, src/mesh/meshblock.cpp:952", "pz > 1, whole-column vapor and cloud repair", "x1 column gather, a collective: splits the limiter's segment (EF)", "28"
+   "src/forcing/diffusion_cubed_sphere.cpp:132-143", "cubed sphere, diffusion", "flux seam, four streamed rounds inside the hydro forcing loop (src/hydro/hydro_forward.cpp:1378-1384): splits that segment", "18"
+   "none yet (S section 4)", "cubed sphere, panel seams", "R's replace of the owner's x2/x3 face slab (proposed)", "16r"
+   "src/mesh/meshblock.cpp:983-990", "axial closure with a process group", "allreduce: the global phase (section 3)", "29"
+
+Reconciled with S's table: rows 18, 16r and 29 were missing here and are
+added; row 0 is the stage-0 exchange, rows 1-2 the stage-entry exchange and
+row 9 the register's exchange phase (section 4). Row 30 goes with the
+gravity-work fixer (its call in d, its body in gw1), and with it merge M9. X accepts S's merges as
+proposals with S's labels: M1, M2, M4-M7 and M10 under the section 5 golden;
+M8 only once that golden passes; M3 changes the order of the anchor scan, is
+not bitwise and is Cheng's call (S section 10). With M1-M8 the cubed sphere
+keeps S's 17 rounds, 18 with row 16r (hypothesis). Row 16r cannot share row
+17: theta reads the reconciled flux.
+
+Every x1 seam-row call goes through ``HydroImpl::_x1_ghost_rows``
+(``src/hydro/hydro.cpp:344``), which posts and then waits on a
+receive (a local board for a same-process neighbour); with the column unsplit it returns at once. A tensor
+that crosses one of these boundaries lives in fixed storage (lane C's rule,
+adopted). The vapor check is deferred inside every segment, set once by
+``BlockAdvance``: the host flag ``DeferVaporCheck``
+(``src/mesh/meshblock.cpp:689-701``, ``src/mesh/meshblock.cpp:1516``)
+would be baked into a capture. The species clip of user forcings
+(``src/mesh/meshblock.cpp:879-884``) is an EF op that posts the mass it
+withholds; the clones at ``src/mesh/meshblock.cpp:857``, ``:859`` and
+``:869`` become ``copy_`` into fixed scratch. C's B6, the x1 seam flux average, is the register's exchange phase
+(section 4).
 
 dt: recapture on a changed dt first, as ``V3_ROADMAP.md:124-129`` asks;
 parameterize later, once every op reads dt from one device scalar (now a host
@@ -227,7 +349,10 @@ copy (``tests/straka_cuda_graph.py:86-88``) never fires and goes.
   ``pyharp/src/integrator/integrator.cpp:113-122``,
   ``integrator_dispatch.{cpp,cu,hpp}``) is deleted. The binding
   (``pyharp/python/csrc/pyintegrator.cpp:51-52``) gains
-  ``py::arg("out") = torch::Tensor()``.
+  ``py::arg("out") = torch::Tensor()``. Callers with ``out=``: the RK
+  combine (``src/mesh/meshblock.cpp:901-902``,
+  ``src/mesh/meshblock.cpp:921-922``) and ``carry_dry_source``
+  (``src/mesh/meshblock.cpp:756``, ``src/mesh/meshblock.cpp:762``).
 - kintera (K): a consume-and-reset failure counter on the device and an
   active-set snapshot/restore (section 11).
 - pydisort: no interface change; section 9 items D1 and D2 rewrite two flag
@@ -253,16 +378,19 @@ Observation: pyharp's ``from_yaml`` does not read ``max_redo``
 9. Line budget
 --------------
 
-Counted: everything lane X owns at the pins (section 1, 5,733 lines). New
-files count as added lines. Joint rows (the other lane's call) are listed
-apart and not counted.
+Counted: the brief's baseline, snapy ``src/mesh`` and ``src/interface`` at
+the pin, 4,274 lines (20% leaves at most 3,419). New files count as added
+lines; moved lines count in neither lane. ``src/utils``, the FP32 storage
+code included, counts in lane O. Rows joint with O and S are listed apart
+and not counted; pyharp and pydisort are listed apart, where touched files
+do not grow.
 
 .. csv-table:: lane X
    :header: "File", "Lines now", "Lines after", "Deletions named"
 
-   "src/mesh/meshblock.cpp", 1919, 1508, "items below (-411)"
-   "src/mesh/meshblock.hpp", 332, 266, "items below (-66)"
-   "src/mesh/mesh.cpp", 566, 355, "items below (-211)"
+   "src/mesh/meshblock.cpp", 1919, 1360, "items below (-559)"
+   "src/mesh/meshblock.hpp", 332, 250, "items below (-82)"
+   "src/mesh/mesh.cpp", 566, 352, "items below (-214)"
    "src/mesh/mesh.hpp", 81, 75, "items below (-6)"
    "src/mesh/meshblock_options.cpp", 296, 190, "items below (-106)"
    "src/mesh/mesh_functions.cpp", 36, 31, "items below (-5)"
@@ -271,33 +399,10 @@ apart and not counted.
    "src/mesh/stage_executor.hpp (new)", 0, 70, "segments, schedule, graph cache"
    "src/mesh/stage_executor.cpp (new)", 0, 150, "eager run, capture, replay, global phase"
    "src/mesh/precision_policy.hpp (new)", 0, 40, "storage, compute and cast dtypes"
-   "src/utils/fp32_storage.hpp", 56, 56, "kept; see the note below"
-   "src/utils/fp32_storage.cpp", 119, 119, "kept; see the note below"
-   "src/utils/fp64_store.hpp", 85, 85, "kept: FP64 reference buffers"
-   "src/utils/tensor_cast_cache.hpp", 53, 53, "kept: the policy's cached casts"
-   "pyharp/src/integrator/integrator.cpp", 136, 94, "items below (-42)"
-   "pyharp/src/integrator/integrator.hpp", 102, 94, "items below (-8); out= fits line 96"
-   "pyharp/src/integrator/integrator_dispatch.cpp", 43, 0, "items below (-43)"
-   "pyharp/src/integrator/integrator_dispatch.cu", 30, 0, "items below (-30)"
-   "pyharp/src/integrator/integrator_dispatch.hpp", 14, 0, "items below (-14)"
-   "pyharp/src/integrator/integrator_formatter.hpp", 37, 37, "kept; see the note below"
-   "pyharp/src/integrator/radiation_model.cpp", 114, 114, "kept; see the note below"
-   "pyharp/src/integrator/radiation_model.hpp", 88, 88, "kept; see the note below"
-   "pydisort/src/disort.cpp", 614, 546, "items below (-68)"
-   "pydisort/src/add_arg.h", 28, 28, "untouched"
-   "pydisort/src/disort.hpp", 284, 284, "untouched"
-   "pydisort/src/disort_dispatch.cpp", 56, 56, "untouched"
-   "pydisort/src/disort_dispatch.cu", 146, 146, "untouched"
-   "pydisort/src/disort_dispatch.hpp", 18, 18, "untouched"
-   "pydisort/src/disort_formatter.hpp", 54, 54, "untouched"
-   "pydisort/src/disort_impl.h", 133, 133, "untouched"
-   "pydisort/src/index.h", 16, 16, "untouched"
-   "pydisort/src/loops.cuh", 116, 116, "untouched"
-   "pydisort/src/scattering_moments.cpp", 50, 50, "untouched"
-   "pydisort/src/scattering_moments.hpp", 28, 28, "untouched"
-   "pydisort/src/vectorize.cpp", 22, 22, "untouched"
-   "pydisort/src/vectorize.hpp", 25, 25, "untouched"
-   "total", 5733, 4980, "cut 753 (13.1%)"
+   "src/interface/athena_arrays.hpp", 669, 0, "F1, after O's writer change"
+   "src/interface/init_from_tensor.hpp", 199, 0, "F2, with F1"
+   "src/interface/stride_iterator.hpp", 140, 0, "F3"
+   "total", 4274, 2551, "cut 1723 (40.3%)"
 
 Items. Each line: net lines, file, ranges at the pin, the replacement.
 Gross and added counts are by hand; the bitwise gate is section 5's golden
@@ -308,13 +413,14 @@ a. -59 (meshblock.cpp): host stage timers 711, 774-781, 808-815, 889-898,
 b. -36 (meshblock.cpp): verbose prints in ``reset()`` 188-198, 250-253,
    258-261, 265-268, 272-275, 293-296, 314-318.
 c. -18 (meshblock.cpp): six face blocks 161-186 become one loop (+8).
-d. -22 (meshblock.cpp): closure and fixer calls 983-1004 go to the global
-   phase (hypothesis: bitwise for 1 block only if 1846-1919 is idempotent).
+d. -21 (meshblock.cpp): the closure call 983-991 goes to the global phase,
+   the fixer call 993-1004 goes with the fixer (the comment 992 stays) (hypothesis: bitwise for 1 block only if 1846-1919 is idempotent).
 e. -24 (meshblock.cpp): ``initialize`` 412-433 repeats
    ``initialize_under_mesh`` 472-490 and calls it instead; 398-400 is a
    commented-out barrier; the verbose print 415-417 goes (+1).
 f. -29 (meshblock.cpp): legacy helpers 1417-1445; the test at
-   ``tests/test_forcing.cpp:754`` reads the limiter marks directly.
+   ``tests/test_forcing.cpp:754`` calls ``limiter_patch_hit()`` and is
+   edited to read the limiter marks.
 g. -10 (meshblock.cpp): precision branches 534-538, 719-720, 741-742,
    1798-1800 via the policy (+2).
 k. -27 (meshblock.cpp): ``part()`` 337-377, three copied dimension blocks
@@ -335,8 +441,6 @@ n4. -3 (meshblock.hpp): 317-319.
 o1. -20 (meshblock.cpp): verbose prints 504-507, 520-522, 542-544, 571-573,
     1202-1204, 1220-1223.
 o2. -3 (meshblock_options.cpp): verbose print 27-29.
-p. -7 (meshblock.cpp): one fixer-mass helper for 1038-1045 and 1066-1072
-   (+8).
 q. -5 (meshblock.cpp): one ``thermo()`` lookup for 964-965, 1449-1452,
    1540-1543 (+5).
 r. -6 (meshblock.cpp): both ``to()`` overrides 33-42 read the policy (+4).
@@ -348,13 +452,33 @@ t. -7 (meshblock.cpp): ``bfuncs`` size checks 96-106 become a loop (+4).
 u. -14 (meshblock.cpp): one state-exchange helper for 475-487 and 1116-1128
    (+12).
 w. -15 (meshblock.cpp): ``apply_extra_forcing`` 819-849 loops over the two
-   keys; error texts kept (+16).
-y1. -7 (meshblock.cpp): ``round_storage_after_stage`` 636-642 becomes the
-    executor's rounding segment.
+   keys; error texts kept (+16). X counts all of 819-884: the user forcings
+   stay in the block's compute segment, after the scalar step.
+y1. -7 (meshblock.cpp): ``round_storage_after_stage`` 636-642 (Cheng: the
+    FP32 storage emulation is removed).
 y2. -2 (meshblock.hpp): 214-215.
-aa1. -3 (meshblock.cpp): 1009-1012; the global phase reads the hydro sums
-     directly (+1).
-aa2. -1 (meshblock.hpp): 226.
+fp1. -18 (meshblock.cpp): the rest of the emulation, decided by Cheng:
+     include 22, the call 618, ``round_storage`` 620-634, blank 635.
+fp2. -7 (meshblock.hpp): 207-213.
+fp3. -3 (mesh.cpp): the multi-block call 403-405 (the single-block call
+     358 is in M).
+gw1. -86 (meshblock.cpp): the global gravity-work fixer, removed by Cheng:
+     the step-start reset 724-730, ``gravity_work_fixer_sums`` and
+     ``apply_gravity_work_fixer`` 1036-1109, the redo and accept calls 1477
+     and 1502, the blank line 1110 and the cycle print 1336-1337, which O's
+     printer leaves out. Its call 993-1004 is in d, its ``mesh.cpp`` caller in M.
+gw2. -4 (meshblock.hpp): 217-220 (the flag 221-222 is in hp).
+aa1. -27 (meshblock.cpp): ``axial_closure_sums`` and ``apply_axial_closure``
+     1009-1035.
+aa2. -6 (meshblock.hpp): their declarations 223-228.
+    The axial closure stays, as a fixer inside ``exact`` (Cheng), and moves
+    to lane A's ``AxialClosureFixer`` (``src/forcing/axial_momentum.cpp``).
+    One rule for both files: lines leaving ``src/mesh`` are X's deletions
+    (the call and sums 983-1012 and ``src/mesh/mesh.cpp:363-402`` in d, aa1
+    and M; ``apply_axial_closure`` 1014-1034 in aa1), and A books the new
+    home as an addition inside its +170 and drops the 51 mesh lines from its
+    base. Each line is counted once, as lane A's note 15 asks; 1014-1034 now
+    count in X, as Jiachen's final joint rows propose.
 bb. -5 (meshblock.cpp): the lock 9, 31, 134-135, 137; blocks are built one
     after another (``src/mesh/mesh.cpp:259-272``; hypothesis).
 hp. -16 (meshblock.hpp): defer flags 221-222, 229; legacy helpers 282-294.
@@ -370,8 +494,24 @@ z. -9 (mesh.cpp): ``check_same_variables`` 47-62 as one key-set comparison
    (+7).
 i. -81 (meshblock_options.cpp): six face-parsing blocks 104-212 become one
    loop; keeps x1 periodic for "cubed" only and the null padding (+28).
-j. -22 (meshblock_options.cpp): slice checks 65-86 repeat the bounds and
-   order checks in ``reset()`` 203-230; a bad slice now fails at construction.
+j. -22 (meshblock_options.cpp): ``check_slice`` 65-86 repeats the bounds
+   and order checks of ``validate_slice`` (``src/mesh/meshblock.cpp:203-230``).
+sv. -28 (meshblock.cpp): ``validate_slice`` 203-230, once O's generated
+    output option checks hold one copy of each check (O rev 2,
+    ``22cd9512``). Its sum check repeats
+    ``src/output/output_type.cpp:90-98``; its bounds and order checks repeat
+    65-86 of ``meshblock_options.cpp``, so j and sv never both delete before
+    then.
+F1. -669 (src/interface/athena_arrays.hpp): goes once O's writer holds
+    tensors (``src/output/output_type.hpp:99``). Its built includers are
+    ``src/output/output_type.hpp:22`` and ``src/output/output_utils.hpp:10``,
+    both rewritten by O; O ports the test ``tests/test_eos_io_core.cpp:7``. ``src/turbulence/turbulence_model.hpp:9`` names a header of another
+    code base, not this one, and is not built.
+F2. -199 (src/interface/init_from_tensor.hpp): included only at
+    ``src/interface/athena_arrays.hpp:669``.
+F3. -140 (src/interface/stride_iterator.hpp): no built includer; its four
+    includers are in ``src/diagnostics``, which the build does not glob
+    (``src/CMakeLists.txt:35-53``) and O deletes.
 I1. -6 (pyharp/src/integrator/integrator.cpp): the dead ``call_average3``
     include 6 and comment 113-122; the ``out=`` path of section 8 adds 5.
 I2. -43 (pyharp/src/integrator/integrator_dispatch.cpp): dead; its only
@@ -396,42 +536,52 @@ D2. -17 (pydisort/src/disort.cpp): ``set_flags`` 49-93 becomes a map from
     (+28); the same 17 tokens and the same error text.
 
 Added counts for I5, D1 and D2 come from clang-format (Google style) on a
-draft. Without h1-h2 the cut is 621 (10.8%). If O's options schema replaces
-``from_yaml``, i and j are O's: with h1-h2 kept, then 650 (11.3%).
-If Cheng drops the FP32 storage emulation, the cut is 753 + 202 = 955
-(16.7%): ``fp32_storage.*`` (175), ``src/mesh/meshblock.cpp:22``,
-``src/mesh/meshblock.cpp:618`` and ``src/mesh/meshblock.cpp:620-634`` (17),
-``src/mesh/meshblock.hpp:207-213`` (7), ``src/mesh/mesh.cpp:403-405`` (3);
-nothing replaces it. The other 138
-precision lines stay: ``fp64_store.hpp`` (``src/hydro/hydro.hpp:329``) and
-``tensor_cast_cache.hpp`` (``src/coord/coordinate.hpp:399``) serve FP32
-arithmetic.
+draft. Without h1-h2 the cut is 1591 (37.2%). If O's options schema replaces
+``from_yaml``, i and j are O's: with h1-h2 kept, then 1620 (37.9%).
+Before O's writer change the cut is 827 (19.3%), 28 short of 20%: F1 and F2 wait for it, and
+sv waits for O's option checks; F3 does not. Cheng's decisions are in the base: the FP32 storage emulation
+goes (y1, y2, fp1-fp3; ``fp32_storage.*`` counts in O) and the global
+gravity-work fixer goes (gw1, gw2). Their Python bindings
+(``python/csrc/pymesh.cpp:239-241``, ``python/csrc/pymesh.cpp:332-343``,
+``python/snapy/mesh.pyi:175``), the fixer API in ``src/hydro`` and their
+tests go with them, outside the lane and uncounted. ``stage_executor.cpp``
+keeps its +150 as an upper bound.
 
 .. csv-table:: joint, not counted
    :header: "File", "Lines now", "Lines after", "Owner and request"
 
-   "src/interface/athena_arrays.hpp", 669, 0, "O: output off AthenaArray (section 11)"
-   "src/interface/init_from_tensor.hpp", 199, 0, "O: included only at src/interface/athena_arrays.hpp:669"
-   "src/interface/stride_iterator.hpp", 140, 0, "O: no built includer"
-   "src/mesh/meshblock.cpp", 1919, 1919, "O: restart 1603-1833, diagnostics 1226-1346; S: exchange 644-685, 1135-1196"
+   "src/mesh/meshblock.cpp", 1919, 1919, "O: restart 1603-1833, diagnostics 1226-1346 less 1336-1337 (gw1); S: exchange 644-685, 1135-1196"
    "src/mesh/cycle_diagnostics.hpp", 16, 16, "O: with the diagnostics"
 
-**FOR CHENG**: lane X cuts 13.1%; the remaining 394 lines sit in O's/S's
-joint rows: ``src/interface`` (1,008, O), restart 1603-1833 and cycle
-diagnostics 1226-1346 in ``meshblock.cpp`` (352, O), exchange 644-685 and
-1135-1196 in ``meshblock.cpp`` (104, S).
+O moves ``src/utils/signal_handler.*`` (213 lines) into ``src/mesh``: a move,
+counted in neither lane. ``src/mesh`` is its home: it takes ``MeshBlockImpl``
+(``src/utils/signal_handler.hpp:45``), and only the mesh includes it
+(``src/mesh/mesh.cpp:28``, ``src/mesh/meshblock.cpp:24``). With it,
+``src/mesh`` and ``src/interface`` go from 4,487 lines (4,274 and the 213
+moved in) to 2,764, a cut of 38.4%.
+
+**Dependency on O**: F1 and F2 (868 lines) land after O's writer drops
+``AthenaArray``, and sv (28) after O's option checks; section 10 orders them. The split was agreed with O (rev 1,
+``a39e0e8d``): all of ``src/interface`` counts in X, ``src/utils`` in O.
 
 Not counted, because each removes a capability or a public API:
 pyharp ``RadiationModel`` (``radiation_model.*``, 202 lines; no binding,
 test, deck or caller found, but a public class); the ``IntegratorWeight``
 formatter (``pyharp/src/integrator/integrator_formatter.hpp:12-24``; no user
-found); the FP32 storage emulation (``fp32_storage.*``, 175 lines), which
-rounds only the stored state, per row and per step or stage, in FP64
-arithmetic, which FP32 storage under the policy does not reproduce.
+found).
+
+Provider side: pyharp ``src/integrator`` 564 to 427 (I1-I7), pydisort
+``src`` 1,590 to 1,522 (D1, D2); no touched file grows.
 
 .. csv-table:: touched outside the lane
    :header: "File", "Lines now", "Lines after", "Change"
 
+   "pyharp/src/integrator/integrator.cpp", 136, 94, "items below (-42)"
+   "pyharp/src/integrator/integrator.hpp", 102, 94, "items below (-8); out= fits line 96"
+   "pyharp/src/integrator/integrator_dispatch.cpp", 43, 0, "items below (-43)"
+   "pyharp/src/integrator/integrator_dispatch.cu", 30, 0, "items below (-30)"
+   "pyharp/src/integrator/integrator_dispatch.hpp", 14, 0, "items below (-14)"
+   "pydisort/src/disort.cpp", 614, 546, "items below (-68)"
    "pyharp/python/csrc/pyintegrator.cpp", 57, 57, "py::arg out (+1); include 3 goes (integrator.hpp has it)"
 
 10. Migration
@@ -446,10 +596,28 @@ arithmetic, which FP32 storage under the policy does not reproduce.
    "X1", "PrecisionPolicy; lane's fp32() branches; u0/s0 in storage dtype", "bitwise"
    "X2", "StateStore; out= replaces set_ at 901-902, 921-922", "bitwise (hypothesis; gate: section 5 golden)"
    "X3", "StageExecutor from tests/straka_cuda_graph.py; deck selection; eager default", "eager bitwise; graph parity"
-   "X4", "device closure and fixer; deferred abort; global phase for 1 and N blocks", "bitwise for accepted steps if partial-sum order is kept (hypothesis), else round-off"
-   "X5", "meshblock split into six parts; section 9 src/mesh items except d, M, h1-h2", "bitwise (hypothesis; gate: section 5 golden)"
+   "X4", "device closure; global phase for 1 and N blocks", "bitwise for accepted steps if partial-sum order is kept (hypothesis), else round-off"
+   "X5", "meshblock split into six parts; section 9 src/mesh items except d, M, h1-h2, sv", "bitwise (hypothesis; gate: section 5 golden)"
    "X6", "h1-h2: block jobs on the inter-op pool", "bitwise; CPU multi-block wall time within 5%"
    "X7", "capability matrix, docs, benchmarks (G7)", "no numerics"
+   "X8", "delete src/interface (F1-F3) and sv; F1-F2 after O's writer holds tensors (cut 827 of 4,274 before, 1,723 after), sv after O's option checks, F3 any time; first O ports ``tests/test_user_output.cpp:39-100`` (O's note 8), and one grep for the array class, ``InitFromTensor``, ``CopyFromTensor``, ``OutputData`` and ``pfirst_data_`` over src, tests and python finds only unbuilt files", "no numerics; build and tests pass"
+   "X9 (proposed)", "ARK stage form: ``StageTableau``, ``kex``/``kim`` storage, ``dt_corr = gamma_i dt`` (section 3)", "Shu-Osher path bitwise; ARK path by the order gate"
+
+Scope of this round (Cheng): design and declarations only. Nothing here was
+built or run; section 5's gates are specified, not run, and a claim that
+needs a run is marked hypothesis. Each contract has a milestone: the stage
+executor (section 7) is G1 (``V3_ROADMAP.md:155``), its multi-block global
+phase G4 (``V3_ROADMAP.md:235``); pyharp's output-buffer RK interface
+(section 8) is G1 (``V3_ROADMAP.md:162``); the capability matrix is listed
+in G0 (``V3_ROADMAP.md:144``) and documented in G7
+(``V3_ROADMAP.md:296``). G0's baselines and capture probes
+(``V3_ROADMAP.md:146-149``) are implementation, not part of this design.
+X9 has no milestone in ``V3_ROADMAP.md``; X proposes IMEX-ARK as one after
+G1, since it needs the executor and fixed storage.
+
+FOR CHENG: higher-order IMEX is reopened for V3. Does IMEX-ARK (X9) enter
+``V3_ROADMAP.md`` as a milestone after G1, and does the implicit owner add a
+Newton option if the linearized stage misses the order gate?
 
 Removed: host stage timers (replaced by segment timing), the ``defer_*``
 flags, the four legacy helpers, the dead pyharp dispatch. No physics option
@@ -475,17 +643,21 @@ separate):
    "user TorchScript forcing", "yes", "yes", "eager segment", "eager segment"
    "radiation (pyharp/pydisort)", "not on the step path", "no", "no", "no"
 
+Every row keeps its schemes (Cheng): all six Riemann solvers, all six
+reconstructions, ANEOS and PnetCDF stay. CPU and MPS run eager only:
+``cuda-graph`` falls back to eager there, and strict mode rejects it.
+
 11. Open questions to other lanes
 ---------------------------------
 
 R (Linfeng):
 
-- Register step accumulator dtype: FP64?
-- Accept ``begin_stage(stage, IntegratorWeight)`` and a reset hook called on
-  rollback?
-- Correct per stage or per step (section 4)?
-- Can the register monitor join the stacked retry tensor read at
-  ``src/mesh/meshblock.cpp:1566``?
+- Answered by R's header (``543ff84f``): FP64 step field; X adopts
+  ``begin_stage(int stage, StageWeights const&)`` and ``rollback()`` in the
+  reset list; the monitor joins the read at ``src/mesh/meshblock.cpp:1566``.
+- Open: correct per stage or per step (section 4)?
+- ARK (section 3): may ``StageWeights`` carry ``bex`` and ``bim``, with the
+  implicit face fluxes posted as their own increment?
 
 S (Jiheng):
 
@@ -494,6 +666,12 @@ S (Jiheng):
   the two-round cubed-sphere exchange (``src/mesh/meshblock.cpp:651-658``)
   and the corner fill?
 - Who owns the boundary-function refresh ``src/mesh/meshblock.cpp:1135-1196``?
+- Answers to S's three questions (``fe1612b1``, S section 11): (1) yes,
+  cuts at S's rows, merges as labelled (section 7); (2) the options YAML
+  parsing (S's move A) is not X's: X keeps no options reader, and the
+  generated option schema is O's (section 9, j and sv); X asks O; (3) yes,
+  X owns the CI build for S's H18 (``--fmad=false``, ``-ffp-contract=off``)
+  as a capability-matrix row (G0, ``V3_ROADMAP.md:144``).
 
 EF (Zoey):
 
@@ -502,7 +680,7 @@ EF (Zoey):
 - Can the retry test avoid the full-field clone at
   ``src/mesh/meshblock.cpp:1517``?
 
-K (Isaac):
+K:
 
 - A consume-and-reset device counter to replace the host drain
   (``src/mesh/meshblock.cpp:1544-1546``, ``src/mesh/meshblock.cpp:1453``)?
@@ -527,10 +705,12 @@ O (Jiachen), answers to O rev 1 (``7dac5f4a``, section 14, X1-X3):
 
 Requests to O, and where the two drafts differ:
 
-- Move output off ``AthenaArray`` (``src/output/output_type.hpp:99``) and
-  delete ``src/interface``. O rev 1 deletes only ``stride_iterator.hpp``
-  (140) and leaves ``athena_arrays.hpp`` (669) and ``init_from_tensor.hpp``
-  (199) unlisted.
+- Joint rows, agreed with O (``a39e0e8d``): all of ``src/interface``
+  (1,008) counts in X, and X deletes it after O's writer drops
+  ``AthenaArray`` (``src/output/output_type.hpp:99``); ``src/utils``, the FP32
+  storage code included, counts in O. Moved lines (``signal_handler.*`` into
+  ``src/mesh``, restart and diagnostics out of ``meshblock.cpp``) count in
+  neither lane.
 - Take restart and cycle diagnostics. Ranges differ: X lists
   ``src/mesh/meshblock.cpp:1603-1833`` and ``src/mesh/meshblock.cpp:1226-1346``;
   O lists 1603-1830 and 1226-1339. The extra lines are the end of
@@ -538,25 +718,128 @@ Requests to O, and where the two drafts differ:
   (1341-1346). ``src/mesh/cycle_diagnostics.hpp`` is in neither of O's
   tables. X asks that restart load into the fixed buffers in the storage
   dtype and that the diagnostics' host reads stay at step end.
-- ``src/utils/fp32_storage.*``, ``fp64_store.hpp`` and
-  ``tensor_cast_cache.hpp`` (313) are counted in both drafts; X counts them
-  as the precision code. O's cut in them (env parsing to option rows,
-  ``fp32_storage.cpp`` 119 to 95) and O's move of ``signal_handler.*`` (213)
-  into ``src/mesh`` change X's rows; the kickoff decides which lane counts
-  them.
+- O rev 2 (``22cd9512``): the restart checks 1623-1653 (a move into O's
+  restart module) and the cycle diagnostics 1226-1339 with
+  ``src/mesh/cycle_diagnostics.hpp`` (O's printer over budget totals) are
+  inside the joint rows of section 9, so X counts neither, except the
+  fixer's print 1336-1337 (gw1).
+- A device dt at ``src/mesh/meshblock.cpp:1210``: not in the first release.
+  dt stays a host double and a graph is keyed by it (section 7); output runs
+  in the host phase after the accept, outside graphs, so ``AccumulateStats``
+  takes the host dt. A device dt comes with parameterized graphs (X2 above;
+  lane A's note 14 agrees).
+- Jiachen accepted these rows, the totals of section 9 and the refusal of
+  the device dt as final; O drops its device-dt request.
 - Slice validation has three sites: ``src/output/output_type.cpp:90-98``
   (slice and sum), ``src/mesh/meshblock.cpp:203-230`` (all checks) and
   ``src/mesh/meshblock_options.cpp:65-86`` (bounds and order). O asks the
   owner of ``meshblock.cpp``, which is X, to drop 203-230 once O's generated
-  option checks hold them; X will, uncounted until those checks land. Item j
+  option checks hold them; X deletes it as item sv (O rev 2). Item j
   drops the third now; if the schema replaces ``from_yaml``, j is O's
   (section 9 variant).
+
+A (Jiachen), on A's notes 14-17:
+
+- 14: on one rank the closure's host segment is absent (section 3).
+- 15: the closure split is in items aa1 and aa2: X deletes 1009-1035 from
+  ``src/mesh`` and A books the addition; please drop the 51 mesh lines from
+  A's base.
+- 16: the user forcings stay in the block's compute segment, where X
+  schedules them after the scalar step; X counts
+  ``src/mesh/meshblock.cpp:819-884``, A counts none of it.
+- 17: the stage-local FP64 source accumulator is a row of section 6.
 
 C:
 
 - Rev 2 is to specify the register, FP32 and graph contracts: please
   reference X's precision and graph contracts (sections 6 and 7) rather
   than define a second one.
+
+Round-2 notes
+~~~~~~~~~~~~~
+
+EF (Zoey), two questions on rev 1:
+
+1. Can the positivity limiter's theta syncs be one exchange, at one segment
+   boundary per stage? Yes when the scalar has no upper bound, after a
+   reorder; two exchanges with one. At the pin there are up to three syncs,
+   in order: the hydro theta (``src/hydro/hydro_forward.cpp:1227``) inside
+   the hydro forward (``src/mesh/meshblock.cpp:773``), then, inside the
+   scalar forward (``src/mesh/meshblock.cpp:785``), the complement theta
+   when the upper bound is set (``src/scalar/scalar.cpp:205``) and the
+   scalar theta (``src/scalar/scalar.cpp:239``), both through
+   ``src/scalar/scalar.cpp:179``. The hydro and scalar thetas do not depend
+   on each other: the hydro scale touches only the species rows
+   (``src/hydro/hydro_forward.cpp:1167-1169``), and the scalar reads the
+   hydro's dry-mass row (``src/scalar/scalar.cpp:99``,
+   ``src/scalar/scalar.cpp:165-170``). So if the scalar computes its fluxes
+   and thetas before the hydro sync, one exchange carries both (and the
+   complement theta). The scalar theta at 239 reads the fluxes that the
+   complement scale changed (``src/scalar/scalar.cpp:210-212``), so with an
+   upper bound it needs a second exchange. The reorder is EF's and S's
+   (exchange table); X schedules whichever they declare.
+2. Where do #370's extra syncs go? Into the hydro theta boundary. #370
+   (upstream ``730b3500``, merged after the pin) syncs the species enthalpy
+   with the same call as theta and, on the cubed sphere only, exchanges the
+   donor velocities as face states (cross-panel only, no interpolation),
+   all between the theta and the carry. Both need only ``w``, so they post
+   with theta. The face-state temporaries are allocated per call
+   (``zeros_like(w)``), and anything that crosses a boundary lives in fixed
+   storage, so the executor's workspace holds them.
+
+EF (Zoey), notes 1-16 on rev 1 (``77c65d5a``):
+
+1. Agree; no change.
+2. Agree. Section 9 is recounted with Cheng's deletions: fp1-fp3, y1-y2,
+   gw1-gw2 (fp1 and gw1 with the blank lines 635 and 1110, as Jiachen
+   counts), aa1-aa2, d at -21, and sv (O rev 2). The cut is 1,723 of 4,274
+   (40.3%), or 827 (19.3%) before O's changes; the dependency is stated there and in section 10. The
+   FP32 variant is gone; the bindings are named as uncounted.
+3. Agree; all four are rows of the section 7 table, the vapor repair's
+   x1 gather included.
+4. Agree; the hydro theta row carries #370's two syncs (and the paragraph
+   after the notes).
+5. Agree: ``StepReset`` resets in place only, its tensors are allocated at
+   setup, and it has optional ``commit`` and ``drop`` hooks (skeleton
+   ``meshblock_parts.hpp``).
+6. Agree; the gate is a row of section 5 ("flags survive replay").
+7. Agree: ``StateStore::scratch()``, filled with ``copy_`` (skeleton
+   ``state_store.hpp``).
+8. Agree: ``RetryFlag`` {name, owner, cause, 0-d device tensor}, stacked in
+   one fixed dtype (skeleton ``meshblock_parts.hpp``).
+9. Agree; sections 2, 5, 7, 9 and 10 now have the closure only, and
+   ``GlobalCorrection::apply`` posts a named correction.
+10. Agree: the anomaly-floor exception and a diagnostics row are in
+    section 6 and ``precision_policy.hpp``.
+11. Agree in substance: section 6 states the MPS dtypes, and a line under
+    the capability matrix says CPU and MPS run eager, with strict mode
+    rejecting ``cuda-graph``. A column would repeat "eager" in every row.
+12. Agree: deferred mode is the only mode inside segments (section 7).
+13. Agree: the species clip is an EF op, the limiter at 952 is in the
+    segment list, ``carry_dry_source`` takes ``out=`` (section 8), and the
+    three clones become fixed scratch (section 7).
+14. Agree; item f edits that test.
+15. Agree; all three are fixed.
+16. Agree; no change.
+
+The pin ``9e5de2d4`` predates #370; ``730b3500`` is its direct child. #370
+changes no file of lane X. On a rebase past it,
+``src/hydro/hydro_forward.cpp`` lines after 1238 move down 49
+(``src/hydro/hydro_forward.cpp:1227`` becomes 1229, the scale at 1237
+becomes 1286); the face-state
+exchanges X cites at 1017 and 1029 do not move. Nothing in section 9
+changes.
+
+Counts. Rev 2 takes Jiachen's final joint rows: +28 for the FP32 emulation
+(with the blank line 635), +83 for the gravity-work fixer and +29 for the
+closure (aa1, aa2). The fixer's 83 includes the cycle print 1336-1337, which
+Zoey's +81 leaves in O's printer; the comment at 1476 stays and is edited.
+Item d is -21, not rev 1's -22: the comment at 992 belongs to the boundary
+call after 1005 and stays. So X cuts 1,695 before sv, one line below
+Jiachen's 1,696, and 1,723 (40.3%) with sv. Lane R's count of the fixer
+books 98 lines of ``meshblock.cpp``, 6 of ``meshblock.hpp`` and 20 of
+``mesh.cpp``. Those count once, in X (gw1, gw2, d, hp, M); R counts its
+``src/hydro`` lines only.
 
 12. Skeleton index
 ------------------
@@ -570,4 +853,5 @@ C:
   ``StageExecutor``.
 - ``meshblock_parts.hpp``: the six parts of ``MeshBlock`` and the step-reset
   list.
-- ``pyharp_integrator.hpp``: the ``out=`` signature and its alias rules.
+- ``pyharp_integrator.hpp``: the ``out=`` signature and its alias rules;
+  ``StageTableau`` (section 3).
