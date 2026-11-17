@@ -1,8 +1,8 @@
 #pragma once
 // Lane X skeleton: declarations only, in no build.
-// Fixed state storage: buffers allocated once at reset(); the RK combine writes
-// into them (pyharp forward(..., out)), replacing set_ at
-// src/mesh/meshblock.cpp:901-902 and src/mesh/meshblock.cpp:921-922.
+// Fixed state storage allocated once at reset(); the RK combine writes into it
+// (pyharp out=), replacing set_ at src/mesh/meshblock.cpp:901-902 and 921-922.
+#include <map>
 #include <string>
 #include <torch/torch.h>
 
@@ -21,9 +21,9 @@ class StateStore {
   torch::Tensor& scalar_s();
   torch::Tensor& u0();
   torch::Tensor& s0();
-  //! fixed copy of hydro_u for the retry test (now the clone at
-  //! src/mesh/meshblock.cpp:1517), filled with copy_
-  torch::Tensor& scratch();
+  //! named fixed buffers filled with copy_, for the clones now at
+  //! src/mesh/meshblock.cpp:857, 859, 869, 1517, src/forcing/diffusion_radial.cpp:8
+  torch::Tensor& scratch(std::string const& name);
   //! R's FluxRegister::reset() allocates its tensors (R.rst 7); registered
   //! here for address stability: a new allocation bumps generation()
   void register_storage(std::string const& name, torch::Tensor const& t);
@@ -40,7 +40,8 @@ class StateStore {
   int generation() const;
 
  private:
-  torch::Tensor hydro_u_, scalar_s_, u0_, s0_, scratch_;
+  torch::Tensor hydro_u_, scalar_s_, u0_, s0_;
+  std::map<std::string, torch::Tensor> scratch_;  // allocated at reset()
   int generation_;
 };
 

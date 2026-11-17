@@ -1,15 +1,12 @@
 #pragma once
 // Lane X skeleton: declarations only, in no build.
-// src/mesh/meshblock.cpp split into six parts with one owner each.
-// The MeshBlock API seen by Python and tests does not change.
+// meshblock.cpp in six parts, one owner each; the MeshBlock API is unchanged.
 #include <functional>
 #include <string>
 #include <vector>
 #include <torch/torch.h>
 
 namespace snap {
-
-class MeshBlockImpl;
 
 //! now src/mesh/meshblock.cpp:86-574: options, modules, StateStore, initial state
 struct BlockInit;       // owner X
@@ -28,14 +25,15 @@ struct BlockRedo;       // owner X; flags from EF, K, R
 //! now src/mesh/meshblock.cpp:1603-1833; O takes the checks 1623-1653
 struct BlockRestart;    // owner O (question to O)
 
-//! now src/mesh/meshblock.cpp:1207-1415: outputs and cycle diagnostics
+//! now src/mesh/meshblock.cpp:1207-1224, 1226-1339 (O, c12f78bb); 1340-1415 X's
 struct BlockOutput;     // owner O (question to O)
 
 //! registered by owners (now 713-745), tensors allocated once at setup.
-//! kStepStart, once per attempt: R's begin_step(), then the radial post;
-//! kStageZero: u0 backup, K's snapshot_active_set, reset_failures (for the
-//! host drain at 736), marks, counters; kRollback: restore u0/s0, radial
-//! restore_step, K's restore_active_set, R's rollback(); retry reruns kStepStart
+//! kStepStart, once per attempt: R's begin_step(), zero the radial flag, the
+//! radial post; kStageZero: u0 backup, K's snapshot_active_set,
+//! reset_failures (host drain at 736), marks, counters; kRollback (pin order,
+//! 1476-1504): u0, radial restore_step, K's restore_active_set, cons2prim, s0,
+//! R's rollback() with the marks; retry reruns kStepStart
 enum class ResetPhase { kStepStart, kStageZero, kRollback };
 struct StepReset {
   std::string name;   // e.g. "limiter.marks", "register", "vic.dry_clamp"
@@ -45,9 +43,9 @@ struct StepReset {
   std::function<void()> commit, drop;   // optional: step accepted, rejected
 };
 
-//! one retry flag, stacked with the others in one fixed dtype; causes by name:
-//! the pin's bits 0-5 (src/mesh/meshblock.cpp:1585-1596), then
-//! "diffusion.radial" = bit 6 (64)
+//! one retry flag, stacked in hydro_u's dtype, read once as FP64; slots 0-7 as
+//! the pin (src/mesh/meshblock.cpp:1559-1560; 6, 7 fold into bit 2), then
+//! "diffusion.radial" = slot 8, cause bit 6 (64), zeroed in kStepStart
 struct RetryFlag {
   std::string name, owner, cause;
   torch::Tensor flag;   // 0-d, on the device

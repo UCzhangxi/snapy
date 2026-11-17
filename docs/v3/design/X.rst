@@ -111,7 +111,7 @@ same graph.
 
 Hooks (``stage_executor.hpp``, ``meshblock_parts.hpp``). ``step_start(dt)``
 runs the ``kStepStart`` entries once per attempt, before the stage-0 resets:
-R's ``begin_step()``, then the radial half step and its
+R's ``begin_step()``, then the radial flag's ``zero_``, the radial half step and its
 ``post_split`` (``src/mesh/meshblock.cpp:714-718``, before the resets at
 ``src/mesh/meshblock.cpp:722-738``). ``kStageZero`` takes the ``u0``
 backup, then K's ``snapshot_active_set``, then ``reset_failures``, which
@@ -120,15 +120,32 @@ replaces the host drain at ``src/mesh/meshblock.cpp:736`` (K 3.2, 3.4).
 (``src/mesh/meshblock.cpp:903-905``); R's ``after_combine`` follows every
 stage's combine, so the limiter (``src/mesh/meshblock.cpp:907-909``) comes
 after ``finish_step`` on the last. A rejected step runs the ``kRollback``
-entries: restore ``u0``/``s0``, the radial ``restore_step``
-(``src/mesh/meshblock.cpp:1479-1480``), K's ``restore_active_set``, then
-R's ``rollback()``; none erases a step-start post in place, since the retry
+entries in the pin's order (``src/mesh/meshblock.cpp:1476-1504``): ``u0``,
+the radial ``restore_step`` (``src/mesh/meshblock.cpp:1479-1480``), K's
+``restore_active_set``, the cons2prim, ``s0`` and the scalar primitives
+(``src/mesh/meshblock.cpp:1481-1484``), then R's ``rollback()`` with the
+limiter marks, after the cons2prim (``src/mesh/meshblock.cpp:1488-1489``);
+none erases a step-start post in place, since the retry
 reruns ``step_start`` at the new dt, as the pin re-enters stage 0. The retry
 stack calls ``consume_failures(flags.narrow(0, 4, 1))``, slot 4
 (``src/mesh/meshblock.cpp:1559-1560``).
-``observe()`` runs after the accept. Retry causes keep the pin's bits 0-5
-(``src/mesh/meshblock.cpp:1585-1596``); ``diffusion.radial``, the radial
-check, is a named ``RetryFlag`` with cause bit 6 (value 64).
+``observe()`` runs after the accept.
+
+Retry stack: 0-d flags in ``hydro_u``'s dtype (``src/mesh/meshblock.cpp:1527``),
+read once as FP64 (``src/mesh/meshblock.cpp:1566``). Slots 0-5 are cause bits
+0-5 (floor, clamp, limiter, nan, saturation, vic-solve;
+``src/mesh/meshblock.cpp:1595``); slots 6 (vapor) and 7 (heat) fold into
+bit 2 (``src/mesh/meshblock.cpp:1571-1577``). ``diffusion.radial`` is slot 8
+and cause bit 6 (value 64): bit 6 is not slot 6. It replaces the throwing
+host check of both radial half steps (``src/forcing/diffusion_radial.cpp:97-98``,
+two reads: finite and positive temperature), a segment end until it is this
+device flag. It is zeroed in ``kStepStart`` and counts against ``max_redo``
+like bits 0-4, terminating without a restore
+(``src/mesh/meshblock.cpp:1468-1473``); only bit 5 restores first
+(``src/mesh/meshblock.cpp:1490-1495``, ``src/mesh/mesh.cpp:492-500``). The
+radial ``split_initial_ = u.clone()`` (``src/forcing/diffusion_radial.cpp:8``),
+which ``restore_step`` copies back (``src/forcing/diffusion_radial.cpp:14-17``),
+becomes ``copy_`` into a ``StateStore`` scratch buffer.
 
 The stage form is today's Shu-Osher combine (weights
 ``pyharp/src/integrator/integrator.hpp:20-29``); a two-tableau form is
@@ -138,7 +155,7 @@ optional and outside this round (section 10, last subsection).
 -----------------------------------------
 
 Names and signatures are lane R's header (``docs/v3/skeleton/R/flux_register.hpp``
-at R rev 2.2 ``4c59162a``); the other lanes cited the rev 1 header ``543ff84f``.
+at R rev 2.2 ``4c59162a``).
 
 - Storage: ``FluxRegister::reset(coord, policy, nvar, req)``
   (``flux_register.hpp:43-44``) takes no storage and allocates its own,
@@ -208,7 +225,7 @@ The ten register requirements, by number:
    "state addresses fixed", "data_ptr of hydro_u, scalar_s, u0, s0 unchanged over 10 steps with a retry", "exact"
    "no host sync inside a segment", "replay under torch.cuda.set_sync_debug_mode('error')", "exact"
    "graph replay equals eager", "Straka, both precisions, dt changes, a retry", "bitwise (hypothesis); else the tolerance stated by the test"
-   "flags survive replay", "a limiter repair and a vapor failure injected on replay N >= 2 reach the retry flags", "exact"
+   "flags survive replay", "a limiter repair and a vapor failure injected on replay N >= 2 reach the retry flags; warm-up, capture and one replay leave the save list (section 7) equal to eager", "exact; save list bitwise"
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
    "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
@@ -324,8 +341,12 @@ adopted). The vapor check is deferred inside every segment, set once by
 (``src/mesh/meshblock.cpp:689-701``, ``src/mesh/meshblock.cpp:1516``)
 would be baked into a capture. The species clip of user forcings
 (``src/mesh/meshblock.cpp:879-884``) is EF's op, which X registers in the
-block's compute segment; it posts the mass it withholds; the clones at
-``:869`` become ``copy_`` into fixed scratch. C's B6, the x1 seam flux average, is the register's exchange phase
+block's compute segment; it posts the mass it withholds. The clones at
+``src/mesh/meshblock.cpp:857`` (dry row of ``fut_hydro_du``) and ``:859``
+(``fut_scalar_ds``) and ``:869`` (the clip's species base) become ``copy_``
+into ``StateStore`` scratch; ``carry_dry_source`` at ``:887`` (outside w,
+in no row) takes the dry difference and the scalar base unchanged. They lie
+in w's 819-884 and are rewritten, not deleted: no count changes. C's B6, the x1 seam flux average, is the register's exchange phase
 (section 4).
 
 dt: recapture on a changed dt first, as ``V3_ROADMAP.md:124-129`` asks;
@@ -345,12 +366,14 @@ declined for this round: X captures segments whole with
 stays the baseline; it is revisited with parameterized graphs (X2,
 section 11). The prototype restores only the
 state tensors around warm-up and capture (``tests/straka_cuda_graph.py:59-60``,
-``tests/straka_cuda_graph.py:69-72``); X adds the registers, counters, retry flags,
-kintera's failure counter and active set (``restore_active_set``,
+``tests/straka_cuda_graph.py:69-72``); X adds the registers, counters, retry flags, the radial ``split_initial_``
+buffer, kintera's failure counter and active set (``restore_active_set``,
 K.rst:257-258) to that save and restore, untested (gate "flags survive
-replay"). Warm-up and capture run with the step's dt, never dt = 0, so an
+replay", extended: this list against eager, bitwise). Warm-up and capture run with the step's dt, never dt = 0, so an
 op that divides by dt stays finite. With fixed storage the per-replay input
 copy (``tests/straka_cuda_graph.py:86-88``) never fires and goes.
+``report()`` gives per-op time in eager mode only: CUDA events per segment,
+never inside a graph (margin).
 
 8. Cross-repository interface changes and merge order
 -----------------------------------------------------
@@ -448,7 +471,8 @@ l1. -11 (meshblock.cpp): ``max_time_step`` 576-595 calls one global-dt
     helper (MIN allreduce, cfl times 2^-redo) (+9).
 l2. -10 (mesh.cpp): ``max_time_step`` 335-347 calls the same helper (+3).
 m1. -19 (meshblock.cpp): one retry decision for 1 and N blocks, 1565-1601:
-    stack flags, amax, one host read, MAX allreduce (+18).
+    stack flags, amax, one host read, MAX allreduce (+18); the six-cause
+    arrays (1565, 1581, 1585-1586; ``mesh.cpp:488-489``) widen to seven.
 m2. -13 (mesh.cpp): 476-492 use it (+4).
 m3. -7 (meshblock.hpp): 272-280 (+2).
 n1. -36 (meshblock.cpp): ``finalize`` 1349-1371, 1399-1414 calls the
@@ -559,7 +583,10 @@ draft. Without h1-h2 the cut is 1591 (37.2%). If O's options schema replaces
 ``from_yaml``, i goes to O and j stays X's, as O books it:
 with i out the cut is 1642 (38.4%), and with i, h1 and h2 out 1510 (35.3%), the lower bound.
 Before O's writer change the cut is 827 (19.3%), 28 short of 20%: F1 and F2 wait for it, and
-sv waits for O's option checks; F3 does not. Cheng's decisions are in the base: the FP32 storage emulation
+sv waits for O's option checks; F3 does not. Of the 827 stated, 614 (14.4%)
+is the floor before O's changes: i (81) goes to O if O's schema replaces
+``from_yaml``, and h1 (126) and h2 (6) wait on their wall-time gate. d (21) and bb (5)
+also rest on hypotheses; without them 588 (13.8%). Cheng's decisions are in the base: the FP32 storage emulation
 goes (y1, y2, fp1-fp3; ``fp32_storage.*`` counts in O) and the global
 gravity-work fixer goes (gw1, gw2). Their Python bindings
 (``python/csrc/pymesh.cpp:239-241``, ``python/csrc/pymesh.cpp:332-343``,
@@ -849,7 +876,7 @@ EF (Zoey), notes 1-16 on rev 1 (``77c65d5a``):
 2. Agree. Section 9 is recounted with Cheng's deletions: fp1-fp3, y1-y2,
    gw1-gw2 (fp1 and gw1 with the blank lines 635 and 1110, as Jiachen
    counts), aa1-aa2, d at -21, and sv (O rev 2). The cut is 1,723 of 4,274
-   (40.3%), or 827 (19.3%) before O's changes; the dependency is stated there and in section 10. The
+   (40.3%), or 827 (19.3%) before O's writer change, 614 (14.4%) of it before O's changes; the dependency is stated there and in section 10. The
    FP32 variant is gone; the bindings are named as uncounted.
 3. Agree; all four are rows of the section 7 table, the vapor repair's
    x1 gather included.
@@ -911,7 +938,7 @@ The reviewer's notes 1-7 on rev 2 (``034ef405``):
    rev 3.1 gives the amount sum to O and has ``StateStore`` register
    R's tensors (round-4 notes).
 4. Re-cited to R (now rev 2.2 ``4c59162a``): one ``IntegratorWeight`` per
-   ``begin_stage``, no ``StageWeights``; the accumulator is FP64, FP32 on
+   ``begin_stage``, no stage table; the accumulator is FP64, FP32 on
    MPS (sections 4 and 6).
 5. Narrowed to the prototype's state restore; warm-up and capture use the
    step's dt (section 7).
@@ -947,7 +974,7 @@ K rev 2 (``fa290bb2``), its three asks to X (K.rst:621-628):
 R rev 2.2, its requests to X (R.rst:1612-1614): ``begin_step`` is X's
 name (section 4); ``after_combine`` follows each stage's combine (sections
 3 and 4); the amount SUM owner is O (section 4); per-op time in
-``report()`` is margin, not in this round; X counts the meshblock fixer
+``report()`` is margin (section 7); X counts the meshblock fixer
 lines: item d deletes the call, gw1 the body (section 9, rows d and gw1).
 
 The rev-3 review (``100bc9b3``), conflicts 1-4: (1) ``after_combine``
@@ -957,6 +984,30 @@ after every combine, the limiter after ``finish_step`` (sections 3 and 4);
 ``state_store.hpp``); (4) O owns the amount SUM (section 4). Conflict 5,
 the clone sites at ``src/mesh/meshblock.cpp:857`` and ``:859``, and the
 ``diffusion.radial`` details are taken in the next revision.
+
+Round-5 notes
+~~~~~~~~~~~~~
+
+The coordinator's items 1-5 on rev 3.1 (``bac201d1``):
+
+1. Clone sites ``src/mesh/meshblock.cpp:857`` and ``:859``: ``StateStore``
+   scratch, inside w's range; totals unchanged (section 7).
+2. ``diffusion.radial``: host read, slot 8 versus bit 6, ``max_redo``,
+   zeroed in ``kStepStart`` (section 3).
+3. Radial scratch buffer, rollback order, stack dtype and cause map (section
+   3); save list and its gate (sections 5 and 7).
+4. 827 (19.3%) stated, 614 (14.4%) before O's changes, 588 (13.8%) without
+   the hypothesis items d and bb (section 9); skeleton O ranges at ``c12f78bb`` (``meshblock_parts.hpp``).
+5. Note 4 of round 3 no longer names the removed type; R is cited at
+   ``4c59162a`` only (section 4).
+
+R's asks (R.rst:1612-1614): (a) per-op time, eager only (section 7); (b) X
+counts the meshblock fixer lines: gravity work 124 = gw1 86 + d's call 12
+(993-1004) + gw2 4 + hp 2 (221-222) + M 20 (``mesh.cpp`` 363, 384-402);
+axial closure 33 = aa1 27 + aa2 6, or 61 on the same rule as gravity work
+(with d's call 983-991, hp's 229 and M's ``mesh.cpp`` 364, 367-383; section 9).
+
+Lane S's note-11 edge table is answered in the S thread, not here.
 
 12. Skeleton index
 ------------------
