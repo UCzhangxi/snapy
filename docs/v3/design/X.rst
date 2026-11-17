@@ -11,15 +11,18 @@ claim not yet settled by a test; its gate is named next to it.
 Pins: snapy ``9e5de2d4``, kintera ``3f5ff938``, pyharp ``6bc01d53``,
 pydisort ``9e7f0075``.
 
-Lane files (snapy): ``src/mesh/*``, 3,266 lines, counted with::
+Lane files, 5,733 lines: snapy ``src/mesh/*`` (3,266) and the precision
+code ``src/utils/fp32_storage.hpp``, ``fp32_storage.cpp``, ``fp64_store.hpp``,
+``tensor_cast_cache.hpp`` (313); pyharp ``src/integrator`` (564); pydisort
+``src`` (1,590). Each directory is counted with::
 
   git ls-files src/mesh | grep -E '\.(cpp|hpp|h|c|cu|cuh)$' | xargs cat | wc -l
 
+Snapy has no CUDA-graph source at the pin; the prototype is a test,
+``tests/straka_cuda_graph.py``.
+
 ``src/interface/*`` (1,008 lines) serves output and is O's; section 9 lists it
 as joint and does not count it.
-
-Provider side: pyharp ``src/integrator`` (564 lines) and pydisort ``src``
-(1,590 lines).
 
 Out of scope here: the hydro pipeline (R), exchanges (S), EOS and limiters
 (EF), kintera (K), output and restart format (O). This design states what
@@ -222,10 +225,13 @@ copy (``tests/straka_cuda_graph.py:86-88``) never fires and goes.
   (now ``pyharp/src/integrator/integrator.cpp:123-124``). The dead
   ``call_average3`` path (``pyharp/src/integrator/integrator.cpp:6``,
   ``pyharp/src/integrator/integrator.cpp:113-122``,
-  ``integrator_dispatch.{cpp,cu,hpp}``) is deleted.
+  ``integrator_dispatch.{cpp,cu,hpp}``) is deleted. The binding
+  (``pyharp/python/csrc/pyintegrator.cpp:51-52``) gains
+  ``py::arg("out") = torch::Tensor()``.
 - kintera (K): a consume-and-reset failure counter on the device and an
   active-set snapshot/restore (section 11).
-- pydisort: no change. Its fast path reads the host
+- pydisort: no interface change; section 9 items D1 and D2 rewrite two flag
+  functions as tables. Its fast path reads the host
   (``pydisort/src/disort.cpp:439``, ``pydisort/src/disort.cpp:451``), so it
   is not capturable.
 - UCX/commux: no change; exchanges stay host-managed.
@@ -247,10 +253,11 @@ Observation: pyharp's ``from_yaml`` does not read ``max_redo``
 9. Line budget
 --------------
 
-Counted: lane X's own files, ``src/mesh/*`` (3,266 lines), plus the new
-files. Joint rows (the other lane's call) are listed apart and not counted.
+Counted: everything lane X owns at the pins (section 1, 5,733 lines). New
+files count as added lines. Joint rows (the other lane's call) are listed
+apart and not counted.
 
-.. csv-table:: snapy lane X
+.. csv-table:: lane X
    :header: "File", "Lines now", "Lines after", "Deletions named"
 
    "src/mesh/meshblock.cpp", 1919, 1508, "items below (-411)"
@@ -264,7 +271,33 @@ files. Joint rows (the other lane's call) are listed apart and not counted.
    "src/mesh/stage_executor.hpp (new)", 0, 70, "segments, schedule, graph cache"
    "src/mesh/stage_executor.cpp (new)", 0, 150, "eager run, capture, replay, global phase"
    "src/mesh/precision_policy.hpp (new)", 0, 40, "storage, compute and cast dtypes"
-   "total", 3266, 2718, "cut 548 (16.8%)"
+   "src/utils/fp32_storage.hpp", 56, 56, "kept; see the note below"
+   "src/utils/fp32_storage.cpp", 119, 119, "kept; see the note below"
+   "src/utils/fp64_store.hpp", 85, 85, "kept: FP64 reference buffers"
+   "src/utils/tensor_cast_cache.hpp", 53, 53, "kept: the policy's cached casts"
+   "pyharp/src/integrator/integrator.cpp", 136, 94, "items below (-42)"
+   "pyharp/src/integrator/integrator.hpp", 102, 94, "items below (-8); out= fits line 96"
+   "pyharp/src/integrator/integrator_dispatch.cpp", 43, 0, "items below (-43)"
+   "pyharp/src/integrator/integrator_dispatch.cu", 30, 0, "items below (-30)"
+   "pyharp/src/integrator/integrator_dispatch.hpp", 14, 0, "items below (-14)"
+   "pyharp/src/integrator/integrator_formatter.hpp", 37, 37, "kept; see the note below"
+   "pyharp/src/integrator/radiation_model.cpp", 114, 114, "kept; see the note below"
+   "pyharp/src/integrator/radiation_model.hpp", 88, 88, "kept; see the note below"
+   "pydisort/src/disort.cpp", 614, 546, "items below (-68)"
+   "pydisort/src/add_arg.h", 28, 28, "untouched"
+   "pydisort/src/disort.hpp", 284, 284, "untouched"
+   "pydisort/src/disort_dispatch.cpp", 56, 56, "untouched"
+   "pydisort/src/disort_dispatch.cu", 146, 146, "untouched"
+   "pydisort/src/disort_dispatch.hpp", 18, 18, "untouched"
+   "pydisort/src/disort_formatter.hpp", 54, 54, "untouched"
+   "pydisort/src/disort_impl.h", 133, 133, "untouched"
+   "pydisort/src/index.h", 16, 16, "untouched"
+   "pydisort/src/loops.cuh", 116, 116, "untouched"
+   "pydisort/src/scattering_moments.cpp", 50, 50, "untouched"
+   "pydisort/src/scattering_moments.hpp", 28, 28, "untouched"
+   "pydisort/src/vectorize.cpp", 22, 22, "untouched"
+   "pydisort/src/vectorize.hpp", 25, 25, "untouched"
+   "total", 5733, 4980, "cut 753 (13.1%)"
 
 Items. Each line: net lines, file, ranges at the pin, the replacement.
 Gross and added counts are by hand; the bitwise gate is section 5's golden
@@ -339,9 +372,32 @@ i. -81 (meshblock_options.cpp): six face-parsing blocks 104-212 become one
    loop; keeps x1 periodic for "cubed" only and the null padding (+28).
 j. -22 (meshblock_options.cpp): slice checks 65-86 repeat those in
    ``reset()`` 202-230; a bad slice now fails at construction.
+I1. -6 (pyharp/src/integrator/integrator.cpp): the dead ``call_average3``
+    include 6 and comment 113-122; the ``out=`` path of section 8 adds 5.
+I2. -43 (pyharp/src/integrator/integrator_dispatch.cpp): dead; its only
+    caller is the comment at ``pyharp/src/integrator/integrator.cpp:121``.
+I3. -30 (pyharp/src/integrator/integrator_dispatch.cu): dead.
+I4. -14 (pyharp/src/integrator/integrator_dispatch.hpp): dead. The build
+    globs ``integrator/*.cpp`` and ``*.cu`` (``pyharp/src/CMakeLists.txt:38``,
+    ``pyharp/src/CMakeLists.txt:67``), so no build edit.
+I5. -29 (pyharp/src/integrator/integrator.cpp): the weight chain 35-87
+    becomes one static table from type to {w0, w1, w2} per stage, with
+    "euler" an alias of rk1, the same error text and one comment on the
+    exact ``1. - 2./3.`` (+21, and +3 includes); the same constants.
+I6. -7 (pyharp/src/integrator/integrator.cpp): ``stop()`` 93-103 as one
+    boolean return (+4).
+I7. -8 (pyharp/src/integrator/integrator.hpp): the ``\param`` block 66-74
+    restating the signature (+1).
+D1. -51 (pydisort/src/disort.cpp): ``print_ds_flags`` 544-612, eleven
+    if/else pairs, becomes a {label, flag} table and one loop (+18); the
+    printed text is byte-identical.
+D2. -17 (pydisort/src/disort.cpp): ``set_flags`` 49-93 becomes a map from
+    token to ``int*`` into ``ds().flag`` (``prnt[0..4]`` kept) and one loop
+    (+28); the same 17 tokens and the same error text.
 
-Without h1-h2 the cut is 416 (12.7%). If O's options schema replaces
-``from_yaml``, i and j are O's: with h1-h2 kept, then 445 (13.6%).
+Added counts for I5, D1 and D2 come from clang-format (Google style) on a
+draft. Without h1-h2 the cut is 621 (10.8%). If O's options schema replaces
+``from_yaml``, i and j are O's: with h1-h2 kept, then 650 (11.3%).
 
 .. csv-table:: joint, not counted
    :header: "File", "Lines now", "Lines after", "Owner and request"
@@ -352,22 +408,23 @@ Without h1-h2 the cut is 416 (12.7%). If O's options schema replaces
    "src/mesh/meshblock.cpp", 1919, 1919, "O: restart 1603-1833, diagnostics 1226-1346; S: exchange 644-685, 1135-1196"
    "src/mesh/cycle_diagnostics.hpp", 16, 16, "O: with the diagnostics"
 
-**FOR CHENG** (20% target): lane X's own files reach 16.8% net with the new
-executor counted. The rest sits in code that is O's or S's by function:
-restart and cycle diagnostics (352 lines in ``meshblock.cpp``) and
-``src/interface`` (1,008). Count those moves to the lane whose file
-shrinks, or to the lane that owns the function?
+**FOR CHENG**: lane X cuts 13.1%; the remaining 394 lines sit in O's/S's
+joint rows: ``src/interface`` (1,008, O), restart 1603-1833 and cycle
+diagnostics 1226-1346 in ``meshblock.cpp`` (352, O), exchange 644-685 and
+1135-1196 in ``meshblock.cpp`` (104, S).
 
-.. csv-table:: providers
-   :header: "File", "Lines now", "Lines after", "Deletions named"
+Not counted, because each removes a capability or a public API:
+pyharp ``RadiationModel`` (``radiation_model.*``, 202 lines; no binding,
+test, deck or caller found, but a public class); the ``IntegratorWeight``
+formatter (``pyharp/src/integrator/integrator_formatter.hpp:12-24``; no user
+found); the FP32 storage emulation (``fp32_storage.*``, 175 lines), which
+rounds only the stored state, per row and per step or stage, in FP64
+arithmetic, which FP32 storage under the policy does not reproduce.
 
-   "pyharp/src/integrator/integrator.cpp", 136, 130, "6, 113-122 dead path; out= adds 5"
-   "pyharp/src/integrator/integrator.hpp", 102, 102, "signature gains out"
-   "pyharp/src/integrator/integrator_dispatch.cpp", 43, 0, "dead"
-   "pyharp/src/integrator/integrator_dispatch.cu", 30, 0, "dead"
-   "pyharp/src/integrator/integrator_dispatch.hpp", 14, 0, "dead"
+.. csv-table:: touched outside the lane
+   :header: "File", "Lines now", "Lines after", "Change"
 
-pydisort: no file touched.
+   "pyharp/python/csrc/pyintegrator.cpp", 57, 57, "py::arg out (+1); include 3 goes (integrator.hpp has it)"
 
 10. Migration
 -------------
@@ -375,13 +432,14 @@ pydisort: no file touched.
 .. csv-table::
    :header: "PR", "Content", "Against main"
 
-   "P1 pyharp", "forward(..., out); delete dispatch", "bitwise"
+   "P1 pyharp", "forward(..., out); delete dispatch; weight table, stop(), doc (I1-I7)", "bitwise"
+   "P2 pydisort", "flag parsing and printing as tables (D1, D2)", "bitwise; same printed text"
    "K", "device failure counter, active-set snapshot", "K's call"
    "X1", "PrecisionPolicy; lane's fp32() branches; u0/s0 in storage dtype", "bitwise"
    "X2", "StateStore; out= replaces set_ at 901-902, 921-922", "bitwise (hypothesis; gate: section 5 golden)"
    "X3", "StageExecutor from tests/straka_cuda_graph.py; deck selection; eager default", "eager bitwise; graph parity"
    "X4", "device closure and fixer; deferred abort; global phase for 1 and N blocks", "bitwise for accepted steps if partial-sum order is kept (hypothesis), else round-off"
-   "X5", "meshblock split into six parts; section 9 items except d, M, h1-h2", "bitwise (hypothesis; gate: section 5 golden)"
+   "X5", "meshblock split into six parts; section 9 src/mesh items except d, M, h1-h2", "bitwise (hypothesis; gate: section 5 golden)"
    "X6", "h1-h2: block jobs on the inter-op pool", "bitwise; CPU multi-block wall time within 5%"
    "X7", "capability matrix, docs, benchmarks (G7)", "no numerics"
 
@@ -455,8 +513,6 @@ O (Jiachen):
   diagnostics' host reads stay at step end.
 - Does your options schema replace ``from_yaml``
   (``src/mesh/meshblock_options.cpp:13-223``)? Then items i and j are yours.
-- Retire the FP32 storage emulation (``src/utils/fp32_storage.hpp:12-26``)
-  once true FP32 passes?
 
 12. Skeleton index
 ------------------
