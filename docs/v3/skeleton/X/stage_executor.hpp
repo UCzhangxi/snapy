@@ -1,7 +1,6 @@
 #pragma once
 // Lane X skeleton: declarations only, in no build.
-// The general executor (roadmap G1), from tests/straka_cuda_graph.py; eager is
-// the reference and the default.
+// The general executor (G1), from tests/straka_cuda_graph.py; eager is the default.
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -27,8 +26,8 @@ enum class SegmentKind {
 };
 //! one registered device op; owners: R, S, EF, K, X
 struct Op {
-  std::string name;   // e.g. "hydro.forward", "rk.combine", "limiter"
-  std::string owner;  // lane letter
+  std::string name, owner;  // e.g. "rk.combine", lane letter
+  std::vector<std::string> kintera;  // kintera modules it calls (GraphKey::alloc_epochs)
   bool capturable;    // no host read, no allocation outside the graph pool
   std::function<void(int block, int stage, double dt)> run;
 };
@@ -52,6 +51,7 @@ struct GraphKey {
   int block, stage, segment;
   double dt;                    // recaptured on change first; parameterized later
   std::vector<std::pair<uint64_t, int64_t>> tables;  // (options_digest, epoch) per held kintera table, K 3.3
+  std::vector<int64_t> alloc_epochs;  // alloc_epoch() per module in the ops' Op::kintera
   bool operator<(GraphKey const& other) const;
 };
 
@@ -92,10 +92,11 @@ class StageExecutor {
 
   //! segment count, captures, replays, eager segments and their reasons
   std::map<std::string, int64_t> report() const;
+  std::map<std::string, double> segment_ms() const;  // eager only: CUDA events per segment
 
  private:
   std::vector<StageSchedule> schedules_;
-  //! the tables a graph replays stay alive while it is held (K 3.3)
+  //! tables from NoTableBuild::used(); alive while the graph is held (K 3.3)
   struct CapturedGraph { at::cuda::CUDAGraph* graph; std::vector<kintera::ThermoTablesPtr> tables; };
   std::map<GraphKey, CapturedGraph> graphs_;
   ExecutionOptions options_;

@@ -21,7 +21,7 @@ class StateStore {
   torch::Tensor& scalar_s();
   torch::Tensor& u0();
   torch::Tensor& s0();
-  //! named fixed buffers filled with copy_, for the clones now at
+  //! named fixed buffers, allocated at reset(), filled with copy_, for the clones now at
   //! src/mesh/meshblock.cpp:857, 859, 869, 1517, src/forcing/diffusion_radial.cpp:8
   torch::Tensor& scratch(std::string const& name);
   //! R's FluxRegister::reset() allocates its tensors (R.rst 7); registered
