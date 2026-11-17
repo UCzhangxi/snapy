@@ -119,9 +119,16 @@ backup, then K's ``snapshot_active_set``, then ``reset_failures``, which
 replaces the host drain at ``src/mesh/meshblock.cpp:736`` (K 3.2, 3.4), and
 the pin's other per-step latches (``src/mesh/meshblock.cpp:722-738``: heat
 capacity, VIC clamp and solve, limiter marks, vapor failures; the
-gravity-work lines 724-730 go with gw1). The run-to-date
-meters (``src/hydro/hydro.hpp:263-271``, ``src/scalar/scalar.hpp:109-111``)
-are never reset or rolled back, so they count rejected attempts, as at the pin.
+gravity-work lines 724-730 go with gw1); stage zero resets per-step slots
+only. The positivity census, the run-to-date meters
+(``src/hydro/hydro.hpp:263-271``, ``src/scalar/scalar.hpp:109-111``), has two
+periods. Before R's PR R-1 the meters stay as at the pin, rejected attempts
+included, with no interim ``ef.census`` hook. From R-1 R's monitor counts
+accepted steps only: ``begin_step()`` zeroes, ``rollback()`` drops, and O's
+``observe`` makes the lifetime sums. ``StepReset`` has no ``commit`` or
+``drop`` hook: their one client at the pin is the gravity-work fixer
+(``src/mesh/meshblock.cpp:726-730``, ``src/mesh/meshblock.cpp:1477``,
+``src/mesh/meshblock.cpp:1502``), which goes with gw1.
 ``finish_step(dt)`` runs on the last stage after the combine
 (``src/mesh/meshblock.cpp:903-905``); R's ``after_combine`` follows every
 stage's combine, so the limiter (``src/mesh/meshblock.cpp:907-909``) comes
@@ -140,25 +147,22 @@ stack calls ``consume_failures(flags.narrow(0, 4, 1))``, slot 4
 Retry stack: 0-d flags in ``hydro_u``'s dtype (``src/mesh/meshblock.cpp:1527``),
 read once as FP64 (``src/mesh/meshblock.cpp:1566``). The slot loop
 (``src/mesh/meshblock.cpp:1569``, bound ``out.size()``) keeps six slots: its
-bound becomes a literal 6 when ``out`` (1568) widens to seven. Slots 0-5 are cause bits
+bound becomes a literal 6 when ``out`` (1568) widens to seven, and the widened
+``out`` is value-initialized, ``std::array<bool, 7> out{};``
+(``src/mesh/meshblock.cpp:1568-1569``), so its seventh entry is never read
+uninitialized and no spurious retry follows. Slots 0-5 are cause bits
 0-5 (floor, clamp, limiter, nan, saturation, vic-solve); slots 6 (vapor) and
 7 (heat) fold into bit 2 (``src/mesh/meshblock.cpp:1571-1577``). A seven-slot
-loop would read vapor slot 6 as bit 6. ``diffusion.radial`` is slot 8, mapped
-to cause bit 6 (value 64) by one explicit line after 1577. Only the cause
+loop would read vapor slot 6 as bit 6. Only the cause
 arrays gain a seventh entry: ``std::array<bool, 6>`` at 1565, 1568, 1581,
 1585 and ``src/mesh/mesh.cpp:476``, the buffer at 1586; the loops over causes
-(1588, 1595, ``src/mesh/mesh.cpp:489``) then run to seven. At the pin a radial
-failure throws and ends the run (``src/forcing/diffusion_radial.cpp:97-98``,
-two host reads: finite and positive temperature); V3 retries it, a behaviour
-change, with this device flag (a segment end until then). No lane document
-(R, S, O, K) claims ``src/forcing/diffusion_radial.cpp``, so X books that
-change, outside the lane count. It is zeroed in ``kStepStart`` and counts against ``max_redo``
-like bits 0-4, terminating without a restore
-(``src/mesh/meshblock.cpp:1468-1473``); only bit 5 restores first
-(``src/mesh/meshblock.cpp:1490-1495``, ``src/mesh/mesh.cpp:492-500``). The
-radial ``split_initial_ = u.clone()`` (``src/forcing/diffusion_radial.cpp:8``),
-which ``restore_step`` copies back (``src/forcing/diffusion_radial.cpp:14-17``),
-becomes ``copy_`` into a ``StateStore`` scratch buffer.
+(1588, 1595, ``src/mesh/mesh.cpp:489``) then run to seven. Slot 8,
+``diffusion.radial``, maps to cause bit 6 (value 64) by one explicit line
+after 1577 and is reserved in V3: named, mapped, zeroed in ``kStepStart``,
+written by nobody (Cheng's decision, X thread 13:41 PT). A failed radial-conduction solve stops the run, as at the pin
+(``src/forcing/diffusion_radial.cpp:97-100``); it is not a rejected step.
+That file, its change and its count are lane A's (A.rst:784-790, 1003 at
+``2b0ac426``). The rollback and retry contract has no radial path.
 
 The stage form is today's Shu-Osher combine (weights
 ``pyharp/src/integrator/integrator.hpp:20-29``); a two-tableau form is
@@ -176,8 +180,11 @@ at R rev 2.2 ``4c59162a``).
   ``StateStore::register_storage`` on R's tensors after ``reset()``, and a new
   allocation bumps the store generation. ``set_prescribed`` writes the fixed
   masks per solid-mask version (R.rst:1396-1397) with ``copy_`` into the
-  buffers allocated at ``reset()``, so addresses hold, and bumps
-  ``GraphKey::config_generation``, not ``store_generation``. Never in restart (derived state). Its dtype is a ``PrecisionPolicy`` row;
+  buffers allocated at ``reset()``, so addresses hold; ``config_generation``
+  has one owner, X's ``StageExecutor::bump_config_generation()``, through
+  which every caller goes (``set_prescribed``, option and solid-mask
+  changes); ``store_generation`` does not change. R and the save list read
+  R's tensors back through ``StateStore::storage(name)``. Never in restart (derived state). Its dtype is a ``PrecisionPolicy`` row;
   ``step_field`` is FP64, FP32 on MPS (R's section 6).
 - Posts: device ops inside compute segments (R's pipeline stages).
 - Begin stage: the executor calls ``begin_stage(int stage,
@@ -202,8 +209,10 @@ at R rev 2.2 ``4c59162a``).
   ``src/mesh/meshblock.cpp:1586-1591``, ``src/mesh/mesh.cpp:485``): each
   int32 slot (``flux_register.hpp:102``) is cast to the stack dtype as one
   ``RetryFlag`` whose cause bit X maps (R.rst:1256-1258): EF's
-  ``eos.limiter_mark`` and vapor-repair cause to bit 2, I's
-  ``implicit.column`` to bit 5; EF's nan mark (bit 3) needs its own name.
+  ``ef.floor_patch``, ``ef.vapor_fail`` and ``ef.heat_capacity`` to bit 2,
+  ``ef.nan`` to bit 3 (EF.rst:667-673 at ``b7bece9c``; pin
+  ``src/mesh/meshblock.cpp:1559-1577``), I's
+  ``implicit.column`` to bit 5.
   Until R-1, EF's status stays in X's stack (R.rst:588-589). Its FP64
   amounts belong to O: after the accept X calls ``Consumer::observe``, which
   accumulates them on the device every accepted step, and ``flush`` makes the
@@ -247,7 +256,7 @@ The ten register requirements, by number:
    "no host sync inside a segment", "replay under torch.cuda.set_sync_debug_mode('error')", "exact"
    "graph replay equals eager", "Straka, both precisions, dt changes, a retry", "bitwise (hypothesis); else the tolerance stated by the test"
    "flags survive replay", "a limiter repair and a vapor failure injected on replay N >= 2 reach the retry flags; warm-up, capture and one replay leave the save list (section 7) equal to eager", "exact; save list bitwise"
-   "radial failure retries", "inject a nonpositive temperature in a radial half step: cause bit 6, a retry at smaller dt, termination after max_redo where the pin throws", "exact"
+   "radial failure: no change in V3, abort kept (slot 8, bit 6 reserved)", "none: no writer in V3", "-"
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
    "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
@@ -318,7 +327,14 @@ compute, split at every within-stage exchange below; scalar, forcings, RK
 combine, limiter, solid fill; last stage, with reactions
 (``src/mesh/meshblock.cpp:950-951``): the limiter again (``src/mesh/meshblock.cpp:952``),
 after the solid fill, as the first op of the saturation adjustment's segment (eager until G2), then
-K's chemistry step, an eager FP64 segment (K 3.6, K.rst:349-351); global phase (the axial closure when on); boundaries. Cubed sphere adds
+K's chemistry step, an eager FP64 segment (K 3.6, K.rst:349-351) that runs
+only when the kinetics module exists, which the pin creates only when
+``kinetics`` is set (``src/scalar/scalar.cpp:54-55``);
+global phase (the axial closure when on); boundaries. The chemistry segment
+thus sits after the saturation adjustment and before the global phase and
+the boundaries, in the pin's last-stage order: saturation
+``src/mesh/meshblock.cpp:949-981``, global phase
+``src/mesh/meshblock.cpp:983-1004``, boundaries ``src/mesh/meshblock.cpp:1006``. Cubed sphere adds
 the second exchange round (``src/mesh/meshblock.cpp:651-658``) and S's corner
 fill.
 
@@ -386,11 +402,14 @@ name when their owners register them (``Op::kintera``), since ``used()``
 returns tables, not modules. Before each replay X recomputes the options
 digest on the host and compares it, the ``epoch`` of each table that
 ``tables_for`` returns now against the held ``ThermoTablesPtr``'s in the
-key, and each module's ``alloc_epoch()``; a new table or a reallocation
+key, and each module's ``alloc_epoch()``. This check runs inside a
+``NoTableBuild`` scope (K opens it around warm-up and capture,
+K.rst:265-267 at K rev 2.4 ``fc619eec``; X extends it to this check), so it
+compares only and never builds a table: a missing one throws. A new table or a reallocation
 (``prepare`` or ``reset``) is a new key, so the graph is recaptured, as any
-``GraphKey`` change is; a digest that differs without a new ``prepare``
-throws. K.rst:255-256 throws on any mismatch: X asks K to word it so (a
-conflict: a legitimate ``reset()`` or ``prepare()`` must not end the run). Each held
+``GraphKey`` change is, and ``BlockInit`` registers that module's tensors
+in ``StateStore`` again; a digest that differs without a new ``prepare``
+throws, as K rev 2.4 words it (K.rst:255-257). Each held
 graph keeps its ``ThermoTablesPtr`` copies (``CapturedGraph``), so a table
 outlives every graph that references it. K-F2's conditional node is
 declined for this round: X captures segments whole with
@@ -401,10 +420,11 @@ state tensors around warm-up and capture (``tests/straka_cuda_graph.py:59-60``,
 ``tests/straka_cuda_graph.py:69-72``). X's save list is assembled from the
 registries: ``StateStore``'s state, scratch and registered storage (R's
 register, kintera's failure counter and active set, ``restore_active_set``
-at K.rst:301, 307), every ``RetryFlag``, and the run-to-date meters of
+at K.rst:301, 307), every ``RetryFlag``, the stage-zero latches and
+``hydro_w`` (section 3), and the run-to-date meters of
 section 3, which warm-up and capture would advance; untested (gate "flags
 survive replay": this list against eager, bitwise). Owners declare scratch
-names at set-up; ``reset()`` allocates them, never a step, where
+names at set-up (``declare_scratch``); ``reset()`` allocates them, never a step, where
 ``scratch()`` only looks a name up. Warm-up and capture run with the step's dt, never dt = 0, so an
 op that divides by dt stays finite. With fixed storage the per-replay input
 copy (``tests/straka_cuda_graph.py:86-88``) never fires and goes.
@@ -509,7 +529,8 @@ l2. -10 (mesh.cpp): ``max_time_step`` 335-347 calls the same helper (+3).
 m1. -19 (meshblock.cpp): one retry decision for 1 and N blocks, 1565-1601:
     stack flags, amax, one host read, MAX allreduce (+18); the slot loop
     1569 keeps a literal bound of 6, slot 8 maps to bit 6 explicitly, and only the
-    cause arrays (1565, 1568, 1581, 1585-1586; ``mesh.cpp:476``) gain a seventh entry.
+    cause arrays (1565, 1568, 1581, 1585-1586; ``mesh.cpp:476``) gain a seventh entry;
+    ``out`` at 1568 is value-initialized, ``std::array<bool, 7> out{};``.
 m2. -13 (mesh.cpp): 476-492 use it (+4).
 m3. -7 (meshblock.hpp): 272-280 (+2).
 n1. -36 (meshblock.cpp): ``finalize`` 1349-1371, 1399-1414 calls the
@@ -553,12 +574,12 @@ aa1. -27 (meshblock.cpp): ``axial_closure_sums`` and ``apply_axial_closure``
 aa2. -6 (meshblock.hpp): their declarations 223-228.
     The axial closure stays, as a fixer inside ``exact`` (Cheng), and moves
     to lane A's ``AxialClosureFixer`` (``src/forcing/axial_momentum.cpp``).
-    One rule for both files: lines leaving ``src/mesh`` are X's deletions
-    (the call and sums 983-1012 and ``src/mesh/mesh.cpp:363-402`` in d, aa1
-    and M; ``apply_axial_closure`` 1014-1034 in aa1), and A books the new
-    home as an addition inside its +170 and drops the 51 mesh lines from its
-    base. Each line is counted once, as lane A's note 15 asks; 1014-1034 now
-    count in X, as Jiachen's final joint rows propose.
+    One rule for both fixers: every pin line of either in lane X's files is
+    X's deletion, counted once; R books none. Gravity work 124 = gw1 86 +
+    d 12 (993-1004) + gw2 4 + hp 2 (221-222) + M 20 (``mesh.cpp`` 363,
+    384-402); axial closure 61 = aa1 27 + aa2 6 + d 9 (983-991) + hp 1 (229)
+    + M 18 (``mesh.cpp`` 364, 367-383). A books the closure's new home as an
+    addition inside its +170 and drops the 51 mesh lines from its base.
 bb. -5 (meshblock.cpp): the lock 9, 31, 134-135, 137; blocks are built one
     after another (``src/mesh/mesh.cpp:259-272``; hypothesis).
 hp. -16 (meshblock.hpp): defer flags 221-222, 229; legacy helpers 282-294.
@@ -920,8 +941,8 @@ EF (Zoey), notes 1-16 on rev 1 (``77c65d5a``):
 4. Agree; the hydro theta row carries #370's two syncs (and the paragraph
    after the notes).
 5. Agree: ``StepReset`` resets in place only, its tensors are allocated at
-   setup, and it has optional ``commit`` and ``drop`` hooks (skeleton
-   ``meshblock_parts.hpp``).
+   setup (skeleton ``meshblock_parts.hpp``); its ``commit`` and ``drop``
+   hooks are dropped in rev 3.4 (section 3).
 6. Agree; the gate is a row of section 5 ("flags survive replay").
 7. Agree: ``StateStore::scratch()``, filled with ``copy_`` (skeleton
    ``state_store.hpp``).
@@ -991,8 +1012,8 @@ The coordinator's items 1-6:
 2. As note 3 above.
 3. ``GlobalCorrection`` holds R's ``Fixer`` list only; ``apply`` gets that
    stage's ``w2`` (section 4).
-4. ``diffusion.radial`` is cause bit 6, value 64 (section 3;
-   ``meshblock_parts.hpp``).
+4. ``diffusion.radial`` is cause bit 6, value 64, reserved in V3
+   (Round-8 notes; section 3; ``meshblock_parts.hpp``).
 5. Section 9's ranges in the joint row and the O block, and j is X's
    (sections 9 and 11); X registers the species clip, EF owns the op
    (section 7).
@@ -1030,8 +1051,8 @@ The coordinator's items 1-5 on rev 3.1 (``bac201d1``):
 1. Clone sites ``src/mesh/meshblock.cpp:857`` and ``:859``: ``StateStore``
    scratch, inside w's range; totals unchanged (section 7).
 2. ``diffusion.radial``: host read, slot 8 versus bit 6, ``max_redo``,
-   zeroed in ``kStepStart`` (section 3).
-3. Radial scratch buffer, rollback order, stack dtype and cause map (section
+   zeroed in ``kStepStart`` (section 3; reserved in V3, Round-8 notes).
+3. Rollback order, stack dtype and cause map (section
    3); save list and its gate (sections 5 and 7).
 4. 827 (19.3%) stated, 614 (14.4%) before O's changes, 588 (13.8%) without
    the hypothesis items d and bb (section 9); skeleton O ranges at ``c12f78bb`` (``meshblock_parts.hpp``).
@@ -1039,10 +1060,8 @@ The coordinator's items 1-5 on rev 3.1 (``bac201d1``):
    ``4c59162a`` only (section 4).
 
 R's asks (R.rst:1612-1614): (a) per-segment time, eager only (section 7); (b) X
-counts the meshblock fixer lines: gravity work 124 = gw1 86 + d's call 12
-(993-1004) + gw2 4 + hp 2 (221-222) + M 20 (``mesh.cpp`` 363, 384-402);
-axial closure 33 = aa1 27 + aa2 6, or 61 on the same rule as gravity work
-(with d's call 983-991, hp's 229 and M's ``mesh.cpp`` 364, 367-383; section 9).
+counts the meshblock fixer lines: gravity work 124 and axial closure 61, on
+one rule (section 9, after aa2).
 
 Lane S's note-11 edge table is answered in the S thread, not here.
 
@@ -1066,8 +1085,8 @@ The reviewer's points 1-5 on rev 3.2 (``66f797a2``):
    ``src/mesh/mesh.cpp:476``, gain a seventh entry (section 3; item m1).
 2. O at ``c12f78bb`` claims 1226-1339 less 1336-1337 (gw1) only; 1207-1224 is X's, and o1 cuts
    1220-1223 (``meshblock_parts.hpp``).
-3. The pin throws on a radial failure, V3 retries it; X books the forcing
-   file; gate "radial failure retries" (sections 3 and 5); scratch is
+3. (Radial part superseded by Round-8 note 2: lane A owns the file and
+   abort stays the default.) Scratch is
    allocated at ``reset()`` and the save list comes from the registries
    (section 7).
 4. Chemistry and K's ``NoTableBuild`` and ``alloc_epoch`` requests are in
@@ -1075,7 +1094,7 @@ The reviewer's points 1-5 on rev 3.2 (``66f797a2``):
    ``register_storage``, ``set_prescribed`` bumps ``config_generation``, the
    int32 flags map to cause bits (section 4); the limiter at 952 opens the
    saturation segment (section 7); stage zero resets 722-738's latches,
-   never the run-to-date meters, which count rejected attempts (section 3).
+   never the run-to-date meters (section 3).
 5. Time is per segment, ``StageExecutor::segment_ms()`` (section 7,
    ``stage_executor.hpp``).
 
@@ -1084,6 +1103,45 @@ recaptures on a ``GraphKey`` change and asks K to word it so (section 7,
 a conflict); (B2) ``restore_active_set`` is K.rst:301, 307; (B3) a segment's
 modules come from its ops' ``Op::kintera``, and each epoch is read from
 ``tables_for`` at replay against the held pointers (section 7).
+
+Round-8 notes
+~~~~~~~~~~~~~
+
+The review of rev 3.3 (``0fe47c6f``), points 1-5:
+
+1. The widened ``out`` is value-initialized, ``std::array<bool, 7> out{};``
+   (``src/mesh/meshblock.cpp:1568-1569``; section 3, item m1, ``meshblock_parts.hpp``).
+2. Lane A owns ``src/forcing/diffusion_radial.cpp`` and keeps abort; X drops
+   its booking (section 3). No count changes: X never counted that file.
+3. EF's names ``ef.floor_patch``, ``ef.nan``, ``ef.vapor_fail``,
+   ``ef.heat_capacity`` (section 4); the meters as coordinator note 1 below.
+4. ``StateStore::reset()``, ``declare_scratch``, ``storage(name)`` and the
+   kintera re-registration on ``alloc_epoch`` (``state_store.hpp``; sections 4
+   and 7); the save list adds the stage-zero latches and ``hydro_w`` (section 7).
+5. The chemistry segment runs only with the kinetics module, before the
+   global phase and the boundaries; the pre-replay check never builds a
+   table; ``StageExecutor::bump_config_generation()`` is the one owner
+   (sections 4 and 7, ``stage_executor.hpp``).
+
+The coordinator's points 1-4 on rev 3.4:
+
+1. Ruling V3-2: the meters as at the pin before R-1, accepted steps only
+   in R's monitor from R-1; ``StepReset`` loses ``commit``/``drop``, whose
+   one pin client, the gravity-work fixer, goes with gw1 (section 3).
+2. The radial file, change and count are lane A's; X keeps the reserved
+   slot and a "no change in V3" row, with no radial retry path or gate
+   (sections 3 and 5).
+3. EF's four names at bits 2, 3, 2, 2 (section 4). EF's order F1, solid
+   fill, F1b, K, fixers (Q-X4) is the pin's last stage: limiter
+   ``src/mesh/meshblock.cpp:907-909``, solid fill 936-938, limiter 952,
+   saturation 953-981, fixers 983-1004 (section 7); confirmed.
+4. One rule for both fixers, 124 and 61 lines, each deleted once in X
+   (section 9); the cut stays 1,723.
+
+The maintainer's decision (X thread, 13:41 PT): keep the abort for V3;
+``diffusion.radial`` (bit 6) is a reserved slot, written by nobody in V3
+(section 3). EF at ``5e30b31b`` drops the interim census hook, and A at
+``76904ce8`` reserves the cause and does not call ``flag_retry`` for it in V3.
 
 12. Skeleton index
 ------------------

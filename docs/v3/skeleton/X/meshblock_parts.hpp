@@ -29,9 +29,9 @@ struct BlockRestart;    // owner O (question to O)
 struct BlockOutput;     // owner O (question to O)
 
 //! registered by owners (now 713-745), tensors allocated once at setup.
-//! kStepStart, once per attempt: R's begin_step(), zero the radial flag, the
+//! kStepStart, once per attempt: R's begin_step(), zero the retry flags, the
 //! radial post; kStageZero: u0 backup, K's snapshot_active_set,
-//! reset_failures (host drain at 736), the latches 722-738, never the run-to-date meters; kRollback (pin order,
+//! reset_failures (host drain at 736), the latches 722-738; kRollback (pin order,
 //! 1476-1504): u0, radial restore_step, K's restore_active_set, cons2prim, s0,
 //! R's rollback() with the marks; retry reruns kStepStart
 enum class ResetPhase { kStepStart, kStageZero, kRollback };
@@ -40,12 +40,11 @@ struct StepReset {
   std::string owner;
   ResetPhase phase;
   std::function<void(double dt)> reset;  // in place only: zero_, fill_, copy_
-  std::function<void()> commit, drop;   // optional: step accepted, rejected
 };
 
 //! one retry flag, stacked in hydro_u's dtype, read once as FP64; slots 0-7 as
-//! the pin (src/mesh/meshblock.cpp:1559-1560; loop 1568-1569 stays six; 6, 7 -> bit 2);
-//! "diffusion.radial" = slot 8 -> cause bit 6 (64) explicitly, zeroed in kStepStart
+//! the pin (src/mesh/meshblock.cpp:1559-1560; loop 1568-1569 stays six, out{} value-
+//! initialized; 6, 7 -> bit 2); slot 8 -> bit 6 (64): diffusion.radial, reserved in V3
 struct RetryFlag {
   std::string name, owner, cause;
   torch::Tensor flag;   // 0-d, on the device

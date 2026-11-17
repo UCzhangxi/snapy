@@ -47,7 +47,7 @@ struct GraphKey {
   std::vector<int64_t> shapes;  // flattened shapes and strides of the state
   int dtype_generation;         // PrecisionPolicy::generation()
   int store_generation;         // StateStore::generation(): addresses
-  int config_generation;        // physics/options changes
+  int config_generation;        // only StageExecutor::bump_config_generation()
   int block, stage, segment;
   double dt;                    // recaptured on change first; parameterized later
   std::vector<std::pair<uint64_t, int64_t>> tables;  // (options_digest, epoch) per held kintera table, K 3.3
@@ -87,11 +87,10 @@ class StageExecutor {
   void observe();
 
   Capability capability() const;
-  //! drops every graph (restart, to(), buffer replacement)
-  void invalidate();
-
-  //! segment count, captures, replays, eager segments and their reasons
-  std::map<std::string, int64_t> report() const;
+  void invalidate();  // drops every graph (restart, to(), buffer replacement)
+  //! the one owner of config_generation: set_prescribed, option, solid-mask changes
+  void bump_config_generation();
+  std::map<std::string, int64_t> report() const;  // segments, captures, replays, eager
   std::map<std::string, double> segment_ms() const;  // eager only: CUDA events per segment
 
  private:

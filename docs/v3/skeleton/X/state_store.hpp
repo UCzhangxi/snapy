@@ -4,6 +4,7 @@
 // (pyharp out=), replacing set_ at src/mesh/meshblock.cpp:901-902 and 921-922.
 #include <map>
 #include <string>
+#include <vector>
 #include <torch/torch.h>
 
 namespace snap {
@@ -12,7 +13,6 @@ class PrecisionPolicy;
 
 class StateStore {
  public:
-  //! allocates hydro_u, scalar_s, u0, s0 in the policy's storage dtype
   StateStore(PrecisionPolicy const& policy, int64_t nvar_hydro,
              int64_t nvar_scalar, int64_t nc3, int64_t nc2, int64_t nc1,
              torch::Device device);
@@ -21,23 +21,24 @@ class StateStore {
   torch::Tensor& scalar_s();
   torch::Tensor& u0();
   torch::Tensor& s0();
-  //! named fixed buffers, allocated at reset(), filled with copy_, for the clones now at
-  //! src/mesh/meshblock.cpp:857, 859, 869, 1517, src/forcing/diffusion_radial.cpp:8
-  torch::Tensor& scratch(std::string const& name);
-  //! R's FluxRegister::reset() allocates its tensors (R.rst 7); registered
-  //! here for address stability: a new allocation bumps generation()
-  void register_storage(std::string const& name, torch::Tensor const& t);
+  //! allocates hydro_u, scalar_s, u0, s0 and every declared scratch in the
+  //! policy's storage dtype; bumps generation()
+  void reset();
+  //! owners at set-up, before reset(): the clones now at meshblock.cpp:857, 859, 869, 1517
+  void declare_scratch(std::string const& name, std::vector<int64_t> const& sizes,
+                       torch::Dtype dtype);
+  torch::Tensor& scratch(std::string const& name);  // look-up only, filled with copy_
+  //! R's FluxRegister::reset() and kintera allocate their tensors; registered here
+  //! (again when a kintera module's alloc_epoch() changes); a new address bumps generation()
+  void register_storage(std::string const& name, torch::Tensor const& t,
+                        int64_t alloc_epoch = -1);
+  torch::Tensor const& storage(std::string const& name) const;  // read access (R, save list)
 
-  //! stage 0: u0 = hydro_u, s0 = scalar_s (copy_, no allocation)
-  void backup();
-  //! rejected step: hydro_u = u0, scalar_s = s0 (copy_, no allocation)
-  void restore();
-
+  void backup();   // stage 0: u0 = hydro_u, s0 = scalar_s (copy_)
+  void restore();  // rejected step: hydro_u = u0, scalar_s = s0 (copy_)
   //! copy external state in without changing addresses (restart, user edits)
   void assign(torch::Tensor const& hydro_u, torch::Tensor const& scalar_s);
-
-  //! bumped by reset(), to() and restart; part of every GraphKey
-  int generation() const;
+  int generation() const;  // bumped by reset(), to() and restart; in every GraphKey
 
  private:
   torch::Tensor hydro_u_, scalar_s_, u0_, s0_;
