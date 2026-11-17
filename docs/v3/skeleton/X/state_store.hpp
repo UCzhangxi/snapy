@@ -19,7 +19,7 @@ class StateStore {
 
   torch::Tensor& hydro_u();
   torch::Tensor& scalar_s();
-  torch::Tensor& scalar_r();  // scalar_s / dry density, divided with out= each stage
+  torch::Tensor& scalar_r();  // scalar_s / dry density, divided with out= (now 923, 1199, 1484; restart 1828)
   torch::Tensor& u0();
   torch::Tensor& s0();
   //! allocates hydro_u, scalar_s, scalar_r, u0, s0 and every declared scratch in the

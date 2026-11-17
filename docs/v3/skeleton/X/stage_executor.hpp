@@ -1,6 +1,5 @@
 #pragma once
-// Lane X skeleton: declarations only, in no build.
-// The general executor (G1), from tests/straka_cuda_graph.py; eager is the default.
+// Lane X skeleton, declarations only, in no build: the general executor (G1), eager by default.
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -15,6 +14,7 @@ using ThermoTablesPtr = std::shared_ptr<ThermoTables const>;
 }  // namespace kintera
 namespace snap {
 class MeshImpl;
+class ChemistrySource;  // snapy-owned, declared in K's skeleton (S-K4)
 
 enum class SegmentKind {
   kCompute,  // device ops of one block; capturable if every op is
@@ -70,21 +70,21 @@ class StageExecutor {
  public:
   StageExecutor(MeshImpl* mesh, ExecutionOptions const& options);
 
-  //! step-start host phase: global dt (min over blocks and ranks)
-  double select_dt();
+  double select_dt();  // step-start host phase: global dt (min over blocks and ranks)
   //! once per attempt, before the stage-0 resets: kStepStart entries (R's
   //! begin_step(), then the radial post, now src/mesh/meshblock.cpp:715)
   void step_start(double dt);
-  //! runs one stage's schedule on all blocks: eager, or replay per segment
+  //! one stage on all blocks, eager or replay per segment; prepare() on each Op::kintera module before warm-up (K 3.3)
   void run_stage(int stage, double dt);
   //! last stage, after the RK combine: finish_step (now
   //! src/mesh/meshblock.cpp:905); R's after_combine follows every combine
   void finish_step(double dt);
+  //! chemistry slot (design 7): the driver's one source, eager FP64, last boundaries to decide_retry
+  void set_chemistry(std::shared_ptr<ChemistrySource> source);
   //! step-end host phase: one read of the stacked retry flags, MAX allreduce;
   //! kRollback entries on all blocks when rejected; returns the causes
   int decide_retry();
-  //! after the accept, outside graphs: O's Consumer::observe (O's flush sums)
-  void observe();
+  void observe();  // after the accept, outside graphs: O's Consumer::observe (O's flush sums)
 
   Capability capability() const;
   void invalidate();  // drops every graph (restart, to(), buffer replacement)
@@ -98,7 +98,7 @@ class StageExecutor {
   //! tables from NoTableBuild::used(); alive while the graph is held (K 3.3)
   struct CapturedGraph { at::cuda::CUDAGraph* graph; std::vector<kintera::ThermoTablesPtr> tables; };
   std::map<GraphKey, CapturedGraph> graphs_;
-  ExecutionOptions options_;
+  ExecutionOptions options_; std::shared_ptr<ChemistrySource> chemistry_;  // null: no chemistry
   MeshImpl* mesh_;
 };
 

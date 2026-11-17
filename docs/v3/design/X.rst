@@ -69,7 +69,7 @@ Types (declared in section 12):
   quantity (section 6); ``storage()``, ``compute()``, ``cast()``. Replaces
   every ``fp32() ? a : b``.
 - ``StateStore``: owns the fixed buffers ``hydro_u``, ``scalar_s``, ``u0``,
-  ``s0`` and ``scalar_r`` (rebound each stage at the pin, ``src/mesh/meshblock.cpp:44-56``, ``src/mesh/meshblock.cpp:923``) in the storage dtype, allocated once at ``reset()``. Addresses
+  ``s0`` and ``scalar_r`` (rebound at the pin by ``src/mesh/meshblock.cpp:44-56`` at 631, 923, 1199, 1484 and, on restart, 1828; section 7) in the storage dtype, allocated once at ``reset()``. Addresses
   change only on ``reset``, ``to()`` and restart, each of which bumps a
   generation counter.
 - ``Segment``: an ordered list of device ops with one ``SegmentKind``
@@ -83,7 +83,7 @@ Types (declared in section 12):
   configuration generation, stage, precision, dt, and the
   (``options_digest``, ``epoch``) pair of each kintera table held and the
   ``kintera::alloc_epoch(m)`` of each kintera module ``m`` in the segment, K's free
-  function (K 3.3; skeleton ``K/tables.hpp:59`` at ``d83150a8``).
+  function (K 3.3; skeleton ``K/tables.hpp:59`` at ``ef93e92d``).
 - ``MeshBlock`` keeps its API; its body splits into six parts (item 6 of the
   thread): init, advance, exchange, redo, restart, output.
 
@@ -100,10 +100,10 @@ Data flow of one step::
     [compute: hydro fwd (R) | seam exchanges (S) split it]
     [compute: scalar, forcings, RK combine out=hydro_u] last stage:
      finish_step, its host check ends the segment
-    [compute: every stage: after_combine (R): limiter, solid]
+    [compute: every stage: after_combine (R): limiter, scalar_r divide, solid]
     [global: device partial sums] -> host allreduce -> [global: apply]
     [boundaries]
-  after the last stage: [chemistry (K), eager, if the stoichiometry is nonempty]
+  after the last stage: [chemistry slot: the driver's ChemistrySource, eager FP64]
   host: one read of the stacked retry flags -> MAX allreduce
         -> reject: kRollback list on all blocks, rerun from step start
         -> accept: O's observe (O's flush makes the amount SUM)
@@ -166,8 +166,9 @@ arrays gain a seventh entry: ``std::array<bool, 6>`` at 1565, 1568, 1581,
 after 1577 and is reserved in V3: named, mapped, zeroed in ``kStepStart``,
 written by nobody (Cheng's decision, X thread 13:41 PT). A failed radial-conduction solve stops the run, as at the pin
 (``src/forcing/diffusion_radial.cpp:97-100``); it is not a rejected step.
-That file, its change and its count are lane A's (A.rst:784-790, 1003 at
-``2b0ac426``). The rollback and retry contract has no radial path.
+That file, its change and its count are lane A's, and A revision 4 has no
+radial cause path (A.rst:148-151, 703-712, 1125-1128, 1168-1171 at
+``4e0827b8``). The rollback and retry contract has no radial path.
 
 The stage form is today's Shu-Osher combine (weights
 ``pyharp/src/integrator/integrator.hpp:20-29``); a two-tableau form is
@@ -257,7 +258,7 @@ The ten register requirements, by number:
 
    "eager result after X1, X2, X5 equals the pin", "N-step golden of hydro_u and scalar_s, Cartesian and cubed sphere, FP64 and FP32", "bitwise"
    "out= RK combine equals the allocating form", "pyharp test: each scheme and stage, FP32 and FP64, out aliasing u1 and distinct", "bitwise (x86 CPU: NaN payloads may differ)"
-   "state addresses fixed", "data_ptr of hydro_u, scalar_s, u0, s0 unchanged over 10 steps with a retry", "exact"
+   "state addresses fixed", "data_ptr of hydro_u, scalar_s, scalar_r, u0, s0 unchanged over 10 steps with a retry", "exact"
    "no host sync inside a segment", "replay under torch.cuda.set_sync_debug_mode('error')", "exact"
    "graph replay equals eager", "Straka, both precisions, dt changes, a retry", "bitwise (hypothesis); else the tolerance stated by the test"
    "flags survive replay", "a limiter repair and a vapor failure injected on replay N >= 2 reach the retry flags; warm-up, capture and one replay leave the save list (section 7) equal to eager", "exact; save list bitwise"
@@ -315,7 +316,8 @@ utils 7; each owner rules on its own).
    "src/mesh/meshblock.cpp:719-720, src/mesh/meshblock.cpp:741-742", "allocation on dtype change", "removed (policy)", "G1"
    "src/mesh/meshblock.cpp:736", "host drain of kintera failures", "device counter (K)", "G2"
    "src/mesh/meshblock.cpp:874", "user TorchScript forcing", "eager segment unless declared capturable", "G1"
-   "src/mesh/meshblock.cpp:901-902, src/mesh/meshblock.cpp:921-922, src/mesh/meshblock.cpp:44-56, src/mesh/meshblock.cpp:923", "allocation + rebinding (``scalar_r`` each stage)", "pyharp out= into fixed storage; ``scalar_r`` divided with ``out=`` into its ``StateStore`` buffer", "G1"
+   "src/mesh/meshblock.cpp:901-902, src/mesh/meshblock.cpp:921-922", "allocation + rebinding", "pyharp out= into fixed storage", "G1"
+   "src/mesh/meshblock.cpp:44-56; called at src/mesh/meshblock.cpp:631, src/mesh/meshblock.cpp:923, src/mesh/meshblock.cpp:1199, src/mesh/meshblock.cpp:1484, src/mesh/meshblock.cpp:1743, src/mesh/meshblock.cpp:1827-1829", "allocation + rebinding of ``scalar_r``", "divided with ``out=`` into its ``StateStore`` buffer: 923 after the EF limiter (907-909, writes density), before the solid fill (936-938); 1199 at the end of each ghost exchange; 1484 a ``kRollback`` entry after ``s0``; 1828 the restart rebuild, or 1743 its stored copy when not rebuilt (1729-1730), outside a step (``StateStore::assign``); 631 goes with the emulation (fp1)", "G1"
    "src/mesh/meshblock.cpp:950-981", "saturation adjustment", "eager segment until kintera capture", "G2"
    "src/mesh/meshblock.cpp:1017-1018, src/mesh/meshblock.cpp:1023", "host copy, 2 reads, 1 branch", "device sums and mask; allreduce is a boundary", "G1/G4"
    "src/mesh/meshblock.cpp:1061, src/mesh/meshblock.cpp:1075, src/mesh/meshblock.cpp:1080", "copy to host, branch", "removed with the gravity-work fixer (Cheng)", "G1/G4"
@@ -329,21 +331,37 @@ utils 7; each owner rules on its own).
 
 Segment list of one RK stage, Cartesian: exchange (pack | host | unpack);
 compute, split at every within-stage exchange below; scalar, forcings, RK
-combine, limiter, solid fill; last stage, with reactions
+combine, limiter, ``scalar_r`` divide, solid fill; last stage, with reactions
 (``src/mesh/meshblock.cpp:950-951``): the limiter again (``src/mesh/meshblock.cpp:952``),
 after the solid fill, as the first op of the saturation adjustment's segment (eager until G2);
 global phase (the axial closure when on); boundaries. On the last stage the
 radial ``finish_step`` host check ends the combine's segment (section 3).
-After the last stage's boundaries and before the step-end retry read, K's
-chemistry step runs as an eager FP64 segment (K 3.6) when the
-stoichiometry is nonempty. That is the pin's order: snapy's ``src`` never
-steps the module it builds (``src/scalar/scalar.cpp:54-55``); two example
-drivers step their own ``Kinetics`` built from the YAML, after all stages and
-before ``check_redo``: ``examples/run_hydro.cpp:171-198`` (gate at 177,
-``check_redo`` 200) and ``examples/jupiter_evap_precip_1d.cpp:242-261``
-(built 227-228, ``check_redo`` 263, no gate). No behaviour change for real
-decks; the gate differs from the second driver just for an empty
-stoichiometry, where it skips an empty update. Cubed sphere adds
+After the last stage's boundaries and before the step-end retry read, the
+executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
+``ChemistrySource`` the driver registered through the block it steps (S-K4
+declares that ``MeshBlock`` forwarder and its Python binding), snapy's adapter over kintera's
+``Kinetics`` (S-K4; K.rst:366-372, 748 at ``ef93e92d``), as an eager FP64
+segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
+one: snapy's ``src`` never steps the module it builds
+(``src/scalar/scalar.cpp:54-55``), so a driver that registers no source has
+no chemistry, as at the pin; no other driver gains it. Three pin callers step
+their own ``Kinetics`` after all stages and before ``check_redo``:
+``examples/run_hydro.cpp:171-198`` (gate at 177, ``check_redo`` 200),
+``examples/jupiter_evap_precip_1d.cpp:242-261`` (built 227-228,
+``check_redo`` 263, no gate) and ``tests/test_fp32_jupiter.py:116-129``
+(built 67, again 108 after a restart; ``check_redo`` 130, no gate). S-K4
+deletes each caller's own step in the commit that registers the source (the
+test registers again after its rebuild, 102-113), so a step runs chemistry
+once, and a rejected step reruns it from ``u0`` as the pin's loop does. No
+rounding order is left to state: the FP32 storage emulation is removed
+(Cheng's decision; section 9, y1, y2, fp1-fp3); the one FP32 rounding left is
+the ``+=`` into stored species, as in all three callers. "No behaviour change"
+is a hypothesis with one golden per caller: X asks S-K4 to extend K's bitwise
+row (K.rst:748, run_hydro only) to the other two, the test at FP32 with its
+restart, whose ``U'->W`` cons2prim differs in form from the drivers'
+``peos->forward``; a double step fails them. One change is named: for an
+empty stoichiometry the gate skips the jupiter driver's step, including its
+``hydro_w`` refresh (line 245), so ``hydro_w`` left for output can differ (the test is also ungated, but its deck is never empty). Cubed sphere adds
 the second exchange round (``src/mesh/meshblock.cpp:651-658``) and S's corner
 fill.
 
@@ -402,9 +420,14 @@ dt: recapture on a changed dt first, as ``V3_ROADMAP.md:124-129`` asks;
 parameterize later, once every op reads dt from one device scalar (now a host
 double, ``src/mesh/meshblock.cpp:773``).
 
-Invalidation: any change in ``GraphKey``. Kintera tables (K rev 2.3
-``42d81bb3``, K.rst:247-282): X opens a ``kintera::NoTableBuild`` scope
-around a segment's warm-up and capture, fills ``GraphKey::tables`` and
+Invalidation: any change in ``GraphKey``. Kintera tables (K rev 2.6
+``ef93e92d``, K.rst:183-187, 266-285): X first calls ``prepare()`` on each
+kintera module of the segment (``Op::kintera``) with the segment's device,
+dtype and shape; EF's ``reset()`` does not, since it runs at construction,
+before the cell shape and before ``block->to(device)`` (pin
+``examples/jupiter_evap_precip_1d.cpp:209``), and eager calls build a missing
+table themselves. X then opens a ``kintera::NoTableBuild`` scope
+around the segment's warm-up and capture, fills ``GraphKey::tables`` and
 ``CapturedGraph::tables`` from the warm-up's ``used()``, and throws if the
 capture's ``used()`` differs. The modules of a segment are those its ops
 name when their owners register them (``Op::kintera``), since ``used()``
@@ -413,7 +436,7 @@ digest on the host and compares it, the ``epoch`` of each table that
 ``tables_for`` returns now against the held ``ThermoTablesPtr``'s in the
 key, and each module's ``alloc_epoch(m)``. This check runs inside a
 ``NoTableBuild`` scope that X opens, as around warm-up and capture, because
-the executor owns capture (K.rst:270-271 at ``d83150a8``), so it
+the executor owns capture (K.rst:274-275 at ``ef93e92d``), so it
 compares only and never builds a table: a missing one throws. A new table or a reallocation
 (``prepare`` or ``reset``) is a new key, so the graph is recaptured, as any
 ``GraphKey`` change is, and ``BlockInit`` registers that module's tensors
@@ -1167,12 +1190,34 @@ The review of rev 3.4 (``513aeebb``), the coordinator and EF:
    stoichiometry alone; no behaviour change for real decks (section 7). This agrees with K.rst:342-356, 454-457 at
    ``d83150a8``; K.rst:458-459, "K in the last ``after_combine``", conflicts
    unless it means the saturation adjustment only.
-3. ``scalar_r`` is fixed storage written in place each stage (section 3; section 7, X.rst:318).
+3. ``scalar_r`` is fixed storage written in place each stage (section 3; section 7, X.rst:318 at ``8bc22415``).
 4. R books none of the fixer lines; X deletes 124 and 61 once (section 11).
 5. EF's two questions are marked answered by notes 6 and 7; EF is cited at
    ``5e30b31b`` (EF.rst:672-678, 2065-2079; section 4).
 6. K rev 2.5 (``d83150a8``): ``alloc_epoch(m)`` is K's free function, not a
    member, and X opens the ``NoTableBuild`` scope (sections 3 and 7).
+
+Round-10 notes
+~~~~~~~~~~~~~~
+
+The review of rev 3.5 (``8bc22415``), points 1-3, and K rev 2.6 (4):
+
+1. ``scalar_r``: its rebinds at 631, 923, 1199, 1484, 1743 and 1828 are rows of the
+   section 7 table and its address is in the section 5 gate; 923 divides
+   after the EF limiter (907-909) and before the solid fill (936-938), and
+   631 goes with the emulation (fp1). No count changes.
+2. Chemistry: the driver registers snapy's ``ChemistrySource`` (S-K4) in the
+   executor's slot, ``set_chemistry``; S-K4 removes each of the three
+   callers' own step in the same commit; drivers that register none gain
+   nothing; no emulation rounding is left to order. "No behaviour change"
+   rests on one golden per caller; the empty-stoichiometry ``hydro_w``
+   change is named (section 7).
+3. A revision 4 (``4e0827b8``) keeps the abort: no radial cause path (section 3).
+4. K rev 2.6 (``ef93e92d``) withdraws ``prepare()`` from EF's ``reset()``: X
+   calls it per segment module before warm-up (section 7; skeleton
+   ``run_stage``). X cites K at ``ef93e92d``; K.rst:477-480 now states the pin
+   order (Round-9 note 2); K's skeleton comment (``chemistry_source.hpp:14``,
+   "last after_combine") is K's to align.
 
 12. Skeleton index
 ------------------
