@@ -51,7 +51,7 @@ struct GraphKey {
   int block, stage, segment;
   double dt;                    // recaptured on change first; parameterized later
   std::vector<std::pair<uint64_t, int64_t>> tables;  // (options_digest, epoch) per held kintera table, K 3.3
-  std::vector<int64_t> alloc_epochs;  // alloc_epoch() per module in the ops' Op::kintera
+  std::vector<int64_t> alloc_epochs;  // kintera::alloc_epoch(m), a free function, per module in Op::kintera
   bool operator<(GraphKey const& other) const;
 };
 

@@ -1,7 +1,7 @@
 #pragma once
 // Lane X skeleton: declarations only, in no build.
 // Fixed state storage allocated once at reset(); the RK combine writes into it
-// (pyharp out=), replacing set_ at src/mesh/meshblock.cpp:901-902 and 921-922.
+// (pyharp out=), replacing set_/set_data at src/mesh/meshblock.cpp:901-902, 921-922, 44-56.
 #include <map>
 #include <string>
 #include <vector>
@@ -19,9 +19,10 @@ class StateStore {
 
   torch::Tensor& hydro_u();
   torch::Tensor& scalar_s();
+  torch::Tensor& scalar_r();  // scalar_s / dry density, divided with out= each stage
   torch::Tensor& u0();
   torch::Tensor& s0();
-  //! allocates hydro_u, scalar_s, u0, s0 and every declared scratch in the
+  //! allocates hydro_u, scalar_s, scalar_r, u0, s0 and every declared scratch in the
   //! policy's storage dtype; bumps generation()
   void reset();
   //! owners at set-up, before reset(): the clones now at meshblock.cpp:857, 859, 869, 1517
@@ -29,7 +30,7 @@ class StateStore {
                        torch::Dtype dtype);
   torch::Tensor& scratch(std::string const& name);  // look-up only, filled with copy_
   //! R's FluxRegister::reset() and kintera allocate their tensors; registered here
-  //! (again when a kintera module's alloc_epoch() changes); a new address bumps generation()
+  //! (again when kintera::alloc_epoch(m) changes); a new address bumps generation()
   void register_storage(std::string const& name, torch::Tensor const& t,
                         int64_t alloc_epoch = -1);
   torch::Tensor const& storage(std::string const& name) const;  // read access (R, save list)
@@ -41,7 +42,7 @@ class StateStore {
   int generation() const;  // bumped by reset(), to() and restart; in every GraphKey
 
  private:
-  torch::Tensor hydro_u_, scalar_s_, u0_, s0_;
+  torch::Tensor hydro_u_, scalar_s_, scalar_r_, u0_, s0_;
   std::map<std::string, torch::Tensor> scratch_;  // allocated at reset()
   int generation_;
 };
