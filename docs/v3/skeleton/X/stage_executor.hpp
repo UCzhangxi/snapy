@@ -73,11 +73,19 @@ class StageExecutor {
 
   //! step-start host phase: global dt (min over blocks and ranks)
   double select_dt();
+  //! once per attempt, before the stage-0 resets: kStepStart entries (step
+  //! zeroing, then the radial post, now src/mesh/meshblock.cpp:715)
+  void step_start(double dt);
   //! runs one stage's schedule on all blocks: eager, or replay per segment
   void run_stage(int stage, double dt);
+  //! last stage, after the RK combine: finish_step (now
+  //! src/mesh/meshblock.cpp:905), then R's after_combine phase
+  void finish_step(double dt);
   //! step-end host phase: one read of the stacked retry flags, MAX allreduce;
-  //! restore + register reset on all blocks when rejected; returns the causes
+  //! kRollback entries on all blocks when rejected; returns the causes
   int decide_retry();
+  //! after the accept, outside graphs: FP64 SUM of R's amounts, then observe
+  void observe();
 
   Capability capability() const;
   //! drops every graph (restart, to(), buffer replacement)

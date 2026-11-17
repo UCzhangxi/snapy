@@ -3,6 +3,7 @@
 // Fixed state storage: buffers allocated once at reset(); the RK combine writes
 // into them (pyharp forward(..., out)), replacing set_ at
 // src/mesh/meshblock.cpp:901-902 and src/mesh/meshblock.cpp:921-922.
+#include <string>
 #include <torch/torch.h>
 
 namespace snap {
@@ -23,8 +24,9 @@ class StateStore {
   //! fixed copy of hydro_u for the retry test (now the clone at
   //! src/mesh/meshblock.cpp:1517), filled with copy_
   torch::Tensor& scratch();
-  //! ARK form only (section 3): kex[i], kim[i], one pair per stage
-  std::vector<torch::Tensor>& ark_stages();
+  //! FluxRegister storage (lane R), owned here, fixed at reset(); dtype
+  //! kRegister: FP64, FP32 on MPS
+  torch::Tensor& register_storage(std::string const& name);
 
   //! stage 0: u0 = hydro_u, s0 = scalar_s (copy_, no allocation)
   void backup();

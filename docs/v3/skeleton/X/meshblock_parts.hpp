@@ -31,17 +31,24 @@ struct BlockRestart;    // owner O (question to O)
 //! now src/mesh/meshblock.cpp:1207-1415: outputs and cycle diagnostics
 struct BlockOutput;     // owner O (question to O)
 
-//! state that must be reset at stage 0 and on every rollback, registered by
-//! its owner instead of listed in the stage driver (now 722-738); its tensors
-//! are allocated once at setup, so a captured graph keeps their addresses
+//! registered by owners, not listed in the stage driver (now 713-745); the
+//! tensors are allocated once at setup, so a captured graph keeps addresses.
+//! kStepStart: once per attempt, before the stage-0 resets (step zeroing,
+//! then the radial post); kStageZero: backup, marks, counters (now 719-744);
+//! kRollback: restore, radial restore_step, register rollback (now
+//! 1476-1489); it erases no step-start post: the retry reruns kStepStart
+enum class ResetPhase { kStepStart, kStageZero, kRollback };
 struct StepReset {
   std::string name;   // e.g. "limiter.marks", "register", "vic.dry_clamp"
   std::string owner;
-  std::function<void()> reset;          // in place only: zero_, fill_
+  ResetPhase phase;
+  std::function<void(double dt)> reset;  // in place only: zero_, fill_, copy_
   std::function<void()> commit, drop;   // optional: step accepted, rejected
 };
 
-//! one retry flag, stacked with the others in one fixed dtype; causes by name
+//! one retry flag, stacked with the others in one fixed dtype; causes by name:
+//! the pin's bits 0-5 (src/mesh/meshblock.cpp:1585-1596), then
+//! "diffusion.radial" = bit 6 (64)
 struct RetryFlag {
   std::string name, owner, cause;
   torch::Tensor flag;   // 0-d, on the device
@@ -49,11 +56,12 @@ struct RetryFlag {
 
 //! the global corrections leave the block: one Mesh phase for 1 and N blocks
 //! (now src/mesh/mesh.cpp:367-402 and src/mesh/meshblock.cpp:983-990)
-class Fixer;  // lane R (flux_register.hpp, 543ff84f): partial_sums, apply
-//! the registry is X's: partial_sums() of every fixer, one FP64 collective,
-//! then apply(), which posts cell_amount; A's AxialClosureFixer first
+class Fixer;  // lane R's only fixer declaration (flux_register.hpp, 3490d7e1)
+//! X's registry, no apply of its own: partial_sums() of every fixer, one
+//! FP64 collective, then Fixer::apply(u, sums, dt, stage_weight, reg) with
+//! stage_weight = that stage's w2 (now src/mesh/meshblock.cpp:1027)
 struct GlobalCorrection {
-  std::vector<std::shared_ptr<Fixer>> fixers;  // every stage, inside exact
+  std::vector<std::shared_ptr<Fixer>> fixers;  // R's Fixer list only
 };
 
 }  // namespace snap

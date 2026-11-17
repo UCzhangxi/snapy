@@ -3,16 +3,7 @@
 // Now: pyharp/src/integrator/integrator.hpp:95-96 (allocating form only).
 #include <torch/torch.h>
 
-#include <vector>
-
 namespace harp {
-
-//! IMEX-ARK pair (X section 3, proposed): host doubles fixed for the run
-struct StageTableau {
-  std::vector<std::vector<double>> aex, aim;  // s x s; aex strictly lower
-  std::vector<double> bex, bim, c;            // aim lower, diagonal gamma_i
-  int order;                                // design order p (order gate)
-};
 
 class IntegratorImpl {
  public:

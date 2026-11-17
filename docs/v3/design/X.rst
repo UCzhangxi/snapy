@@ -91,85 +91,80 @@ segments. Lanes R, S, EF, K register ops; X schedules them.
 Data flow of one step::
 
   host: dt = min over blocks, ranks           (outside graphs)
+  step start: kStepStart list (register step zero, radial post)
   for stage s:
     [pack]  -> host UCX -> [unpack]           exchange = segment boundary
     [compute: hydro fwd (R) | seam exchanges (S) split it]
     [compute: scalar, forcings, RK combine out=hydro_u, limiter, solid]
+    [last stage: finish_step, then after_combine (R's fixers)]
     [global: device partial sums] -> host allreduce -> [global: apply]
     [boundaries]
   host: one read of the stacked retry flags -> MAX allreduce
-        -> accept, or restore u0/s0 + reset registers on all blocks
+        -> reject: kRollback list on all blocks, rerun from step start
+        -> accept: FP64 SUM of R's amounts over blocks, ranks -> observe
 
 Without a process group (one rank: ``src/layout/layout.hpp:213-217``,
 ``src/mesh/meshblock.cpp:986``) there is no allreduce, and the host segment
 of the global phase is absent: the device sums feed the device apply in the
 same graph.
 
-Two tableaux (IMEX-ARK; higher-order IMEX is reopened for V3). Today a stage
-is the Shu-Osher combine ``w0 u0 + w1 u1 + w2 dt L(u1)`` (weights
-``pyharp/src/integrator/integrator.hpp:20-29``), and the vertical implicit
-correction runs inside it with dt scaled by the stage's ``w2``
-(``src/hydro/hydro_forward.cpp:1568-1572``, stage published at
-``src/mesh/meshblock.cpp:703-705``): one linearized solve per stage, not an
-additive Runge-Kutta method, so its order in the stiff part is not
-established (hypothesis: first order). The executor takes a second stage
-form, an ARK pair:
+Hooks (``stage_executor.hpp``, ``meshblock_parts.hpp``). ``step_start(dt)``
+runs the ``kStepStart`` entries once per attempt, before the stage-0 resets:
+the register's step zeroing, then the radial half step and its
+``post_split`` (``src/mesh/meshblock.cpp:714-718``, before the resets at
+``src/mesh/meshblock.cpp:722-738``). ``finish_step(dt)`` runs on the last
+stage after the combine (``src/mesh/meshblock.cpp:903-905``), then R's
+``after_combine`` phase. A rejected step runs the ``kRollback`` entries:
+restore, the radial ``restore_step`` (``src/mesh/meshblock.cpp:1479-1480``)
+and ``rollback()``; none erases a step-start post in place, since the retry
+reruns ``step_start`` at the new dt, as the pin re-enters stage 0.
+``observe()`` runs after the accept. Retry causes keep the pin's bits 0-5
+(``src/mesh/meshblock.cpp:1585-1596``); ``diffusion.radial``, the radial
+check, is a named ``RetryFlag`` with cause bit 6 (value 64).
 
-- ``StageTableau`` (section 12): explicit ``aex`` (strictly lower), implicit
-  ``aim`` (lower, diagonal ``gamma_i``), weights ``bex``, ``bim``, nodes ``c``,
-  design order ``p``; host doubles fixed for the run, baked into a graph
-  keyed by stage, as ``StageWeights`` are.
-- Storage: ``StateStore`` holds ``kex[i]`` and ``kim[i]`` (2s state buffers,
-  allocated at ``reset()``, dtype a section 6 row).
-- Stage i: ``rhs = u0 + dt sum_{j<i} (aex_ij kex_j + aim_ij kim_j)``; the
-  implicit owner solves ``u_i = rhs + gamma_i dt F_I(u_i)`` (today's
-  correction with ``dt_corr = gamma_i dt``); then ``kex_i = F_E(u_i)`` and
-  ``kim_i = (u_i - rhs) / (gamma_i dt)`` (``F_I(u_i)`` when ``gamma_i = 0``).
-- Step end: ``u = u0 + dt sum_i (bex_i kex_i + bim_i kim_i)``; the register's
-  step transfer weights explicit and implicit face fluxes by ``bex`` and
-  ``bim`` (question to R, section 11).
-- The Shu-Osher path stays as it is and remains the reference of the
-  bitwise gates; the ARK form is a second mode chosen by integrator type.
-
-Candidate pairs, the owner's choice: ARS(2,2,2) and ARS(4,4,3) (Ascher,
-Ruuth and Spiteri 1997), ARK3(2)4L[2]SA (Kennedy and Carpenter 2003). With
-one linearized solve per stage the method is linearly implicit (W-type);
-whether it keeps the design order needs Newton iterations or a tableau that
-meets the extra W-method conditions (hypothesis; the order gate of section 5
-decides).
+The stage form is today's Shu-Osher combine (weights
+``pyharp/src/integrator/integrator.hpp:20-29``); a two-tableau form is
+optional and outside this round (section 10, last subsection).
 
 4. Flux-register contract (executor side)
 -----------------------------------------
 
 Names and signatures are lane R's header (``docs/v3/skeleton/R/flux_register.hpp``
-at ``543ff84f``, provisional).
+at R's latest head ``3490d7e1``). R rev 2 not yet frozen; the rev 1 header
+``543ff84f`` is the one the other lanes cited.
 
-- Storage: ``FluxRegister::reset(coord, policy, nvar, weights, req)`` takes
-  fixed storage from ``StateStore`` at ``reset()``, never in restart
-  (derived state). Its dtype is a ``PrecisionPolicy`` row; ``step_field`` is
-  FP64.
+- Storage: ``FluxRegister::reset(coord, policy, nvar, req)`` takes fixed
+  storage owned by ``StateStore`` (``register_storage``) at ``reset()``,
+  never in restart (derived state). Its dtype is a ``PrecisionPolicy`` row;
+  ``step_field`` is FP64, FP32 on MPS (R's section 6).
 - Posts: device ops inside compute segments (R's pipeline stages).
-- Begin stage: the executor calls ``begin_stage(int stage, StageWeights
-  const&)`` with every stage's pyharp ``IntegratorWeight``
-  (``pyharp/src/integrator/integrator.hpp:20-29``), since the step
-  coefficient needs ``w1`` of later stages. The table is host doubles fixed
-  for the run, so a graph keyed by stage still bakes it in; X adopts R's
-  signature. ``end_stage(dt)`` runs in the same segment, dt a host double.
+- Begin stage: the executor calls ``begin_stage(int stage,
+  harp::IntegratorWeight const&)`` with that stage's pyharp weight
+  (``pyharp/src/integrator/integrator.hpp:20-29``). ``end_stage(dt)`` runs
+  R's recursion ``S = w1 S + w2 dt T`` (R's 3.4), so no stage table is
+  passed. The weight is a host double fixed for the run, baked into a graph
+  keyed by stage; dt is a host double.
 - Reads: the register's exchange is an exchange phase (pack, host, unpack);
   it ends the posting segment.
-- Corrects: a device op in the segment after the unpack, before the RK
-  combine (now ``src/mesh/meshblock.cpp:901``) if corrected per stage, or
-  before the last stage's limiter (now ``src/mesh/meshblock.cpp:909``) if
-  corrected per step. R chooses; both fit the schedule.
-- Reset: ``begin_stage(0)`` zeroes the step; ``rollback()`` is an entry of
-  the registered reset list, with the limiter marks (now
-  ``src/mesh/meshblock.cpp:735``).
-- Monitor: R's ``RegisterMonitor``; ``retry_flags()`` is stacked into the
-  step-end retry read (``src/mesh/meshblock.cpp:1566``), so no extra host
-  read.
-- Fixers: the ``Fixer`` base is R's (``partial_sums``, ``apply``); the
-  registry and its one FP64 collective per stage are X's global phase. A's
-  ``AxialClosureFixer`` is the first client.
+- Corrects: per stage, as R settled: a device op in the segment after the
+  unpack, before the RK combine (now ``src/mesh/meshblock.cpp:901``); fixers
+  that act after the combine run in R's ``after_combine`` phase (now
+  ``src/mesh/meshblock.cpp:907-909``).
+- Reset: the step zeroing (R's ``reset_step``) is X's first ``kStepStart``
+  entry, before the radial ``post_split``, so ``begin_stage(0)`` must not
+  zero the step again (question to R); ``rollback()`` is a ``kRollback``
+  entry, with the limiter marks (now ``src/mesh/meshblock.cpp:1489``).
+- Monitor: R's ``RegisterMonitor``. Its ``retry_flags()`` join the step-end
+  MAX read (``src/mesh/meshblock.cpp:1559-1568``,
+  ``src/mesh/meshblock.cpp:1586-1591``, ``src/mesh/mesh.cpp:485``). Its FP64
+  amounts take a separate path: after the accept, in the host phase outside
+  graphs, a sum over blocks and one SUM allreduce, then ``observe``.
+- Fixers: R's ``Fixer`` is the one declaration; ``GlobalCorrection`` holds
+  a list of them and declares no ``apply``. The global phase runs every
+  ``partial_sums()``, one FP64 collective per stage, then
+  ``Fixer::apply(u, sums, dt, stage_weight, reg)`` with ``stage_weight``
+  that stage's ``w2`` (now ``src/mesh/meshblock.cpp:1027``), not R's step
+  coefficient. A's ``AxialClosureFixer`` is the first client.
 - Ordering: post before pack; unpack before correct; correct before the
   stage-end exchange (``src/mesh/mesh.cpp:406``).
 - No added full-field copy: the register holds face data only.
@@ -181,14 +176,14 @@ The ten register requirements, by number:
 
    "1", "one owner of every face flux", "not this lane (R)"
    "2", "named increments in a declared order", "not this lane (R); posts stay inside one compute segment, in program order"
-   "3", "stage weights into the step transfer", "``begin_stage(int stage, StageWeights const&)``, host doubles for the run; a graph keyed by stage bakes them in; the ARK form adds ``bex``, ``bim`` (section 3)"
+   "3", "stage weights into the step transfer", "``begin_stage(int stage, harp::IntegratorWeight const&)``, one host weight per stage; R's recursion needs no table; a graph keyed by stage bakes it in"
    "4", "divergence reads the register", "not this lane (R, C)"
    "5", "two entries per shared face", "not this lane (R, S); X schedules the register's exchange as an exchange phase"
-   "6", "one device monitor, no host read in a segment", "``RegisterMonitor::retry_flags()`` joins the step-end retry read (``src/mesh/meshblock.cpp:1566``); section 7 bans host reads in segments"
+   "6", "one device monitor, no host read in a segment", "``RegisterMonitor::retry_flags()`` joins the step-end MAX read (``src/mesh/meshblock.cpp:1566``); amounts take the SUM path after the accept; section 7 bans host reads in segments"
    "7", "every fixer and floor registers its addition", "``Fixer`` is R's; X keeps the registry and its collective; fixers post ``cell_amount``"
-   "8", "stated dtype, fixed storage", "``StateStore`` allocates at ``reset()``; dtype is a ``PrecisionPolicy`` row, the step accumulator FP64 (section 6)"
+   "8", "stated dtype, fixed storage", "``StateStore`` owns the storage and allocates it at ``reset()``; dtype is a ``PrecisionPolicy`` row, the step accumulator FP64 (MPS: FP32)"
    "9", "no added full-field copy per stage", "face data only; ``out=`` removes today's copies (section 8)"
-   "10", "rebuilt, never in restart", "derived state: ``reset()`` at set-up, ``rollback()`` in the reset list"
+   "10", "rebuilt, never in restart", "derived state: ``reset()`` at set-up, ``rollback()`` a ``kRollback`` entry"
 
 5. Invariants and gates
 -----------------------
@@ -205,8 +200,6 @@ The ten register requirements, by number:
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
    "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
-   "ARK form reduces to Shu-Osher", "rk3 as a Butcher tableau with ``aim = 0``, both precisions", "relative 1e-14 in FP64 (summation order differs)"
-   "IMEX order", "each tableau: a smooth one-column acoustic-gravity wave, vertical implicit on, FP64, dt, dt/2, dt/4 against dt/16 at a fixed grid; also implicit Courant 10-100", "observed order at least p - 0.2; bounded in the stiff limit"
 
 6. FP32 contract
 ----------------
@@ -225,8 +218,7 @@ The ten register requirements, by number:
    "vertical implicit correction", "FP32", "FP32, FP64 fallback", "fallback on solve failure"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
-   "ARK stage derivatives kex, kim", "= storage", "= compute", "FP64 if the order gate fails in FP32 (hypothesis)"
-   "flux register step accumulator", "FP64 (hypothesis)", "FP64", "sum over stages; question to R"
+   "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
    "source accumulator", "FP64, one stage-local field", "FP64", "per-source budgets; today FP32 runs only (src/hydro/hydro_forward.cpp:1364-1374); A uses it in both precisions"
    "diagnostics", "int64/bool counters, FP64 sums (MPS: FP32)", "same", "replaces the ad hoc dtype at src/hydro/hydro_forward.cpp:373"
 
@@ -319,8 +311,8 @@ adopted). The vapor check is deferred inside every segment, set once by
 ``BlockAdvance``: the host flag ``DeferVaporCheck``
 (``src/mesh/meshblock.cpp:689-701``, ``src/mesh/meshblock.cpp:1516``)
 would be baked into a capture. The species clip of user forcings
-(``src/mesh/meshblock.cpp:879-884``) is an EF op that posts the mass it
-withholds; the clones at ``src/mesh/meshblock.cpp:857``, ``:859`` and
+(``src/mesh/meshblock.cpp:879-884``) is EF's op, which X registers in the
+block's compute segment; it posts the mass it withholds; the clones at
 ``:869`` become ``copy_`` into fixed scratch. C's B6, the x1 seam flux average, is the register's exchange phase
 (section 4).
 
@@ -328,9 +320,12 @@ dt: recapture on a changed dt first, as ``V3_ROADMAP.md:124-129`` asks;
 parameterize later, once every op reads dt from one device scalar (now a host
 double, ``src/mesh/meshblock.cpp:773``).
 
-Invalidation: any change in ``GraphKey``. Capture restores state, registers,
-counters and retry bookkeeping, as the prototype does
-(``tests/straka_cuda_graph.py:53-56``). With fixed storage the per-replay input
+Invalidation: any change in ``GraphKey``. The prototype restores only the
+state tensors around warm-up and capture (``tests/straka_cuda_graph.py:59-60``,
+``tests/straka_cuda_graph.py:69-72``); X adds the registers, counters and
+retry flags to that save and restore, untested (gate "flags survive
+replay"). Warm-up and capture run with the step's dt, never dt = 0, so an
+op that divides by dt stays finite. With fixed storage the per-replay input
 copy (``tests/straka_cuda_graph.py:86-88``) never fires and goes.
 
 8. Cross-repository interface changes and merge order
@@ -537,7 +532,8 @@ D2. -17 (pydisort/src/disort.cpp): ``set_flags`` 49-93 becomes a map from
 
 Added counts for I5, D1 and D2 come from clang-format (Google style) on a
 draft. Without h1-h2 the cut is 1591 (37.2%). If O's options schema replaces
-``from_yaml``, i and j are O's: with h1-h2 kept, then 1620 (37.9%).
+``from_yaml``, i goes to O and j stays X's, as O books it:
+with i out the cut is 1642 (38.4%), and with i, h1 and h2 out 1510 (35.3%), the lower bound.
 Before O's writer change the cut is 827 (19.3%), 28 short of 20%: F1 and F2 wait for it, and
 sv waits for O's option checks; F3 does not. Cheng's decisions are in the base: the FP32 storage emulation
 goes (y1, y2, fp1-fp3; ``fp32_storage.*`` counts in O) and the global
@@ -550,7 +546,7 @@ keeps its +150 as an upper bound.
 .. csv-table:: joint, not counted
    :header: "File", "Lines now", "Lines after", "Owner and request"
 
-   "src/mesh/meshblock.cpp", 1919, 1919, "O: restart 1603-1833, diagnostics 1226-1346 less 1336-1337 (gw1); S: exchange 644-685, 1135-1196"
+   "src/mesh/meshblock.cpp", 1919, 1919, "O: restart checks 1623-1653 (the rest of 1603-1833 stays in src/mesh), diagnostics 1226-1339 less 1336-1337 (gw1); S: exchange 644-685, 1135-1196"
    "src/mesh/cycle_diagnostics.hpp", 16, 16, "O: with the diagnostics"
 
 O moves ``src/utils/signal_handler.*`` (213 lines) into ``src/mesh``: a move,
@@ -601,7 +597,6 @@ Provider side: pyharp ``src/integrator`` 564 to 427 (I1-I7), pydisort
    "X6", "h1-h2: block jobs on the inter-op pool", "bitwise; CPU multi-block wall time within 5%"
    "X7", "capability matrix, docs, benchmarks (G7)", "no numerics"
    "X8", "delete src/interface (F1-F3) and sv; F1-F2 after O's writer holds tensors (cut 827 of 4,274 before, 1,723 after), sv after O's option checks, F3 any time; first O ports ``tests/test_user_output.cpp:39-100`` (O's note 8), and one grep for the array class, ``InitFromTensor``, ``CopyFromTensor``, ``OutputData`` and ``pfirst_data_`` over src, tests and python finds only unbuilt files", "no numerics; build and tests pass"
-   "X9 (proposed)", "ARK stage form: ``StageTableau``, ``kex``/``kim`` storage, ``dt_corr = gamma_i dt`` (section 3)", "Shu-Osher path bitwise; ARK path by the order gate"
 
 Scope of this round (Cheng): design and declarations only. Nothing here was
 built or run; section 5's gates are specified, not run, and a claim that
@@ -612,12 +607,6 @@ phase G4 (``V3_ROADMAP.md:235``); pyharp's output-buffer RK interface
 in G0 (``V3_ROADMAP.md:144``) and documented in G7
 (``V3_ROADMAP.md:296``). G0's baselines and capture probes
 (``V3_ROADMAP.md:146-149``) are implementation, not part of this design.
-X9 has no milestone in ``V3_ROADMAP.md``; X proposes IMEX-ARK as one after
-G1, since it needs the executor and fixed storage.
-
-FOR CHENG: higher-order IMEX is reopened for V3. Does IMEX-ARK (X9) enter
-``V3_ROADMAP.md`` as a milestone after G1, and does the implicit owner add a
-Newton option if the linearized stage misses the order gate?
 
 Removed: host stage timers (replaced by segment timing), the ``defer_*``
 flags, the four legacy helpers, the dead pyharp dispatch. No physics option
@@ -647,17 +636,62 @@ Every row keeps its schemes (Cheng): all six Riemann solvers, all six
 reconstructions, ANEOS and PnetCDF stay. CPU and MPS run eager only:
 ``cuda-graph`` falls back to eager there, and strict mode rejects it.
 
+Optional: two-tableau stage form (IMEX-ARK), not in this round's scope; question for Cheng
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+No other lane writes against this subsection; the contract, skeleton and
+budget above stand without it. Today a stage is the Shu-Osher combine
+``w0 u0 + w1 u1 + w2 dt L(u1)``, and the vertical implicit correction runs
+inside it with dt scaled by the stage's ``w2``
+(``src/hydro/hydro_forward.cpp:1568-1572``, stage published at
+``src/mesh/meshblock.cpp:703-705``): one linearized solve per stage, not an
+additive Runge-Kutta method, so its order in the stiff part is not
+established. An ARK pair would add, in prose only (not in the skeleton):
+
+- ``harp::StageTableau`` {``aex``, ``aim``, ``bex``, ``bim``, ``c``,
+  ``order``}: ``aex`` strictly lower, ``aim`` lower with diagonal
+  ``gamma_i``, host doubles fixed for the run;
+- ``StateStore::ark_stages()``: ``kex[i]``, ``kim[i]``, 2s state buffers
+  allocated at ``reset()`` in the storage dtype (FP64 if the order gate
+  fails in FP32);
+- stage i: ``rhs = u0 + dt sum_{j<i} (aex_ij kex_j + aim_ij kim_j)``; the
+  implicit owner solves ``u_i = rhs + gamma_i dt F_I(u_i)``
+  (``dt_corr = gamma_i dt``); then ``kex_i = F_E(u_i)`` and
+  ``kim_i = (u_i - rhs) / (gamma_i dt)``; step end
+  ``u = u0 + dt sum_i (bex_i kex_i + bim_i kim_i)``;
+- candidates: ARS(2,2,2), ARS(4,4,3) (Ascher, Ruuth and Spiteri 1997),
+  ARK3(2)4L[2]SA (Kennedy and Carpenter 2003); with one linearized solve per
+  stage the method is linearly implicit, so keeping the design order needs
+  Newton iterations or a tableau meeting the W-method conditions;
+- gates: rk3 as a tableau with ``aim = 0`` equals Shu-Osher to 1e-14
+  relative in FP64; the observed order on a one-column acoustic-gravity
+  wave (dt to dt/4 against dt/16, implicit Courant 10-100) is at least
+  p - 0.2;
+- milestone X9 after G1, which it needs for the executor and fixed storage;
+  ``V3_ROADMAP.md`` has none.
+
+Three points stand in its way at the pin. The pinned correction is not
+split into explicit and implicit operators. R's register carries one weight
+per stage (``begin_stage(int stage, harp::IntegratorWeight const&)``), not
+separate explicit and implicit weights. Positivity relies on the SSP
+structure of the integrators (``src/hydro/hydro_forward.cpp:1163-1164``),
+which an ARK pair need not have.
+
+FOR CHENG: should the implicit operator be split, should IMEX-ARK (X9)
+enter ``V3_ROADMAP.md`` after G1, should the implicit owner add a Newton
+option, and which positivity rule replaces SSP?
+
 11. Open questions to other lanes
 ---------------------------------
 
 R (Linfeng):
 
-- Answered by R's header (``543ff84f``): FP64 step field; X adopts
-  ``begin_stage(int stage, StageWeights const&)`` and ``rollback()`` in the
-  reset list; the monitor joins the read at ``src/mesh/meshblock.cpp:1566``.
-- Open: correct per stage or per step (section 4)?
-- ARK (section 3): may ``StageWeights`` carry ``bex`` and ``bim``, with the
-  implicit face fluxes posted as their own increment?
+- Answered by R's head (``3490d7e1``): FP64 step field (FP32 on MPS); one
+  ``IntegratorWeight`` per ``begin_stage``; corrections per stage, plus
+  ``after_combine``; ``rollback()`` in the reset list; the monitor's flags
+  join the read at ``src/mesh/meshblock.cpp:1566``.
+- Open: zero the step in ``reset_step()`` from X's step start, before the
+  radial ``post_split``, and not again in ``begin_stage(0)`` (section 4)?
 
 S (Jiheng):
 
@@ -711,13 +745,13 @@ Requests to O, and where the two drafts differ:
   storage code included, counts in O. Moved lines (``signal_handler.*`` into
   ``src/mesh``, restart and diagnostics out of ``meshblock.cpp``) count in
   neither lane.
-- Take restart and cycle diagnostics. Ranges differ: X lists
-  ``src/mesh/meshblock.cpp:1603-1833`` and ``src/mesh/meshblock.cpp:1226-1346``;
-  O lists 1603-1830 and 1226-1339. The extra lines are the end of
-  ``_init_from_restart`` (1831-1833) and the ``print_cycle_info`` wrapper
-  (1341-1346). ``src/mesh/cycle_diagnostics.hpp`` is in neither of O's
-  tables. X asks that restart load into the fixed buffers in the storage
-  dtype and that the diagnostics' host reads stay at step end.
+- Take restart and cycle diagnostics, with section 9's ranges: the restart
+  checks ``src/mesh/meshblock.cpp:1623-1653`` (the rest of 1603-1833,
+  n3's 1658-1660 and g's 1798-1800 included, stays in ``src/mesh``),
+  and diagnostics ``src/mesh/meshblock.cpp:1226-1339`` less
+  gw1's 1336-1337, with ``src/mesh/cycle_diagnostics.hpp``. X asks that
+  restart load into the fixed buffers in the storage dtype and that the
+  diagnostics' host reads stay at step end.
 - O rev 2 (``22cd9512``): the restart checks 1623-1653 (a move into O's
   restart module) and the cycle diagnostics 1226-1339 with
   ``src/mesh/cycle_diagnostics.hpp`` (O's printer over budget totals) are
@@ -735,8 +769,7 @@ Requests to O, and where the two drafts differ:
   ``src/mesh/meshblock_options.cpp:65-86`` (bounds and order). O asks the
   owner of ``meshblock.cpp``, which is X, to drop 203-230 once O's generated
   option checks hold them; X deletes it as item sv (O rev 2). Item j
-  drops the third now; if the schema replaces ``from_yaml``, j is O's
-  (section 9 variant).
+  drops the third now, and j is X's, as O books it.
 
 A (Jiachen), on A's notes 14-17:
 
@@ -808,14 +841,14 @@ EF (Zoey), notes 1-16 on rev 1 (``77c65d5a``):
 8. Agree: ``RetryFlag`` {name, owner, cause, 0-d device tensor}, stacked in
    one fixed dtype (skeleton ``meshblock_parts.hpp``).
 9. Agree; sections 2, 5, 7, 9 and 10 now have the closure only, and
-   ``GlobalCorrection::apply`` posts a named correction.
+   each ``Fixer::apply`` posts a named correction.
 10. Agree: the anomaly-floor exception and a diagnostics row are in
     section 6 and ``precision_policy.hpp``.
 11. Agree in substance: section 6 states the MPS dtypes, and a line under
     the capability matrix says CPU and MPS run eager, with strict mode
     rejecting ``cuda-graph``. A column would repeat "eager" in every row.
 12. Agree: deferred mode is the only mode inside segments (section 7).
-13. Agree: the species clip is an EF op, the limiter at 952 is in the
+13. Agree: the species clip is EF's op, registered by X in its segment; the limiter at 952 is in the
     segment list, ``carry_dry_source`` takes ``out=`` (section 8), and the
     three clones become fixed scratch (section 7).
 14. Agree; item f edits that test.
@@ -841,6 +874,44 @@ books 98 lines of ``meshblock.cpp``, 6 of ``meshblock.hpp`` and 20 of
 ``mesh.cpp``. Those count once, in X (gw1, gw2, d, hp, M); R counts its
 ``src/hydro`` lines only.
 
+Round-3 notes (rev-2 review)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The reviewer's notes 1-7 on rev 2 (``034ef405``):
+
+1. Resolved; no change.
+2. Split: ``kStepStart`` runs before the stage-0 resets, ``kRollback``
+   erases no step-start post, the retry reruns step start, and
+   ``finish_step`` is named (sections 3 and 4; ``meshblock_parts.hpp``,
+   ``stage_executor.hpp``).
+3. Added: the FP64 SUM path for accepted amounts, the ``after_combine`` and
+   ``observe`` hooks, and register storage owned by ``StateStore``
+   (sections 3 and 4; ``state_store.hpp``).
+4. Re-cited to R's head ``3490d7e1``: one ``IntegratorWeight`` per
+   ``begin_stage``, no ``StageWeights``; the accumulator is FP64, FP32 on
+   MPS (sections 4 and 6).
+5. Narrowed to the prototype's state restore; warm-up and capture use the
+   step's dt (section 7).
+6. One owner per line: O takes only the restart checks 1623-1653 (O head
+   ``c12f78bb``), so n3's 1658-1660 and g's 1798-1800 stay X's (section 9);
+   the totals 1,723 and 827 do not change.
+7. Moved to the optional subsection at the end of section 10, with these
+   three points.
+
+The coordinator's items 1-6:
+
+1. As note 2 above.
+2. As note 3 above.
+3. ``GlobalCorrection`` holds R's ``Fixer`` list only; ``apply`` gets that
+   stage's ``w2`` (section 4).
+4. ``diffusion.radial`` is cause bit 6, value 64 (section 3;
+   ``meshblock_parts.hpp``).
+5. Section 9's ranges in the joint row and the O block, and j is X's
+   (sections 9 and 11); X registers the species clip, EF owns the op
+   (section 7).
+6. R rev 2 not yet frozen: X cites R's head ``3490d7e1`` and its rev 1
+   header ``543ff84f`` (section 4).
+
 12. Skeleton index
 ------------------
 
@@ -851,7 +922,7 @@ books 98 lines of ``meshblock.cpp``, 6 of ``meshblock.hpp`` and 20 of
 - ``stage_executor.hpp``: ``SegmentKind``, ``Op``, ``Segment``,
   ``StageSchedule``, ``GraphKey``, ``ExecutionOptions``, ``Capability``,
   ``StageExecutor``.
-- ``meshblock_parts.hpp``: the six parts of ``MeshBlock`` and the step-reset
-  list.
-- ``pyharp_integrator.hpp``: the ``out=`` signature and its alias rules;
-  ``StageTableau`` (section 3).
+- ``meshblock_parts.hpp``: the six parts of ``MeshBlock``, the reset list
+  in three phases (step start, stage 0, rollback), ``RetryFlag`` and the
+  fixer registry.
+- ``pyharp_integrator.hpp``: the ``out=`` signature and its alias rules.
