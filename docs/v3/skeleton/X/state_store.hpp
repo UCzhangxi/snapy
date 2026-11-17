@@ -37,8 +37,8 @@ class StateStore {
 
   void backup();   // stage 0: u0 = hydro_u, s0 = scalar_s (copy_)
   void restore();  // rejected step: hydro_u = u0, scalar_s = s0 (copy_)
-  //! copy external state in without changing addresses (restart, user edits)
-  void assign(torch::Tensor const& hydro_u, torch::Tensor const& scalar_s);
+  //! copy_ in, addresses kept: initialize the given scalar_r; restart 1743's copy, else (1828) divide out=
+  void assign(torch::Tensor const& hydro_u, torch::Tensor const& scalar_s, torch::Tensor const& scalar_r = {});
   int generation() const;  // bumped by reset(), to() and restart; in every GraphKey
 
  private:

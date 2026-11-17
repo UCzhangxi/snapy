@@ -71,14 +71,14 @@ class StageExecutor {
   StageExecutor(MeshImpl* mesh, ExecutionOptions const& options);
 
   double select_dt();  // step-start host phase: global dt (min over blocks and ranks)
-  //! once per attempt, before the stage-0 resets: kStepStart entries (R's
-  //! begin_step(), then the radial post, now src/mesh/meshblock.cpp:715)
+  //! once per attempt, before the stage-0 resets: kStepStart (R's begin_step(), then the radial post, now :715)
   void step_start(double dt);
   //! one stage on all blocks, eager or replay per segment; prepare() on each Op::kintera module before warm-up (K 3.3)
   void run_stage(int stage, double dt);
-  //! last stage, after the RK combine: finish_step (now
-  //! src/mesh/meshblock.cpp:905); R's after_combine follows every combine
+  //! last stage, after the RK combine: finish_step (now src/mesh/meshblock.cpp:905)
   void finish_step(double dt);
+  //! every stage: EF's limiter (907-909), X's scalar slot (combine, scalar_r out=, 920-923), S's solid fill; closure: global phase
+  void after_combine(int stage, double dt);
   //! chemistry slot (design 7): the driver's one source, eager FP64, last boundaries to decide_retry
   void set_chemistry(std::shared_ptr<ChemistrySource> source);
   //! step-end host phase: one read of the stacked retry flags, MAX allreduce;

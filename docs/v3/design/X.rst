@@ -69,7 +69,7 @@ Types (declared in section 12):
   quantity (section 6); ``storage()``, ``compute()``, ``cast()``. Replaces
   every ``fp32() ? a : b``.
 - ``StateStore``: owns the fixed buffers ``hydro_u``, ``scalar_s``, ``u0``,
-  ``s0`` and ``scalar_r`` (rebound at the pin by ``src/mesh/meshblock.cpp:44-56`` at 631, 923, 1199, 1484 and, on restart, 1828; section 7) in the storage dtype, allocated once at ``reset()``. Addresses
+  ``s0`` and ``scalar_r`` (rebound at the pin by ``src/mesh/meshblock.cpp:44-56`` at 631, 923, 1199, 1484 and, on restart, 1743 or 1828; section 7) in the storage dtype, allocated once at ``reset()``. Addresses
   change only on ``reset``, ``to()`` and restart, each of which bumps a
   generation counter.
 - ``Segment``: an ordered list of device ops with one ``SegmentKind``
@@ -100,7 +100,7 @@ Data flow of one step::
     [compute: hydro fwd (R) | seam exchanges (S) split it]
     [compute: scalar, forcings, RK combine out=hydro_u] last stage:
      finish_step, its host check ends the segment
-    [compute: every stage: after_combine (R): limiter, scalar_r divide, solid]
+    [compute: every stage: after_combine: limiter (EF), X's scalar slot (920-923), solid (S)]
     [global: device partial sums] -> host allreduce -> [global: apply]
     [boundaries]
   after the last stage: [chemistry slot: the driver's ChemistrySource, eager FP64]
@@ -116,8 +116,9 @@ same graph.
 Hooks (``stage_executor.hpp``, ``meshblock_parts.hpp``). ``step_start(dt)``
 runs the ``kStepStart`` entries once per attempt, before the stage-0 resets:
 R's ``begin_step()``, then the radial flag's ``zero_``, the radial half step and its
-``post_split`` (``src/mesh/meshblock.cpp:714-718``, before the resets at
-``src/mesh/meshblock.cpp:722-738``); its radial host check
+``post_split`` (``src/mesh/meshblock.cpp:714-718``: the split at 715, then the
+boundaries and ghost exchange at 716-717, all before the ``u0`` save at 721 and
+the resets at ``src/mesh/meshblock.cpp:722-738``); its radial host check
 (``src/forcing/diffusion_radial.cpp:97-100``) ends a capture segment, as the
 one in ``finish_step`` does (A.rst:550-555 at ``4e0827b8``). ``kStageZero`` takes the ``u0``
 backup, then K's ``snapshot_active_set``, then ``reset_failures``, which
@@ -135,7 +136,7 @@ accepted steps only: ``begin_step()`` zeroes, ``rollback()`` drops, and O's
 (``src/mesh/meshblock.cpp:726-730``, ``src/mesh/meshblock.cpp:1477``,
 ``src/mesh/meshblock.cpp:1502``), which goes with gw1.
 ``finish_step(dt)`` runs on the last stage after the combine
-(``src/mesh/meshblock.cpp:903-905``) and ends that segment; R's ``after_combine`` follows every
+(``src/mesh/meshblock.cpp:903-905``) and ends that segment; X's ``after_combine`` slot (R's phase) follows every
 stage's combine, so the limiter (``src/mesh/meshblock.cpp:907-909``) comes
 after ``finish_step`` on the last. A rejected step runs the ``kRollback``
 entries in the pin's order (``src/mesh/meshblock.cpp:1476-1504``): ``u0``,
@@ -203,9 +204,9 @@ at R rev 2.2 ``4c59162a``).
   it ends the posting segment.
 - Corrects: per stage, as R settled: a device op in the segment after the
   unpack, before the RK combine (now ``src/mesh/meshblock.cpp:901``); X
-  enters R's ``after_combine`` after each stage's combine (the limiter, now
+  enters its ``after_combine`` slot, R's phase, after each stage's combine (the limiter, now
   ``src/mesh/meshblock.cpp:907-909``, and the fixers), on the last stage
-  after ``finish_step`` (R.rst:685-689; ``flux_register.hpp:22``).
+  after ``finish_step`` (R.rst:691-701; ``flux_register.hpp:22``).
 - Reset: R's ``begin_step()`` (``flux_register.hpp:48``; R.rst:31-32,
   70-73) is X's first ``kStepStart`` entry, before the radial
   ``post_split``; ``begin_stage(0)`` zeroes nothing. ``rollback()`` is the
@@ -339,7 +340,7 @@ radial ``finish_step`` host check ends the combine's segment (section 3).
 After the last stage's boundaries and before the step-end retry read, the
 executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
 ``ChemistrySource`` the driver registered through the block it steps (S-K4
-declares that ``MeshBlock`` forwarder and its Python binding), snapy's adapter over kintera's
+declares that ``MeshBlock`` forwarder, ``MeshBlock::set_chemistry``, and its Python binding), snapy's adapter over kintera's
 ``Kinetics`` (S-K4; K.rst:366-372, 748 at ``ef93e92d``), as an eager FP64
 segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
 one: snapy's ``src`` never steps the module it builds
@@ -358,10 +359,14 @@ rounding order is left to state: the FP32 storage emulation is removed
 the ``+=`` into stored species, as in all three callers. "No behaviour change"
 is a hypothesis with one golden per caller: X asks S-K4 to extend K's bitwise
 row (K.rst:748, run_hydro only) to the other two, the test at FP32 with its
-restart, whose ``U'->W`` cons2prim differs in form from the drivers'
-``peos->forward``; a double step fails them. One change is named: for an
+restart (its anomaly deck's ``U'->W`` is the same call as ``peos->forward``,
+``src/eos/equation_of_state.cpp:209-210``); a double step fails them. One change is named: for an
 empty stoichiometry the gate skips the jupiter driver's step, including its
-``hydro_w`` refresh (line 245), so ``hydro_w`` left for output can differ (the test is also ungated, but its deck is never empty). Cubed sphere adds
+``peos->forward`` (line 245), whose cons2prim calls the conserved limiter on the
+stored ``hydro_u`` (``src/eos/ideal_moist.cpp:209-211``), a repair kept in place, with
+retry marks for the step-end read (``src/mesh/meshblock.cpp:1535``); ``check_redo``
+refreshes ``hydro_w`` itself, from a clone (``src/mesh/meshblock.cpp:1511-1517``) (the test is also ungated, but its deck
+is never empty); with the emulation removed (above) the repair raises no FP32-write concern. Cubed sphere adds
 the second exchange round (``src/mesh/meshblock.cpp:651-658``) and S's corner
 fill.
 
@@ -426,7 +431,10 @@ kintera module of the segment (``Op::kintera``) with the segment's device,
 dtype and shape; EF's ``reset()`` does not, since it runs at construction,
 before the cell shape and before ``block->to(device)`` (pin
 ``examples/jupiter_evap_precip_1d.cpp:209``), and eager calls build a missing
-table themselves. X then opens a ``kintera::NoTableBuild`` scope
+table themselves. X requires an idempotent ``prepare()`` (no reallocation when
+shape, dtype and device are unchanged), so the stage-zero snapshot and failure
+counts survive each mid-step warm-up; K at ``143fedeb`` never rebinds the counter but
+allows a reallocating ``prepare()`` and does not say whether a repeat keeps them (K.rst:180-194): a hypothesis until tested, for K rev 2.8 to state. X then opens a ``kintera::NoTableBuild`` scope
 around the segment's warm-up and capture, fills ``GraphKey::tables`` and
 ``CapturedGraph::tables`` from the warm-up's ``used()``, and throws if the
 capture's ``used()`` differs. The modules of a segment are those its ops
@@ -1218,6 +1226,26 @@ The review of rev 3.5 (``8bc22415``), points 1-3, and K rev 2.6 (4):
    ``run_stage``). X cites K at ``ef93e92d``; K.rst:477-480 now states the pin
    order (Round-9 note 2); K's skeleton comment (``chemistry_source.hpp:14``,
    "last after_combine") is K's to align.
+
+Round-11 notes
+~~~~~~~~~~~~~~
+
+The review of rev 3.6 (``fc3b002e``), points 1-6, and R-8 (7):
+
+1. X owns an executor slot, ``StageExecutor::after_combine``: EF's limiter
+   (907-909), X's scalar slot (the scalar combine and the ``scalar_r`` divide,
+   ``out=``, 920-923), S's solid fill (936-938); A's closure is the global phase. R's order (R.rst:691-701 at
+   ``2b4c5775``) lists 920-923 there; only its comment, ``hydro_stage.hpp:67-70``,
+   omits it, so R needs no new declaration.
+2. The jupiter driver's ``peos->forward`` calls the limiter (section 7).
+3. The test's ``U'->W`` is ``peos->forward``'s call; the check stays (section 7).
+4. ``MeshBlock::set_chemistry``, S-K4's forwarder, to ``StageExecutor::set_chemistry``.
+5. K does not say whether a repeated ``prepare()`` keeps storage; X requires it
+   idempotent, a hypothesis until tested; K rev 2.8 to state it (section 7).
+6. ``StateStore::assign`` takes ``scalar_r``: ``initialize`` copies the given
+   one (seeded ``scalar_s``, pin 530); a restart its stored copy (1743) or divides (1828).
+7. R-8 (lead's addition): the radial ``post_split`` (715) precedes the boundaries and
+   exchange (716-717), which precede the ``u0`` save (721); section 3 now says so.
 
 12. Skeleton index
 ------------------
