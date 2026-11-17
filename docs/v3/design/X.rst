@@ -11,10 +11,12 @@ claim not yet settled by a test; its gate is named next to it.
 Pins: snapy ``9e5de2d4``, kintera ``3f5ff938``, pyharp ``6bc01d53``,
 pydisort ``9e7f0075``.
 
-Lane files (snapy): ``src/mesh/*`` (3,266 lines) and ``src/interface/*``
-(1,008 lines), 4,274 lines in total, counted with::
+Lane files (snapy): ``src/mesh/*``, 3,266 lines, counted with::
 
-  git ls-files src/mesh src/interface | grep -E '\.(cpp|hpp|h|c|cu|cuh)$' | xargs cat | wc -l
+  git ls-files src/mesh | grep -E '\.(cpp|hpp|h|c|cu|cuh)$' | xargs cat | wc -l
+
+``src/interface/*`` (1,008 lines) serves output and is O's; section 9 lists it
+as joint and does not count it.
 
 Provider side: pyharp ``src/integrator`` (564 lines) and pydisort ``src``
 (1,590 lines).
@@ -26,7 +28,7 @@ the executor needs from each of them (section 11).
 2. Concepts and current sites
 -----------------------------
 
-Lane size moved from 3,989 lines at ``919936da`` to 4,274 at the pin
+``src/mesh`` plus ``src/interface`` moved from 3,989 lines at ``919936da`` to 4,274 at the pin
 (``meshblock.cpp`` 1,689 to 1,919; ``mesh.cpp`` 543 to 566; ``.item<``
 lines in ``src/mesh`` 23 to 26).
 
@@ -245,39 +247,116 @@ Observation: pyharp's ``from_yaml`` does not read ``max_redo``
 9. Line budget
 --------------
 
+Counted: lane X's own files, ``src/mesh/*`` (3,266 lines), plus the new
+files. Joint rows (the other lane's call) are listed apart and not counted.
+
 .. csv-table:: snapy lane X
    :header: "File", "Lines now", "Lines after", "Deletions named"
 
-   "src/interface/athena_arrays.hpp", 669, 0, "whole file; needs O to move output off AthenaArray (FOR CHENG)"
-   "src/interface/init_from_tensor.hpp", 199, 0, "whole file; built only through src/interface/athena_arrays.hpp:669, goes with it"
-   "src/interface/stride_iterator.hpp", 140, 0, "whole file; no built includer"
-   "src/mesh/meshblock.cpp", 1919, 1716, "a-g below (-203)"
-   "src/mesh/meshblock.hpp", 332, 316, "282-294 legacy helpers; 221-222, 229 defer flags"
-   "src/mesh/mesh.cpp", 566, 520, "354-361 single-block path; 363-364; 367-402 into the executor's global phase"
-   "src/mesh/mesh.hpp", 81, 81, ""
-   "src/mesh/meshblock_options.cpp", 296, 296, ""
-   "src/mesh/mesh_functions.cpp", 36, 36, ""
-   "src/mesh/mesh_functions.hpp", 20, 20, ""
-   "src/mesh/cycle_diagnostics.hpp", 16, 16, ""
-   "src/mesh/stage_executor.hpp (new)", 0, 90, ""
-   "src/mesh/stage_executor.cpp (new)", 0, 170, ""
-   "src/mesh/precision_policy.hpp (new)", 0, 60, ""
-   "total", 4274, 3321, "cut 953 (22.3%)"
+   "src/mesh/meshblock.cpp", 1919, 1508, "items below (-411)"
+   "src/mesh/meshblock.hpp", 332, 266, "items below (-66)"
+   "src/mesh/mesh.cpp", 566, 355, "items below (-211)"
+   "src/mesh/mesh.hpp", 81, 75, "items below (-6)"
+   "src/mesh/meshblock_options.cpp", 296, 190, "items below (-106)"
+   "src/mesh/mesh_functions.cpp", 36, 31, "items below (-5)"
+   "src/mesh/mesh_functions.hpp", 20, 17, "items below (-3)"
+   "src/mesh/cycle_diagnostics.hpp", 16, 16, "joint with O, below"
+   "src/mesh/stage_executor.hpp (new)", 0, 70, "segments, schedule, graph cache"
+   "src/mesh/stage_executor.cpp (new)", 0, 150, "eager run, capture, replay, global phase"
+   "src/mesh/precision_policy.hpp (new)", 0, 40, "storage, compute and cast dtypes"
+   "total", 3266, 2718, "cut 548 (16.8%)"
 
-``meshblock.cpp`` deletions:
+Items. Each line: net lines, file, ranges at the pin, the replacement.
+Gross and added counts are by hand; the bitwise gate is section 5's golden
+run on 1 and N blocks, before and after each PR.
 
-a. -57: host timers in the stage driver, 711, 774-781, 808-815, 890-897,
+a. -59 (meshblock.cpp): host stage timers 711, 774-781, 808-815, 889-898,
    911-918, 924-931, 939-946, 973-980; the executor times segments.
-b. -36: verbose prints in ``reset()``, 188-198, 250-253, 258-261, 265-268,
-   272-275, 293-296, 314-318.
-c. -18: the six face blocks 161-186 become one loop over three axes.
-d. -22: closure and fixer calls 983-1004 move to the global phase.
-e. -31: ``initialize`` 397-436 calls ``initialize_under_mesh`` 472-490
-   instead of repeating it.
-f. -29: legacy helpers 1417-1445 (tests switch to ``local_redo_flags``,
-   ``tests/test_forcing.cpp:754``).
-g. -10: precision branches 534-538, 719-720, 741-742, 1798-1800 via the
-   policy.
+b. -36 (meshblock.cpp): verbose prints in ``reset()`` 188-198, 250-253,
+   258-261, 265-268, 272-275, 293-296, 314-318.
+c. -18 (meshblock.cpp): six face blocks 161-186 become one loop (+8).
+d. -22 (meshblock.cpp): closure and fixer calls 983-1004 go to the global
+   phase (hypothesis: bitwise for 1 block only if 1846-1919 is idempotent).
+e. -24 (meshblock.cpp): ``initialize`` 412-433 repeats
+   ``initialize_under_mesh`` 472-490 and calls it instead; 398-400 is a
+   commented-out barrier; the verbose print 415-417 goes (+1).
+f. -29 (meshblock.cpp): legacy helpers 1417-1445; the test at
+   ``tests/test_forcing.cpp:754`` reads the limiter marks directly.
+g. -10 (meshblock.cpp): precision branches 534-538, 719-720, 741-742,
+   1798-1800 via the policy (+2).
+k. -27 (meshblock.cpp): ``part()`` 337-377, three copied dimension blocks
+   become one loop (+14).
+l1. -11 (meshblock.cpp): ``max_time_step`` 576-595 calls one global-dt
+    helper (MIN allreduce, cfl times 2^-redo) (+9).
+l2. -10 (mesh.cpp): ``max_time_step`` 335-347 calls the same helper (+3).
+m1. -19 (meshblock.cpp): one retry decision for 1 and N blocks, 1565-1601:
+    stack flags, amax, one host read, MAX allreduce (+18).
+m2. -13 (mesh.cpp): 476-492 use it (+4).
+m3. -7 (meshblock.hpp): 272-280 (+2).
+n1. -36 (meshblock.cpp): ``finalize`` 1349-1371, 1399-1414 calls the
+    N-block body of ``Mesh::finalize`` (+3).
+n2. -3 (mesh.cpp): 519-521, folded into that body.
+n3. -27 (meshblock.cpp): ``clock()`` summary 1373-1397, 569, 1658-1660 and
+    ``<ctime>`` at 4; executor wall timing replaces it (+3).
+n4. -3 (meshblock.hpp): 317-319.
+o1. -20 (meshblock.cpp): verbose prints 504-507, 520-522, 542-544, 571-573,
+    1202-1204, 1220-1223.
+o2. -3 (meshblock_options.cpp): verbose print 27-29.
+p. -7 (meshblock.cpp): one fixer-mass helper for 1038-1045 and 1066-1072
+   (+8).
+q. -5 (meshblock.cpp): one ``thermo()`` lookup for 964-965, 1449-1452,
+   1540-1543 (+5).
+r. -6 (meshblock.cpp): both ``to()`` overrides 33-42 read the policy (+4).
+s1. -4 (meshblock.cpp): commented-out code 242-244, unused ``peos`` 302.
+s2. -5 (mesh_functions.cpp): ``UniformMesh`` 8-10 (no caller), comments
+    30-31.
+s3. -3 (mesh_functions.hpp): its declaration 10-12.
+t. -7 (meshblock.cpp): ``bfuncs`` size checks 96-106 become a loop (+4).
+u. -14 (meshblock.cpp): one state-exchange helper for 475-487 and 1116-1128
+   (+12).
+w. -15 (meshblock.cpp): ``apply_extra_forcing`` 819-849 loops over the two
+   keys; error texts kept (+16).
+y1. -7 (meshblock.cpp): ``round_storage_after_stage`` 636-642 becomes the
+    executor's rounding segment.
+y2. -2 (meshblock.hpp): 214-215.
+aa1. -3 (meshblock.cpp): 1009-1012; the global phase reads the hydro sums
+     directly (+1).
+aa2. -1 (meshblock.hpp): 226.
+bb. -5 (meshblock.cpp): the lock 9, 31, 134-135, 137; blocks are built one
+    after another (``src/mesh/mesh.cpp:259-272``; hypothesis).
+hp. -16 (meshblock.hpp): defer flags 221-222, 229; legacy helpers 282-294.
+x. -37 (meshblock.hpp): ``\param`` blocks restating signatures, 162-167,
+   171-175, 186-190, 194-199, 244-249, 253-258, 265-269, 304-309 (+8).
+M. -46 (mesh.cpp): 354-361, 363-364, 367-402 into the global phase.
+h1. -126 (mesh.cpp): ``BlockWorkerPool`` 6-8, 13-14, 66-227; per-block jobs
+    on ATen's inter-op pool with executor-owned streams (+41; hypothesis,
+    gate: CPU multi-block wall time within 5%, no nested-launch deadlock).
+h2. -6 (mesh.hpp): 69-74.
+v. -4 (mesh.cpp): redundant single-block branch 423-426.
+z. -9 (mesh.cpp): ``check_same_variables`` 47-62 as one key-set comparison
+   (+7).
+i. -81 (meshblock_options.cpp): six face-parsing blocks 104-212 become one
+   loop; keeps x1 periodic for "cubed" only and the null padding (+28).
+j. -22 (meshblock_options.cpp): slice checks 65-86 repeat those in
+   ``reset()`` 202-230; a bad slice now fails at construction.
+
+Without h1-h2 the cut is 416 (12.7%). If O's options schema replaces
+``from_yaml``, i and j are O's: with h1-h2 kept, then 445 (13.6%).
+
+.. csv-table:: joint, not counted
+   :header: "File", "Lines now", "Lines after", "Owner and request"
+
+   "src/interface/athena_arrays.hpp", 669, 0, "O: output off AthenaArray (section 11)"
+   "src/interface/init_from_tensor.hpp", 199, 0, "O: included only at src/interface/athena_arrays.hpp:669"
+   "src/interface/stride_iterator.hpp", 140, 0, "O: no built includer"
+   "src/mesh/meshblock.cpp", 1919, 1919, "O: restart 1603-1833, diagnostics 1226-1346; S: exchange 644-685, 1135-1196"
+   "src/mesh/cycle_diagnostics.hpp", 16, 16, "O: with the diagnostics"
+
+**FOR CHENG** (20% target): lane X's own files reach 16.8% net with the new
+executor counted. The rest sits in code that is O's or S's by function:
+restart and cycle diagnostics (352 lines in ``meshblock.cpp``) and
+``src/interface`` (1,008). Count those moves to the lane whose file
+shrinks, or to the lane that owns the function?
 
 .. csv-table:: providers
    :header: "File", "Lines now", "Lines after", "Deletions named"
@@ -289,10 +368,6 @@ g. -10: precision branches 534-538, 719-720, 741-742, 1798-1800 via the
    "pyharp/src/integrator/integrator_dispatch.hpp", 14, 0, "dead"
 
 pydisort: no file touched.
-
-**FOR CHENG** (20% target): 868 of the 953 lines are ``athena_arrays.hpp`` and
-the ``init_from_tensor.hpp`` it includes.
-Without lane O moving output to tensors, lane X cuts 85 lines (2.0%).
 
 10. Migration
 -------------
@@ -306,8 +381,8 @@ Without lane O moving output to tensors, lane X cuts 85 lines (2.0%).
    "X2", "StateStore; out= replaces set_ at 901-902, 921-922", "bitwise (hypothesis; gate: section 5 golden)"
    "X3", "StageExecutor from tests/straka_cuda_graph.py; deck selection; eager default", "eager bitwise; graph parity"
    "X4", "device closure and fixer; deferred abort; global phase for 1 and N blocks", "bitwise for accepted steps if partial-sum order is kept (hypothesis), else round-off"
-   "X5", "meshblock split into six parts; deletions a-f", "bitwise"
-   "X6", "delete src/interface (with O)", "bitwise"
+   "X5", "meshblock split into six parts; section 9 items except d, M, h1-h2", "bitwise (hypothesis; gate: section 5 golden)"
+   "X6", "h1-h2: block jobs on the inter-op pool", "bitwise; CPU multi-block wall time within 5%"
    "X7", "capability matrix, docs, benchmarks (G7)", "no numerics"
 
 Removed: host stage timers (replaced by segment timing), the ``defer_*``
@@ -371,10 +446,15 @@ K (Isaac):
 
 O (Jiachen):
 
-- Move output off ``AthenaArray`` (``src/output/output_type.hpp:99``) so
-  ``src/interface`` can go (section 9)?
-- Restart (``src/mesh/meshblock.cpp:1603-1833``) and cycle diagnostics
-  (``src/mesh/meshblock.cpp:1226-1339``): owned by O or X?
+- Request: move output off ``AthenaArray`` (``src/output/output_type.hpp:99``)
+  and delete ``src/interface`` (1,008 lines) in your PR; X needs nothing from it.
+- Request: take the restart loader (``src/mesh/meshblock.cpp:1603-1833``) and
+  the cycle diagnostics (``src/mesh/meshblock.cpp:1226-1346``,
+  ``src/mesh/cycle_diagnostics.hpp``) into your design. X asks only that
+  restart loads into the fixed buffers in the storage dtype, and that the
+  diagnostics' host reads stay at step end.
+- Does your options schema replace ``from_yaml``
+  (``src/mesh/meshblock_options.cpp:13-223``)? Then items i and j are yours.
 - Retire the FP32 storage emulation (``src/utils/fp32_storage.hpp:12-26``)
   once true FP32 passes?
 
