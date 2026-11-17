@@ -25,18 +25,17 @@ struct BlockExchange;   // owner S
 //! now src/mesh/meshblock.cpp:1447-1601: device retry flags, restore, resets
 struct BlockRedo;       // owner X; flags from EF, K, R
 
-//! now src/mesh/meshblock.cpp:1603-1833
+//! now src/mesh/meshblock.cpp:1603-1833; O takes the checks 1623-1653
 struct BlockRestart;    // owner O (question to O)
 
 //! now src/mesh/meshblock.cpp:1207-1415: outputs and cycle diagnostics
 struct BlockOutput;     // owner O (question to O)
 
-//! registered by owners, not listed in the stage driver (now 713-745); the
-//! tensors are allocated once at setup, so a captured graph keeps addresses.
-//! kStepStart: once per attempt, before the stage-0 resets (step zeroing,
-//! then the radial post); kStageZero: backup, marks, counters (now 719-744);
-//! kRollback: restore, radial restore_step, register rollback (now
-//! 1476-1489); it erases no step-start post: the retry reruns kStepStart
+//! registered by owners (now 713-745), tensors allocated once at setup.
+//! kStepStart, once per attempt: R's begin_step(), then the radial post;
+//! kStageZero: u0 backup, K's snapshot_active_set, reset_failures (for the
+//! host drain at 736), marks, counters; kRollback: restore u0/s0, radial
+//! restore_step, K's restore_active_set, R's rollback(); retry reruns kStepStart
 enum class ResetPhase { kStepStart, kStageZero, kRollback };
 struct StepReset {
   std::string name;   // e.g. "limiter.marks", "register", "vic.dry_clamp"
@@ -56,7 +55,7 @@ struct RetryFlag {
 
 //! the global corrections leave the block: one Mesh phase for 1 and N blocks
 //! (now src/mesh/mesh.cpp:367-402 and src/mesh/meshblock.cpp:983-990)
-class Fixer;  // lane R's only fixer declaration (flux_register.hpp, 3490d7e1)
+class Fixer;  // lane R's only fixer declaration (flux_register.hpp, 4c59162a)
 //! X's registry, no apply of its own: partial_sums() of every fixer, one
 //! FP64 collective, then Fixer::apply(u, sums, dt, stage_weight, reg) with
 //! stage_weight = that stage's w2 (now src/mesh/meshblock.cpp:1027)

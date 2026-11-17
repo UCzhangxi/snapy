@@ -80,7 +80,8 @@ Types (declared in section 12):
 - ``StageExecutor`` (owned by ``Mesh``): runs a schedule eagerly or by
   replaying one graph per (block, stage, segment); eager is the reference.
 - ``GraphKey``: device, shapes/strides/dtypes, StateStore generation,
-  configuration generation, stage, precision, dt.
+  configuration generation, stage, precision, dt, and the
+  (``options_digest``, ``epoch``) pair of each kintera table held (K 3.3).
 - ``MeshBlock`` keeps its API; its body splits into six parts (item 6 of the
   thread): init, advance, exchange, redo, restart, output.
 
@@ -95,13 +96,13 @@ Data flow of one step::
   for stage s:
     [pack]  -> host UCX -> [unpack]           exchange = segment boundary
     [compute: hydro fwd (R) | seam exchanges (S) split it]
-    [compute: scalar, forcings, RK combine out=hydro_u, limiter, solid]
-    [last stage: finish_step, then after_combine (R's fixers)]
+    [compute: scalar, forcings, RK combine out=hydro_u, last stage:
+     finish_step; every stage: after_combine (R): limiter, solid]
     [global: device partial sums] -> host allreduce -> [global: apply]
     [boundaries]
   host: one read of the stacked retry flags -> MAX allreduce
         -> reject: kRollback list on all blocks, rerun from step start
-        -> accept: FP64 SUM of R's amounts over blocks, ranks -> observe
+        -> accept: O's observe (O's flush makes the amount SUM)
 
 Without a process group (one rank: ``src/layout/layout.hpp:213-217``,
 ``src/mesh/meshblock.cpp:986``) there is no allreduce, and the host segment
@@ -110,14 +111,21 @@ same graph.
 
 Hooks (``stage_executor.hpp``, ``meshblock_parts.hpp``). ``step_start(dt)``
 runs the ``kStepStart`` entries once per attempt, before the stage-0 resets:
-the register's step zeroing, then the radial half step and its
+R's ``begin_step()``, then the radial half step and its
 ``post_split`` (``src/mesh/meshblock.cpp:714-718``, before the resets at
-``src/mesh/meshblock.cpp:722-738``). ``finish_step(dt)`` runs on the last
-stage after the combine (``src/mesh/meshblock.cpp:903-905``), then R's
-``after_combine`` phase. A rejected step runs the ``kRollback`` entries:
-restore, the radial ``restore_step`` (``src/mesh/meshblock.cpp:1479-1480``)
-and ``rollback()``; none erases a step-start post in place, since the retry
-reruns ``step_start`` at the new dt, as the pin re-enters stage 0.
+``src/mesh/meshblock.cpp:722-738``). ``kStageZero`` takes the ``u0``
+backup, then K's ``snapshot_active_set``, then ``reset_failures``, which
+replaces the host drain at ``src/mesh/meshblock.cpp:736`` (K 3.2, 3.4).
+``finish_step(dt)`` runs on the last stage after the combine
+(``src/mesh/meshblock.cpp:903-905``); R's ``after_combine`` follows every
+stage's combine, so the limiter (``src/mesh/meshblock.cpp:907-909``) comes
+after ``finish_step`` on the last. A rejected step runs the ``kRollback``
+entries: restore ``u0``/``s0``, the radial ``restore_step``
+(``src/mesh/meshblock.cpp:1479-1480``), K's ``restore_active_set``, then
+R's ``rollback()``; none erases a step-start post in place, since the retry
+reruns ``step_start`` at the new dt, as the pin re-enters stage 0. The retry
+stack calls ``consume_failures(flags.narrow(0, 4, 1))``, slot 4
+(``src/mesh/meshblock.cpp:1559-1560``).
 ``observe()`` runs after the accept. Retry causes keep the pin's bits 0-5
 (``src/mesh/meshblock.cpp:1585-1596``); ``diffusion.radial``, the radial
 check, is a named ``RetryFlag`` with cause bit 6 (value 64).
@@ -130,12 +138,13 @@ optional and outside this round (section 10, last subsection).
 -----------------------------------------
 
 Names and signatures are lane R's header (``docs/v3/skeleton/R/flux_register.hpp``
-at R's latest head ``3490d7e1``). R rev 2 not yet frozen; the rev 1 header
-``543ff84f`` is the one the other lanes cited.
+at R rev 2.2 ``4c59162a``); the other lanes cited the rev 1 header ``543ff84f``.
 
-- Storage: ``FluxRegister::reset(coord, policy, nvar, req)`` takes fixed
-  storage owned by ``StateStore`` (``register_storage``) at ``reset()``,
-  never in restart (derived state). Its dtype is a ``PrecisionPolicy`` row;
+- Storage: ``FluxRegister::reset(coord, policy, nvar, req)``
+  (``flux_register.hpp:43-44``) takes no storage and allocates its own,
+  fixed at ``reset()`` (R.rst:1395-1396); ``StateStore::register_storage``
+  registers R's tensors for address stability, and a new allocation bumps
+  the store generation. Never in restart (derived state). Its dtype is a ``PrecisionPolicy`` row;
   ``step_field`` is FP64, FP32 on MPS (R's section 6).
 - Posts: device ops inside compute segments (R's pipeline stages).
 - Begin stage: the executor calls ``begin_stage(int stage,
@@ -147,18 +156,21 @@ at R's latest head ``3490d7e1``). R rev 2 not yet frozen; the rev 1 header
 - Reads: the register's exchange is an exchange phase (pack, host, unpack);
   it ends the posting segment.
 - Corrects: per stage, as R settled: a device op in the segment after the
-  unpack, before the RK combine (now ``src/mesh/meshblock.cpp:901``); fixers
-  that act after the combine run in R's ``after_combine`` phase (now
-  ``src/mesh/meshblock.cpp:907-909``).
-- Reset: the step zeroing (R's ``reset_step``) is X's first ``kStepStart``
-  entry, before the radial ``post_split``, so ``begin_stage(0)`` must not
-  zero the step again (question to R); ``rollback()`` is a ``kRollback``
-  entry, with the limiter marks (now ``src/mesh/meshblock.cpp:1489``).
+  unpack, before the RK combine (now ``src/mesh/meshblock.cpp:901``); X
+  enters R's ``after_combine`` after each stage's combine (the limiter, now
+  ``src/mesh/meshblock.cpp:907-909``, and the fixers), on the last stage
+  after ``finish_step`` (R.rst:685-689; ``flux_register.hpp:22``).
+- Reset: R's ``begin_step()`` (``flux_register.hpp:48``; R.rst:31-32,
+  70-73) is X's first ``kStepStart`` entry, before the radial
+  ``post_split``; ``begin_stage(0)`` zeroes nothing. ``rollback()`` is the
+  last ``kRollback`` entry, with the limiter marks (now ``src/mesh/meshblock.cpp:1489``).
 - Monitor: R's ``RegisterMonitor``. Its ``retry_flags()`` join the step-end
   MAX read (``src/mesh/meshblock.cpp:1559-1568``,
   ``src/mesh/meshblock.cpp:1586-1591``, ``src/mesh/mesh.cpp:485``). Its FP64
-  amounts take a separate path: after the accept, in the host phase outside
-  graphs, a sum over blocks and one SUM allreduce, then ``observe``.
+  amounts belong to O: after the accept X calls ``Consumer::observe``, which
+  accumulates them on the device every accepted step, and ``flush`` makes the
+  collective and the host read at its cadence (O.rst:307-314, 369-372,
+  712-716 at ``c12f78bb``). X keeps only the MAX retry read at step end.
 - Fixers: R's ``Fixer`` is the one declaration; ``GlobalCorrection`` holds
   a list of them and declares no ``apply``. The global phase runs every
   ``partial_sums()``, one FP64 collective per stage, then
@@ -179,9 +191,9 @@ The ten register requirements, by number:
    "3", "stage weights into the step transfer", "``begin_stage(int stage, harp::IntegratorWeight const&)``, one host weight per stage; R's recursion needs no table; a graph keyed by stage bakes it in"
    "4", "divergence reads the register", "not this lane (R, C)"
    "5", "two entries per shared face", "not this lane (R, S); X schedules the register's exchange as an exchange phase"
-   "6", "one device monitor, no host read in a segment", "``RegisterMonitor::retry_flags()`` joins the step-end MAX read (``src/mesh/meshblock.cpp:1566``); amounts take the SUM path after the accept; section 7 bans host reads in segments"
+   "6", "one device monitor, no host read in a segment", "``RegisterMonitor::retry_flags()`` joins the step-end MAX read (``src/mesh/meshblock.cpp:1566``); amounts go to O's ``observe`` after the accept; section 7 bans host reads in segments"
    "7", "every fixer and floor registers its addition", "``Fixer`` is R's; X keeps the registry and its collective; fixers post ``cell_amount``"
-   "8", "stated dtype, fixed storage", "``StateStore`` owns the storage and allocates it at ``reset()``; dtype is a ``PrecisionPolicy`` row, the step accumulator FP64 (MPS: FP32)"
+   "8", "stated dtype, fixed storage", "R's ``reset()`` allocates it, ``StateStore`` registers it (fixed addresses); dtype is a ``PrecisionPolicy`` row, the step accumulator FP64 (MPS: FP32)"
    "9", "no added full-field copy per stage", "face data only; ``out=`` removes today's copies (section 8)"
    "10", "rebuilt, never in restart", "derived state: ``reset()`` at set-up, ``rollback()`` a ``kRollback`` entry"
 
@@ -320,10 +332,22 @@ dt: recapture on a changed dt first, as ``V3_ROADMAP.md:124-129`` asks;
 parameterize later, once every op reads dt from one device scalar (now a host
 double, ``src/mesh/meshblock.cpp:773``).
 
-Invalidation: any change in ``GraphKey``. The prototype restores only the
+Invalidation: any change in ``GraphKey``. Kintera tables (K rev 2
+``fa290bb2``, K.rst:232-245): before each replay X recomputes the options
+digest on the host and reads the epoch from the module's ``tables()``
+(K.rst:237-238); a new pair (from ``prepare`` or ``reset``) is a new
+key, so the graph is recaptured; a digest that differs from the held
+table's without a new ``prepare`` throws (K 3.3, K.rst:228-240). Each held
+graph keeps its ``ThermoTablesPtr`` copies (``CapturedGraph``), so a table
+outlives every graph that references it. K-F2's conditional node is
+declined for this round: X captures segments whole with
+``at::cuda::CUDAGraph`` and V3 adds no node-level graph API, so ``fixed``
+stays the baseline; it is revisited with parameterized graphs (X2,
+section 11). The prototype restores only the
 state tensors around warm-up and capture (``tests/straka_cuda_graph.py:59-60``,
-``tests/straka_cuda_graph.py:69-72``); X adds the registers, counters and
-retry flags to that save and restore, untested (gate "flags survive
+``tests/straka_cuda_graph.py:69-72``); X adds the registers, counters, retry flags,
+kintera's failure counter and active set (``restore_active_set``,
+K.rst:257-258) to that save and restore, untested (gate "flags survive
 replay"). Warm-up and capture run with the step's dt, never dt = 0, so an
 op that divides by dt stays finite. With fixed storage the per-replay input
 copy (``tests/straka_cuda_graph.py:86-88``) never fires and goes.
@@ -686,12 +710,11 @@ option, and which positivity rule replaces SSP?
 
 R (Linfeng):
 
-- Answered by R's head (``3490d7e1``): FP64 step field (FP32 on MPS); one
+- Answered by R rev 2.2 (``4c59162a``): FP64 step field (FP32 on MPS); one
   ``IntegratorWeight`` per ``begin_stage``; corrections per stage, plus
   ``after_combine``; ``rollback()`` in the reset list; the monitor's flags
-  join the read at ``src/mesh/meshblock.cpp:1566``.
-- Open: zero the step in ``reset_step()`` from X's step start, before the
-  radial ``post_split``, and not again in ``begin_stage(0)`` (section 4)?
+  join the read at ``src/mesh/meshblock.cpp:1566``; the step is zeroed once,
+  in ``begin_step()`` at X's step start (R.rst:31-32).
 
 S (Jiheng):
 
@@ -884,10 +907,10 @@ The reviewer's notes 1-7 on rev 2 (``034ef405``):
    erases no step-start post, the retry reruns step start, and
    ``finish_step`` is named (sections 3 and 4; ``meshblock_parts.hpp``,
    ``stage_executor.hpp``).
-3. Added: the FP64 SUM path for accepted amounts, the ``after_combine`` and
-   ``observe`` hooks, and register storage owned by ``StateStore``
-   (sections 3 and 4; ``state_store.hpp``).
-4. Re-cited to R's head ``3490d7e1``: one ``IntegratorWeight`` per
+3. Added: the ``after_combine`` and ``observe`` hooks (sections 3 and 4);
+   rev 3.1 gives the amount sum to O and has ``StateStore`` register
+   R's tensors (round-4 notes).
+4. Re-cited to R (now rev 2.2 ``4c59162a``): one ``IntegratorWeight`` per
    ``begin_stage``, no ``StageWeights``; the accumulator is FP64, FP32 on
    MPS (sections 4 and 6).
 5. Narrowed to the prototype's state restore; warm-up and capture use the
@@ -909,8 +932,31 @@ The coordinator's items 1-6:
 5. Section 9's ranges in the joint row and the O block, and j is X's
    (sections 9 and 11); X registers the species clip, EF owns the op
    (section 7).
-6. R rev 2 not yet frozen: X cites R's head ``3490d7e1`` and its rev 1
-   header ``543ff84f`` (section 4).
+6. X cites R rev 2.2 ``4c59162a`` (section 4).
+
+Round-4 notes
+~~~~~~~~~~~~~
+
+K rev 2 (``fa290bb2``), its three asks to X (K.rst:621-628):
+
+1. Done: ``GraphKey::tables`` holds the (``options_digest``, ``epoch``)
+   pairs and ``CapturedGraph`` the ``ThermoTablesPtr`` copies (section 7).
+2. Done in K's order (sections 3 and 4; ``meshblock_parts.hpp``).
+3. K-F2's conditional node: declined for this round (section 7).
+
+R rev 2.2, its requests to X (R.rst:1612-1614): ``begin_step`` is X's
+name (section 4); ``after_combine`` follows each stage's combine (sections
+3 and 4); the amount SUM owner is O (section 4); per-op time in
+``report()`` is margin, not in this round; X counts the meshblock fixer
+lines: item d deletes the call, gw1 the body (section 9, rows d and gw1).
+
+The rev-3 review (``100bc9b3``), conflicts 1-4: (1) ``after_combine``
+after every combine, the limiter after ``finish_step`` (sections 3 and 4);
+(2) cited to ``4c59162a``, ``begin_step`` (sections 4 and 11); (3) R's
+``reset`` allocates, ``StateStore`` registers (section 4,
+``state_store.hpp``); (4) O owns the amount SUM (section 4). Conflict 5,
+the clone sites at ``src/mesh/meshblock.cpp:857`` and ``:859``, and the
+``diffusion.radial`` details are taken in the next revision.
 
 12. Skeleton index
 ------------------

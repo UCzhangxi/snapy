@@ -24,9 +24,9 @@ class StateStore {
   //! fixed copy of hydro_u for the retry test (now the clone at
   //! src/mesh/meshblock.cpp:1517), filled with copy_
   torch::Tensor& scratch();
-  //! FluxRegister storage (lane R), owned here, fixed at reset(); dtype
-  //! kRegister: FP64, FP32 on MPS
-  torch::Tensor& register_storage(std::string const& name);
+  //! R's FluxRegister::reset() allocates its tensors (R.rst 7); registered
+  //! here for address stability: a new allocation bumps generation()
+  void register_storage(std::string const& name, torch::Tensor const& t);
 
   //! stage 0: u0 = hydro_u, s0 = scalar_s (copy_, no allocation)
   void backup();
