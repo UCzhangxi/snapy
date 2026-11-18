@@ -293,7 +293,7 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, as at the pin (``src/hydro/hydro.cpp:529-530``): when any column fails the FP32 solve, with ``implicit-fallback-fp64`` on, no earlier failed stage and a finite FP64 right-hand side, the same predicated FP64 launch over all its columns, its predicate one 0-d device bool (any column failed, the stage latch clear, the FP64 right-hand side finite; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a listed behavior change), with no host read; I's removal of the whole-block retry (``I.rst:1000`` at ``fa3ad5e6``) waits for that ruling", "a predicated second FP64 launch (I section 6)"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, as at the pin (``src/hydro/hydro.cpp:529-530``): when any column fails the FP32 solve, with ``implicit-fallback-fp64`` on, no earlier failed stage and a finite FP64 right-hand side, the same predicated FP64 launch over all its columns, its predicate one 0-d device bool (any column failed, the stage latch clear, the FP64 right-hand side finite; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a behavior change listed in section 10), with no host read; I's removal of the whole-block retry (``I.rst:1000`` at ``fa3ad5e6``) waits for that ruling", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
@@ -331,7 +331,7 @@ utils 7; each owner rules on its own).
    "src/mesh/meshblock.cpp:901-902, src/mesh/meshblock.cpp:921-922", "allocation + rebinding", "pyharp out= into fixed storage", "G1"
    "src/mesh/meshblock.cpp:44-56; called at src/mesh/meshblock.cpp:631, src/mesh/meshblock.cpp:923, src/mesh/meshblock.cpp:1199, src/mesh/meshblock.cpp:1484, src/mesh/meshblock.cpp:1743, src/mesh/meshblock.cpp:1827-1829", "allocation + rebinding of ``scalar_r``", "divided with ``out=`` into its ``StateStore`` buffer: 923 after the EF limiter (907-909, writes density), before the solid fill (936-938); 1199 X's op after each ``exchange_ghost_zones`` (its corner refresh, 1194-1195); 1484 a ``kRollback`` entry after ``s0``; 1828 the restart rebuild, or 1743 its stored copy when not rebuilt (1729-1730), outside a step (``StateStore::assign``); 631 goes with the emulation (fp1)", "G1"
    "src/mesh/meshblock.cpp:950-981", "saturation adjustment", "eager segment until kintera capture", "G2"
-   "src/mesh/meshblock.cpp:1017-1018, src/mesh/meshblock.cpp:1023", "host copy, 2 reads, 1 branch", "device sums and mask; allreduce is a boundary", "G1/G4"
+   "src/mesh/meshblock.cpp:1017-1018, src/mesh/meshblock.cpp:1023", "host copy, 2 reads, 1 branch", "``.item()`` reads removed: device sums and mask; allreduce is a boundary", "G1/G4"
    "src/mesh/meshblock.cpp:1061, src/mesh/meshblock.cpp:1075, src/mesh/meshblock.cpp:1080", "copy to host, branch", "removed with the gravity-work fixer (Cheng)", "G1/G4"
    "src/mesh/meshblock.cpp:1097", "abort on bound", "removed with the gravity-work fixer (Cheng)", "G1"
    "src/implicit/implicit_hydro.cpp:476-487", "finiteness screen: ``item<double>()`` every stage with the implicit correction", "segment end until its owner turns it into a device flag in the retry read", "G3"
@@ -438,7 +438,7 @@ fill.
 Within-stage exchanges at the pin. Each is a boundary (pack | host |
 unpack) only when its condition holds; the single-block Cartesian default
 crosses none. Lane S's exchange table (``docs/v3/design/S.rst`` section 3.3,
-branch ``v3-design/S`` at ``fe1612b1``: rows 0-30, 16r and 17p) owns their
+``jihenghu/snapy`` branch ``v3-design/S`` at ``4b96f4ea``, S.rst:324-724: rows 0-29, 16r, 16i, 17p and 16l) owns their
 order, packing and rounds; X cuts one boundary per blocking round, keyed by
 S's rows.
 
@@ -454,9 +454,11 @@ S's rows.
    "src/hydro/hydro_forward.cpp:245-253, src/hydro/hydro_forward.cpp:1490", "x1 split, with scalar covariance or the seam work term", "x1 seam rows; not in C's list", "19, 22-25"
    "src/hydro/hydro_forward.cpp:1227", "positivity limiter", "hydro theta (EF); after #370 also hspec and, cubed sphere, donor velocities", "17, 17p"
    "src/scalar/scalar.cpp:205, src/scalar/scalar.cpp:239", "scalar limiter; 205 only with an upper bound", "scalar theta (EF), through src/scalar/scalar.cpp:179", "26-27"
-   "src/eos/equation_of_state.cpp:340-347, from src/mesh/meshblock.cpp:909, src/mesh/meshblock.cpp:952", "pz > 1, whole-column vapor and cloud repair", "x1 column gather, a collective: splits the limiter's segment (EF)", "28"
+   "src/eos/equation_of_state.cpp:340-347, from src/mesh/meshblock.cpp:909, src/mesh/meshblock.cpp:952", "pz > 1, whole-column vapor and cloud repair", "x1 column gather, a collective: splits the limiter's segment (EF); 1-2 rounds per call, and the last stage's second call (952, with reactions) adds 2 (1 with M8)", "28"
    "src/forcing/diffusion_cubed_sphere.cpp:132-143", "cubed sphere, diffusion", "flux seam, four streamed rounds inside the hydro forcing loop (src/hydro/hydro_forward.cpp:1378-1384): splits that segment", "18"
-   "none yet (S section 4)", "cubed sphere, panel seams", "R's replace of the owner's x2/x3 face slab (proposed)", "16r"
+   "none yet (S.rst:521-534)", "cubed sphere, panel seams", "R's replace of the owner's x2/x3 face slab (proposed)", "16r"
+   "none yet (S.rst:535-548)", "fallback, only if G-R2 fails", "the same replace on same-panel x2/x3 edges, at 16r's position: +1 round, 0 on the cubed sphere if packed into 16r's (hypothesis)", "16i"
+   "none yet (S.rst:572-588)", "fallback, only if G-S-K7 fails", "a second replace after the carry, at the end of ``limit``: +1 round", "16l"
    "src/mesh/meshblock.cpp:983-990", "axial closure with a process group", "allreduce: the global phase (section 3)", "29"
 
 Reconciled with S's table: rows 18, 16r and 29 were missing here and are
@@ -465,8 +467,10 @@ row 9 the register's exchange phase (section 4). Row 30 goes with the
 gravity-work fixer (its call in d, its body in gw1), and with it merge M9. X accepts S's merges as
 proposals with S's labels: M1, M2, M4-M7 and M10 under the section 5 golden;
 M8 only once that golden passes; M3 changes the order of the anchor scan, is
-not bitwise and is Cheng's call (S section 10). With M1-M8 the cubed sphere
-keeps S's 17 rounds, 18 with row 16r (hypothesis). Row 16r cannot share row
+not bitwise and is Cheng's call (S.rst:1897-1901). S's sum on the cubed sphere with the
+most options is 32 rounds, 17 with M1-M8, 18 with row 16r (S.rst:796-812, 899-902;
+hypothesis); the last stage with reactions adds row 28's second gather (+2, +1 with M8),
+and rows 16i and 16l add one each only if their gates fail. Row 16r cannot share row
 17: theta reads the reconciled flux.
 
 Every x1 seam-row call goes through ``HydroImpl::_x1_ghost_rows``
@@ -827,7 +831,9 @@ in G0 (``V3_ROADMAP.md:144``) and documented in G7
 
 Removed: host stage timers (replaced by segment timing), the ``defer_*``
 flags, the four legacy helpers, the dead pyharp dispatch. No physics option
-and no default changes.
+and no default changes. Behavior change: under ``cuda-graph``, a change to
+``implicit-fallback-fp64`` after capture takes effect only through
+``bump_config_generation()`` (section 6, ``kImplicit`` row).
 
 Deck (G7; names are Cheng's call, ``V3_ROADMAP.md:301``)::
 
@@ -918,12 +924,14 @@ S (Jiheng):
   the two-round cubed-sphere exchange (``src/mesh/meshblock.cpp:651-658``)
   and the corner fill?
 - Who owns the boundary-function refresh ``src/mesh/meshblock.cpp:1135-1196``?
-- Answers to S's three questions (``fe1612b1``, S section 11): (1) yes,
+- Answers to S's three questions (S.rst:1934-1941 at ``4b96f4ea``): (1) yes,
   cuts at S's rows, merges as labelled (section 7); (2) the options YAML
   parsing (S's move A) is not X's: X keeps no options reader, and the
   generated option schema is O's (section 9, j and sv); X asks O; (3) yes,
   X owns the CI build for S's H18 (``--fmad=false``, ``-ffp-contract=off``)
-  as a capability-matrix row (G0, ``V3_ROADMAP.md:144``).
+  as a capability-matrix row (G0, ``V3_ROADMAP.md:144``). S's open point: if
+  their gates fail, 16i shares 16r's cut when packed into its round, else
+  has its own; 16l is always its own cut, as it reads the post-carry flux.
 
 EF (Zoey):
 
@@ -1385,7 +1393,7 @@ The review of rev 3.8 (``7109d465``), points 1-4:
 2. K rev 2.8 states the idempotent ``prepare()`` (K.rst:280-283 at ``f84a5c58``), gate K-G10.
 3. K.rst:756 names ``MeshBlock::set_chemistry`` but not its declarer; X asks
    K to state that S-K4 declares it and its Python binding.
-4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W`` with a reference; 211, ``U->W`` and ``U'->W`` without one, 182) is EF's site: the call reuses EF's ``apply_conserved_limiter_`` (``EF.rst:573`` at ``f5c8e9a7``), and EF agreed to both sites in the lane X thread.
+4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W`` with a reference; 211, ``U->W`` and ``U'->W`` without one, 182) is EF's site: the call reuses EF's ``apply_conserved_limiter_`` (``EF.rst:186-190`` at ``f5c8e9a7``), and EF agreed to both sites in the lane X thread.
 
 Round-14 notes
 ~~~~~~~~~~~~~~
