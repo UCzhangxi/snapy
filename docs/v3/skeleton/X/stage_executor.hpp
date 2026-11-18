@@ -10,10 +10,15 @@
 
 namespace kintera {  // K rev 2, skeleton/K/tables.hpp
 struct ThermoTables;
+struct KineticsOptionsImpl;
 using ThermoTablesPtr = std::shared_ptr<ThermoTables const>;
 }  // namespace kintera
 namespace snap {
-class MeshImpl;
+class MeshImpl {  // the pin's Mesh (src/mesh/mesh.hpp); only S-K4's addition shown
+ public:
+  //! once for all blocks: by value, Mesh owns the copy the first build normalizes; adapters built serially outside the pool
+  void set_chemistry(kintera::KineticsOptionsImpl reactions);
+};
 class ChemistrySource;  // snapy-owned, declared in K's skeleton (S-K4)
 
 enum class SegmentKind {
@@ -24,8 +29,7 @@ enum class SegmentKind {
   kGlobal,   // device partial sums over blocks, then a kHost reduction
   kEager     // an op that declared itself not capturable
 };
-//! one registered device op; owners: R, S, EF, K, X
-struct Op {
+struct Op {  // one registered device op; owners: R, S, EF, K, X
   std::string name, owner;  // e.g. "rk.combine", lane letter
   std::vector<std::string> kintera;  // kintera modules it calls (GraphKey::alloc_epochs)
   bool capturable;    // no host read, no allocation outside the graph pool
@@ -36,13 +40,11 @@ struct Segment {
   std::vector<Op> ops;
   bool capturable() const;
 };
-//! the segments of one RK stage, built once per configuration
-struct StageSchedule {
+struct StageSchedule {  // the segments of one RK stage, built once per configuration
   int stage;
   std::vector<Segment> segments;
 };
-//! everything a captured graph depends on; any change invalidates it
-struct GraphKey {
+struct GraphKey {  // everything a captured graph depends on; any change invalidates it
   int device_index;
   std::vector<int64_t> shapes;  // flattened shapes and strides of the state
   int dtype_generation;         // PrecisionPolicy::generation()
@@ -54,14 +56,11 @@ struct GraphKey {
   std::vector<int64_t> alloc_epochs;  // kintera::alloc_epoch(m), a free function, per module in Op::kintera
   bool operator<(GraphKey const& other) const;
 };
-
-//! deck: integration.execution and integration.execution-strict (names: G7)
-struct ExecutionOptions {
+struct ExecutionOptions {  // deck: integration.execution, integration.execution-strict (G7)
   std::string execution = "eager";  // eager | cuda-graph (CUDA only; else eager)
   bool strict = false;  // true: reject before launch if any segment is eager
 };
-//! per case, separating numerical from graph support (design section 10)
-struct Capability {
+struct Capability {  // per case, separating numerical from graph support (design section 10)
   bool eager_fp64, eager_fp32, graph_fp64, graph_fp32;
   std::vector<std::string> eager_reasons;  // which ops forced eager segments
 };
@@ -80,7 +79,7 @@ class StageExecutor {
   //! every stage, per block in R's order: EF's limiter (907-909), X's scalar slot (920-923), S's solid fill; then A's closure, global phase
   void after_combine(int stage, double dt);
   //! chemistry slot (design 7), last stage: ends MeshBlock::forward; in Mesh::forward, before its final exchange; FP64
-  void set_chemistry(std::shared_ptr<ChemistrySource> source);
+  void set_chemistry(int block, std::shared_ptr<ChemistrySource> source);
   //! step-end host phase: one read of the stacked retry flags, MAX allreduce;
   //! kRollback entries on all blocks when rejected; returns the causes
   int decide_retry();
@@ -98,7 +97,7 @@ class StageExecutor {
   //! tables from NoTableBuild::used(); alive while the graph is held (K 3.3)
   struct CapturedGraph { at::cuda::CUDAGraph* graph; std::vector<kintera::ThermoTablesPtr> tables; };
   std::map<GraphKey, CapturedGraph> graphs_;
-  ExecutionOptions options_; std::shared_ptr<ChemistrySource> chemistry_;  // null: no chemistry
+  ExecutionOptions options_; std::vector<std::shared_ptr<ChemistrySource>> chemistry_;  // by local block index; null: none
   MeshImpl* mesh_;
 };
 
