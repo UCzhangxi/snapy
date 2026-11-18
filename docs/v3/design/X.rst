@@ -91,7 +91,7 @@ Types (declared in section 12):
   and each assigner takes the second argument: ``examples/bryan.cpp:80``, ``examples/jupiter_evap_precip_1d.cpp:66``,
   ``examples/run_hydro.cpp:145``, ``examples/straka.cpp:42``, ``tests/test_user_output.cpp:194``, ``tests/test_user_output.cpp:409``,
   the binding ``python/csrc/pymesh.cpp:173`` (``python/snapy/mesh.pyi:145``) and the docs
-  examples (``docs/user_guide/output.rst:488``, ``docs/user_guide/simulation.rst:195-209``, ``docs/api/mesh.rst:106``). A one-argument callback must be updated: in C++ it no longer compiles, and a one-argument Python callable fails at its first call. Its body splits into six parts (item 6 of the
+  examples (``docs/user_guide/output.rst:488``, ``docs/user_guide/simulation.rst:195-209``, ``docs/api/mesh.rst:106``). The same X PR binds ``FluxRegister`` for Python: a class with R's const reads only (R skeleton ``flux_register.hpp:82-92`` at ``97c62312``), which the wrapper at ``python/csrc/pymesh.cpp:170-176`` passes to the Python callable by reference, never owned by Python; the stub ``python/snapy/mesh.pyi:145`` becomes ``Callable[[Variables, FluxRegister], Variables]``, with a ``FluxRegister`` stub. A one-argument callback must be updated: in C++ it no longer compiles, and a one-argument Python callable fails at its first call. Its body splits into six parts (item 6 of the
   thread): init, advance, exchange, redo, restart, output.
 
 Ownership: ``Mesh`` owns the executor and the global phase (reductions over
@@ -293,7 +293,7 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, the same predicated FP64 launch over all its columns", "a predicated second FP64 launch (I section 6)"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, as at the pin (``src/hydro/hydro.cpp:529-530``): when any column fails the FP32 solve, with ``implicit-fallback-fp64`` on, no earlier failed stage and a finite FP64 right-hand side, the same predicated FP64 launch over all its columns; I's removal of the whole-block retry (``I.rst:1000`` at ``fa3ad5e6``) waits for that ruling", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
