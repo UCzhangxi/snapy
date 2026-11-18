@@ -2,7 +2,7 @@ Lane X: execution (precision, CUDA graphs, mesh, integrator, radiation)
 =======================================================================
 
 Owner: Xi Zhang. Round-2 reviewers: as assigned in the lane X thread.
-Every ``file:line`` below is at the pins of section 1. "Hypothesis" marks a
+Every ``file:line`` below is at the pins of section 1, except pyharp lines describing the code after P1, which are at P1's head. "Hypothesis" marks a
 claim not yet settled by a test; its gate is named next to it.
 
 1. Scope and pins
@@ -268,7 +268,7 @@ The ten register requirements, by number:
    :header: "Identity", "Test", "Comparison"
 
    "eager result after X1, X2, X5 equals the pin", "N-step golden of hydro_u and scalar_s, Cartesian and cubed sphere, FP64 and FP32", "bitwise"
-   "out= RK combine equals the allocating form", "pyharp test: each scheme and stage, FP32 and FP64, out aliasing u1 and distinct", "bitwise (x86 CPU: NaN payloads may differ)"
+   "out= RK combine equals the allocating form", "pyharp test: each scheme and stage, FP32 and FP64, out aliasing u1 and distinct; a wrong-shaped (empty) out is resized to u0's shape", "bitwise (x86 CPU: NaN payloads may differ)"
    "state addresses fixed", "data_ptr of hydro_u, scalar_s, scalar_r, u0, s0 unchanged over 10 steps with a retry", "exact"
    "no host sync inside a segment", "replay under torch.cuda.set_sync_debug_mode('error')", "exact"
    "graph replay equals eager", "Straka, both precisions, dt changes, a retry", "bitwise (hypothesis); else the tolerance stated by the test"
@@ -295,7 +295,7 @@ The ten register requirements, by number:
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
    "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry of the failed columns only (Cheng, 2026-11-17; I section 6): with ``implicit-fallback-fp64`` on, a predicated second FP64 launch, always run (no conditional nodes), over the columns whose ``col_status`` marks a failed, not yet retried solve (the pin's other conditions, ``src/hydro/hydro.cpp:529-530``, join that predicate, I.rst:763 at ``fa3ad5e6``), from ``rhs64``/``wi64``, ``kImplicit`` forced FP64, posts in ``kFlux``, cause bit 5 through ``retry_flags()``, with no host read; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a behavior change listed in section 10. Before the change, the pin retried the whole block (``src/hydro/hydro.cpp:527-535``)", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
-   "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
+   "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64, base 6bc01d53)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
    "source accumulator", "FP64, one stage-local field", "FP64", "per-source budgets; today FP32 runs only (src/hydro/hydro_forward.cpp:1364-1374); A uses it in both precisions"
    "diagnostics", "int64/bool counters, FP64 sums (MPS: FP32)", "same", "replaces the ad hoc dtype at src/hydro/hydro_forward.cpp:373"
@@ -547,18 +547,18 @@ segment, never per op or inside a graph (margin).
 -----------------------------------------------------
 
 - pyharp: ``forward(int stage, Tensor u0, Tensor u1, Tensor u2, std::optional<Tensor> out = std::nullopt)``
-  (now ``pyharp/src/integrator/integrator.hpp:95-96``). An absent ``out`` keeps
+  (``pyharp/src/integrator/integrator.hpp:86-88``). An absent ``out`` keeps
   the allocating result. Rules: ``out`` may alias ``u1``, never ``u0`` or
-  ``u2``; all four share dtype and device, else it throws. Order:
-  ``out = u1`` (copy if not aliased); ``out *= w1``; ``out += w0*u0``;
-  ``out += w2*u2``. Each step is a separate kernel, so no fused multiply-add;
-  addition commutes (not ``add_(x, alpha)``, which may fuse), so the result
-  is bitwise ``(w0*u0 + w1*u1) + w2*u2``
-  (now ``pyharp/src/integrator/integrator.cpp:123-124``). The dead
-  ``call_average3`` path (``pyharp/src/integrator/integrator.cpp:6``,
+  ``u2``; all four share dtype and device, else it throws. Order
+  (``pyharp/src/integrator/integrator.cpp:82-83``): ``add_out(out, w0*u0, w1*u1)``,
+  then ``out.add_(w2*u2)`` (never ``add_(x, alpha)``, which may fuse), so the
+  result is bitwise equal to the allocating ``w0*u0 + w1*u1 + w2*u2``, NaN
+  sign bits included. A wrong-shaped ``out`` is resized per torch's ``out=``
+  convention (torch warns unless it is empty), with no extra shape check. The dead
+  ``call_average3`` path (base 6bc01d53: ``pyharp/src/integrator/integrator.cpp:6``,
   ``pyharp/src/integrator/integrator.cpp:113-122``,
   ``integrator_dispatch.{cpp,cu,hpp}``) is deleted. The binding
-  (``pyharp/python/csrc/pyintegrator.cpp:51-52``) gains
+  (``pyharp/python/csrc/pyintegrator.cpp:50-52``) gains
   ``py::arg("out") = py::none()`` (no overload). Callers with ``out=``: the RK
   combine (``src/mesh/meshblock.cpp:901-902``,
   ``src/mesh/meshblock.cpp:921-922``) and ``carry_dry_source``
@@ -581,7 +581,7 @@ registered source. Unsupported, explicitly: radiation inside a graph, and
 FP32 radiation (pyharp keeps FP64 buffers,
 ``pyharp/src/integrator/radiation_model.cpp:27-34``).
 
-Observation: pyharp's ``from_yaml`` does not read ``max_redo``
+Observation at base 6bc01d53: pyharp's ``from_yaml`` does not read ``max_redo``
 (``pyharp/src/integrator/integrator.cpp:20-31``), so the default 5
 (``pyharp/src/integrator/integrator.hpp:58``) always holds from a deck.
 
@@ -799,7 +799,7 @@ Provider side: pyharp ``src/integrator`` 564 to 427 (I1-I7), pydisort
    :header: "File", "Lines now", "Lines after", "Change"
 
    "pyharp/src/integrator/integrator.cpp", 136, 94, "items below (-42)"
-   "pyharp/src/integrator/integrator.hpp", 102, 94, "items below (-8); out= fits line 96"
+   "pyharp/src/integrator/integrator.hpp", 102, 94, "items below (-8); out= fits line 88"
    "pyharp/src/integrator/integrator_dispatch.cpp", 43, 0, "items below (-43)"
    "pyharp/src/integrator/integrator_dispatch.cu", 30, 0, "items below (-30)"
    "pyharp/src/integrator/integrator_dispatch.hpp", 14, 0, "items below (-14)"
