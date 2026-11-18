@@ -293,7 +293,8 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, as at the pin (``src/hydro/hydro.cpp:529-530``): when any column fails the FP32 solve, with ``implicit-fallback-fp64`` on, no earlier failed stage and a finite FP64 right-hand side, the same predicated FP64 launch over all its columns, its predicate one 0-d device bool (any column failed, the stage latch clear, the FP64 right-hand side finite; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a behavior change listed in section 10), with no host read; I's removal of the whole-block retry (``I.rst:1000`` at ``fa3ad5e6``) waits for that ruling", "a predicated second FP64 launch (I section 6)"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry of the failed columns only (Cheng, 2026-11-17; I section 6): with ``implicit-fallback-fp64`` on, a predicated second FP64 launch, always run (no conditional nodes), over the columns whose ``col_status`` marks a failed, not yet retried solve (the pin's
+other conditions, ``src/hydro/hydro.cpp:529-530``, join that predicate, I.rst:763 at ``fa3ad5e6``), from ``rhs64``/``wi64``, ``kImplicit`` forced FP64, posts in ``kFlux``, cause bit 5 through ``retry_flags()``, with no host read; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a behavior change listed in section 10. Before the change, the pin retried the whole block (``src/hydro/hydro.cpp:527-535``)", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
@@ -438,7 +439,7 @@ fill.
 Within-stage exchanges at the pin. Each is a boundary (pack | host |
 unpack) only when its condition holds; the single-block Cartesian default
 crosses none. Lane S's exchange table (``docs/v3/design/S.rst`` section 3.3,
-``jihenghu/snapy`` branch ``v3-design/S`` at ``4b96f4ea``, S.rst:324-724: rows 0-29, 16r, 16i, 17p and 16l) owns their
+``jihenghu/snapy`` branch ``v3-design/S`` at ``4b96f4ea``, S.rst:324-742: rows 0-29, 16r, 16i, 17p and 16l) owns their
 order, packing and rounds; X cuts one boundary per blocking round, keyed by
 S's rows.
 
@@ -590,29 +591,30 @@ Observation: pyharp's ``from_yaml`` does not read ``max_redo``
 
 Counted: the brief's baseline, snapy ``src/mesh`` and ``src/interface`` at
 the pin, 4,274 lines (20% leaves at most 3,419). New files count as added
-lines; moved lines count in neither lane. ``src/utils``, the FP32 storage
-code included, counts in lane O. Rows joint with O and S are listed apart
+lines; moved lines count in neither lane, except the 159 that leave ``src/mesh``
+for O's files (o3, o4), which X counts as deleted (RULING V3-1). ``src/utils``, the FP32 storage
+code included, counts in lane O. Rows joint with S are listed apart
 and not counted; pyharp and pydisort are listed apart, where touched files
 do not grow.
 
 .. csv-table:: lane X
    :header: "File", "Lines now", "Lines after", "Deletions named"
 
-   "src/mesh/meshblock.cpp", 1919, 1360, "items below (-559)"
+   "src/mesh/meshblock.cpp", 1919, 1217, "items below (-702)"
    "src/mesh/meshblock.hpp", 332, 250, "items below (-82)"
    "src/mesh/mesh.cpp", 566, 352, "items below (-214)"
    "src/mesh/mesh.hpp", 81, 75, "items below (-6)"
    "src/mesh/meshblock_options.cpp", 296, 190, "items below (-106)"
    "src/mesh/mesh_functions.cpp", 36, 31, "items below (-5)"
    "src/mesh/mesh_functions.hpp", 20, 17, "items below (-3)"
-   "src/mesh/cycle_diagnostics.hpp", 16, 16, "joint with O, below"
+   "src/mesh/cycle_diagnostics.hpp", 16, 0, "o4, to O's budget.cpp (-16)"
    "src/mesh/stage_executor.hpp (new)", 0, 70, "segments, schedule, graph cache"
    "src/mesh/stage_executor.cpp (new)", 0, 150, "eager run, capture, replay, global phase"
    "src/mesh/precision_policy.hpp (new)", 0, 40, "storage, compute and cast dtypes"
    "src/interface/athena_arrays.hpp", 669, 0, "F1, after O's writer change"
    "src/interface/init_from_tensor.hpp", 199, 0, "F2, with F1"
    "src/interface/stride_iterator.hpp", 140, 0, "F3"
-   "total", 4274, 2551, "cut 1723 (40.3%)"
+   "total", 4274, 2392, "cut 1882 (44.0%)"
 
 Items. Each line: net lines, file, ranges at the pin, the replacement.
 Gross and added counts are by hand; the bitwise gate is section 5's golden
@@ -654,6 +656,10 @@ n4. -3 (meshblock.hpp): 317-319.
 o1. -20 (meshblock.cpp): verbose prints 504-507, 520-522, 542-544, 571-573,
     1202-1204, 1220-1223.
 o2. -3 (meshblock_options.cpp): verbose print 27-29.
+o3. -143 (meshblock.cpp): restart checks 1623-1653 (31) to O's ``restart.cpp``,
+    cycle diagnostics 1226-1339 less gw1's 1336-1337 (112) to O's
+    ``budget.cpp``; RULING V3-1: X counts the deletion, O its new files.
+o4. -16 (cycle_diagnostics.hpp): the whole file, with o3, to O's ``budget.cpp``.
 q. -5 (meshblock.cpp): one ``thermo()`` lookup for 964-965, 1449-1452,
    1540-1543 (+5).
 r. -6 (meshblock.cpp): both ``to()`` overrides 33-42 read the policy (+4).
@@ -749,11 +755,12 @@ D2. -17 (pydisort/src/disort.cpp): ``set_flags`` 49-93 becomes a map from
     (+28); the same 17 tokens and the same error text.
 
 Added counts for I5, D1 and D2 come from clang-format (Google style) on a
-draft. Without h1-h2 the cut is 1591 (37.2%). If O's options schema replaces
+draft. Without h1-h2 the cut is 1750 (40.9%). If O's options schema replaces
 ``from_yaml``, i goes to O and j stays X's, as O books it:
-with i out the cut is 1642 (38.4%), and with i, h1 and h2 out 1510 (35.3%), the lower bound.
-Before O's writer change the cut is 827 (19.3%), 28 short of 20%: F1 and F2 wait for it, and
-sv waits for O's option checks; F3 does not. Of the 827 stated, 614 (14.4%)
+with i out the cut is 1801 (42.1%), and with i, h1 and h2 out 1669 (39.1%), the lower bound.
+Before O's writer change the cut is 986 (23.1%): F1 and F2 wait for it, and
+sv waits for O's option checks; F3 does not. o3 and o4 (159) wait for O's
+``restart.cpp`` and ``budget.cpp``; without them 827 (19.3%), 28 short of 20%. Of those 827, 614 (14.4%)
 is the floor before O's changes: i (81) goes to O if O's schema replaces
 ``from_yaml``, and h1 (126) and h2 (6) wait on their wall-time gate. d (21) and bb (5)
 also rest on hypotheses; without them 588 (13.8%). Cheng's decisions are in the base: the FP32 storage emulation
@@ -767,15 +774,14 @@ keeps its +150 as an upper bound.
 .. csv-table:: joint, not counted
    :header: "File", "Lines now", "Lines after", "Owner and request"
 
-   "src/mesh/meshblock.cpp", 1919, 1919, "O: restart checks 1623-1653 (the rest of 1603-1833 stays in src/mesh), diagnostics 1226-1339 less 1336-1337 (gw1); S: exchange 644-685, 1135-1196"
-   "src/mesh/cycle_diagnostics.hpp", 16, 16, "O: with the diagnostics"
+   "src/mesh/meshblock.cpp", 1919, 1919, "S: exchange 644-685, 1135-1196 (O's 1623-1653 and 1226-1339 less 1336-1337 are X's o3)"
 
 O moves ``src/utils/signal_handler.*`` (213 lines) into ``src/mesh``: a move,
 counted in neither lane. ``src/mesh`` is its home: it takes ``MeshBlockImpl``
 (``src/utils/signal_handler.hpp:45``), and only the mesh includes it
 (``src/mesh/mesh.cpp:28``, ``src/mesh/meshblock.cpp:24``). With it,
 ``src/mesh`` and ``src/interface`` go from 4,487 lines (4,274 and the 213
-moved in) to 2,764, a cut of 38.4%.
+moved in) to 2,605, a cut of 41.9%.
 
 **Dependency on O**: F1 and F2 (868 lines) land after O's writer drops
 ``AthenaArray``, and sv (28) after O's option checks; section 10 orders them. The split was agreed with O (rev 1,
@@ -817,7 +823,7 @@ Provider side: pyharp ``src/integrator`` 564 to 427 (I1-I7), pydisort
    "X5", "meshblock split into six parts; section 9 src/mesh items except d, M, h1-h2, sv", "bitwise (hypothesis; gate: section 5 golden)"
    "X6", "h1-h2: block jobs on the inter-op pool", "bitwise; CPU multi-block wall time within 5%"
    "X7", "capability matrix, docs, benchmarks (G7)", "no numerics"
-   "X8", "delete src/interface (F1-F3) and sv; F1-F2 after O's writer holds tensors (cut 827 of 4,274 before, 1,723 after), sv after O's option checks, F3 any time; first O ports ``tests/test_user_output.cpp:39-100`` (O's note 8), and one grep for the array class, ``InitFromTensor``, ``CopyFromTensor``, ``OutputData`` and ``pfirst_data_`` over src, tests and python finds only unbuilt files", "no numerics; build and tests pass"
+   "X8", "delete src/interface (F1-F3) and sv; F1-F2 after O's writer holds tensors (cut 986 of 4,274 before, 827 without o3-o4, 1,882 after), sv after O's option checks, F3 any time; first O ports ``tests/test_user_output.cpp:39-100`` (O's note 8), and one grep for the array class, ``InitFromTensor``, ``CopyFromTensor``, ``OutputData`` and ``pfirst_data_`` over src, tests and python finds only unbuilt files", "no numerics; build and tests pass"
 
 Scope of this round (Cheng): design and declarations only. Nothing here was
 built or run; section 5's gates are specified, not run, and a claim that
@@ -831,9 +837,14 @@ in G0 (``V3_ROADMAP.md:144``) and documented in G7
 
 Removed: host stage timers (replaced by segment timing), the ``defer_*``
 flags, the four legacy helpers, the dead pyharp dispatch. No physics option
-and no default changes. Behavior change: under ``cuda-graph``, a change to
+and no default changes. Behavior changes: under ``cuda-graph``, a change to
 ``implicit-fallback-fp64`` after capture takes effect only through
-``bump_config_generation()`` (section 6, ``kImplicit`` row).
+``bump_config_generation()`` (section 6, ``kImplicit`` row); and the FP64
+retry (Cheng, 2026-11-17) re-solves the failed columns only. The behaviour
+before the change re-solved the whole block in FP64 (``src/hydro/hydro.cpp:527-535``);
+now the block's other columns keep their FP32 solution, a change beyond
+round-off of the size of the FP32-FP64 solve gap, the ``fp64_fallbacks``
+meter counts columns, and a step with no failed column is bitwise (I section 10 (c)).
 
 Deck (G7; names are Cheng's call, ``V3_ROADMAP.md:301``)::
 
@@ -850,7 +861,7 @@ separate):
    "Cartesian dry, 1 block", "yes", "yes", "G1", "G1"
    "Cartesian, N blocks, UCX ranks", "yes", "yes", "G4", "G4"
    "kintera moist", "yes", "M-series", "G2", "G2"
-   "vertical implicit correction", "yes", "Cartesian ideal-moist, FP64 retry per column if Cheng agrees (I section 10 (c)), else per block", "G3", "G3"
+   "vertical implicit correction", "yes", "Cartesian ideal-moist, FP64 retry of the failed columns only (Cheng)", "G3", "G3"
    "cubed sphere", "yes", "G5", "G6", "G6"
    "user TorchScript forcing", "yes", "yes", "eager segment", "eager segment"
    "radiation (pyharp/pydisort)", "not on the step path", "no", "no", "no"
@@ -969,8 +980,8 @@ Requests to O, and where the two drafts differ:
   (1,008) counts in X, and X deletes it after O's writer drops
   ``AthenaArray`` (``src/output/output_type.hpp:99``); ``src/utils``, the FP32
   storage code included, counts in O. Moved lines (``signal_handler.*`` into
-  ``src/mesh``, restart and diagnostics out of ``meshblock.cpp``) count in
-  neither lane.
+  ``src/mesh``) count in neither lane; restart and diagnostics out of
+  ``src/mesh`` count as X's deletion (RULING V3-1, below).
 - Take restart and cycle diagnostics, with section 9's ranges: the restart
   checks ``src/mesh/meshblock.cpp:1623-1653`` (the rest of 1603-1833,
   n3's 1658-1660 and g's 1798-1800 included, stays in ``src/mesh``),
@@ -982,7 +993,9 @@ Requests to O, and where the two drafts differ:
   restart module) and the cycle diagnostics 1226-1339 with
   ``src/mesh/cycle_diagnostics.hpp`` (O's printer over budget totals) are
   inside the joint rows of section 9, so X counts neither, except the
-  fixer's print 1336-1337 (gw1).
+  fixer's print 1336-1337 (gw1). Superseded (RULING V3-1, agreed by O at
+  ``36b61c40``): the 159 lines leave ``src/mesh`` for O's ``restart.cpp`` and
+  ``budget.cpp``; X counts the deletion (o3, o4), O only its new files.
 - A device dt at ``src/mesh/meshblock.cpp:1210``: not in the first release.
   dt stays a host double and a graph is keyed by it (section 7); output runs
   in the host phase after the accept, outside graphs, so ``AccumulateStats``
@@ -1393,7 +1406,7 @@ The review of rev 3.8 (``7109d465``), points 1-4:
 2. K rev 2.8 states the idempotent ``prepare()`` (K.rst:280-283 at ``f84a5c58``), gate K-G10.
 3. K.rst:756 names ``MeshBlock::set_chemistry`` but not its declarer; X asks
    K to state that S-K4 declares it and its Python binding.
-4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W`` with a reference; 211, ``U->W`` and ``U'->W`` without one, 182) is EF's site: the call reuses EF's ``apply_conserved_limiter_`` (``EF.rst:186-190`` at ``f5c8e9a7``), and EF agreed to both sites in the lane X thread.
+4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W`` with a reference; 211, ``U->W`` and ``U'->W`` without one, 182) is EF's site: the call reuses EF's ``apply_conserved_limiter_`` (``EF.rst:187-192`` at ``f5c8e9a7``), and EF agreed to both sites in the lane X thread.
 
 Round-14 notes
 ~~~~~~~~~~~~~~
@@ -1469,6 +1482,19 @@ The coordinator's items on rev 3.13 (``54ca5356``), the reviewer's notes and Che
    one-block ``Mesh`` (section 7).
 7. Cheng accepted the chemistry slot (section 5) and L-2; neither carries a
    ``FOR CHENG`` marker.
+
+Round-19 notes
+~~~~~~~~~~~~~~
+
+1. Cheng's decision (2026-11-17, relayed by the coordinator): lane I's
+   per-column FP64 retry is accepted in place of the whole-block retry. It is
+   now the design of record (sections 6 and 10, the capability matrix,
+   ``precision_policy.hpp:21``); the whole-block retry is the behaviour before
+   the change.
+2. The 159 ``src/mesh`` lines that move to O's ``restart.cpp`` and
+   ``budget.cpp`` count as X's deletion (RULING V3-1; section 9).
+3. Cites: S's table is S.rst:324-742 at ``4b96f4ea``; EF's C4 row is
+   EF.rst:187-192 at ``f5c8e9a7``.
 
 12. Skeleton index
 ------------------
