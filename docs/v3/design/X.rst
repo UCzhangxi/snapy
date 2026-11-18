@@ -85,13 +85,13 @@ Types (declared in section 12):
   (``options_digest``, ``epoch``) pair of each kintera table held and the
   ``kintera::alloc_epoch(m)`` of each kintera module ``m`` in the segment, K's free
   function (K 3.3; skeleton ``K/tables.hpp:59`` at ``ef93e92d``).
-- ``MeshBlock`` keeps its API except one type (L-2, answered yes): ``user_output_callback``
+- ``MeshBlock`` keeps its API except one type (L-2, accepted by Cheng): ``user_output_callback``
   (``src/mesh/meshblock.hpp:125``) becomes ``std::function<Variables(Variables const&, FluxRegister const&)>``;
   O calls it with the block's register (``src/output/load_user_output_data.cpp:14``, ``src/output/load_user_output_data.cpp:19``),
   and each assigner takes the second argument: ``examples/bryan.cpp:80``, ``examples/jupiter_evap_precip_1d.cpp:66``,
   ``examples/run_hydro.cpp:145``, ``examples/straka.cpp:42``, ``tests/test_user_output.cpp:194``, ``tests/test_user_output.cpp:409``,
   the binding ``python/csrc/pymesh.cpp:173`` (``python/snapy/mesh.pyi:145``) and the docs
-  examples (``docs/user_guide/output.rst:488``, ``docs/user_guide/simulation.rst:195-209``, ``docs/api/mesh.rst:106``). Its body splits into six parts (item 6 of the
+  examples (``docs/user_guide/output.rst:488``, ``docs/user_guide/simulation.rst:195-209``, ``docs/api/mesh.rst:106``). A one-argument callback must be updated: in C++ it no longer compiles, and a one-argument Python callable fails at its first call. Its body splits into six parts (item 6 of the
   thread): init, advance, exchange, redo, restart, output.
 
 Ownership: ``Mesh`` owns the executor and the global phase (reductions over
@@ -293,7 +293,7 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then today's whole-block FP64 retry", "a predicated second FP64 launch (I section 6)"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, the same predicated FP64 launch over all its columns", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
@@ -1459,6 +1459,8 @@ The coordinator's items on rev 3.13 (``54ca5356``), the reviewer's notes and Che
    the Mesh's, and ``MeshBlock::set_chemistry`` on it throws (sections 3 and 7).
 6. The bare executor's step start and retry scope are its one block, as a
    one-block ``Mesh`` (section 7).
+7. Cheng accepted the chemistry slot (section 5) and L-2; neither carries a
+   ``FOR CHENG`` marker.
 
 12. Skeleton index
 ------------------
