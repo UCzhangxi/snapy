@@ -1,6 +1,6 @@
 #pragma once
 // Lane X skeleton: declarations only, in no build.
-// meshblock.cpp in six parts, one owner each; the MeshBlock API is unchanged.
+// meshblock.cpp in six parts, one owner each; the MeshBlock API is unchanged but user_output_callback (L-2).
 #include <functional>
 #include <string>
 #include <vector>

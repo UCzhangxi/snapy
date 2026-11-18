@@ -18,7 +18,7 @@ enum class Quantity {
   kPrimitive,    // hydro_w totals
   kGauge,        // gauges, total face pressure
   kReduction,    // dt, budgets, closure sums
-  kImplicit,     // vertical implicit correction (FP64 fallback)
+  kImplicit,     // vertical implicit solve: FP32 on Cartesian ideal-moist; FP64 retry per column
   kThermo,       // kintera totals, saturation
   kRegister,     // FluxRegister storage (R); its step_field is FP64
   kSource,       // stage-local source accumulator, FP64

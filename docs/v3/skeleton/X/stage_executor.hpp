@@ -16,8 +16,11 @@ using ThermoTablesPtr = std::shared_ptr<ThermoTables const>;
 namespace snap {
 // S-K4's additions to the pin's Mesh and MeshBlock, by value (design 7); the copy's first build writes only its own members
 class MeshImpl { public: void set_chemistry(kintera::KineticsOptionsImpl reactions); };  // one adapter per block, serially
-class MeshBlockImpl { public: void set_chemistry(kintera::KineticsOptionsImpl reactions); };  // bare block: slot 0
-class ChemistrySource;  // snapy-owned, declared in K's skeleton (S-K4)
+using Variables = std::map<std::string, torch::Tensor>; class FluxRegister; class ChemistrySource;  // pin's; R's; S-K4's (K's skeleton)
+class MeshBlockImpl { public:  // bare block: slot 0; a block of a Mesh throws, naming Mesh::set_chemistry
+  void set_chemistry(kintera::KineticsOptionsImpl reactions);
+  //! L-2: pin meshblock.hpp:125 gains the block's register; O calls it (load_user_output_data.cpp:19)
+  std::function<Variables(Variables const&, FluxRegister const&)> user_output_callback; };
 
 enum class SegmentKind {
   kCompute,  // device ops of one block; capturable if every op is
@@ -38,10 +41,7 @@ struct Segment {
   std::vector<Op> ops;
   bool capturable() const;
 };
-struct StageSchedule {  // the segments of one RK stage, built once per configuration
-  int stage;
-  std::vector<Segment> segments;
-};
+struct StageSchedule { int stage; std::vector<Segment> segments; };  // one RK stage, built once per configuration
 struct GraphKey {  // everything a captured graph depends on; any change invalidates it
   int device_index;
   std::vector<int64_t> shapes;  // flattened shapes and strides of the state
@@ -49,7 +49,7 @@ struct GraphKey {  // everything a captured graph depends on; any change invalid
   int store_generation;         // StateStore::generation(): addresses
   int config_generation;        // only StageExecutor::bump_config_generation()
   int block, stage, segment;
-  double dt;                    // recaptured on change first; parameterized later
+  double dt;                    // host double; a change recaptures (device dt refused, design 7)
   std::vector<std::pair<uint64_t, int64_t>> tables;  // (options_digest, epoch) per held kintera table, K 3.3
   std::vector<int64_t> alloc_epochs;  // kintera::alloc_epoch(m), a free function, per module in Op::kintera
   bool operator<(GraphKey const& other) const;
@@ -66,7 +66,7 @@ struct Capability {  // per case, separating numerical from graph support (desig
 class StageExecutor {
  public:
   StageExecutor(MeshImpl* mesh, ExecutionOptions const& options);
-  StageExecutor(MeshBlockImpl* block, ExecutionOptions const& options);  // a bare MeshBlock's: one block, slot 0
+  StageExecutor(MeshBlockImpl* block, ExecutionOptions const& options);  // a bare MeshBlock's: slot 0; step_start, retry as a one-block Mesh
 
   double select_dt();  // step-start host phase: global dt (min over blocks and ranks)
   //! once per attempt, before the stage-0 resets: kStepStart (R's begin_step(), then the radial post, now :715)
@@ -75,7 +75,7 @@ class StageExecutor {
   void run_stage(int stage, double dt);
   //! last stage, after the RK combine: finish_step (now src/mesh/meshblock.cpp:905)
   void finish_step(double dt);
-  //! every stage, per block in R's order: EF's limiter (907-909), X's scalar slot (920-923), S's solid fill; then A's closure, global phase
+  //! the one runner (R 97c62312), every stage per block: EF F1 (907-909), X's scalars (920-923), S's solid fill; last stage F1b (952), K (954-972); then A's closure
   void after_combine(int stage, double dt);
   //! chemistry slot (design 7), last stage: ends MeshBlock::forward; in Mesh::forward, before its final exchange; FP64
   void set_chemistry(int block, std::shared_ptr<ChemistrySource> source);

@@ -77,7 +77,7 @@ Types (declared in section 12):
   flag set by whoever registers the op.
 - ``StageSchedule``: the segments of one RK stage, built once per
   configuration.
-- ``StageExecutor`` (owned by ``Mesh``): runs a schedule eagerly or by
+- ``StageExecutor`` (owned by ``Mesh``; a bare ``MeshBlock`` owns a one-block one): runs a schedule eagerly or by
   replaying one graph per (block, stage, segment); eager is the reference.
   It holds one chemistry adapter per block, indexed by block.
 - ``GraphKey``: device, shapes/strides/dtypes, StateStore generation,
@@ -85,11 +85,18 @@ Types (declared in section 12):
   (``options_digest``, ``epoch``) pair of each kintera table held and the
   ``kintera::alloc_epoch(m)`` of each kintera module ``m`` in the segment, K's free
   function (K 3.3; skeleton ``K/tables.hpp:59`` at ``ef93e92d``).
-- ``MeshBlock`` keeps its API; its body splits into six parts (item 6 of the
+- ``MeshBlock`` keeps its API except one type (L-2, answered yes): ``user_output_callback``
+  (``src/mesh/meshblock.hpp:125``) becomes ``std::function<Variables(Variables const&, FluxRegister const&)>``;
+  O calls it with the block's register (``src/output/load_user_output_data.cpp:14``, ``src/output/load_user_output_data.cpp:19``),
+  and each assigner takes the second argument: ``examples/bryan.cpp:80``, ``examples/jupiter_evap_precip_1d.cpp:66``,
+  ``examples/run_hydro.cpp:145``, ``examples/straka.cpp:42``, ``tests/test_user_output.cpp:194``, ``tests/test_user_output.cpp:409``,
+  the binding ``python/csrc/pymesh.cpp:173`` (``python/snapy/mesh.pyi:145``) and the docs
+  examples (``docs/user_guide/output.rst:488``, ``docs/user_guide/simulation.rst:195-209``, ``docs/api/mesh.rst:106``). Its body splits into six parts (item 6 of the
   thread): init, advance, exchange, redo, restart, output.
 
 Ownership: ``Mesh`` owns the executor and the global phase (reductions over
-blocks and ranks). Each ``MeshBlock`` owns its ``StateStore`` and contributes
+blocks and ranks); a block inside a ``Mesh`` uses the Mesh's executor, a bare
+``MeshBlock`` owns a one-block executor. Each ``MeshBlock`` owns its ``StateStore`` and contributes
 segments. Lanes R, S, EF, K register ops; X schedules them.
 
 Data flow of one step::
@@ -207,7 +214,9 @@ at R rev 2.2 ``4c59162a``).
   unpack, before the RK combine (now ``src/mesh/meshblock.cpp:901``); X
   enters its ``after_combine`` slot, R's phase, after each stage's combine (the limiter, now
   ``src/mesh/meshblock.cpp:907-909``, and the fixers), on the last stage
-  after ``finish_step`` (R.rst:691-701; ``flux_register.hpp:22``).
+  after ``finish_step`` (R.rst:691-701; ``flux_register.hpp:22``). R rev 4.3
+  (``97c62312``, ``hydro_stage.hpp:67-70``) removes ``HydroStage::after_combine``:
+  ``StageExecutor::after_combine(stage, dt)`` is the one runner.
 - Reset: R's ``begin_step()`` (``flux_register.hpp:48``; R.rst:31-32,
   70-73) is X's first ``kStepStart`` entry, before the radial
   ``post_split``; ``begin_stage(0)`` zeroes nothing. ``rollback()`` is the
@@ -284,7 +293,7 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction", "FP32", "FP32, FP64 fallback", "fallback on solve failure"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
@@ -369,7 +378,10 @@ exchange, a new order without a pin golden, gated by one block against two
 the three pin callers that build a ``Kinetics``, ``examples/run_hydro.cpp:37``,
 ``examples/jupiter_evap_precip_1d.cpp:200``, ``tests/test_fp32_jupiter.py:66``)
 owns a one-block executor; ``MeshBlock::set_chemistry`` builds its one adapter
-into slot 0. ``Mesh::set_chemistry``, called once, builds one adapter per block
+into slot 0. Its ``step_start`` and retry scope are that block, exactly as a
+one-block ``Mesh``: the same ``kStepStart`` ops, ``max_redo`` and cause bits. A
+block built by a ``Mesh`` holds the Mesh's executor, and ``MeshBlock::set_chemistry``
+on it throws, naming ``Mesh::set_chemistry``, so no registration misses it. ``Mesh::set_chemistry``, called once, builds one adapter per block
 (local index, ``Mesh::blocks`` order) into the ``Mesh`` executor's vector,
 ``StageExecutor::set_chemistry(block, source)``; each block's slot runs its own.
 The copy is member-wise: values (thermo vectors, ``Tref``, ``Pref``, flags) are
@@ -474,9 +486,11 @@ in no row) takes the dry difference and the scalar base unchanged. They lie
 in w's 819-884 and are rewritten, not deleted: no count changes. C's B6, the x1 seam flux average, is the register's exchange phase
 (section 4).
 
-dt: recapture on a changed dt first, as ``V3_ROADMAP.md:124-129`` asks;
-parameterize later, once every op reads dt from one device scalar (now a host
-double, ``src/mesh/meshblock.cpp:773``).
+dt: a host double in ``GraphKey``; a changed dt recaptures, as ``V3_ROADMAP.md:124-129`` asks.
+A device dt is refused in V3: every op takes dt as a host double (now
+``src/mesh/meshblock.cpp:773``), with ``w2 dt`` and ``dt_corr`` formed on the
+host, so a 0-d scalar written before replay would leave the captured values
+stale while a key without dt would replay them.
 
 Invalidation: any change in ``GraphKey``. Kintera tables (K rev 2.6
 ``ef93e92d``, K.rst:183-187, 266-285): X first calls ``prepare()`` on each
@@ -830,7 +844,7 @@ separate):
    "Cartesian dry, 1 block", "yes", "yes", "G1", "G1"
    "Cartesian, N blocks, UCX ranks", "yes", "yes", "G4", "G4"
    "kintera moist", "yes", "M-series", "G2", "G2"
-   "vertical implicit correction", "yes", "fallback FP64", "G3", "G3"
+   "vertical implicit correction", "yes", "Cartesian ideal-moist, FP64 retry per column", "G3", "G3"
    "cubed sphere", "yes", "G5", "G6", "G6"
    "user TorchScript forcing", "yes", "yes", "eager segment", "eager segment"
    "radiation (pyharp/pydisort)", "not on the step path", "no", "no", "no"
@@ -839,8 +853,8 @@ Every row keeps its schemes (Cheng): all six Riemann solvers, all six
 reconstructions, ANEOS and PnetCDF stay. CPU and MPS run eager only:
 ``cuda-graph`` falls back to eager there, and strict mode rejects it.
 
-Optional: two-tableau stage form (IMEX-ARK), not in this round's scope; question for Cheng
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+After V3 (note): two-tableau stage form (IMEX-ARK), not in V3 (Cheng)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 No other lane writes against this subsection; the contract, skeleton and
 budget above stand without it. Today a stage is the Shu-Osher combine
@@ -870,8 +884,8 @@ established. An ARK pair would add, in prose only (not in the skeleton):
   relative in FP64; the observed order on a one-column acoustic-gravity
   wave (dt to dt/4 against dt/16, implicit Courant 10-100) is at least
   p - 0.2;
-- milestone X9 after G1, which it needs for the executor and fixed storage;
-  ``V3_ROADMAP.md`` has none.
+- no milestone in V3; after V3 it would follow G1, which it needs for the
+  executor and fixed storage.
 
 Three points stand in its way at the pin. The pinned correction is not
 split into explicit and implicit operators. R's register carries one weight
@@ -880,9 +894,9 @@ separate explicit and implicit weights. Positivity relies on the SSP
 structure of the integrators (``src/hydro/hydro_forward.cpp:1163-1164``),
 which an ARK pair need not have.
 
-FOR CHENG: should the implicit operator be split, should IMEX-ARK (X9)
-enter ``V3_ROADMAP.md`` after G1, should the implicit owner add a Newton
-option, and which positivity rule replaces SSP?
+Cheng ruled (2026-11-17, relayed by the coordinator): not in V3. The implicit
+operator is not split, there is no Newton option, SSP positivity stays, and
+stages stay Shu-Osher with pyharp's weights.
 
 11. Open questions to other lanes
 ---------------------------------
@@ -894,6 +908,8 @@ R (Linfeng):
   ``after_combine``; ``rollback()`` in the reset list; the monitor's flags
   join the read at ``src/mesh/meshblock.cpp:1566``; the step is zeroed once,
   in ``begin_step()`` at X's step start (R.rst:31-32).
+- Answered by R rev 4.3 (``97c62312``): ``HydroStage::after_combine`` is gone;
+  X's ``StageExecutor::after_combine(stage, dt)`` is the one runner (Round-18 notes).
 
 S (Jiheng):
 
@@ -989,6 +1005,29 @@ C:
 - Rev 2 is to specify the register, FP32 and graph contracts: please
   reference X's precision and graph contracts (sections 6 and 7) rather
   than define a second one.
+
+Lane I, the six questions of I.rst:1277-1284 (``7604ada0``):
+
+1. A predicated second FP64 launch, always run, not CUDA conditional nodes
+   (X's position): the launch count stays fixed and eager, the reference,
+   runs the same ops as the replay (section 3); section 6's row.
+2. ``kImplicit`` is already a row (section 6; ``precision_policy.hpp:21``);
+   the FP64 retry is that row forced FP64. Posts stay ``kFlux``, the stage
+   total, whose dtype a retry must not change.
+3. No: dt is a host double keyed in ``GraphKey``, a change recaptures, and a
+   device dt is refused in V3 (section 7, as for O above).
+4. Yes, with no read of its own: the OR of ``col_status`` goes through R's
+   int32 ``retry_flags()`` slot into X's one stacked step-end read
+   (``src/mesh/meshblock.cpp:1566``) as cause bit 5 (section 4); G3 also
+   removes the screen at ``src/implicit/implicit_hydro.cpp:476-487`` (section 7).
+5. X's position: the solve has no boundary of its own. It runs in the hydro
+   forward's compute segment, which starts after the stage's unpack and ends
+   at the next exchange (S's seams, the register's), and until G3 at the
+   finiteness screen (section 7); a mask or grid change bumps
+   ``config_generation`` and recaptures.
+6. Yes in V3 (X's position): the pin refuses FP32 elsewhere
+   (``src/hydro/hydro.cpp:502-507``); lifting it waits for G5 (FP32 cubed
+   sphere, section 10) and a lane I FP32 gate.
 
 Round-2 notes
 ~~~~~~~~~~~~~
@@ -1404,6 +1443,22 @@ The lead's items 1-4 on rev 3.12 (``6405a34a``):
    copy's own members, so no deep copy is needed (section 7).
 5. K rev 3.1 (``5a714053``) agrees: S-K4 after X4 and EF-8 with the source run, the
    by-value signature, slot 0, the shallow copy; the gate asserts the caller's ``uref_R`` unchanged.
+
+Round-18 notes
+~~~~~~~~~~~~~~
+
+The coordinator's items on rev 3.13 (``54ca5356``), the reviewer's notes and Cheng's ruling:
+
+1. L-2: ``user_output_callback`` gains ``FluxRegister const&`` (section 3;
+   ``stage_executor.hpp``), with its assigners and binding named.
+2. R rev 4.3 (``97c62312``) removes ``HydroStage::after_combine``;
+   ``StageExecutor::after_combine(stage, dt)`` is the one runner (sections 4, 11).
+3. Lane I's six questions are answered in section 11; device dt is refused (section 7).
+4. IMEX-ARK is an after-V3 note (Cheng, section 10).
+5. A bare ``MeshBlock`` owns a one-block executor, a block of a ``Mesh`` uses
+   the Mesh's, and ``MeshBlock::set_chemistry`` on it throws (sections 3 and 7).
+6. The bare executor's step start and retry scope are its one block, as a
+   one-block ``Mesh`` (section 7).
 
 12. Skeleton index
 ------------------
