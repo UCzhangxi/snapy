@@ -338,12 +338,22 @@ combine, limiter, scalar combine, ``scalar_r`` divide, solid fill; last stage, w
 after the solid fill, as the first op of the saturation adjustment's segment (eager until G2);
 global phase (the axial closure when on); boundaries. On the last stage the
 radial ``finish_step`` host check ends the combine's segment (section 3).
-After the last stage's boundaries and before the step-end retry read, as the
-last op of the last stage's ``MeshBlock::forward`` (``Mesh::forward`` for
-several blocks, which takes its exchange-first order; the driver calls nothing extra), the executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
-``ChemistrySource`` the driver registered through the block it steps (S-K4
-declares that ``MeshBlock`` forwarder, ``MeshBlock::set_chemistry``, and its Python binding), snapy's adapter over kintera's
-``Kinetics`` (S-K4; K.rst:366-372, 748 at ``143fedeb``), as an eager FP64
+After the last stage and before the step-end retry read, with no reorder of
+any pin op; the driver calls nothing extra. The three pin callers step
+chemistry after ``block->forward`` returns, so the slot is the last op of the
+last stage's ``MeshBlock::forward``, after its exchange and stage
+(``src/mesh/meshblock.cpp:616-618``; 618 goes with fp1); the next call's
+exchange-first (616) syncs the ghosts, as at the pin. No pin caller uses
+``Mesh::forward``, which exchanges last (``src/mesh/mesh.cpp:359, 406``) and
+has no exchange before the next stage's reconstruction (``advance_local``
+exchanges only for the radial split, 716-717): there the slot runs just before
+that final exchange, a new order without a pin golden, checked by one block
+against two (bitwise). There the executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
+``ChemistrySource`` the driver registered through the block it steps
+(``MeshBlock::set_chemistry`` and its Python binding: K.rst:756 at ``f84a5c58``
+names the call, attributed to "X rev 3.7", but not who declares it; X asks K
+to state that S-K4 does), snapy's adapter over kintera's
+``Kinetics`` (S-K4; K.rst:372-380, 756 at ``f84a5c58``), as an eager FP64
 segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
 one: snapy's ``src`` never steps the module it builds
 (``src/scalar/scalar.cpp:54-55``), so a driver that registers no source has
@@ -360,7 +370,8 @@ FP32 storage emulation is removed (Cheng's decision; section 9, y1, y2,
 fp1-fp3), yet with FP32 storage every in-place write into stored rows rounds: EF's
 limiter repairs (``src/mesh/meshblock.cpp:907-909``, every stage with species
 or scalars, else the last; 952; the slot's cons2prim, ``U'->W`` at
-``src/eos/ideal_moist.cpp:185``), K's saturation write (972), A's closure and
+``src/eos/ideal_moist.cpp:185`` with a reference, else ``limit_totals_`` at 211
+in ``U->W``: an EF site, its acknowledgement asked of EF), K's saturation write (972), A's closure and
 the ``+=`` into stored species, as in all three callers. The
 slot computes temperature and pressure with the EOS, FP64, from that
 cons2prim's ``hydro_w`` totals (``W->T``, ``w[IPR]``, as
@@ -442,8 +453,9 @@ before the cell shape and before ``block->to(device)`` (pin
 ``examples/jupiter_evap_precip_1d.cpp:209``), and eager calls build a missing
 table themselves. X requires an idempotent ``prepare()`` (no reallocation when
 shape, dtype and device are unchanged), so the stage-zero snapshot and failure
-counts survive each mid-step warm-up; K at ``143fedeb`` never rebinds the counter but
-allows a reallocating ``prepare()`` and does not say whether a repeat keeps them (K.rst:180-194): a hypothesis until tested, for K rev 2.8 to state. X then opens a ``kintera::NoTableBuild`` scope
+counts survive each mid-step warm-up. K rev 2.8 states it (K.rst:280-283 at
+``f84a5c58``) and gates it (K-G10, K.rst:528: same addresses, epoch, snapshot
+and counts after a repeat); a hypothesis until K-G10 runs. X then opens a ``kintera::NoTableBuild`` scope
 around the segment's warm-up and capture, fills ``GraphKey::tables`` and
 ``CapturedGraph::tables`` from the warm-up's ``used()``, and throws if the
 capture's ``used()`` differs. The modules of a segment are those its ops
@@ -1267,8 +1279,8 @@ The review of rev 3.7 (``b4d18131``), points 1-5, and EF's check (6):
    EOS, FP64, from ``hydro_w`` totals, as the pin's callers do
    (``examples/run_hydro.cpp:180-182``), for ``ChemistrySource::apply``
    (K ``chemistry_source.hpp:35-37`` at ``143fedeb``); section 7.
-2. The last stage's ``MeshBlock::forward`` (``Mesh::forward`` for several
-   blocks, exchange first) runs the slot as its last op, so a driver calls nothing extra
+2. The last stage's forward call runs the slot (Round-13 note 1 gives where),
+   so a driver calls nothing extra
    before ``check_redo``; K rev 2.8 widens S-K4 to all three pin callers.
 3. One caller: ``StageExecutor::after_combine(stage, dt)``, after the combine
    (last stage: after X's ``finish_step``), runs per block the
@@ -1286,6 +1298,22 @@ The review of rev 3.7 (``b4d18131``), points 1-5, and EF's check (6):
    carries no divide (section 7; ``meshblock_parts.hpp``).
 6. EF rev 3.7 (``f5c8e9a7``) has no conflict with X 3.7; X cites EF there
    (EF.rst:671, 675-685, 2095-2109; section 4).
+
+Round-13 notes
+~~~~~~~~~~~~~~
+
+The review of rev 3.8 (``7109d465``), points 1-4:
+
+1. No pin op is reordered. The pin's callers step chemistry after
+   ``block->forward`` (``MeshBlock::forward``, exchange first) returns, so the
+   slot ends that call. No pin caller uses ``Mesh::forward`` (exchange last);
+   after its final exchange the next stage would reconstruct from stale
+   ghosts, so there the slot runs just before it: new, checked one block
+   against two (section 7).
+2. K rev 2.8 states the idempotent ``prepare()`` (K.rst:280-283 at ``f84a5c58``), gate K-G10.
+3. K.rst:756 names ``MeshBlock::set_chemistry`` but not its declarer; X asks
+   K to state that S-K4 declares it and its Python binding.
+4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W``; 211, ``U->W``) is EF's site; X asks EF to acknowledge it.
 
 12. Skeleton index
 ------------------
