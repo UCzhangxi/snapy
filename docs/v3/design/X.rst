@@ -293,8 +293,7 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry of the failed columns only (Cheng, 2026-11-17; I section 6): with ``implicit-fallback-fp64`` on, a predicated second FP64 launch, always run (no conditional nodes), over the columns whose ``col_status`` marks a failed, not yet retried solve (the pin's
-other conditions, ``src/hydro/hydro.cpp:529-530``, join that predicate, I.rst:763 at ``fa3ad5e6``), from ``rhs64``/``wi64``, ``kImplicit`` forced FP64, posts in ``kFlux``, cause bit 5 through ``retry_flags()``, with no host read; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a behavior change listed in section 10. Before the change, the pin retried the whole block (``src/hydro/hydro.cpp:527-535``)", "a predicated second FP64 launch (I section 6)"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry of the failed columns only (Cheng, 2026-11-17; I section 6): with ``implicit-fallback-fp64`` on, a predicated second FP64 launch, always run (no conditional nodes), over the columns whose ``col_status`` marks a failed, not yet retried solve (the pin's other conditions, ``src/hydro/hydro.cpp:529-530``, join that predicate, I.rst:763 at ``fa3ad5e6``), from ``rhs64``/``wi64``, ``kImplicit`` forced FP64, posts in ``kFlux``, cause bit 5 through ``retry_flags()``, with no host read; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a behavior change listed in section 10. Before the change, the pin retried the whole block (``src/hydro/hydro.cpp:527-535``)", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
@@ -930,11 +929,10 @@ R (Linfeng):
 
 S (Jiheng):
 
-- Declare every exchange as pack, host, unpack (today's
-  ``begin/launch/finalize``, ``src/mesh/meshblock.cpp:664-685``), including
-  the two-round cubed-sphere exchange (``src/mesh/meshblock.cpp:651-658``)
-  and the corner fill?
-- Who owns the boundary-function refresh ``src/mesh/meshblock.cpp:1135-1196``?
+- Closed by S rev 2.3 (``bee1b276``): every exchange is pack, host wait, unpack
+  per round, corners filled in the last round's unpack (S item 1); the
+  boundary-function refresh ``src/mesh/meshblock.cpp:1135-1196`` is S's,
+  under BlockExchange (S rev 2.1 item 2).
 - Answers to S's three questions (S.rst:1934-1941 at ``4b96f4ea``): (1) yes,
   cuts at S's rows, merges as labelled (section 7); (2) the options YAML
   parsing (S's move A) is not X's: X keeps no options reader, and the
