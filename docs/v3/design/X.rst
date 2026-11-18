@@ -267,7 +267,7 @@ The ten register requirements, by number:
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
    "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
-   "chemistry slot before Mesh::forward's final exchange", "owner X, unrun. Step 1, hydro only at the pin: the one-mesh-of-one-block against one-of-two harness through Mesh::forward, tests/test_radiating_boundary.cpp:472-517 (cartesian). Step 2: the same split on tests/test_parentless_cloud_nb1.yaml (16 cells, kinetic reactions; limiter off, a positive state) with a source from Mesh::set_chemistry; closure and gravity-work fixer off; N steps", "step 2 equals its step-1 baseline: bitwise (hypothesis; the harness checks allclose 1e-12 today)"
+   "chemistry slot before Mesh::forward's final exchange", "owner X, unrun. One deck, tests/test_parentless_cloud_nb1.yaml (16 cells, kinetic reactions; limiter off, a positive state), one block against two (the split of tests/test_parentless_cloud_nb1.cpp:33-45) through Mesh::forward, closure and gravity-work fixer off, 10 steps: first without a source (baseline), then with one from Mesh::set_chemistry. Compared: every owned cell of hydro_u and scalar_s after each step. N >= 2 catches a stale seam ghost (read at the next step's first stage); 10 lets it spread across each 8-cell block. The slot sits in both of Mesh::forward's branches (src/mesh/mesh.cpp:354-360, 365-406), and a mutant with the slot after the final exchange must fail. It adds to the pin's harness (tests/test_radiating_boundary.cpp:472-517: one step, 3 ghost cells per side, allclose 1e-12): all owned cells, N steps, species and the slot, bitwise", "bitwise (hypothesis; if the no-source baseline is not bitwise, the gate is that baseline's difference)"
 
 6. FP32 contract
 ----------------
@@ -361,11 +361,22 @@ factors, not cell ghosts. Its pin callers (``examples/bryan.cpp:420``,
 one that registers a source gets the slot after the per-block stage, the
 global phase and the storage write, just before ``Mesh::forward``'s final
 exchange, a new order without a pin golden, gated by one block against two
-(section 5). The executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
-``ChemistrySource`` the driver registered: through ``MeshBlock::set_chemistry``
-for one block, or once through ``Mesh::set_chemistry``, which forwards to every
-block's; S-K4 declares both and their Python bindings (K.rst:762 at
-``c587e4d3`` for ``MeshBlock::set_chemistry``; K rev 3.0 to state
+(section 5). Each block's chemistry slot (``StageExecutor::set_chemistry``) runs
+that block's own ``ChemistrySource``: the driver registers one through
+``MeshBlock::set_chemistry`` for one block, or calls ``Mesh::set_chemistry``
+once, which builds one adapter per block from the shared reaction set and
+registers each with its block. The block pool runs blocks concurrently
+(``src/mesh/mesh.cpp:284-297``), so only the reaction set (kintera's
+``KineticsOptions`` and thermo options, host objects) is shared; each block
+has its own ``Kinetics`` and ``ThermoX`` modules on its device, scratch and
+buffers. The first ``Kinetics`` built from the set normalizes its options in
+place (kintera ``kinetics/kinetics.cpp:27-79``) and a load rewrites the
+process-wide species list (kintera ``species.cpp:58``), so ``Mesh::set_chemistry``
+builds the adapters one after another on the calling thread, outside the
+block pool; afterwards the set is read-only (K rev 3.0 ``112113f6``, K.rst
+382-394, "Blocks"). That one shared source would race is a hypothesis, untested.
+S-K4 declares both calls and their Python bindings (K.rst:762 at ``c587e4d3``
+for ``MeshBlock::set_chemistry``; K.rst:778 at ``112113f6`` for
 ``Mesh::set_chemistry``). It is snapy's adapter over kintera's
 ``Kinetics`` (S-K4; K.rst:372-380 at ``f84a5c58``), as an eager FP64
 segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
@@ -1343,6 +1354,21 @@ The review of rev 3.9 (``00dee910``), points 1-4:
 3. Section 5 gates the slot one block against two: a hydro-only baseline on
    the pin's Mesh::forward harness, then the reaction deck; owner X, unrun.
 4. K rev 2.9 (``c587e4d3``, K.rst:762) states that S-K4 declares ``MeshBlock::set_chemistry`` and its binding.
+
+Round-15 notes
+~~~~~~~~~~~~~~
+
+The review of rev 3.10 (``6d39357b``), points 1-3:
+
+1. The gate compares one deck, one block against two, over every owned cell
+   for 10 steps (2 catch a stale ghost), bitwise, with a mutant that must fail; it adds
+   owned cells, N steps, species and the slot to the pin's harness (one step,
+   ghost cells, 1e-12); unrun (section 5).
+2. One adapter per block from the shared, read-only reaction set, since the
+   block pool runs blocks concurrently (section 7); built one after another
+   outside the pool, as kintera writes its options and species list on build;
+   a shared-source race is a hypothesis.
+3. K rev 3.0 (``112113f6``) states ``Mesh::set_chemistry`` (K.rst:778) and the per-block split (K.rst:382-394).
 
 12. Skeleton index
 ------------------
