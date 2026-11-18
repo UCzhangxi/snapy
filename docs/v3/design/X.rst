@@ -96,7 +96,7 @@ Data flow of one step::
   host: dt = min over blocks, ranks           (outside graphs)
   step start: kStepStart list (register step zero, radial post; its host check ends the segment)
   for stage s:
-    [pack]  -> host UCX -> [unpack]           exchange = segment boundary
+    [pack]  -> host UCX -> [unpack, scalar_r divide]   exchange = segment boundary
     [compute: hydro fwd (R) | seam exchanges (S) split it]
     [compute: scalar, forcings, RK combine out=hydro_u] last stage:
      finish_step, its host check ends the segment
@@ -217,7 +217,7 @@ at R rev 2.2 ``4c59162a``).
   int32 slot (``flux_register.hpp:102``) is cast to the stack dtype as one
   ``RetryFlag`` whose cause bit X maps (R.rst:1256-1258): EF's
   ``ef.floor_patch``, ``ef.vapor_fail`` and ``ef.heat_capacity`` to bit 2,
-  ``ef.nan`` to bit 3 (EF.rst:672-678, 2065-2079 at ``5e30b31b``; pin
+  ``ef.nan`` to bit 3 (EF.rst:675-685, 2095-2109 at ``f5c8e9a7``; pin
   ``src/mesh/meshblock.cpp:1559-1577``), I's
   ``implicit.column`` to bit 5.
   Until R-1, EF's status stays in X's stack (R.rst:588-589). Its FP64
@@ -291,7 +291,7 @@ The ten register requirements, by number:
 
 ``store()`` is the one storage rounding, except EF's anomaly floor, which
 rounds on purpose (``src/eos/equation_of_state.cpp:37-46``, used at
-``src/eos/equation_of_state.cpp:247``). MPS has no FP64: there every FP64
+``src/eos/equation_of_state.cpp:247``), and section 7's in-place writes. MPS has no FP64: there every FP64
 row holds FP32 (``src/hydro/hydro_forward.cpp:373``), anomaly storage is
 refused (``src/utils/fp64_store.hpp:49``), and runs are eager.
 
@@ -318,7 +318,7 @@ utils 7; each owner rules on its own).
    "src/mesh/meshblock.cpp:736", "host drain of kintera failures", "device counter (K)", "G2"
    "src/mesh/meshblock.cpp:874", "user TorchScript forcing", "eager segment unless declared capturable", "G1"
    "src/mesh/meshblock.cpp:901-902, src/mesh/meshblock.cpp:921-922", "allocation + rebinding", "pyharp out= into fixed storage", "G1"
-   "src/mesh/meshblock.cpp:44-56; called at src/mesh/meshblock.cpp:631, src/mesh/meshblock.cpp:923, src/mesh/meshblock.cpp:1199, src/mesh/meshblock.cpp:1484, src/mesh/meshblock.cpp:1743, src/mesh/meshblock.cpp:1827-1829", "allocation + rebinding of ``scalar_r``", "divided with ``out=`` into its ``StateStore`` buffer: 923 after the EF limiter (907-909, writes density), before the solid fill (936-938); 1199 at the end of each ghost exchange; 1484 a ``kRollback`` entry after ``s0``; 1828 the restart rebuild, or 1743 its stored copy when not rebuilt (1729-1730), outside a step (``StateStore::assign``); 631 goes with the emulation (fp1)", "G1"
+   "src/mesh/meshblock.cpp:44-56; called at src/mesh/meshblock.cpp:631, src/mesh/meshblock.cpp:923, src/mesh/meshblock.cpp:1199, src/mesh/meshblock.cpp:1484, src/mesh/meshblock.cpp:1743, src/mesh/meshblock.cpp:1827-1829", "allocation + rebinding of ``scalar_r``", "divided with ``out=`` into its ``StateStore`` buffer: 923 after the EF limiter (907-909, writes density), before the solid fill (936-938); 1199 X's op after each ``exchange_ghost_zones`` (its corner refresh, 1194-1195); 1484 a ``kRollback`` entry after ``s0``; 1828 the restart rebuild, or 1743 its stored copy when not rebuilt (1729-1730), outside a step (``StateStore::assign``); 631 goes with the emulation (fp1)", "G1"
    "src/mesh/meshblock.cpp:950-981", "saturation adjustment", "eager segment until kintera capture", "G2"
    "src/mesh/meshblock.cpp:1017-1018, src/mesh/meshblock.cpp:1023", "host copy, 2 reads, 1 branch", "device sums and mask; allreduce is a boundary", "G1/G4"
    "src/mesh/meshblock.cpp:1061, src/mesh/meshblock.cpp:1075, src/mesh/meshblock.cpp:1080", "copy to host, branch", "removed with the gravity-work fixer (Cheng)", "G1/G4"
@@ -330,18 +330,20 @@ utils 7; each owner rules on its own).
    "src/mesh/meshblock.cpp:1426-1443", "legacy reads", "removed with the helpers", "G1"
    "src/mesh/meshblock.cpp:1628-1712", "restart reads", "stay: not in a step", "-"
 
-Segment list of one RK stage, Cartesian: exchange (pack | host | unpack);
+Segment list of one RK stage, Cartesian: exchange (pack | host | unpack,
+``scalar_r`` divide);
 compute, split at every within-stage exchange below; scalar, forcings, RK
-combine, limiter, ``scalar_r`` divide, solid fill; last stage, with reactions
+combine, limiter, scalar combine, ``scalar_r`` divide, solid fill; last stage, with reactions
 (``src/mesh/meshblock.cpp:950-951``): the limiter again (``src/mesh/meshblock.cpp:952``),
 after the solid fill, as the first op of the saturation adjustment's segment (eager until G2);
 global phase (the axial closure when on); boundaries. On the last stage the
 radial ``finish_step`` host check ends the combine's segment (section 3).
-After the last stage's boundaries and before the step-end retry read, the
-executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
+After the last stage's boundaries and before the step-end retry read, as the
+last op of the last stage's ``MeshBlock::forward`` (``Mesh::forward`` for
+several blocks, which takes its exchange-first order; the driver calls nothing extra), the executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
 ``ChemistrySource`` the driver registered through the block it steps (S-K4
 declares that ``MeshBlock`` forwarder, ``MeshBlock::set_chemistry``, and its Python binding), snapy's adapter over kintera's
-``Kinetics`` (S-K4; K.rst:366-372, 748 at ``ef93e92d``), as an eager FP64
+``Kinetics`` (S-K4; K.rst:366-372, 748 at ``143fedeb``), as an eager FP64
 segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
 one: snapy's ``src`` never steps the module it builds
 (``src/scalar/scalar.cpp:54-55``), so a driver that registers no source has
@@ -353,11 +355,18 @@ their own ``Kinetics`` after all stages and before ``check_redo``:
 (built 67, again 108 after a restart; ``check_redo`` 130, no gate). S-K4
 deletes each caller's own step in the commit that registers the source (the
 test registers again after its rebuild, 102-113), so a step runs chemistry
-once, and a rejected step reruns it from ``u0`` as the pin's loop does. No
-rounding order is left to state: the FP32 storage emulation is removed
-(Cheng's decision; section 9, y1, y2, fp1-fp3); the one FP32 rounding left is
-the ``+=`` into stored species, as in all three callers. "No behaviour change"
-is a hypothesis with one golden per caller: X asks S-K4 to extend K's bitwise
+once, and a rejected step reruns it from ``u0`` as the pin's loop does. The
+FP32 storage emulation is removed (Cheng's decision; section 9, y1, y2,
+fp1-fp3), yet with FP32 storage every in-place write into stored rows rounds: EF's
+limiter repairs (``src/mesh/meshblock.cpp:907-909``, every stage with species
+or scalars, else the last; 952; the slot's cons2prim, ``U'->W`` at
+``src/eos/ideal_moist.cpp:185``), K's saturation write (972), A's closure and
+the ``+=`` into stored species, as in all three callers. The
+slot computes temperature and pressure with the EOS, FP64, from that
+cons2prim's ``hydro_w`` totals (``W->T``, ``w[IPR]``, as
+``examples/run_hydro.cpp:180-182``) and passes them to
+``ChemistrySource::apply`` (K ``chemistry_source.hpp:35-37``). "No behaviour change"
+is a hypothesis with one golden per caller: K rev 2.8 widens S-K4's bitwise
 row (K.rst:748, run_hydro only) to the other two, the test at FP32 with its
 restart (its anomaly deck's ``U'->W`` is the same call as ``peos->forward``,
 ``src/eos/equation_of_state.cpp:209-210``); a double step fails them. One change is named: for an
@@ -366,7 +375,7 @@ empty stoichiometry the gate skips the jupiter driver's step, including its
 stored ``hydro_u`` (``src/eos/ideal_moist.cpp:209-211``), a repair kept in place, with
 retry marks for the step-end read (``src/mesh/meshblock.cpp:1535``); ``check_redo``
 refreshes ``hydro_w`` itself, from a clone (``src/mesh/meshblock.cpp:1511-1517``) (the test is also ungated, but its deck
-is never empty); with the emulation removed (above) the repair raises no FP32-write concern. Cubed sphere adds
+is never empty); that repair is one of EF's FP32 writes (above). Cubed sphere adds
 the second exchange round (``src/mesh/meshblock.cpp:651-658``) and S's corner
 fill.
 
@@ -1180,7 +1189,7 @@ The coordinator's points 1-4 on rev 3.4:
 
 The maintainer's decision (X thread, 13:41 PT): keep the abort for V3;
 ``diffusion.radial`` (bit 6) is a reserved slot, written by nobody in V3
-(section 3). EF at ``5e30b31b`` drops the interim census hook, and A at
+(section 3). EF drops the interim census hook (EF.rst:671 at ``f5c8e9a7``), and A at
 ``76904ce8`` reserves the cause and does not call ``flag_retry`` for it in V3.
 
 Round-9 notes
@@ -1246,6 +1255,37 @@ The review of rev 3.6 (``fc3b002e``), points 1-6, and R-8 (7):
    one (seeded ``scalar_s``, pin 530); a restart its stored copy (1743) or divides (1828).
 7. R-8 (lead's addition): the radial ``post_split`` (715) precedes the boundaries and
    exchange (716-717), which precede the ``u0`` save (721); section 3 now says so.
+
+Round-12 notes
+~~~~~~~~~~~~~~
+
+The review of rev 3.7 (``b4d18131``), points 1-5, and EF's check (6):
+
+1. The ``+=`` is not the only FP32 rounding: every in-place write into FP32
+   storage rounds, among them EF's limiter repairs (``src/mesh/meshblock.cpp:907-909``,
+   952, the slot's cons2prim) and K's saturation write (972). The chemistry slot computes temperature and pressure with the
+   EOS, FP64, from ``hydro_w`` totals, as the pin's callers do
+   (``examples/run_hydro.cpp:180-182``), for ``ChemistrySource::apply``
+   (K ``chemistry_source.hpp:35-37`` at ``143fedeb``); section 7.
+2. The last stage's ``MeshBlock::forward`` (``Mesh::forward`` for several
+   blocks, exchange first) runs the slot as its last op, so a driver calls nothing extra
+   before ``check_redo``; K rev 2.8 widens S-K4 to all three pin callers.
+3. One caller: ``StageExecutor::after_combine(stage, dt)``, after the combine
+   (last stage: after X's ``finish_step``), runs per block the
+   ``RegisterPhase::after_combine`` ops in R's order (R.rst:691-701): EF's
+   limiter (907-909), X's scalar slot (920-923), S's solid fill (936-938), on
+   the last stage with reactions EF's 952 and K's 954-972; then A's closure
+   (983-990) as the global phase after every block, R's several-block order.
+   R's ``HydroStage::after_combine(u, reg)`` (``hydro_stage.hpp:67-70`` at
+   ``2b4c5775``) has no stage or scalars, so X does not call it as the runner;
+   its signature and comment (``finish_step`` inside, no 920-923) are R's to align.
+4. The segment list names the scalar combine (921-922) between the limiter
+   and the ``scalar_r`` divide (section 7).
+5. X owns the divide at ``src/mesh/meshblock.cpp:1199``: the scalar slot's
+   op, as at 923, run after each ``exchange_ghost_zones`` (corner refresh 1194-1195); S's exchange part
+   carries no divide (section 7; ``meshblock_parts.hpp``).
+6. EF rev 3.7 (``f5c8e9a7``) has no conflict with X 3.7; X cites EF there
+   (EF.rst:671, 675-685, 2095-2109; section 4).
 
 12. Skeleton index
 ------------------

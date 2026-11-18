@@ -77,9 +77,9 @@ class StageExecutor {
   void run_stage(int stage, double dt);
   //! last stage, after the RK combine: finish_step (now src/mesh/meshblock.cpp:905)
   void finish_step(double dt);
-  //! every stage: EF's limiter (907-909), X's scalar slot (combine, scalar_r out=, 920-923), S's solid fill; closure: global phase
+  //! every stage, per block in R's order: EF's limiter (907-909), X's scalar slot (920-923), S's solid fill; then A's closure, global phase
   void after_combine(int stage, double dt);
-  //! chemistry slot (design 7): the driver's one source, eager FP64, last boundaries to decide_retry
+  //! chemistry slot (design 7): run_stage's last op of the last stage, after its boundaries; T, P from hydro_w; FP64
   void set_chemistry(std::shared_ptr<ChemistrySource> source);
   //! step-end host phase: one read of the stacked retry flags, MAX allreduce;
   //! kRollback entries on all blocks when rejected; returns the causes

@@ -16,7 +16,7 @@ struct BlockInit;       // owner X
 struct BlockAdvance;    // owner X; ops from R, S, EF, K
 
 //! now src/mesh/meshblock.cpp:644-685, 1111-1205, 1846-1918: exchange phases
-//! (pack, host, unpack) and boundary functions
+//! (pack, host, unpack) and boundary functions, less X's scalar_r divide (1198-1200)
 struct BlockExchange;   // owner S
 
 //! now src/mesh/meshblock.cpp:1447-1601: device retry flags, restore, resets
