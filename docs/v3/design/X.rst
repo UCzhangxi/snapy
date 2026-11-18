@@ -546,8 +546,8 @@ segment, never per op or inside a graph (margin).
 8. Cross-repository interface changes and merge order
 -----------------------------------------------------
 
-- pyharp: ``forward(int stage, Tensor u0, Tensor u1, Tensor u2, Tensor out = {})``
-  (now ``pyharp/src/integrator/integrator.hpp:95-96``). Empty ``out`` keeps
+- pyharp: ``forward(int stage, Tensor u0, Tensor u1, Tensor u2, std::optional<Tensor> out = std::nullopt)``
+  (now ``pyharp/src/integrator/integrator.hpp:95-96``). An absent ``out`` keeps
   the allocating result. Rules: ``out`` may alias ``u1``, never ``u0`` or
   ``u2``; all four share dtype and device, else it throws. Order:
   ``out = u1`` (copy if not aliased); ``out *= w1``; ``out += w0*u0``;
@@ -559,7 +559,7 @@ segment, never per op or inside a graph (margin).
   ``pyharp/src/integrator/integrator.cpp:113-122``,
   ``integrator_dispatch.{cpp,cu,hpp}``) is deleted. The binding
   (``pyharp/python/csrc/pyintegrator.cpp:51-52``) gains
-  ``py::arg("out") = torch::Tensor()``. Callers with ``out=``: the RK
+  ``py::arg("out") = py::none()`` (no overload). Callers with ``out=``: the RK
   combine (``src/mesh/meshblock.cpp:901-902``,
   ``src/mesh/meshblock.cpp:921-922``) and ``carry_dry_source``
   (``src/mesh/meshblock.cpp:756``, ``src/mesh/meshblock.cpp:762``).
