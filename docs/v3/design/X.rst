@@ -267,6 +267,7 @@ The ten register requirements, by number:
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
    "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
+   "chemistry slot before Mesh::forward's final exchange", "owner X, unrun. Step 1, hydro only at the pin: the one-mesh-of-one-block against one-of-two harness through Mesh::forward, tests/test_radiating_boundary.cpp:472-517 (cartesian). Step 2: the same split on tests/test_parentless_cloud_nb1.yaml (16 cells, kinetic reactions; limiter off, a positive state) with a source from Mesh::set_chemistry; closure and gravity-work fixer off; N steps", "step 2 equals its step-1 baseline: bitwise (hypothesis; the harness checks allclose 1e-12 today)"
 
 6. FP32 contract
 ----------------
@@ -343,17 +344,30 @@ any pin op; the driver calls nothing extra. The three pin callers step
 chemistry after ``block->forward`` returns, so the slot is the last op of the
 last stage's ``MeshBlock::forward``, after its exchange and stage
 (``src/mesh/meshblock.cpp:616-618``; 618 goes with fp1); the next call's
-exchange-first (616) syncs the ghosts, as at the pin. No pin caller uses
-``Mesh::forward``, which exchanges last (``src/mesh/mesh.cpp:359, 406``) and
-has no exchange before the next stage's reconstruction (``advance_local``
-exchanges only for the radial split, 716-717): there the slot runs just before
-that final exchange, a new order without a pin golden, checked by one block
-against two (bitwise). There the executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
-``ChemistrySource`` the driver registered through the block it steps
-(``MeshBlock::set_chemistry`` and its Python binding: K.rst:756 at ``f84a5c58``
-names the call, attributed to "X rev 3.7", but not who declares it; X asks K
-to state that S-K4 does), snapy's adapter over kintera's
-``Kinetics`` (S-K4; K.rst:372-380, 756 at ``f84a5c58``), as an eager FP64
+exchange-first (616) syncs the ghosts, as at the pin. ``Mesh::forward``
+calls ``advance_local`` (``src/mesh/mesh.cpp:355, 366``), never
+``MeshBlock::forward``, and exchanges last (359, 406); nothing refills the
+conserved cell ghosts before the next stage's reconstruction except the
+radial split's exchange (``src/mesh/meshblock.cpp:716-717``, implicit radial
+diffusion only). With conversion order 4 the primitive ghosts are refilled
+(``src/hydro/hydro_forward.cpp:490-491``); the x1 seam rows (249) and the theta
+sync (``src/hydro/flux_positivity.cpp:184``) carry face data and limiter
+factors, not cell ghosts. Its pin callers (``examples/bryan.cpp:420``,
+``cubed_sphere_convection.cpp:131``, ``planar_convection.cpp:151``,
+``shallow_splash.cpp:118``, ``shallow_xy.cpp:115``,
+``spherical_convection.cpp:291``, ``straka.cpp:148``, and the
+``mesh->forward``/``mesh.forward`` sites in ``tests/``) step no chemistry today: ``git grep`` of ``evolve_implicit`` and
+``forward_with_rate`` finds only the three callers above. So none changes;
+one that registers a source gets the slot after the per-block stage, the
+global phase and the storage write, just before ``Mesh::forward``'s final
+exchange, a new order without a pin golden, gated by one block against two
+(section 5). The executor's chemistry slot (``StageExecutor::set_chemistry``) runs the one
+``ChemistrySource`` the driver registered: through ``MeshBlock::set_chemistry``
+for one block, or once through ``Mesh::set_chemistry``, which forwards to every
+block's; S-K4 declares both and their Python bindings (K.rst:762 at
+``c587e4d3`` for ``MeshBlock::set_chemistry``; K rev 3.0 to state
+``Mesh::set_chemistry``). It is snapy's adapter over kintera's
+``Kinetics`` (S-K4; K.rst:372-380 at ``f84a5c58``), as an eager FP64
 segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
 one: snapy's ``src`` never steps the module it builds
 (``src/scalar/scalar.cpp:54-55``), so a driver that registers no source has
@@ -1306,14 +1320,29 @@ The review of rev 3.8 (``7109d465``), points 1-4:
 
 1. No pin op is reordered. The pin's callers step chemistry after
    ``block->forward`` (``MeshBlock::forward``, exchange first) returns, so the
-   slot ends that call. No pin caller uses ``Mesh::forward`` (exchange last);
+   slot ends that call. No pin chemistry caller uses ``Mesh::forward`` (exchange last);
    after its final exchange the next stage would reconstruct from stale
    ghosts, so there the slot runs just before it: new, checked one block
-   against two (section 7).
+   against two (section 5).
 2. K rev 2.8 states the idempotent ``prepare()`` (K.rst:280-283 at ``f84a5c58``), gate K-G10.
 3. K.rst:756 names ``MeshBlock::set_chemistry`` but not its declarer; X asks
    K to state that S-K4 declares it and its Python binding.
 4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W``; 211, ``U->W``) is EF's site; X asks EF to acknowledge it.
+
+Round-14 notes
+~~~~~~~~~~~~~~
+
+The review of rev 3.9 (``00dee910``), points 1-4:
+
+1. X asks K rev 3.0 to state that S-K4 also declares ``Mesh::set_chemistry``,
+   forwarding to every block's ``MeshBlock::set_chemistry``, with its binding; a
+   multi-block driver calls it once (section 7). K.rst:762's "X.rst lines
+   351-355" moved in this revision (section 7).
+2. ``Mesh::forward`` has 7 example call sites and more in ``tests/`` at the pin; none steps
+   chemistry, so none changes (section 7; skeleton comment fixed).
+3. Section 5 gates the slot one block against two: a hydro-only baseline on
+   the pin's Mesh::forward harness, then the reaction deck; owner X, unrun.
+4. K rev 2.9 (``c587e4d3``, K.rst:762) states that S-K4 declares ``MeshBlock::set_chemistry`` and its binding.
 
 12. Skeleton index
 ------------------

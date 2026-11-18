@@ -79,7 +79,7 @@ class StageExecutor {
   void finish_step(double dt);
   //! every stage, per block in R's order: EF's limiter (907-909), X's scalar slot (920-923), S's solid fill; then A's closure, global phase
   void after_combine(int stage, double dt);
-  //! chemistry slot (design 7): run_stage's last op of the last stage, after its boundaries; T, P from hydro_w; FP64
+  //! chemistry slot (design 7), last stage: ends MeshBlock::forward; in Mesh::forward, before its final exchange; FP64
   void set_chemistry(std::shared_ptr<ChemistrySource> source);
   //! step-end host phase: one read of the stacked retry flags, MAX allreduce;
   //! kRollback entries on all blocks when rejected; returns the causes
