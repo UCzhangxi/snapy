@@ -14,11 +14,9 @@ struct KineticsOptionsImpl;
 using ThermoTablesPtr = std::shared_ptr<ThermoTables const>;
 }  // namespace kintera
 namespace snap {
-class MeshImpl {  // the pin's Mesh (src/mesh/mesh.hpp); only S-K4's addition shown
- public:
-  //! once for all blocks: by value, Mesh owns the copy the first build normalizes; adapters built serially outside the pool
-  void set_chemistry(kintera::KineticsOptionsImpl reactions);
-};
+// S-K4's additions to the pin's Mesh and MeshBlock, by value (design 7); the copy's first build writes only its own members
+class MeshImpl { public: void set_chemistry(kintera::KineticsOptionsImpl reactions); };  // one adapter per block, serially
+class MeshBlockImpl { public: void set_chemistry(kintera::KineticsOptionsImpl reactions); };  // bare block: slot 0
 class ChemistrySource;  // snapy-owned, declared in K's skeleton (S-K4)
 
 enum class SegmentKind {
@@ -68,6 +66,7 @@ struct Capability {  // per case, separating numerical from graph support (desig
 class StageExecutor {
  public:
   StageExecutor(MeshImpl* mesh, ExecutionOptions const& options);
+  StageExecutor(MeshBlockImpl* block, ExecutionOptions const& options);  // a bare MeshBlock's: one block, slot 0
 
   double select_dt();  // step-start host phase: global dt (min over blocks and ranks)
   //! once per attempt, before the stage-0 resets: kStepStart (R's begin_step(), then the radial post, now :715)

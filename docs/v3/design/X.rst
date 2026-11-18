@@ -268,7 +268,7 @@ The ten register requirements, by number:
    "rollback restores the step", "inject a NaN; after retry, state equals the pre-step state, registers zero", "bitwise"
    "dtype per quantity", "policy test: each row of section 6 in both modes", "exact"
    "global corrections unchanged", "closure on 1 and 4 blocks, 2 ranks", "bitwise if block partials keep their order (hypothesis)"
-   "chemistry slot before Mesh::forward's final exchange", "owner X, unrun; the no-source baseline lands with X4 (global phase for 1 and N blocks), the source run in the snapy commit that adds Mesh::set_chemistry (S-K4), after X4 and EF-8 (K.rst:641 at 112113f6). One deck, tests/test_parentless_cloud_nb1.yaml, one block against two (the split of tests/test_parentless_cloud_nb1.cpp:33-45) through both branches of Mesh::forward (src/mesh/mesh.cpp:354-360, 365-406). Initial state: the deck as loaded, then the EOS limiter set false on the block options before the Mesh is built, no restart, filled as tests/test_parentless_cloud_nb1.cpp:57-66 with deficit 0 (rain 0.001 in global cells 8-15, 0 below: non-negative, with a jump at the seam of the two 8-cell blocks). Limiter off, closure and gravity-work fixer off: the whole-column limiter is a cross-block gather with its own gate (that test), so off leaves the slot as the one new seam effect. 10 steps, first without a source, then with one from Mesh::set_chemistry; compared: every owned cell of hydro_u and scalar_s after each step. N >= 2 catches a stale seam ghost (read at the next step's first stage); 10 let it spread across each block. A mutant with the slot after the final exchange must fail. Adds to the pin's harness (tests/test_radiating_boundary.cpp:472-517: one step, 3 ghost cells per side, allclose 1e-12): owned cells, N steps, species and the slot", "bitwise (hypothesis). Fallback if the no-source baseline is not bitwise: per field and step, max |two - one| with the source at most A times the baseline's, with a floor of A ulp. A is measured first, not argued: one block against itself with a 1-ulp perturbation of the initial state, chemistry on, 10 steps (the slot is cell-local, so it adds no seam effect, but its implicit step and threshold branches can amplify round-off without a fixed bound). The mutant must exceed the tolerance by at least 10 times; if it cannot, the fallback is not a gate"
+   "chemistry slot before Mesh::forward's final exchange", "owner X, unrun; the no-source baseline lands with X4 (global phase for 1 and N blocks), the source run with S-K4, after X4 and EF-8 (K rev 3.1 5a714053, K.rst:650-652). One deck, tests/test_parentless_cloud_nb1.yaml, one block against two (the split of tests/test_parentless_cloud_nb1.cpp:33-45) through both branches of Mesh::forward (src/mesh/mesh.cpp:354-360, 365-406). Initial state: the deck as loaded, then the EOS limiter set false on the block options before the Mesh is built, no restart, filled as tests/test_parentless_cloud_nb1.cpp:57-66 with deficit 0 (rain 0.001 in global cells 8-15, 0 below: non-negative, with a jump at the seam of the two 8-cell blocks). Limiter off, closure and gravity-work fixer off: the whole-column limiter is a cross-block gather with its own gate (that test), so off leaves the slot as the one new seam effect. 10 steps, first without a source, then with one from Mesh::set_chemistry, asserting the caller's uref_R unchanged after the call; compared: every owned cell of hydro_u and scalar_s after each step. N >= 2 catches a stale seam ghost (read at the next step's first stage); 10 let it spread across each block. A mutant with the slot after the final exchange must fail. Adds to the pin's harness (tests/test_radiating_boundary.cpp:472-517: one step, 3 ghost cells per side, allclose 1e-12): owned cells, N steps, species and the slot", "bitwise (hypothesis). The no-source baseline is strictly bitwise: a failure blocks X4. Fallback, for the source run only, triggered when its bitwise compare fails: per field and step, max |two - one| with the source at most A times the no-source baseline's, with a floor of A ulp, the ulp of each compared value in its storage dtype (FP32 or FP64); a cell whose value is 0 must match exactly. A is measured first, not argued: the one-block run against itself with one ulp added to one cell of one field (hydro_u's vapor row ICY in global cell 8; the deck has nx2 = nx3 = 1), chemistry on, 10 steps; A is the largest max difference over fields and steps, in ulp of each value (the slot is cell-local, so it adds no seam effect, but its implicit step and threshold branches can amplify round-off without a fixed bound). The mutant must exceed the tolerance by at least 10 times; if it cannot, the fallback is not a gate"
 
 6. FP32 contract
 ----------------
@@ -362,29 +362,30 @@ factors, not cell ghosts. Its pin callers (``examples/bryan.cpp:420``,
 one that registers a source gets the slot after the per-block stage, the
 global phase and the storage write, just before ``Mesh::forward``'s final
 exchange, a new order without a pin golden, gated by one block against two
-(section 5). The ``Mesh``-owned executor holds one ``ChemistrySource`` per
-block, indexed by block (``StageExecutor::set_chemistry(block, source)``),
-and each block's slot runs its own. ``MeshBlock::set_chemistry`` sets its
-block's entry; ``Mesh::set_chemistry`` (S-K4's, declared in X's skeleton for
-review) is called once, builds one adapter per block (local index, in
-``Mesh::blocks`` order) from the reaction options it takes by value (a
-``KineticsOptionsImpl`` copy, not the ``KineticsOptions`` pointer, whose copy
-would share the caller's object): ``Mesh`` owns that copy, the first
-``Kinetics`` build normalizes it, later adapters are built serially from it,
-and the caller's object is untouched; with each block's thermo options, as
-``examples/run_hydro.cpp:63`` takes them, and sets each block's entry. The block pool runs blocks concurrently
-(``src/mesh/mesh.cpp:284-297``), so only the reaction set (kintera's
-``KineticsOptions`` and thermo options, host objects) is shared; each block
-has its own ``Kinetics`` and ``ThermoX`` modules on its device, scratch and
-buffers. The first ``Kinetics`` built from the set normalizes its options in
-place (kintera ``kinetics/kinetics.cpp:27-79``) and a load rewrites the
-process-wide species list (kintera ``species.cpp:58``), so ``Mesh::set_chemistry``
-builds the adapters one after another on the calling thread, outside the
-block pool; afterwards the set is read-only (K rev 3.0 ``112113f6``, K.rst
-382-394, "Blocks"). That one shared source would race is a hypothesis, untested.
-S-K4 declares both calls and their Python bindings (K.rst:762 at ``c587e4d3``
-for ``MeshBlock::set_chemistry``; K.rst:778 at ``112113f6`` for
-``Mesh::set_chemistry``). It is snapy's adapter over kintera's
+(section 5). Two paths, both S-K4's with their Python bindings (K rev 3.1
+``5a714053``, K.rst:789), take the reaction options by value
+(``kintera::KineticsOptionsImpl``) and each block's thermo options, as
+``examples/run_hydro.cpp:64`` takes them. A bare ``MeshBlock`` (no ``Mesh``:
+the three pin callers that build a ``Kinetics``, ``examples/run_hydro.cpp:37``,
+``examples/jupiter_evap_precip_1d.cpp:200``, ``tests/test_fp32_jupiter.py:66``)
+owns a one-block executor; ``MeshBlock::set_chemistry`` builds its one adapter
+into slot 0. ``Mesh::set_chemistry``, called once, builds one adapter per block
+(local index, ``Mesh::blocks`` order) into the ``Mesh`` executor's vector,
+``StageExecutor::set_chemistry(block, source)``; each block's slot runs its own.
+The copy is member-wise: values (thermo vectors, ``Tref``, ``Pref``, flags) are
+copied; the eight reaction sub-options (kintera ``kinetics/kinetics.hpp:64-72``)
+are ``shared_ptr``s shared with the caller. The first ``Kinetics`` build writes
+only the copy's own members: it appends to the per-species vectors (kintera
+``species.cpp:386-436``), fills a null sub-option slot with a new object
+(``kinetics/kinetics.cpp:34-48``), shifts ``uref_R`` and ``sref_R`` and sets
+``offset_zero`` (60-79); the sub-option modules only read theirs (e.g.
+``kinetics/arrhenius.cpp:175-302``). So the caller's object is untouched with no
+deeper copy; the caller must not edit the sub-options afterwards. ThermoX
+writes its thermo options once at its build too, safe since builds are serial. A load rewrites the process-wide species list (kintera
+``species.cpp:58``), so ``Mesh`` builds the adapters one after another on the
+calling thread, outside the block pool (``src/mesh/mesh.cpp:284-297``, blocks run
+concurrently); afterwards the copy is read-only and shared, and each block has its own ``Kinetics`` and
+``ThermoX`` on its device (K rev 3.1 ``5a714053``, K.rst 382-405, "Blocks"); a race is a hypothesis, untested. It is snapy's adapter over kintera's
 ``Kinetics`` (S-K4; K.rst:372-380 at ``f84a5c58``), as an eager FP64
 segment (K 3.6) when its stoichiometry is nonempty. Nothing else registers
 one: snapy's ``src`` never steps the module it builds
@@ -794,7 +795,7 @@ Provider side: pyharp ``src/integrator`` 564 to 427 (I1-I7), pydisort
    "X1", "PrecisionPolicy; lane's fp32() branches; u0/s0 in storage dtype", "bitwise"
    "X2", "StateStore; out= replaces set_ at 901-902, 921-922", "bitwise (hypothesis; gate: section 5 golden)"
    "X3", "StageExecutor from tests/straka_cuda_graph.py; deck selection; eager default", "eager bitwise; graph parity"
-   "X4", "device closure; global phase for 1 and N blocks", "bitwise for accepted steps if partial-sum order is kept (hypothesis), else round-off"
+   "X4", "device closure; global phase for 1 and N blocks; the no-source baseline of the section 5 chemistry-slot gate (strictly bitwise, a failure blocks X4; its source run lands with S-K4, K rev 3.1)", "bitwise for accepted steps if partial-sum order is kept (hypothesis), else round-off"
    "X5", "meshblock split into six parts; section 9 src/mesh items except d, M, h1-h2, sv", "bitwise (hypothesis; gate: section 5 golden)"
    "X6", "h1-h2: block jobs on the inter-op pool", "bitwise; CPU multi-block wall time within 5%"
    "X7", "capability matrix, docs, benchmarks (G7)", "no numerics"
@@ -1388,6 +1389,21 @@ The review of rev 3.11 (``af403e68``), points 1-2:
 2. The gate states its fallback tolerance (measured amplification, a
    hypothesis until measured), initial state (deck as loaded, limiter then off,
    no restart) and commits (baseline with X4; source after X4 and EF-8) (section 5).
+
+Round-17 notes
+~~~~~~~~~~~~~~
+
+The lead's items 1-4 on rev 3.12 (``6405a34a``):
+
+1. A bare ``MeshBlock`` owns a one-block executor and ``MeshBlock::set_chemistry``
+   builds its adapter into slot 0; ``Mesh::set_chemistry`` builds one per block
+   into the ``Mesh`` executor (section 7; ``stage_executor.hpp``).
+2. X4 carries the gate's no-source baseline; the source run lands with S-K4 (K rev 3.1 ``5a714053``, K.rst:650-652).
+3. The baseline is strictly bitwise; the fallback serves the source run only (section 5).
+4. The copy shares the eight sub-option pointers, but the first build writes only the
+   copy's own members, so no deep copy is needed (section 7).
+5. K rev 3.1 (``5a714053``) agrees: S-K4 after X4 and EF-8 with the source run, the
+   by-value signature, slot 0, the shallow copy; the gate asserts the caller's ``uref_R`` unchanged.
 
 12. Skeleton index
 ------------------
