@@ -293,7 +293,7 @@ The ten register requirements, by number:
    "hydro_w totals", "FP64", "FP64", "EOS on totals (src/mesh/meshblock.cpp:448)"
    "gauges, total face pressure", "FP64", "FP64", "cancellation"
    "dt, budget and closure sums", "FP64 (MPS: FP32)", "FP64", "sums over all cells; MPS has no FP64 (src/hydro/hydro_forward.cpp:373)"
-   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, as at the pin (``src/hydro/hydro.cpp:529-530``): when any column fails the FP32 solve, with ``implicit-fallback-fp64`` on, no earlier failed stage and a finite FP64 right-hand side, the same predicated FP64 launch over all its columns, its predicate one 0-d device bool (any column failed, the stage latch clear, the FP64 right-hand side finite; ``implicit-fallback-fp64`` is fixed at ``reset()``), with no host read; I's removal of the whole-block retry (``I.rst:1000`` at ``fa3ad5e6``) waits for that ruling", "a predicated second FP64 launch (I section 6)"
+   "vertical implicit correction (``kImplicit``)", "FP32 on Cartesian ideal-moist only, elsewhere refused (``src/hydro/hydro.cpp:502-507``)", "FP32, FP64 retry per failed column if Cheng agrees (FOR CHENG, I section 10 (c)); until then the whole block, as at the pin (``src/hydro/hydro.cpp:529-530``): when any column fails the FP32 solve, with ``implicit-fallback-fp64`` on, no earlier failed stage and a finite FP64 right-hand side, the same predicated FP64 launch over all its columns, its predicate one 0-d device bool (any column failed, the stage latch clear, the FP64 right-hand side finite; ``implicit-fallback-fp64`` is read per call in eager, as at the pin, so ``tests/test_fp32_implicit.py:19, 62-67`` is unchanged; under ``cuda-graph`` it is read at capture, and a change after capture takes effect only through ``bump_config_generation()``, a listed behavior change), with no host read; I's removal of the whole-block retry (``I.rst:1000`` at ``fa3ad5e6``) waits for that ruling", "a predicated second FP64 launch (I section 6)"
    "kintera totals, saturation", "FP64", "FP64", "phase equilibrium"
    "time, dt, stage weights", "host double", "host double", "rk3 weights sum to 1 exactly (pyharp/src/integrator/integrator.cpp:59-64)"
    "flux register step accumulator", "FP64 (MPS: FP32)", "FP64", "sum over stages; settled by R (R's section 6)"
@@ -1385,7 +1385,7 @@ The review of rev 3.8 (``7109d465``), points 1-4:
 2. K rev 2.8 states the idempotent ``prepare()`` (K.rst:280-283 at ``f84a5c58``), gate K-G10.
 3. K.rst:756 names ``MeshBlock::set_chemistry`` but not its declarer; X asks
    K to state that S-K4 declares it and its Python binding.
-4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W`` with a reference; 211, ``U->W`` and ``U'->W`` without one, 182) is EF's site; EF acknowledged it at ``f5c8e9a7``.
+4. The limiter in the slot's cons2prim (``src/eos/ideal_moist.cpp:185``, ``U'->W`` with a reference; 211, ``U->W`` and ``U'->W`` without one, 182) is EF's site: the call reuses EF's ``apply_conserved_limiter_`` (``EF.rst:573`` at ``f5c8e9a7``), and EF agreed to both sites in the lane X thread.
 
 Round-14 notes
 ~~~~~~~~~~~~~~
