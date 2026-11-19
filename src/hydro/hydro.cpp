@@ -248,7 +248,9 @@ void HydroImpl::reset() {
                   "ef.heat_capacity",  "ef.pos_hits", "ef.pos_severe",
                   "ef.scalar_pos_hits"};
   req.minima = {"ef.pos_min"};
-  req.retry = {"ef.floor_patch", "ef.nan", "ef.vapor_fail", "ef.heat_capacity"};
+  // V3 I-5: lane I's cause (R.rst 4.5); X maps it to its cause bit 5
+  req.retry = {"ef.floor_patch", "ef.nan", "ef.vapor_fail", "ef.heat_capacity",
+               "implicit.column"};
   // conserve-axial-momentum full: A's riemann.central on the x2/x3 faces
   // (R-2), kept until the next stage
   if (axial_coriolis_form()) {
@@ -541,6 +543,10 @@ torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
     correction = picorr->forward_masked(du, wi64, gamma_for(wi64), dt, solid,
                                         reg, post_dt);
   }
+  // V3 I-5: the column status OR after the whole-block FP64 fallback (until
+  // I-6 retries per column); slot 5 of the redo still reads
+  // solve_failed_tensor(), the same OR, until lane X reads retry_flags
+  freg.monitor().flag_retry("implicit.column", picorr->status());
   // Restore energy offsets in FP64, then write the increment to state dtype.
   if (boundary) {
     du = du.to(torch::kFloat64);
