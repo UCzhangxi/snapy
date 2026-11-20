@@ -319,6 +319,12 @@ void FluxRegister::apply_prescribed(int dim) {
   if (mask.device() != t.device()) mask = mask.to(t.device());
   if (value.device() != t.device() || value.scalar_type() != t.scalar_type())
     value = value.to(t.device(), t.scalar_type());
+  // R.rst 4.1 item 4: kept parts are prescribed too, with the total's mask
+  // and value; only the total books
+  for (auto const& name : _kept[dim - 1]) {
+    auto part = _parts.at(name + "@" + std::to_string(dim));
+    part.copy_(torch::where(mask, value, part));
+  }
   overwrite_(dim, "boundary.prescribed", torch::where(mask, value, t));
 }
 

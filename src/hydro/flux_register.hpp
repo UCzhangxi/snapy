@@ -166,8 +166,9 @@ class FluxRegister {
   //! S: mask bool [nvar, faces...] and value [nvar, faces...], held as given
   void set_prescribed(int dim, torch::Tensor const& mask,
                       torch::Tensor const& value);
-  //! total[mask] = value; books sum A_f mask (value - total before) per row
-  //! as "boundary.prescribed". No-op when S set no mask for dim.
+  //! total[mask] = value and, for each kept part of dim, part[mask] = value;
+  //! books sum A_f mask (value - total before) per row of the total as
+  //! "boundary.prescribed". No-op when S set no mask for dim.
   void apply_prescribed(int dim);
   //! the parts, by "part@dim", for HydroImpl to register as buffers
   std::map<std::string, torch::Tensor>& parts() { return _parts; }

@@ -417,6 +417,43 @@ TEST(FluxRegister, apply_prescribed_writes_the_value_and_books_the_change) {
   EXPECT_THROW(reg.set_prescribed(1, mask[0], value), c10::Error);
 }
 
+// R.rst 4.1 item 4: kept parts are reconciled and prescribed but never
+// scaled. apply_prescribed writes S's value on every kept part of dim, with
+// the total's mask; only the total's change is booked
+TEST(FluxRegister, apply_prescribed_prescribes_the_kept_parts) {
+  Seam s;
+  RegisterRequest req;
+  req.keep = {"vic.mass_total@1", "riemann.central@1", "riemann.central@2"};
+  auto reg = s.make(req, 8);
+  ASSERT_EQ(reg.kept_parts(1),
+            (std::vector<std::string>{"vic.mass_total", "riemann.central"}));
+  s.stage(reg);
+  auto t0 = reg.total(1).clone();
+  auto p0 = reg.kept(1, "vic.mass_total").clone();
+  auto c0 = reg.kept(1, "riemann.central").clone();
+  auto c2 = reg.kept(2, "riemann.central").clone();
+  auto mask = torch::zeros_like(t0, torch::kBool);
+  int nc1 = t0.size(3);
+  for (int r : {int(IDN), int(IPR)}) {
+    mask[r].select(2, 3).fill_(true);
+    mask[r].select(2, nc1 - 3).fill_(true);
+  }
+  auto value = torch::zeros_like(t0);
+  reg.set_prescribed(1, mask, value);
+  reg.apply_prescribed(1);
+  EXPECT_TRUE(torch::equal(reg.total(1), value.where(mask, t0)));
+  EXPECT_TRUE(
+      torch::equal(reg.kept(1, "vic.mass_total"), value.where(mask, p0)));
+  EXPECT_TRUE(
+      torch::equal(reg.kept(1, "riemann.central"), value.where(mask, c0)));
+  EXPECT_TRUE(torch::equal(reg.kept(2, "riemann.central"), c2));  // dim 2
+  // the kept parts change no amount: the booking is the total's alone
+  reg.end_stage(1.);
+  auto ref =
+      (s.area(1, reg) * torch::where(mask, value - t0, 0.)).sum({1, 2, 3});
+  EXPECT_LE(rel(reg.monitor().amounts("boundary.prescribed"), ref), 1.e-15);
+}
+
 // G-R14 (flux corrections only): the amounts' recursion equals
 // sum_s w2_s prod_{t>s} w1_t dt a_s over rk3; a rollback clears them
 TEST(FluxRegister, amounts_fold_like_the_step_field) {
