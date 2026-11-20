@@ -59,7 +59,6 @@ class ConstGravityOptions:
         """Set the x1 gravity-work form."""
         ...
 
-
 class CoriolisOptions:
     """
     Coriolis forcing options.
