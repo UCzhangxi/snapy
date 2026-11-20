@@ -189,7 +189,8 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
   torch::Tensor lim_cut() const;
   torch::Tensor lim_flux() const;
 
-  //! gravity-work: cell with gravity-work-fixer on (and grav1 != 0)
+  //! the removed global gravity-work fixer (V3 I-7): always false; kept until
+  //! lane X's X5 removes its callers (meshblock.cpp, mesh.cpp)
   bool gravity_work_fixer() const;
   //! x1 face f (0 inner, 1 outer) of this block is a physical, non-periodic
   //! boundary (a wall whatever installed it, or an open boundary)

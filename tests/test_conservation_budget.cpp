@@ -11,7 +11,7 @@
 
 #include "cuda_test_gate.hpp"
 using namespace snap;
-struct Case {  // gw: cell (+ fixer) or face; per: periodic x2/x3; vsed: rain
+struct Case {  // gw: face (V3 I-7); per: periodic x2/x3; vsed: rain
   char const *name, *deck, *gw;  // qv: vapor, supersaturated above ~0.022
   int scheme;
   bool per, pocket;
@@ -203,9 +203,10 @@ TEST_P(Budget, closes_to_round_off) {
 char const *A = "test_gravity_energy.yaml", *B = "test_species_face_clamp.yaml",
            *Cs = "test_fix_vapor_volume.yaml",
            *D = "test_cubed_sphere_cell_volume.yaml";
-Case const kDecks[] = {{"a_cell_s0", A, "cell", 0},
-                       {"a_cell_s1", A, "cell", 1},
-                       {"a_cell_s9", A, "cell", 9},
+// V3 I-7: the cell rows moved to face. a_cell_s0, a_cell_s9 and c_cell_s9
+// then equal a_face_s0, a_face_s9 and c_face_s9; a_cell_s1 (closed x2/x3)
+// stays as a_face_s1_closed
+Case const kDecks[] = {{"a_face_s1_closed", A, "face", 1},
                        {"a_face_s0", A, "face", 0},
                        {"a_face_s1", A, "face", 1, true},
                        {"a_face_s9", A, "face", 9},
@@ -215,7 +216,6 @@ Case const kDecks[] = {{"a_cell_s0", A, "cell", 0},
                        {"b_key4", B, "face", 0, true, false, 0., 0.01, 4},
                        {"c_face_s0", Cs, "face", 0, false, false, -0.5},
                        {"c_face_s9", Cs, "face", 9},
-                       {"c_cell_s9", Cs, "cell", 9},
                        {"d_cubed", D, "face", 0},
                        {"d_cubed_s9", D, "face", 9},
                        {"e2_mp", A, "face", 0, true},

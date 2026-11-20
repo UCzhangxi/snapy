@@ -25,16 +25,22 @@ ConstGravityOptions ConstGravityOptionsImpl::from_yaml(
   op->non_hydrostatic() = node["non-hydrostatic"].as<double>(1.);
   TORCH_CHECK(op->non_hydrostatic() >= 0. && op->non_hydrostatic() <= 1.);
 
+  // V3 I-7 (rulings (a), (b)): face is the one gravity-work form;
+  // the cell form and its global fixer are removed
   op->gravity_work() = node["gravity-work"].as<std::string>("face");
-  TORCH_CHECK(op->gravity_work() == "cell" || op->gravity_work() == "face",
-              "forcing/const-gravity/gravity-work must be cell or face, got '",
-              op->gravity_work(), "'");
-  bool cell = op->gravity_work() == "cell";
-  op->gravity_work_fixer() = node["gravity-work-fixer"].as<bool>(cell);
-  if (op->gravity_work_fixer() && op->grav1() != 0.) {
-    TORCH_CHECK(cell,
-                "forcing/const-gravity/gravity-work-fixer needs gravity-work: "
-                "cell");
+  TORCH_CHECK(op->gravity_work() == "face",
+              "forcing/const-gravity/gravity-work: '", op->gravity_work(),
+              "' is not supported: the cell form and its global fixer were "
+              "removed (V3 I-7); use gravity-work: face");
+  // gravity-work-fixer: false is a deprecated no-op; true is refused
+  if (node["gravity-work-fixer"]) {
+    TORCH_CHECK(!node["gravity-work-fixer"].as<bool>(),
+                "forcing/const-gravity/gravity-work-fixer: true is not "
+                "supported: the global gravity-work fixer was removed (V3 "
+                "I-7) with gravity-work: cell; use gravity-work: face");
+    TORCH_WARN_ONCE(
+        "forcing/const-gravity/gravity-work-fixer is deprecated and ignored "
+        "(the fixer was removed in V3 I-7); remove the key");
   }
 
   return op;

@@ -25,8 +25,7 @@ void bind_forcing(py::module &m) {
       .ADD_OPTION(double, snap::ConstGravityOptionsImpl, grav1)
       .ADD_OPTION(double, snap::ConstGravityOptionsImpl, grav2)
       .ADD_OPTION(double, snap::ConstGravityOptionsImpl, grav3)
-      .ADD_OPTION(std::string, snap::ConstGravityOptionsImpl, gravity_work)
-      .ADD_OPTION(bool, snap::ConstGravityOptionsImpl, gravity_work_fixer);
+      .ADD_OPTION(std::string, snap::ConstGravityOptionsImpl, gravity_work);
 
   auto pyCoriolisOptions =
       py::class_<snap::CoriolisOptionsImpl, snap::CoriolisOptions>(

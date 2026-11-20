@@ -112,29 +112,15 @@ void HydroImpl::reset() {
   // gravity-work options, checked here so YAML and Python construction agree
   if (options->grav()) {
     auto const& gw = options->grav()->gravity_work();
-    TORCH_CHECK(gw == "cell" || gw == "face",
-                "const-gravity gravity-work must be cell or face, got '", gw,
-                "'");
-    // the fixer runs with gravity-work: cell only; record the effective value
-    // (a face form set from Python keeps the default true otherwise)
-    if (gw != "cell") options->grav()->gravity_work_fixer() = false;
-    TORCH_CHECK(!gravity_work_fixer() || (options->grav()->grav2() == 0. &&
-                                          options->grav()->grav3() == 0.),
-                "const-gravity gravity-work-fixer needs grav2 = grav3 = 0 (its "
-                "potential is -grav1 * x1); set it false otherwise");
-    // mass that wraps across a periodic x1 face jumps by grav1 * Lx1 in that
-    // potential, which the E+PE defect would book as a defect. The layout's
-    // x1 wrap is read from its topology: a Python bfuncs() call clears names.
+    // V3 I-7 (rulings (a), (b)): the cell form and its global fixer
+    // are removed; face is the one gravity-work form
+    TORCH_CHECK(gw == "face", "const-gravity gravity-work: '", gw,
+                "' is not supported: the cell form and its global fixer were "
+                "removed (V3 I-7); use gravity-work: face");
+    // the layout's x1 wrap is read from its topology: a Python bfuncs() call
+    // clears names
     auto const& nm = pmb->options->bcnames();
     bool wrap = pmb->options->layout()->periodic_z();
-    for (int f : {0, 1}) {
-      TORCH_CHECK(!gravity_work_fixer() ||
-                      !(wrap || (f < static_cast<int>(nm.size()) &&
-                                 nm[f].compare(0, 8, "periodic") == 0)),
-                  "const-gravity gravity-work-fixer needs non-periodic x1 "
-                  "boundaries (its potential -grav1 * x1 jumps across a "
-                  "periodic x1 face); set it false otherwise");
-    }
     // the corrected PE needs a single-valued potential; -grav1 * x1 jumps at
     // a periodic x1 face (read as for the fixer above): warn, no change
     if (options->grav()->grav1() != 0. && gw == "face") {
@@ -146,7 +132,7 @@ void HydroImpl::reset() {
         TORCH_WARN_ONCE(
             "gravity-work: face with periodic x1: -grav1*x1 jumps at the "
             "periodic face, so the corrected PE its work books is not defined "
-            "there; use x1 walls or gravity-work: cell");
+            "there; use x1 walls");
     }
     // the corrected-PE work has no form on other grids: plain face work there
     if (options->grav()->grav1() != 0. && gw == "face" && pmb && pmb->pcoord) {
@@ -363,11 +349,9 @@ void HydroImpl::_check_stretched_x1(torch::Tensor const& u) const {
   }
 }
 
-bool HydroImpl::gravity_work_fixer() const {
-  auto g = options->grav();
-  return g && g->grav1() != 0. && g->gravity_work() == "cell" &&
-         g->gravity_work_fixer();
-}
+// V3 I-7: the global fixer is removed; a constant false until lane X's X5
+// removes the callers in meshblock.cpp and mesh.cpp
+bool HydroImpl::gravity_work_fixer() const { return false; }
 
 bool HydroImpl::radial_exact_work() const {
   auto g = options->grav();

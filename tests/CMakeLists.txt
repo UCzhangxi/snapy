@@ -361,7 +361,6 @@ snapy_add_python_test(test_implicit_gravity_tall_column_large_courant
 snapy_add_python_test(test_tall_column_runner_child_failure TIMEOUT 120 LABELS "python;hydro;implicit")
 snapy_add_python_test(test_implicit_face_work_operator TIMEOUT 300 LABELS "python;hydro;implicit;gravity")
 snapy_add_python_test(test_implicit_stratified_solid TIMEOUT 300 LABELS "python;hydro;implicit;gravity")
-snapy_add_python_test(test_gravity_work_fixer TIMEOUT 120 LABELS "python;hydro;gravity;energy")
 snapy_add_python_test(test_gravity_work_radial_exact TIMEOUT 300 LABELS "python;hydro;gravity")
 snapy_add_python_test(test_implicit_options_type TIMEOUT 60 LABELS "python;implicit")
 snapy_add_python_test(test_shear_cfl TIMEOUT 60 LABELS "python;hydro;implicit")
@@ -619,7 +618,7 @@ foreach(example IN LISTS reference_examples)
 endforeach()
 
 # straka at cfl 1.6 needs redos: a non-finite step must reach check_redo
-# (gravity-work-fixer on), not stop the run
+# (gravity-work: face, V3 I-7), not stop the run
 add_test(NAME test_straka_redo
          COMMAND ${CMAKE_COMMAND} -Dbuildl=release
                  -P ${CMAKE_CURRENT_SOURCE_DIR}/run_straka_redo.cmake)
@@ -837,7 +836,7 @@ foreach(_t IN ITEMS
   set_property(TEST ${_t}.${buildl} APPEND PROPERTY LABELS "fp32-foundations")
 endforeach()
 foreach(_t IN ITEMS
-    test_anomaly_storage test_gravity_work_fixer test_gravity_work_radial_exact
+    test_anomaly_storage test_gravity_work_radial_exact
     test_implicit_face_work_operator
     test_implicit_gravity_tall_column test_implicit_gravity_tall_column_cubed)
   set_property(TEST ${_t}_python APPEND PROPERTY LABELS "fp32-foundations")
