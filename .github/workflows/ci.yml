@@ -42,9 +42,9 @@ jobs:
     needs: pre-commit
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest]
+        os: [macOS-latest]
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -75,16 +75,23 @@ jobs:
               > "$(python -c 'import site; print(site.getsitepackages()[0])')/sitecustomize.py"
           fi
 
-      # v2.6.9 contains kintera #155 but has no PyPI wheel yet.
+      - name: Install kintera 2.6.11
+        if: runner.os == 'Linux'
+        run: pip install 'kintera>=2.6.11'
+
+      # The kintera 2.6.11 macOS wheel fails snapy's MPS column cases
+      # (DispatchStub.cpp:276); a source build against the installed torch passes.
       - name: Check out kintera
+        if: runner.os == 'macOS'
         uses: actions/checkout@v4
         with:
           repository: chengcli/kintera
-          ref: b8e726ce2fb1538aa15f0787fdcef732d9cdc997
+          ref: 431fd1441fdc95c2bc93f7dc56e35adb1e1315fb
           fetch-depth: 0
           path: .ci-kintera
 
-      - name: Build and install kintera 2.6.9
+      - name: Build and install kintera 2.6.11
+        if: runner.os == 'macOS'
         working-directory: .ci-kintera
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNETCDF=ON -DBUILD_TESTS=OFF
@@ -159,10 +166,13 @@ jobs:
         run: |
           pip install wheel numpy pyyaml pytest netcdf4
           pip install 'torch==2.10.0'
-          pip install 'kintera>=2.6.9'
+          pip install setuptools-scm 'pyharp>=2.7.17'
           sudo apt-get update
           sudo apt-get install -y libnetcdf-dev libucx-dev nco autoconf automake libtool pkg-config
           pip install 'commux>=0.1.4' 'pinc>=0.2.0'
+
+      - name: Install kintera 2.6.11
+        run: pip install 'kintera>=2.6.11'
 
       - name: Configure CMake
         run: |
