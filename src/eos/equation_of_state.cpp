@@ -466,6 +466,7 @@ void EquationOfStateImpl::apply_primitive_limiter_(torch::Tensor const& prim) {
   }
   prim.masked_fill_(nan, 0.);
   prim[IDN].clamp_min_(options->density_floor());
+  if (nvar() <= IPR) return;  // shallow water: no pressure or species row
 
   if (options->thermo()) {
     int ny = thermo_species_rows(options->thermo());
