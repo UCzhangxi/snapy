@@ -1007,6 +1007,30 @@ TEST(FluxRegister, a_failed_column_flags_implicit_column) {
   }
 }
 
+// Every retry cause the hydro register declares has a setter. Only lane I's
+// implicit.column is flagged (hydro.cpp, after the solve); check_redo reads
+// the EOS causes (floor patch, NaN, vapor and heat-capacity failures) from
+// the EOS status, so register slots for them would read 0 forever.
+TEST(FluxRegister, hydro_declares_only_retry_causes_it_sets) {
+  std::string deck = kDeck;
+  auto at = deck.find("implicit-scheme: 0");
+  ASSERT_NE(at, std::string::npos);
+  deck.replace(at, 18, "implicit-scheme: 1");
+  {
+    std::ofstream f("test_flux_register_retry.yaml");
+    f << deck;
+  }
+  auto block = MeshBlock(
+      MeshBlockOptionsImpl::from_yaml("test_flux_register_retry.yaml"));
+  auto& mon = block->phydro->flux_register().monitor();
+  EXPECT_NO_THROW(mon.retry_index("implicit.column"));
+  for (auto name :
+       {"ef.floor_patch", "ef.nan", "ef.vapor_fail", "ef.heat_capacity"})
+    EXPECT_THROW(mon.retry_index(name), c10::Error)
+        << name << " has a retry slot but no setter";
+  EXPECT_EQ(mon.retry_flags.numel(), 1);
+}
+
 // V3 I-7: gravity-work: cell is removed. A deck that selects cell is
 // refused, from YAML and from code, with a message that names face. The
 // global fixer went in V3 X5: gravity-work-fixer: true is refused with X5's
