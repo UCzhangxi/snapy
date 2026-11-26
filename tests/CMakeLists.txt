@@ -11,6 +11,8 @@ setup_test(test_shallow_water_limiter)
 setup_test(test_aneos_gamma)
 # ideal-gas refuses a moist card; the output frame keeps float32 values
 setup_test(test_eos_io_core)
+# aneos lowers momenta and raises velocities with the cell metric
+setup_test(test_aneos_metric)
 setup_test(test_split_reference)
 setup_test(test_precision_policy)
 setup_test(test_fp32_typed_constants)
