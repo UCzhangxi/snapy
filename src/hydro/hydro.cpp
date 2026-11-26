@@ -207,9 +207,9 @@ void HydroImpl::reset() {
   // keep their indices
   req.counters.push_back("implicit.fp64_columns");
   req.minima = {"ef.pos_min"};
-  // V3 I-5: lane I's cause (R.rst 4.5); X maps it to its cause bit 5
-  req.retry = {"ef.floor_patch", "ef.nan", "ef.vapor_fail", "ef.heat_capacity",
-               "implicit.column"};
+  // V3 I-5: lane I's cause (R.rst 4.5), the only one flagged here; the EOS
+  // causes reach check_redo through the EOS status, not the register
+  req.retry = {"implicit.column"};
   // conserve-axial-momentum exact: A's riemann.central on the x2/x3 faces
   // (R-2), kept until the next stage
   paam->request(req);
