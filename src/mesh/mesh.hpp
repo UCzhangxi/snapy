@@ -78,8 +78,8 @@ class MeshImpl : public torch::nn::Cloneable<MeshImpl> {
   double max_time_step(MeshVariables const& vars);
   void forward(MeshVariables& vars, double dt, int stage);
   //! V3 S-K4: one chemistry adapter per block (Mesh::blocks order, built one
-  //! after another on the calling thread), run in the last stage's global
-  //! phase before the final exchange
+  //! after another on the calling thread), run as each block's last-stage op,
+  //! before the axial closure, as on a bare block
   void set_chemistry(kintera::KineticsOptionsImpl reactions);
   void exchange(MeshVariables& vars, SyncOptions const& opts);
   void exchange_ghost_zones(MeshVariables& vars, int type = kConserved);

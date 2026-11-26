@@ -91,7 +91,6 @@ TEST_P(DeviceTest, mesh_owns_one_executor_and_steps_through_it) {
       mesh->forward(vars, dt, s);
       for (size_t i = 0; i < ref->blocks.size(); ++i) {
         if (s == 0) ref->blocks[i]->step_dt = dt;
-        ref->blocks[i]->defer_chemistry = true;
         ref->blocks[i]->advance_local(rvars[i], dt, s);
       }
       // same-process blocks meet in the exchange: one thread each

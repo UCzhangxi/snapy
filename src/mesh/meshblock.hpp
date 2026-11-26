@@ -259,10 +259,9 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! V3 S-K4 (K.rst 3.6): the chemistry step after the last stage, from a
   //! by-value copy of the reaction options; one adapter for this block,
   //! built on the calling thread. A Mesh registers its blocks through
-  //! Mesh::set_chemistry, which defers each block's run to its global phase.
+  //! Mesh::set_chemistry; each block runs it in its own last stage.
   void set_chemistry(kintera::KineticsOptionsImpl reactions);
   ChemistrySource* chemistry() const { return _chemistry.get(); }
-  bool defer_chemistry = false;
 
   //! the stage executor's counters: captures, replays, eager stages, graphs
   std::map<std::string, int64_t> execution_report() const;
