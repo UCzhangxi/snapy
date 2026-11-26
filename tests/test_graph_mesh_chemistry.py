@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """V3 lane C, C5: a Mesh with a registered chemistry step runs its blocks'
-stages as CUDA graphs (B2) and its chemistry in the global phase, eagerly,
-after the stages and before the final exchange (Mesh::forward, S-K4), and
-equals an eager Mesh bitwise.
+stages as CUDA graphs (B2), with the chemistry as an eager segment of each
+block's last stage, before the axial closure, as on a bare block, and equals
+an eager Mesh bitwise.
 
 The moist column of test_graph_chemistry_slot.py (H2O, H2O(l), H2O(l,p);
 the saturation adjustment, coagulation and evaporation) as a two-block slab

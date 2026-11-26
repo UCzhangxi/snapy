@@ -28,8 +28,8 @@ using namespace snap;
 
 // V3 B2: a Mesh's blocks run their stages as CUDA graphs, one graph per
 // (block, stage, segment), captured on the block worker pool (thread-local
-// capture mode), with the Mesh's own exchange, global phase and chemistry
-// between them as before. Two Cartesian blocks along x2 (a dry deck: no
+// capture mode), with the Mesh's own exchange and global phase between them
+// as before. Two Cartesian blocks along x2 (a dry deck: no
 // scalar or species, so no exchange runs inside a stage) equal an eager Mesh
 // bitwise, FP64 and FP32, with dt changing.
 // V3 B3: a within-stage cross-block exchange is a cut (pack and unpack in

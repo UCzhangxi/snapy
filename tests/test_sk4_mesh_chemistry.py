@@ -1,9 +1,8 @@
-"""V3 S-K4 (K.rst 3.5): Mesh.set_chemistry runs the chemistry step in the
-Mesh's global phase (the blocks' runs are deferred, the step runs after the
-last stage before the final exchange). A two-block slab Mesh with the
-chemistry registered equals the one-block MeshBlock with the same
-registration on every owned cell, bitwise, over several steps, in FP64 and
-FP32. The control: the same Mesh against a MeshBlock without chemistry
+"""V3 S-K4 (K.rst 3.5): Mesh.set_chemistry runs the chemistry step as each
+block's last-stage op, before the axial closure, as on a bare block. A
+two-block slab Mesh with the chemistry registered equals the one-block
+MeshBlock with the same registration on every owned cell, bitwise, over
+several steps, in FP64 and FP32. The control: the same Mesh against a MeshBlock without chemistry
 differs, so the Mesh really ran the step. RED before S-K4: Mesh has no
 set_chemistry.
 

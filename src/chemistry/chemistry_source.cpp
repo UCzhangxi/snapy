@@ -1,6 +1,3 @@
-// C/C++
-#include <mutex>
-
 // kintera
 #include <kintera/kinetics/evolve_implicit.hpp>
 
@@ -26,9 +23,6 @@ ChemistrySource::ChemistrySource(kintera::KineticsOptionsImpl reactions,
 void ChemistrySource::forward(MeshBlockImpl& block, Variables& vars,
                               double dt) {
   if (empty()) return;  // a dry or reaction-free deck: no update, no Jacobian
-  // goes once kintera's log-SVP state (LogSVPFunc::_op) is per call
-  static std::mutex one_block_at_a_time;
-  std::lock_guard<std::mutex> lock(one_block_at_a_time);
   auto& hydro_u = vars.at("hydro_u");
   auto& hydro_w = vars.at("hydro_w");
   if (kinet->stoich.device() != hydro_u.device()) {  // the block moved
