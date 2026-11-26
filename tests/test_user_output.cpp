@@ -734,7 +734,8 @@ TEST(OutputPrecision, netcdf_output_without_netcdf_warns_once) {
   EXPECT_NE(first, std::string::npos) << out;
   if (first != std::string::npos)
     EXPECT_EQ(out.find(line, first + 1), std::string::npos)
-        << "warned more than once:\n" << out;
+        << "warned more than once:\n"
+        << out;
 }
 #endif
 

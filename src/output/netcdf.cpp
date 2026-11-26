@@ -11,8 +11,8 @@
 
 // snap
 #include <snap/coord/coordinate.hpp>
-#include <snap/utils/log.hpp>
 #include <snap/mesh/meshblock.hpp>
+#include <snap/utils/log.hpp>
 
 #include "output_utils.hpp"
 #include "writer_core.hpp"
@@ -252,7 +252,8 @@ class NoNetcdfSink : public Sink {
     if (warned) return;
     warned = true;
     SINFO(NetcdfOutput) << "netcdf output requested but this build has "
-                           "NETCDF=OFF: nothing is written" << std::endl;
+                           "NETCDF=OFF: nothing is written"
+                        << std::endl;
   }
 };
 }  // namespace

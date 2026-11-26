@@ -57,9 +57,9 @@ boundary-condition:
 
 torch::Tensor make_cons(MeshBlock const& block) {
   auto pc = block->pcoord->options;
-  auto cons = torch::rand({block->phydro->peos->nvar(), pc->nc3(), pc->nc2(),
-                           pc->nc1()},
-                          torch::kFloat64);
+  auto cons = torch::rand(
+      {block->phydro->peos->nvar(), pc->nc3(), pc->nc2(), pc->nc1()},
+      torch::kFloat64);
   cons[IDN].add_(1.);
   cons[IPR].mul_(1.e5).add_(1.e5);
   return cons;
@@ -99,5 +99,6 @@ TEST(IdealGasCons2Prim, reads_cons_in_its_own_dtype) {
     return;  // refusing the mismatch is also correct
   }
   EXPECT_TRUE(torch::allclose(prim.to(torch::kFloat64), ref, 1.e-5, 1.e-5))
-      << "max error " << (prim.to(torch::kFloat64) - ref).abs().max().item<double>();
+      << "max error "
+      << (prim.to(torch::kFloat64) - ref).abs().max().item<double>();
 }
