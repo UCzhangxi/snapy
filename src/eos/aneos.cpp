@@ -3,6 +3,10 @@
 
 #include <snap/snap.h>
 
+#include <snap/coord/coord_utils.hpp>
+#include <snap/hydro/hydro.hpp>
+#include <snap/mesh/meshblock.hpp>
+
 namespace snap {
 
 void ANEOSImpl::reset() {
@@ -62,9 +66,8 @@ void ANEOSImpl::_prim2cons(torch::Tensor prim, torch::Tensor &cons) {
   // den -> den
   cons[IDN] = prim[IDN];
 
-  // vel -> mom
-  auto out = cons.narrow(0, IVX, 3);
-  torch::mul_out(out, prim.narrow(0, IVX, 3), prim[IDN]);
+  // vel -> mom (covariant)
+  _mom_from_vel_(prim, cons);
 
   // KE
   auto ke = kinetic_energy_(prim, cons.narrow(0, IVX, 3));
@@ -85,6 +88,7 @@ void ANEOSImpl::_cons2prim(torch::Tensor cons, torch::Tensor &prim) {
   // mom -> vel
   auto out = prim.narrow(0, IVX, 3);
   torch::div_out(out, cons.narrow(0, IVX, 3), prim[IDN]);
+  coord_vec_raise_(out, phydro->pmb->pcoord->cosine_cell_kj);
 
   // KE
   auto ke = kinetic_energy_(prim, cons.narrow(0, IVX, 3));
