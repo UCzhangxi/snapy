@@ -531,8 +531,8 @@ snapy_add_python_test(test_graph_implicit_dt TIMEOUT 900 LABELS "python;hydro;im
 # V3 C: the chemistry slot as an eager segment beside captured ones, and the
 # vertical implicit correction (with its predicated FP64 retry) under graph
 snapy_add_python_test(test_graph_chemistry_slot TIMEOUT 600 LABELS "python;hydro;eos")
-# V3 C5: a Mesh with chemistry captures its blocks' stages, chemistry eager in
-# its global phase
+# V3 C5: a Mesh with chemistry captures its blocks' stages, chemistry an eager
+# segment of each block's last stage
 snapy_add_python_test(test_graph_mesh_chemistry TIMEOUT 900 LABELS "python;hydro;eos")
 snapy_add_python_test(test_graph_implicit TIMEOUT 600 LABELS "python;hydro;implicit")
 # audit-3 lead 4: with the x1 flux off the implicit solve books its transfers
