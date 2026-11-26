@@ -184,12 +184,28 @@ torch::Tensor const& CubedSphereLayoutImpl::_velocity_transform(
 
   // the panel's components to the global Cartesian frame and back (V3 S
   // step (1)): no atan2, so the matrix is a function of the point alone
-  int face_id = std::get<2>(loc_of(options->rank()));
+  int face_id = panel_of(options->rank());
   auto matrix = PanelRotation().matrix(
       face_id, alpha, beta, to_global,
       opts.type() == kConserved ? cosine : torch::Tensor());
   return _velocity_transform_cache.emplace(std::move(key), std::move(matrix))
       .first->second;
+}
+
+void CubedSphereLayoutImpl::_transform_velocity_(
+    SyncOptions const& opts, int buffer_id, bool to_global, torch::Tensor alpha,
+    torch::Tensor beta, torch::Tensor const& cosine_cell,
+    std::vector<torch::indexing::TensorIndex> const& sub3,
+    torch::Tensor var) const {
+  torch::Tensor cosine;  // conserved momenta carry the metric cosine
+  if (opts.type() == kConserved)
+    cosine = cosine_cell.index(sub3);
+  else if (opts.type() != kPrimitive)
+    return;  // kScalar: nothing to rotate
+  auto vel = var.narrow(0, IVX, 3);
+  auto const& matrix =
+      _velocity_transform(opts, buffer_id, to_global, alpha, beta, cosine, vel);
+  cs_apply_velocity_transform_(vel, matrix);
 }
 
 /*!
@@ -378,17 +394,6 @@ static inline int get_side(std::tuple<int, int, int> const& offset) {
     return -1;  // invalid
 }
 
-static inline void cs_clamp_inside(int pxy, int* nx, int* ny) {
-  if (*nx < 0)
-    *nx = 0;
-  else if (*nx >= pxy)
-    *nx = pxy - 1;
-  if (*ny < 0)
-    *ny = 0;
-  else if (*ny >= pxy)
-    *ny = pxy - 1;
-}
-
 static inline void cs_edge_map_into_neighbor(int pxy, int leaving_side,
                                              int pos /*0..k-1*/,
                                              const CSEdge* emap, int* out_rx,
@@ -487,8 +492,6 @@ void CubedSphereLayoutImpl::_step_one(int face, int rx, int ry, int dx, int dy,
 
   /* Map to neighbor border */
   cs_edge_map_into_neighbor(pxy(), side, pos, &emap, out_rx, out_ry);
-
-  // cs_clamp_inside(pxy, out_rx, out_ry);
 }
 
 int CubedSphereLayoutImpl::rank_of(std::tuple<int, int, int> iloc) const {
@@ -534,7 +537,6 @@ int CubedSphereLayoutImpl::neighbor_rank(
 
   if ((dx + lx <= 1) && (dx + lx >= -1)) {
     // do (dx,0) and then (0,dy)
-    // printf("lx = %d, ly = %d, dx = %d, dy = %d\n", lx, ly, dx, dy);
     int f1, x1, y1;
     _step_one(face, rx, ry, dx, 0, &f1, &x1, &y1);
 
@@ -583,7 +585,7 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
       if (nb < 0) return;  // no neighbor
 
       // skip inter-panel neighbors
-      if (std::get<2>(iloc) != std::get<2>(loc_of(nb))) return;
+      if (std::get<2>(iloc) != panel_of(nb)) return;
 
       // Get the interior part for this direction
       auto sub = pmb->part(offset, PartOptions().exterior(false));
@@ -601,12 +603,8 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
         if (skips_partial(name, dy, dx, /*send=*/true)) continue;
 
         auto source = var.index(sub);
-        if (!buffer_matches(send_bufs[ivar], source)) {
-          send_bufs[ivar] = torch::empty_like(source);
-        }
-        if (!buffer_matches(recv_bufs[ivar], source)) {
-          recv_bufs[ivar] = torch::empty_like(source);
-        }
+        ensure_like(send_bufs[ivar], source);
+        ensure_like(recv_bufs[ivar], source);
         send_bufs[ivar].copy_(source);
         ++ivar;
       }
@@ -634,7 +632,7 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
     if (nb < 0) return;  // no neighbor
 
     // skip intra-panel neighbors
-    if (std::get<2>(iloc) == std::get<2>(loc_of(nb))) return;
+    if (std::get<2>(iloc) == panel_of(nb)) return;
 
     // Get the interior part for this direction, widened by cs_interp_margin
     // for an interpolating receiver (the halo is fresh only because phase 1
@@ -669,37 +667,16 @@ void CubedSphereLayoutImpl::serialize(MeshBlockImpl const* pmb, Variables& vars,
       if (skips_partial(name, dy, dx, /*send=*/true)) continue;
 
       auto source = var.index(sub);
-      if (!buffer_matches(send_bufs[ivar], source)) {
-        send_bufs[ivar] = torch::empty_like(source);
-      }
-      if (!buffer_matches(recv_bufs[ivar], source)) {
-        recv_bufs[ivar] = torch::empty_like(source);
-      }
-      if (!buffer_matches(work_bufs[ivar], source)) {
-        work_bufs[ivar] = torch::empty_like(source);
-      }
+      ensure_like(send_bufs[ivar], source);
+      ensure_like(recv_bufs[ivar], source);
+      ensure_like(work_bufs[ivar], source);
 
       send_bufs[ivar].copy_(source);
       auto var_send = send_bufs[ivar];
       auto scratch = work_bufs[ivar];
 
-      switch (opts.type()) {
-        case kConserved: {
-          auto vel = var_send.narrow(0, IVX, 3);
-          auto const& matrix =
-              _velocity_transform(opts, bid, /*to_global=*/true, alpha, beta,
-                                  cosine_cell.index(sub3), vel);
-          cs_apply_velocity_transform_(vel, matrix);
-        } break;
-        case kPrimitive: {
-          auto vel = var_send.narrow(0, IVX, 3);
-          auto const& matrix = _velocity_transform(
-              opts, bid, /*to_global=*/true, alpha, beta, torch::Tensor(), vel);
-          cs_apply_velocity_transform_(vel, matrix);
-        } break;
-        case kScalar:
-          break;
-      }
+      _transform_velocity_(opts, bid, /*to_global=*/true, alpha, beta,
+                           cosine_cell, sub3, var_send);
 
       // check reverse flag
       if (rev_flag) {
@@ -761,7 +738,7 @@ void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
       if (nb < 0) return;  // no neighbor
 
       // skip inter-panel neighbors
-      if (std::get<2>(iloc) != std::get<2>(loc_of(nb))) return;
+      if (std::get<2>(iloc) != panel_of(nb)) return;
 
       // Get the exterior (ghost zone) part for this direction
       auto sub = pmb->part(offset, PartOptions().exterior(true));
@@ -789,7 +766,7 @@ void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
     if (nb < 0) return;  // no neighbor
 
     // skip intra-panel neighbors
-    if (std::get<2>(iloc) == std::get<2>(loc_of(nb))) return;
+    if (std::get<2>(iloc) == panel_of(nb)) return;
 
     // Get the exterior (ghost zone) part for this direction
     auto part_opts = strip_part(pmb, opts, dy, dx, /*exterior=*/true,
@@ -820,24 +797,8 @@ void CubedSphereLayoutImpl::deserialize(MeshBlockImpl const* pmb,
         pcoord->interp_ghost(var, offset);
       }
 
-      switch (opts.type()) {
-        case kConserved: {
-          auto vel = var.index(sub).narrow(0, IVX, 3);
-          auto const& matrix =
-              _velocity_transform(opts, bid, /*to_global=*/false, alpha, beta,
-                                  cosine_cell.index(sub3), vel);
-          cs_apply_velocity_transform_(vel, matrix);
-        } break;
-        case kPrimitive: {
-          auto vel = var.index(sub).narrow(0, IVX, 3);
-          auto const& matrix =
-              _velocity_transform(opts, bid, /*to_global=*/false, alpha, beta,
-                                  torch::Tensor(), vel);
-          cs_apply_velocity_transform_(vel, matrix);
-        } break;
-        case kScalar:
-          break;
-      }
+      _transform_velocity_(opts, bid, /*to_global=*/false, alpha, beta,
+                           cosine_cell, sub3, var.index(sub));
     }
   });
 }
@@ -862,31 +823,6 @@ std::tuple<int, int, int> CubedSphereLayoutImpl::_peer_exchange_offset(
   (void)opts;
   (void)offset;
   return find_peer_offset(*this, peer_rank, target_rank);
-}
-
-void CubedSphereLayoutImpl::_interpolate_to_local(
-    MeshBlockImpl const* pmb, std::tuple<int, int, int> offset,
-    torch::Tensor var) const {
-  // my coordinates
-  auto pcoord = pmb->pcoord;
-  auto mesh = torch::meshgrid({pcoord->x3v, pcoord->x2v, pcoord->x1v},
-                              /*indexing=*/"ij");
-
-  auto sub = pmb->part(offset, PartOptions().exterior(true));
-
-  auto x2v = mesh[1].unsqueeze(0).index(sub).squeeze(0);
-  auto x3v = mesh[0].unsqueeze(0).index(sub).squeeze(0);
-
-  auto var_neighbor = var.clone();
-
-  if (options->verbose() && is_root()) {
-    std::cout << "offset = (" << std::get<0>(offset) << ", "
-              << std::get<1>(offset) << ", " << std::get<2>(offset) << ")\n";
-    std::cout << "var from neighbor = \n"
-              << var_neighbor[IDN].squeeze().transpose(0, 1).flip(0) << "\n";
-  }
-
-  //\TODO calculate neighbor coordinates and perform interpolation
 }
 
 }  // namespace snap

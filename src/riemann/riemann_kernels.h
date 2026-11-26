@@ -9,6 +9,7 @@
 
 // snap
 #include <snap/snap.h>
+#include <snap/utils/sqr.h>
 
 #include "../eos/ideal_moist_impl.h"
 #include "../eos/shallow_water_impl.h"
@@ -19,12 +20,37 @@
 // through OnHost), and riemann_face<Kind>, the loop body of both loops.
 // upwind and plume-roe are torch formulas (riemann.cpp).
 
-#define SQR(x) ((x) * (x))
-#define FLX(n) flx[(n) * stride_f]
-#define WL(n) wl[(n) * stride_w]
-#define WR(n) wr[(n) * stride_w]
+// operand rows of one face; undefined at the end of this header
+#define WL(n) (wl[(n) * stride_w])
+#define WR(n) (wr[(n) * stride_w])
+#define FLX(n) (flx[(n) * stride_f])
 
 namespace snap {
+
+//! the velocity rows of a face: the normal x and the two tangential y, z
+struct FaceAxes {
+  int x, y, z;
+};
+
+//! face of dimension dim (3: x1, 2: x2, 1: x3): normal IPR - dim, then the
+//! tangential rows in cyclic order
+DISPATCH_MACRO inline FaceAxes face_axes(int dim) {
+  int ivx = IPR - dim;
+  return {ivx, IVX + ((ivx - IVX) + 1) % 3, IVX + ((ivx - IVX) + 2) % 3};
+}
+
+//! shallow-water face of dimension dim in the y-z plane (dir_yz) or the x-y
+//! plane
+DISPATCH_MACRO inline FaceAxes shallow_axes(int dim, int dir_yz) {
+  if (dir_yz) return {dim == 2 ? IVY : IVZ, dim == 2 ? IVZ : IVY, IVX};
+  return {dim == 3 ? IVX : IVY, dim == 3 ? IVY : IVX, IVZ};
+}
+
+//! the small speed and sound-speed floor of the hllc and roe solvers
+template <typename T>
+DISPATCH_MACRO constexpr T riemann_tiny() {
+  return T(1.0e-10);
+}
 
 template <typename T>
 void DISPATCH_MACRO hllc_impl(T* flx, T* wl, T* wr, T el, T er, T gammal,
@@ -38,18 +64,17 @@ void DISPATCH_MACRO hllc_impl(T* flx, T* wl, T* wr, T el, T er, T gammal,
   bool shifted = reference_pressure != T(0);
   auto pl = shifted ? reference_pressure + WL(IPR) : WL(IPR);
   auto pr = shifted ? reference_pressure + WR(IPR) : WR(IPR);
-  constexpr T TINY_NUMBER = T(1.0e-10);
 
-  auto ivx = IPR - dim;
-  auto ivy = IVX + ((ivx - IVX) + 1) % 3;
-  auto ivz = IVX + ((ivx - IVX) + 2) % 3;
+  auto [ivx, ivy, ivz] = face_axes(dim);
 
   //--- Step 1.  Compute kappa
 
   //--- Step 2.  Compute middle state estimates with PVRS (Toro 10.5.2)
 
-  el += T(0.5) * WL(IDN) * (SQR(WL(IVX)) + SQR(WL(IVY)) + SQR(WL(IVZ)));
-  er += T(0.5) * WR(IDN) * (SQR(WR(IVX)) + SQR(WR(IVY)) + SQR(WR(IVZ)));
+  el += T(0.5) * WL(IDN) *
+        (SNAP_SQR(WL(IVX)) + SNAP_SQR(WL(IVY)) + SNAP_SQR(WL(IVZ)));
+  er += T(0.5) * WR(IDN) *
+        (SNAP_SQR(WR(IVX)) + SNAP_SQR(WR(IVY)) + SNAP_SQR(WR(IVZ)));
 
   auto rhoa = T(0.5) * (WL(IDN) + WR(IDN));  // average density
   auto ca = T(0.5) * (cl + cr);              // average sound speed
@@ -76,8 +101,8 @@ void DISPATCH_MACRO hllc_impl(T* flx, T* wl, T* wr, T el, T er, T gammal,
   auto al = WL(ivx) - cl * ql;
   auto ar = WR(ivx) + cr * qr;
 
-  auto bp = ar > T(0.0) ? ar : (TINY_NUMBER);
-  auto bm = al < T(0.0) ? al : -(TINY_NUMBER);
+  auto bp = ar > T(0.0) ? ar : riemann_tiny<T>();
+  auto bm = al < T(0.0) ? al : -riemann_tiny<T>();
 
   //--- Step 5. Compute the contact wave speed and pressure
 
@@ -110,18 +135,15 @@ void DISPATCH_MACRO hllc_impl(T* flx, T* wl, T* wr, T el, T er, T gammal,
 
   if constexpr (std::is_same_v<T, float>) {
     // bm/bp are clipped at zero: only their acoustic branches simplify.
-    vxl = al < T(0) ? cl * ql : WL(ivx) + TINY_NUMBER;
-    vxr = ar > T(0) ? -cr * qr : WR(ivx) - TINY_NUMBER;
+    vxl = al < T(0) ? cl * ql : WL(ivx) + riemann_tiny<T>();
+    vxr = ar > T(0) ? -cr * qr : WR(ivx) - riemann_tiny<T>();
   } else {
     vxl = WL(ivx) - bm;
     vxr = WR(ivx) - bp;
   }
 
-  T rdl = T(1.), rdr = T(1.);
-  for (int n = 0; n < ny; ++n) {
-    rdl -= WL(ICY + n);
-    rdr -= WR(ICY + n);
-  }
+  T rdl = dry_fraction(&WL(ICY), ny, stride_w);
+  T rdr = dry_fraction(&WR(ICY), ny, stride_w);
 
   T fl[ICY], fr[ICY];
 
@@ -171,37 +193,23 @@ void DISPATCH_MACRO hllc_impl(T* flx, T* wl, T* wr, T el, T er, T gammal,
   }
 }
 
-}  // namespace snap
-
-#undef WL
-#undef WR
-#undef FLX
-#undef SQR
-
-#define WL(n) (wl[(n) * stride_w])
-#define WR(n) (wr[(n) * stride_w])
-#define FLX(n) (flx[(n) * stride_f])
-#define SQR(x) ((x) * (x))
-
-namespace snap {
-
 template <typename T>
 void DISPATCH_MACRO lmars_impl(T* flx, T* wl, T* wr, T hl, T hr, T gammal,
                                T gammar, int dim, int ny, int stride_w,
                                int stride_f, T* face_pressure = nullptr) {
-  auto ivx = IPR - dim;
-  auto ivy = IVX + ((ivx - IVX) + 1) % 3;
-  auto ivz = IVX + ((ivx - IVX) + 2) % 3;
+  auto [ivx, ivy, ivz] = face_axes(dim);
 
   T wli[5] = {WL(IDN), WL(ivx), WL(ivy), WL(ivz), WL(IPR)};
   T wri[5] = {WR(IDN), WR(ivx), WR(ivy), WR(ivz), WR(IPR)};
 
   // Enthalpies. Typed constants (V3 C9) keep a float instantiation on FP32
   // arithmetic throughout; FP64 is unchanged.
-  hl += T(0.5) * (SQR(wli[IVX]) + SQR(wli[IVY]) + SQR(wli[IVZ])) +
-        wli[IPR] / wli[IDN];
-  hr += T(0.5) * (SQR(wri[IVX]) + SQR(wri[IVY]) + SQR(wri[IVZ])) +
-        wri[IPR] / wri[IDN];
+  hl +=
+      T(0.5) * (SNAP_SQR(wli[IVX]) + SNAP_SQR(wli[IVY]) + SNAP_SQR(wli[IVZ])) +
+      wli[IPR] / wli[IDN];
+  hr +=
+      T(0.5) * (SNAP_SQR(wri[IVX]) + SNAP_SQR(wri[IVY]) + SNAP_SQR(wri[IVZ])) +
+      wri[IPR] / wri[IDN];
 
   // Average density, average sound speed, pressure, velocity
   T rhobar = T(0.5) * (wli[IDN] + wri[IDN]);
@@ -216,12 +224,10 @@ void DISPATCH_MACRO lmars_impl(T* flx, T* wl, T* wr, T hl, T hr, T gammal,
            T(0.5) / (rhobar * cbar) * (wli[IPR] - wri[IPR]);
 
   // Compute fluxes depending on the sign of ubar
-  T rd = T(1.0);
+  T rd;
   if (ubar > T(0)) {
     // Left side flux
-    for (int n = 0; n < ny; n++) {
-      rd -= WL(ICY + n);
-    }
+    rd = dry_fraction(&WL(ICY), ny, stride_w);
 
     FLX(IDN) = ubar * wli[IDN] * rd;
     for (int n = 0; n < ny; n++) {
@@ -234,9 +240,7 @@ void DISPATCH_MACRO lmars_impl(T* flx, T* wl, T* wr, T hl, T hr, T gammal,
     FLX(IPR) = ubar * wli[IDN] * hl;
   } else {
     // Right side flux
-    for (int n = 0; n < ny; n++) {
-      rd -= WR(ICY + n);
-    }
+    rd = dry_fraction(&WR(ICY), ny, stride_w);
 
     FLX(IDN) = ubar * wri[IDN] * rd;
     for (int n = 0; n < ny; n++) {
@@ -250,20 +254,6 @@ void DISPATCH_MACRO lmars_impl(T* flx, T* wl, T* wr, T hl, T hr, T gammal,
   }
 }
 
-}  // namespace snap
-
-#undef WL
-#undef WR
-#undef FLX
-#undef SQR
-
-#define SQR(x) ((x) * (x))
-#define WL(n) (wl[(n) * stride_w])
-#define WR(n) (wr[(n) * stride_w])
-#define FLX(n) (flx[(n) * stride_f])
-
-namespace snap {
-
 template <typename T>
 inline DISPATCH_MACRO T roe_max(T a, T b) {
   return a > b ? a : b;
@@ -276,14 +266,12 @@ void DISPATCH_MACRO roe_impl(T* flx, T const* wl, T const* wr, T el, T er,
                              T const* inv_mu_ratio_m1, T const* cv_ratio_m1,
                              T const* u0, int stride_w, int stride_f,
                              T* face_pressure = nullptr, T* llf = nullptr) {
-  auto TINY_NUMBER = T(1.0e-10);
+  auto [ivx, ivy, ivz] = face_axes(dim);
 
-  auto ivx = IPR - dim;
-  auto ivy = IVX + ((ivx - IVX) + 1) % 3;
-  auto ivz = IVX + ((ivx - IVX) + 2) % 3;
-
-  T etl = el + T(0.5) * WL(IDN) * (SQR(WL(IVX)) + SQR(WL(IVY)) + SQR(WL(IVZ)));
-  T etr = er + T(0.5) * WR(IDN) * (SQR(WR(IVX)) + SQR(WR(IVY)) + SQR(WR(IVZ)));
+  T etl = el + T(0.5) * WL(IDN) *
+                   (SNAP_SQR(WL(IVX)) + SNAP_SQR(WL(IVY)) + SNAP_SQR(WL(IVZ)));
+  T etr = er + T(0.5) * WR(IDN) *
+                   (SNAP_SQR(WR(IVX)) + SNAP_SQR(WR(IVY)) + SNAP_SQR(WR(IVZ)));
 
   T sqrtdl = sqrt(WL(IDN));
   T sqrtdr = sqrt(WR(IDN));
@@ -297,12 +285,8 @@ void DISPATCH_MACRO roe_impl(T* flx, T const* wl, T const* wr, T el, T er,
   T hr = (etr + WR(IPR)) / WR(IDN);
   T h = (hl * sqrtdl + hr * sqrtdr) * isdlpdr;
 
-  T dryl = T(1);
-  T dryr = T(1);
-  for (int n = 0; n < ny; ++n) {
-    dryl -= WL(ICY + n);
-    dryr -= WR(ICY + n);
-  }
+  T dryl = dry_fraction(&WL(ICY), ny, stride_w);
+  T dryr = dry_fraction(&WR(ICY), ny, stride_w);
 
   T rhol0 = WL(IDN) * dryl;
   T rhor0 = WR(IDN) * dryr;
@@ -343,7 +327,6 @@ void DISPATCH_MACRO roe_impl(T* flx, T const* wl, T const* wr, T el, T er,
     }
   }
 
-  T du0 = WR(IDN) - WL(IDN);
   T du1 = WR(IDN) * WR(ivx) - WL(IDN) * WL(ivx);
   T du2 = WR(IDN) * WR(ivy) - WL(IDN) * WL(ivy);
   T du3 = WR(IDN) * WR(ivz) - WL(IDN) * WL(ivz);
@@ -363,7 +346,7 @@ void DISPATCH_MACRO roe_impl(T* flx, T const* wl, T const* wr, T el, T er,
   T vsq = v1 * v1 + v2 * v2 + v3 * v3;
   T gm1_roe = gamma_roe - T(1);
   T q = h - T(0.5) * vsq - offset;
-  T cs_sq = roe_max(gm1_roe * roe_max(q, TINY_NUMBER), TINY_NUMBER);
+  T cs_sq = roe_max(gm1_roe * roe_max(q, riemann_tiny<T>()), riemann_tiny<T>());
   T cs = sqrt(cs_sq);
   if (face_pressure != nullptr) {
     *face_pressure =
@@ -460,45 +443,23 @@ void DISPATCH_MACRO roe_impl(T* flx, T const* wl, T const* wr, T el, T er,
   if (llf != nullptr) *llf = llf_flag ? T(1) : T(0);
 }
 
-}  // namespace snap
-
-#undef FLX
-#undef WR
-#undef WL
-#undef SQR
-
-namespace snap {
-
-#define SWL(n) (wl[(n) * stride_w])
-#define SWR(n) (wr[(n) * stride_w])
-#define SFLX(n) (flx[(n) * stride_f])
-
 template <typename T>
 void DISPATCH_MACRO shallow_roe_impl(T* flx, T const* wl, T const* wr, int dim,
                                      int dir_yz, int stride_w, int stride_f) {
-  int ivx, ivy, ivz;
-  if (dir_yz) {
-    ivx = dim == 2 ? IVY : IVZ;
-    ivy = dim == 2 ? IVZ : IVY;
-    ivz = IVX;
-  } else {
-    ivx = dim == 3 ? IVX : IVY;
-    ivy = dim == 3 ? IVY : IVX;
-    ivz = IVZ;
-  }
+  auto [ivx, ivy, ivz] = shallow_axes(dim, dir_yz);
 
-  T sqrtdl = sqrt(SWL(IDN));
-  T sqrtdr = sqrt(SWR(IDN));
+  T sqrtdl = sqrt(WL(IDN));
+  T sqrtdr = sqrt(WR(IDN));
   T isdlpdr = T(1) / (sqrtdl + sqrtdr);
 
-  T ubar = (SWL(ivx) * sqrtdl + SWR(ivx) * sqrtdr) * isdlpdr;
-  T vbar = (SWL(ivy) * sqrtdl + SWR(ivy) * sqrtdr) * isdlpdr;
-  T cbar = shallow_water_roe_sound_speed(SWL(IDN), SWR(IDN));
+  T ubar = (WL(ivx) * sqrtdl + WR(ivx) * sqrtdr) * isdlpdr;
+  T vbar = (WL(ivy) * sqrtdl + WR(ivy) * sqrtdr) * isdlpdr;
+  T cbar = shallow_water_roe_sound_speed(WL(IDN), WR(IDN));
 
-  T del0 = SWR(IDN) - SWL(IDN);
-  T delx = SWR(ivx) - SWL(ivx);
-  T dely = SWR(ivy) - SWL(ivy);
-  T hbar = sqrt(SWL(IDN) * SWR(IDN));
+  T del0 = WR(IDN) - WL(IDN);
+  T delx = WR(ivx) - WL(ivx);
+  T dely = WR(ivy) - WL(ivy);
+  T hbar = sqrt(WL(IDN) * WR(IDN));
 
   T a1 = T(0.5) * (cbar * del0 - hbar * delx) / cbar;
   T a2 = hbar * dely;
@@ -519,23 +480,19 @@ void DISPATCH_MACRO shallow_roe_impl(T* flx, T const* wl, T const* wr, int dim,
   T speed1 = abs(ubar);
   T speed2 = abs(ubar + cbar);
 
-  SFLX(IDN) = T(0.5) * (SWL(IDN) * SWL(ivx) + SWR(IDN) * SWR(ivx));
-  SFLX(ivx) =
-      T(0.5) * (SWL(IDN) * SWL(ivx) * SWL(ivx) + T(0.5) * SWL(IDN) * SWL(IDN) +
-                SWR(IDN) * SWR(ivx) * SWR(ivx) + T(0.5) * SWR(IDN) * SWR(IDN));
-  SFLX(ivy) = T(0.5) *
-              (SWL(IDN) * SWL(ivx) * SWL(ivy) + SWR(IDN) * SWR(ivx) * SWR(ivy));
-  SFLX(ivz) = 0;
+  FLX(IDN) = T(0.5) * (WL(IDN) * WL(ivx) + WR(IDN) * WR(ivx));
+  FLX(ivx) =
+      T(0.5) * (WL(IDN) * WL(ivx) * WL(ivx) + T(0.5) * WL(IDN) * WL(IDN) +
+                WR(IDN) * WR(ivx) * WR(ivx) + T(0.5) * WR(IDN) * WR(IDN));
+  FLX(ivy) =
+      T(0.5) * (WL(IDN) * WL(ivx) * WL(ivy) + WR(IDN) * WR(ivx) * WR(ivy));
+  FLX(ivz) = 0;
 
   for (int v = 0; v < 4; ++v) {
-    SFLX(v) -=
+    FLX(v) -=
         T(0.5) * (speed0 * wave0[v] + speed1 * wave1[v] + speed2 * wave2[v]);
   }
 }
-
-#undef SWL
-#undef SWR
-#undef SFLX
 
 }  // namespace snap
 
@@ -561,20 +518,18 @@ DISPATCH_MACRO void riemann_central(T* cen, T const* wl, T const* wr,
                                     RiemannArgs<T> const& a) {
   auto s = a.stride;
   if constexpr (K == RiemannKind::shallow_roe) {
-    int ivx = a.dir_yz ? (a.dim == 2 ? IVY : IVZ) : (a.dim == 3 ? IVX : IVY);
+    int ivx = shallow_axes(a.dim, a.dir_yz).x;
     cen[IDN * s] =
         T(0.5) * (wl[IDN * s] * wl[ivx * s] + wr[IDN * s] * wr[ivx * s]);
   } else {
-    int ivx = IPR - a.dim;
+    int ivx = face_axes(a.dim).x;
     auto ml = wl[IDN * s] * wl[ivx * s];
     auto mr = wr[IDN * s] * wr[ivx * s];
-    T rdl = T(1), rdr = T(1);
-    for (int n = 0; n < a.ny; ++n) {
-      rdl -= wl[(ICY + n) * s];
-      rdr -= wr[(ICY + n) * s];
+    T rdl = dry_fraction(wl + ICY * s, a.ny, s);
+    T rdr = dry_fraction(wr + ICY * s, a.ny, s);
+    for (int n = 0; n < a.ny; ++n)
       cen[(ICY + n) * s] =
           T(0.5) * (ml * wl[(ICY + n) * s] + mr * wr[(ICY + n) * s]);
-    }
     cen[IDN * s] = T(0.5) * (ml * rdl + mr * rdr);
   }
 }
@@ -607,3 +562,7 @@ DISPATCH_MACRO void riemann_face(T* const* p, RiemannArgs<T> const& a) {
 }
 
 }  // namespace snap
+
+#undef WL
+#undef WR
+#undef FLX

@@ -1,10 +1,16 @@
 #pragma once
 
 // C/C++
+#include <array>
+#include <map>
+#include <tuple>
 #include <vector>
 
 // torch
 #include <torch/torch.h>
+
+// snap
+#include <snap/coord/coord_rotation.hpp>
 
 namespace snap {
 
@@ -27,16 +33,59 @@ class MeshBlockImpl;
 void reconcile_panel_seams(FluxRegister& reg, MeshBlockImpl const* pmb,
                            int tag);
 
+//! the rotation operands of a block's panel-seam sides (metric at the face
+//! points and face cosine), a function of the grid alone: reconcile_panel_seams
+//! builds a side's once and reuses it every stage. Each is stamped with the
+//! grid tensors it reads, so a grid that is moved, reallocated, given new
+//! storage or edited in place rebuilds it. builds counts the side builds.
+struct SeamRotationCache {
+  //! one grid tensor as a side read it. The storage is held, so its address
+  //! cannot be reused by another tensor while the stamp lives, and it is
+  //! compared by identity; the view and the version counter catch the rest.
+  struct Stamp {
+    c10::Storage storage;
+    int64_t offset = 0, version = 0;
+    c10::ScalarType dtype = c10::ScalarType::Undefined;
+    std::vector<int64_t> sizes, strides;
+
+    explicit Stamp(torch::Tensor const& t)
+        : storage(t.storage()),
+          offset(t.storage_offset()),
+          version(static_cast<int64_t>(t._version())),
+          dtype(t.scalar_type()),
+          sizes(t.sizes().vec()),
+          strides(t.strides().vec()) {}
+    bool operator==(Stamp const& o) const {
+      return storage.unsafeGetStorageImpl() ==
+                 o.storage.unsafeGetStorageImpl() &&
+             offset == o.offset && version == o.version && dtype == o.dtype &&
+             sizes == o.sizes && strides == o.strides;
+    }
+  };
+  struct Side {
+    std::vector<Stamp> grid;          //!< the grid tensors it read
+    std::array<int64_t, 3> extent{};  //!< panel, x1 cells, cells along
+    PanelRotation::FaceOperands op;
+  };
+  std::map<int, Side> sides;
+  int64_t builds = 0;
+};
+
 //! boundary.prescribed: S's mask for R's set_prescribed, per active
 //! direction, on every register instance (the hydro's and each Scalar
 //! module's). A face is prescribed where it is a wall block face
 //! (FaceKind::wall) or where either cell beside it is solid; on those faces
 //! every row except free_rows is set to 0. The hydro passes its three
 //! momentum rows (free slip: they keep the mirror-Riemann flux); a Scalar
-//! module passes none. solid is the cell mask ([nc3, nc2, nc1], nonzero =
-//! solid), or undefined without solids.
-void supply_prescribed(FluxRegister& reg, MeshBlockImpl const* pmb,
-                       torch::Tensor const& solid,
-                       std::vector<int> const& free_rows);
+//! module passes none. x1_wall_rows: rows freed on the x1 inner and outer
+//! wall plane besides free_rows (the hydro frees the energy row of a wall
+//! whose boundary prescribes a temperature: no mass flux, but it conducts).
+//! solid is the cell mask ([nc3, nc2, nc1], nonzero = solid), or undefined
+//! without solids. Without solids R gets the wall planes
+//! (set_prescribed_walls) and touches no other face (V3 E).
+void supply_prescribed(
+    FluxRegister& reg, MeshBlockImpl const* pmb, torch::Tensor const& solid,
+    std::vector<int> const& free_rows,
+    std::array<std::vector<int>, 2> const& x1_wall_rows = {});
 
 }  // namespace snap

@@ -20,11 +20,6 @@
 #include "implicit_hydro.hpp"
 
 namespace snap {
-// screen sums in FP64, except on MPS, which has no FP64
-static torch::ScalarType acc_type(torch::Tensor const& t) {
-  return t.is_mps() ? torch::kFloat32 : torch::kFloat64;
-}
-
 ImplicitOptions ImplicitOptionsImpl::from_yaml(const std::string& filename,
                                                bool /*verbose*/) {
   auto config = YAML::LoadFile(filename);
@@ -47,8 +42,9 @@ ImplicitOptions ImplicitOptionsImpl::from_yaml(const std::string& filename,
                 "implicit direction: set implicit-scheme or remove them");
     return nullptr;
   }
-  op->precision() = intg["implicit-precision"].as<std::string>("auto");
-  op->fallback_fp64() = intg["implicit-fallback-fp64"].as<bool>(true);
+  op->precision() = intg["implicit-precision"].as<std::string>(op->precision());
+  op->fallback_fp64() =
+      intg["implicit-fallback-fp64"].as<bool>(op->fallback_fp64());
   TORCH_CHECK(
       op->precision() == "auto" || op->precision() == "float32" ||
           op->precision() == "float64",
@@ -148,7 +144,33 @@ void ImplicitHydroImpl::reset() {
       register_buffer("dry_clamp_step", torch::zeros({1}, torch::kFloat64));
 }
 
-void ImplicitHydroImpl::ensure_workspace(torch::Tensor const& w) {
+void ImplicitHydroImpl::prepare(torch::Device device, torch::Dtype dtype,
+                                at::IntArrayRef shape,
+                                std::optional<torch::Dtype> retry_dtype) {
+  auto opts = torch::TensorOptions().dtype(dtype).device(device);
+  ensure_workspace(shape, opts);
+  if (retry_dtype) {  // the FP64 stage's scratch, swapped in as in its call
+    swap_scratch_();
+    ensure_workspace(shape, opts.dtype(*retry_dtype));
+    swap_scratch_();
+  }
+}
+
+std::vector<std::pair<std::string, torch::Tensor>>
+ImplicitHydroImpl::capture_storage() const {
+  std::vector<std::pair<std::string, torch::Tensor>> out;
+  for (auto [name, t] :
+       {std::pair<char const*, torch::Tensor>{"icorr.status", _status},
+        {"icorr.stage_failed", _stage_failed},
+        {"icorr.fp64_fallbacks", _fp64_fallbacks},
+        {"icorr.clamp_residual", _clamp_residual},
+        {"icorr.dry_clamp_step", _dry_clamp_step}})
+    if (t.defined()) out.emplace_back(name, t);
+  return out;
+}
+
+void ImplicitHydroImpl::ensure_workspace(at::IntArrayRef wshape,
+                                         torch::TensorOptions const& wopts) {
   auto pcoord = phydro->pmb->pcoord;
   int nx1 = pcoord->options->nx1();
   int nx2 = pcoord->options->nx2();
@@ -161,12 +183,12 @@ void ImplicitHydroImpl::ensure_workspace(torch::Tensor const& w) {
   auto needs_reset = [&](torch::Tensor const& t,
                          std::vector<int64_t> const& shape) {
     return !t.defined() || t.sizes().vec() != shape ||
-           t.scalar_type() != w.scalar_type() || t.device() != w.device();
+           t.dtype() != wopts.dtype() || t.device() != wopts.device();
   };
 
   auto maybe_resize = [&](torch::Tensor& t, std::vector<int64_t> const& shape) {
     if (needs_reset(t, shape)) {
-      t.set_data(torch::empty(shape, w.options()));
+      t.set_data(torch::empty(shape, wopts));
     }
   };
 
@@ -174,20 +196,26 @@ void ImplicitHydroImpl::ensure_workspace(torch::Tensor const& w) {
   maybe_resize(_b, abc_shape);
   maybe_resize(_c, abc_shape);
   maybe_resize(_delta, delta_shape);
-  maybe_resize(_du0, w.sizes().vec());
-  maybe_resize(_corr, w.sizes().vec());
-  maybe_resize(_mass_corr, w.sizes().vec());
+  maybe_resize(_du0, wshape.vec());
+  maybe_resize(_corr, wshape.vec());
+  maybe_resize(_mass_corr, wshape.vec());
   // V3 I-5/I-6: the stage's VicStatusBit per column, in the solve's dtype
   // (the kernel operand), and the step's status, int32, which survives a
   // change of dtype (the FP64 stage) or device
-  auto st_shape = std::vector<int64_t>{w.size(1), w.size(2)};
+  auto st_shape = std::vector<int64_t>{wshape[1], wshape[2]};
   if (needs_reset(_stage_status, st_shape))  // unregistered scratch
-    _stage_status = torch::empty(st_shape, w.options());
-  auto i32 = w.options().dtype(torch::kInt32);
+    _stage_status = torch::empty(st_shape, wopts);
+  auto i32 = wopts.dtype(torch::kInt32);
   if (!_status.defined() || _status.sizes().vec() != st_shape)
     _status = torch::zeros(st_shape, i32);
-  else if (_status.device() != w.device())
+  else if (_status.device() != wopts.device())
     _status = _status.to(i32);
+  // the FP64 stage's predicate, fixed storage: the FP32 stage writes it in
+  // place, so a captured stage reads the address the warm-up saved (V3 C1)
+  auto b8 = wopts.dtype(torch::kBool);
+  if (!_stage_failed.defined() || _stage_failed.sizes().vec() != st_shape ||
+      _stage_failed.device() != wopts.device())
+    _stage_failed = torch::zeros(st_shape, b8);
 }
 
 torch::Tensor ImplicitHydroImpl::col_status() const { return _status; }
@@ -196,10 +224,22 @@ torch::Tensor ImplicitHydroImpl::status() const {
   if (!_status.defined()) return torch::zeros({}, torch::kBool);
   // V3 I-6: a column whose last solve failed: the FP64 retry failed, or a
   // failure that no FP64 retry followed (an FP64 solve, or the fallback off)
-  auto failed = (_status & kVicFailBits) != 0;
-  auto retried = (_status & kVicFp64Retried) != 0;
-  auto fp64_failed = (_status & kVicFp64Failed) != 0;
-  return (fp64_failed | (failed & retried.logical_not())).any();
+  // V3 S4: the five status bits index a cached truth table, one gather and
+  // one reduction instead of three compares, a not, an and, an or and the any
+  constexpr int32_t kLow = kVicFailBits | kVicFp64Retried | kVicFp64Failed;
+  if (!_status_lut.defined() || _status_lut.device() != _status.device()) {
+    std::vector<uint8_t> lut(kLow + 1);
+    for (int32_t a = 0; a <= kLow; ++a) {
+      bool failed = (a & kVicFailBits) != 0,
+           retried = (a & kVicFp64Retried) != 0,
+           fp64_failed = (a & kVicFp64Failed) != 0;
+      lut[a] = fp64_failed || (failed && !retried);
+    }
+    _status_lut =
+        torch::tensor(lut, torch::kUInt8).to(torch::kBool).to(_status.device());
+  }
+  auto word = (_status & kLow).to(torch::kLong).reshape({-1});
+  return _status_lut.index_select(0, word).any();
 }
 
 void ImplicitHydroImpl::reset_status() {
@@ -255,12 +295,12 @@ void ImplicitHydroImpl::report_failure(std::ostream& os) const {
 
 torch::Tensor ImplicitHydroImpl::forward(torch::Tensor du, torch::Tensor w,
                                          torch::Tensor gamma, double dt) {
-  return forward_masked(du, w, gamma, dt, torch::Tensor());
+  return forward_masked(du, w, gamma, StepDt(dt), torch::Tensor());
 }
 
 torch::Tensor ImplicitHydroImpl::forward_masked(
-    torch::Tensor du, torch::Tensor w, torch::Tensor gamma, double dt,
-    torch::Tensor solid, FluxRegister* reg, double post_dt,
+    torch::Tensor du, torch::Tensor w, torch::Tensor gamma, StepDt dt,
+    torch::Tensor solid, FluxRegister* reg, StepDt post_dt,
     torch::Tensor const& retry) {
   TORCH_CHECK(phydro->options->grav(),
               "[ImplicitHydro] forcing does not have const-gravity");
@@ -282,7 +322,7 @@ torch::Tensor ImplicitHydroImpl::forward_masked(
     }
   } swap{this, retry.defined()};
   if (swap.on) swap_scratch_();
-  ensure_workspace(w);
+  ensure_workspace(w.sizes(), w.options());
   _du0.copy_(du);
   _mass_corr.zero_();
 
@@ -403,13 +443,13 @@ torch::Tensor ImplicitHydroImpl::forward_masked(
       return t.view({nx3, nx2, nx1, m, m}).select(-2, 0).select(-1, m - 1);
     };
     if (no_solid) {  // 1 * x == x
-      entry(_a).sub_(rx_mid / dt);
-      entry(_b).sub_(rx_lo / dt);
-      entry(_c).sub_(rx_hi / dt);
+      entry(_a).sub_(dt.divide(rx_mid));
+      entry(_b).sub_(dt.divide(rx_lo));
+      entry(_c).sub_(dt.divide(rx_hi));
     } else {
-      entry(_a).sub_(rx_fluid * rx_mid / dt);
-      entry(_b).sub_(rx_fluid * rx_lo / dt);
-      entry(_c).sub_(rx_fluid * rx_hi / dt);
+      entry(_a).sub_(dt.divide(rx_fluid * rx_mid));
+      entry(_b).sub_(dt.divide(rx_fluid * rx_lo));
+      entry(_c).sub_(dt.divide(rx_fluid * rx_hi));
     }
     rx_mass0 = _du0[IDN].index(in3).clone();
     if (du.size(0) > ICY)
@@ -424,7 +464,15 @@ torch::Tensor ImplicitHydroImpl::forward_masked(
     prm.stage = s;
     prm.n = options->size();
     prm.woodbury = woodbury;
-    prm.dt = dt;
+    // V3 C4: a device dt is read by the kernels (vic_stage_run); a host dt
+    // is passed by value
+    if (dt.on_device()) {
+      TORCH_CHECK(dt.tensor().device() == du.device(),
+                  "[ImplicitHydro] the device dt is not on the solve's device");
+      prm.dt_device = dt.tensor().data_ptr<double>();
+    } else {
+      prm.dt = dt.value();
+    }
     prm.grav = grav1;
     prm.dir = dir;
     return prm;
@@ -466,12 +514,14 @@ torch::Tensor ImplicitHydroImpl::forward_masked(
   // V3 I-4: the face transfers go to the register. A face i of total(1) is
   // the face below cell i, as MASS(IVX+dir, i); the posts are M_f / (A_f dt)
   // with the step's dt (I.rst section 4, "Frame and units")
-  bool post = reg != nullptr && post_dt > 0. && reg->keeps(1, "vic.mass_total");
+  // a device post_dt is the step's dt (> 0): a captured stage always posts
+  bool post = reg != nullptr && (post_dt.on_device() || post_dt.value() > 0.) &&
+              reg->keeps(1, "vic.mass_total");
   bool partial = options->matrix() == VicMatrix::partial;
   torch::Tensor kdt, ptan;
   if (post) {
-    kdt = pcoord->face_area1().narrow(-1, 0, nc1).to(_mass_corr.options()) *
-          post_dt;
+    kdt = post_dt *
+          pcoord->face_area1().narrow(-1, 0, nc1).to(_mass_corr.options());
     // partial matrix: the donor-cell tangential transfers of
     // vic_tangential_momentum_column, q w_t(donor), in the local frame
     if (partial) {
@@ -565,7 +615,7 @@ torch::Tensor ImplicitHydroImpl::forward_masked(
     _status.bitwise_or_(torch::where(retry, fp64, torch::zeros_like(sbits)));
   } else {
     _status.bitwise_or_(sbits);
-    _stage_failed = failed;
+    _stage_failed.copy_(failed);
   }
   if (post)
     post_(*reg, du, drop3, kdt, ptan, energy_solved, volume, kept_before);

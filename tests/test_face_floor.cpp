@@ -4,6 +4,7 @@
 
 // external
 #include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
 
 #include "cuda_test_gate.hpp"
 
@@ -15,6 +16,7 @@
 
 #include <snap/forcing/forcing.hpp>
 #include <snap/hydro/hydro.hpp>
+#include <snap/hydro/sweep.hpp>
 #include <snap/mesh/meshblock.hpp>
 
 using namespace snap;
@@ -101,11 +103,14 @@ void face_floor_fires_on_an_unresolved_column(torch::Device device) {
 // C5, FaceFloor (C.rst 3.7, section 5 "floor counts equal the faces
 // changed"): the reconstruction's floors count exactly the faces they
 // change. One cell has a negative density and another a negative pressure,
-// so their faces reconstruct below the floors.
-void floor_counts_equal_the_faces_changed(torch::Device device) {
+// so their faces reconstruct below the floors. V3 C10: the shock path
+// (one scheme for every variable) floors density and pressure too.
+void floor_counts_equal_the_faces_changed(torch::Device device,
+                                          bool shock = false) {
   constexpr int kX1 = 3;  // the x1 axis of w (nvar, nc3, nc2, nc1)
   auto options = MeshBlockOptionsImpl::from_yaml("test_face_floor.yaml");
   options->hydro()->eos()->limiter() = true;
+  options->hydro()->recon1()->shock() = shock;
   auto block = std::make_shared<MeshBlockImpl>(options);
   block->to(device, torch::kFloat64);
   auto coord = block->pcoord;
@@ -119,7 +124,13 @@ void floor_counts_equal_the_faces_changed(torch::Device device) {
   auto recon = block->phydro->precon1;
   auto raw = recon->forward(w, kX1, /*floor=*/false).clone();
   auto out = recon->forward(w, kX1);
-  auto n = recon->floored.cpu();
+  // the one counting path: the sweep's post of the masks, the monitor's sum
+  auto& mon = block->phydro->flux_register().monitor();
+  post_face_floors(*recon, mon);
+  mon.flush_counts();
+  auto n = [&](char const* name) {
+    return mon.counters[mon.counter_index(name)].item<int64_t>();
+  };
 
   int nghost = recon->pinterp1->stencils() / 2 + 1;
   int il = nghost, iu = w.size(kX1) - nghost;
@@ -131,9 +142,9 @@ void floor_counts_equal_the_faces_changed(torch::Device device) {
   };
   EXPECT_GT(changed(IDN), 0);
   EXPECT_GT(changed(IPR), 0);
-  EXPECT_EQ(n[0].item<int64_t>(), changed(IDN));
-  EXPECT_EQ(n[1].item<int64_t>(), changed(IPR));
-  EXPECT_EQ(n[2].item<int64_t>(), 0);
+  EXPECT_EQ(n("face_floor.rho"), changed(IDN));
+  EXPECT_EQ(n("face_floor.p"), changed(IPR));
+  EXPECT_EQ(n("face_floor.species"), 0);
 }
 
 // ... and the hydro posts them, with the well-balanced fallbacks, into the
@@ -143,6 +154,7 @@ void face_floor_counter_sees_the_fallback(torch::Device device) {
   auto block = dipped_column(device, 1.e5);
   auto& mon = block->phydro->flux_register().monitor();
   auto count = [&](std::string const& name) {
+    mon.flush_counts();  // the masks wait in the stage's batch (V3 S4)
     return mon.counters[mon.counter_index(name)].item<int64_t>();
   };
   EXPECT_GE(count("face_floor.rho"), 1);
@@ -183,6 +195,25 @@ TEST(hydro, face_floor_fires_on_an_unresolved_column_cuda) {
 
 TEST(hydro, floor_counts_equal_the_faces_changed) {
   floor_counts_equal_the_faces_changed(torch::kCPU);
+}
+
+TEST(hydro, shock_path_floors_density_and_pressure) {
+  floor_counts_equal_the_faces_changed(torch::kCPU, /*shock=*/true);
+}
+
+TEST(hydro, shock_path_floors_density_and_pressure_cuda) {
+  if (!snapy_cuda_test_enabled()) GTEST_SKIP() << "CUDA is not available";
+  floor_counts_equal_the_faces_changed(torch::Device(torch::kCUDA, 0),
+                                       /*shock=*/true);
+}
+
+// V3 C10: one shock default, false, in code as in YAML (a deck with no
+// reconstruct section, or no shock key, reads false)
+TEST(hydro, shock_defaults_to_false) {
+  EXPECT_FALSE(ReconstructOptionsImpl::create()->shock());
+  auto node = YAML::Load("vertical: {type: weno5}");
+  EXPECT_FALSE(ReconstructOptionsImpl::from_yaml(node, "vertical")->shock());
+  EXPECT_FALSE(ReconstructOptionsImpl::from_yaml(node, "horizontal")->shock());
 }
 
 TEST(hydro, face_floor_counter_sees_the_fallback) {

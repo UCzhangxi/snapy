@@ -2,7 +2,9 @@
 
 // C/C++
 #include <functional>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 // torch
@@ -31,7 +33,8 @@ struct MeshOptionsImpl {
 
   void report(std::ostream& os) const {
     os << "-- mesh options --\n";
-    os << "* blocks_per_process = " << blocks_per_process() << "\n";
+    if (block() && block()->layout())
+      os << "* blocks_per_process = " << blocks_per_process() << "\n";
   }
 
   std::string device_str() const {
@@ -39,7 +42,25 @@ struct MeshOptionsImpl {
   }
 
   ADD_ARG(MeshBlockOptions, block) = nullptr;
-  ADD_ARG(int, blocks_per_process) = 1;
+
+ public:
+  //! the layout's blocks_per_process (distribute/blocks_per_process), its one
+  //! home: read and written through block()->layout(), so block() comes first
+  int const& blocks_per_process() const {
+    return layout_().blocks_per_process();
+  }
+  MeshOptionsImpl& blocks_per_process(int const& n) {
+    layout_().blocks_per_process(n);
+    return *this;
+  }
+
+ private:
+  LayoutOptionsImpl& layout_() const {
+    TORCH_CHECK(block() && block()->layout(),
+                "MeshOptions::blocks_per_process is the layout's: set block() "
+                "(with its layout) first");
+    return *block()->layout();
+  }
 };
 using MeshOptions = std::shared_ptr<MeshOptionsImpl>;
 
@@ -71,8 +92,14 @@ class MeshImpl : public torch::nn::Cloneable<MeshImpl> {
   void set_cycle(int cycle);
   int finalize(MeshVariables const& vars, double time);
 
-  //! CUDA streams of the block worker pool (0 without a CUDA pool).
-  size_t num_worker_streams() const;
+  //! the block worker pool's CUDA streams (cudaStream_t), one per block;
+  //! empty without a CUDA pool
+  std::vector<void*> worker_streams() const;
+
+  //! the stage executor of all this Mesh's blocks (lane B), shared with them
+  std::shared_ptr<StageExecutor> executor() const { return executor_; }
+  //! its counters: captures, replays, eager block-stages, graphs
+  std::map<std::string, int64_t> execution_report() const;
 
  private:
   class BlockWorkerPool;
@@ -80,6 +107,7 @@ class MeshImpl : public torch::nn::Cloneable<MeshImpl> {
   void run_block_jobs(std::function<void(size_t)> func);
 
   std::shared_ptr<BlockWorkerPool> workers_;
+  std::shared_ptr<StageExecutor> executor_;
 };
 
 TORCH_MODULE(Mesh);

@@ -43,7 +43,7 @@ torch::Tensor flux_positivity_theta(torch::Tensor const& u,
                                     torch::Tensor const& flux1,
                                     torch::Tensor const& flux2,
                                     torch::Tensor const& flux3,
-                                    Coordinate const& pcoord, double dt,
+                                    Coordinate const& pcoord, StepDt dt,
                                     torch::Tensor* drain_out) {
   auto out = torch::zeros_like(u);
 
@@ -66,7 +66,7 @@ torch::Tensor flux_positivity_theta(torch::Tensor const& u,
   // 1 where nothing drains, ghosts included; stop 4096 ulp short of zero
   double margin = kPositivityRoundoffUlp * machine_epsilon(u.scalar_type());
   auto avail = u.relu() * pcoord->cell_volume() * (1. - margin);
-  auto drain = out.mul_(dt);
+  auto drain = dt.mul_into(out);
   if (drain_out) *drain_out = drain;
   // finfo(dtype).tiny: 1e-300 was 0 in float32 (only where() discards it)
   double tiny = drain.scalar_type() == torch::kFloat
@@ -126,6 +126,12 @@ void flux_positivity_carry_(torch::Tensor const& theta,
       auto type = torch::promote_types(flux.scalar_type(), c.scalar_type());
       auto inc = torch::full(shape, -0., c.options().dtype(type));
       inc.slice(dim, lo, hi + 2).copy_(-c);
+      // With a settling part the settling buffer is the sedimentation's own
+      // and a prescribed face can carry it: the advected part F - fsed1 is
+      // then -fsed1 on that face and the settling part fsed1, each with its
+      // own donor's energy, so their sum is share |fsed1| (h_upper -
+      // h_lower), not 0; the post marks the direction and the post-implicit
+      // apply re-prescribes and books it as main did (#315)
       reg.add(d, "positivity.carry", rows, inc);
     };
     // each part of the face flux keeps the energy and momentum of its donor
@@ -202,7 +208,7 @@ void PositivityLimiter::census_(PositivityInputs const& in,
     status_->slot(hits_) += (theta.index(cells) < 1.).sum();
     return;
   }
-  auto wide = theta.is_mps() ? torch::kFloat32 : torch::kFloat64;
+  auto wide = PrecisionPolicy::wide(theta.device());
   auto ti = theta.index(cells).to(wide);
   status_->slot(hits_) += (ti < 1.).sum();
   // severe: theta < 0.9 and withheld mass above round-off of the gas (#256)
@@ -239,7 +245,7 @@ void PositivityLimiter::post_(FluxRegister& reg, PositivityInputs const& in,
     if (d == 1 && hits_ == EfStatus::kPosHits) {
       // the flux theta removes (>= 0 while the ghost theta is in [0,1])
       auto cells = pmb_->part({0, 0, 0}, PartOptions().exterior(false));
-      auto wide = theta.is_mps() ? torch::kFloat32 : torch::kFloat64;
+      auto wide = PrecisionPolicy::wide(theta.device());
       auto pre = f.abs();
       auto cut = pre - (f * factor).to(f.scalar_type()).abs();
       status_->slot(EfStatus::kLimFlux) += pre.index(cells).to(wide).sum();

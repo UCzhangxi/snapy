@@ -55,19 +55,15 @@ void GnomonicEquiangleImpl::reset() {
   x1v = register_buffer("x1v", xv);
   dx1v = register_buffer("dx1v", dv);
 
-  // dimension 2
-  auto dx = op->dx2();
-  dx2f = register_buffer("dx2f", torch::ones(op->nc2(), torch::kFloat64) * dx);
-  x2v = register_buffer("x2v", 0.5 * (x2f.slice(0, 0, op->nc2()) +
-                                      x2f.slice(0, 1, op->nc2() + 1)));
-  dx2v = register_buffer("dx2v", torch::ones(op->nc2(), torch::kFloat64) * dx);
-
-  // dimension 3
-  dx = op->dx3();
-  dx3f = register_buffer("dx3f", torch::ones(op->nc3(), torch::kFloat64) * dx);
-  x3v = register_buffer("x3v", 0.5 * (x3f.slice(0, 0, op->nc3()) +
-                                      x3f.slice(0, 1, op->nc3() + 1)));
-  dx3v = register_buffer("dx3v", torch::ones(op->nc3(), torch::kFloat64) * dx);
+  // dimensions 2 and 3 (uniform)
+  auto [df2, xv2, dv2] = uniform_axis_metrics_(2);
+  dx2f = register_buffer("dx2f", df2);
+  x2v = register_buffer("x2v", xv2);
+  dx2v = register_buffer("dx2v", dv2);
+  auto [df3, xv3, dv3] = uniform_axis_metrics_(3);
+  dx3f = register_buffer("dx3f", df3);
+  x3v = register_buffer("x3v", xv3);
+  dx3v = register_buffer("dx3v", dv3);
 
   // register buffers defined in the base class
   register_buffer("x1f", x1f);
@@ -76,8 +72,8 @@ void GnomonicEquiangleImpl::reset() {
 
   auto mesh = torch::meshgrid({x3v, x2v}, "ij");
   auto rank = pmb->options->layout()->rank();
-  auto face_id = pmb->options->layout()->type() == "cubed-sphere"
-                     ? std::get<2>(pmb->get_layout()->loc_of(rank))
+  auto face_id = pmb->options->layout()->is_cubed_sphere()
+                     ? pmb->get_layout()->panel_of(rank)
                      : 0;
   auto [longitude, latitude] =
       cs_ab_to_lonlat(CS_FACE_NAMES[face_id], mesh[1], mesh[0]);
@@ -231,7 +227,7 @@ void GnomonicEquiangleImpl::reset() {
   // build global ghost cell usrc
   int N, offset_x, offset_y;
   torch::Tensor usrc;
-  N = op->nx2() * pmb->options->layout()->px();
+  N = op->nx2() * pmb->options->layout()->nb(2);
   usrc = torch::empty({op->nghost(), N}, torch::kFloat64);
   cs_build_ghost_usrc(usrc.data_ptr<double>(), N, op->nghost());
 
@@ -370,18 +366,15 @@ void GnomonicEquiangleImpl::prim2local2_(torch::Tensor const& w) const {
   _set_face2_metric();
 
   // Extract global projected 4-velocities
-  // auto uu1 = w[IVX].clone();
   auto uu2 = w[IVY];
   auto uu3 = w[IVZ];
 
   // Calculate transformation matrix
-  auto T11 = 1.;
   auto T22 = 1.0 / gi22.sqrt();
   auto T32 = g23 / g33.sqrt();
   auto T33 = g33.sqrt();
 
   // Transform projected velocities
-  // w[IVX] = T11 * uu1;
   w[IVZ] = T32 * uu2 + T33 * uu3;
   w[IVY] = T22 * uu2;
 }
@@ -390,18 +383,15 @@ void GnomonicEquiangleImpl::prim2local3_(torch::Tensor const& w) const {
   _set_face3_metric();
 
   // Extract global projected 4-velocities
-  // auto uu1 = w[IVX].clone();
   auto uu2 = w[IVY];
   auto uu3 = w[IVZ];
 
   // Calculate transformation matrix
-  auto T11 = 1.;
   auto T22 = g22.sqrt();
   auto T23 = g23 / g22.sqrt();
   auto T33 = 1.0 / gi33.sqrt();
 
   // Transform projected velocities
-  // w[IVX] = T11 * uu1;
   w[IVY] = T22 * uu2 + T23 * uu3;
   w[IVZ] = T33 * uu3;
 }
@@ -425,18 +415,15 @@ void GnomonicEquiangleImpl::flux2global2_(torch::Tensor const& flux) const {
   _set_face2_metric();
 
   // Extract local conserved quantities and fluxes
-  // auto txx = flux[IVX].clone();
   auto txy = flux[IVY];
   auto txz = flux[IVZ];
 
   // Calculate transformation matrix
-  auto T11 = 1.0;
   auto T22 = gi22.sqrt();
   auto T32 = -gi22.sqrt() * g23 / g33;
   auto T33 = 1.0 / g33.sqrt();
 
   // Set fluxes
-  // flux[IVX] = T11 * txx;
   flux[IVZ] = T32 * txy + T33 * txz;
   flux[IVY] = T22 * txy;
 
@@ -454,18 +441,15 @@ void GnomonicEquiangleImpl::flux2global3_(torch::Tensor const& flux) const {
   _set_face3_metric();
 
   // Extract local conserved quantities and fluxes
-  // auto txx = flux[IVX];
   auto txy = flux[IVY];
   auto txz = flux[IVZ];
 
   // Calculate transformation matrix
-  auto T11 = 1.0;
   auto T22 = 1.0 / g22.sqrt();
   auto T23 = -g23 / g22 * gi33.sqrt();
   auto T33 = gi33.sqrt();
 
   // Set fluxes
-  // flux[IVX] = T11 * txx;
   flux[IVY] = T22 * txy + T23 * txz;
   flux[IVZ] = T33 * txz;
 
@@ -539,13 +523,14 @@ torch::Tensor GnomonicEquiangleImpl::forward(torch::Tensor prim,
 void GnomonicEquiangleImpl::x1_mass_source_(torch::Tensor du,
                                             torch::Tensor const& prim,
                                             torch::Tensor const& m1,
-                                            double dt) const {
+                                            StepDt dt) const {
   // du[v_i] -= dt m1 v_i / r with the covariant v_2 = v2 + c v3, v_3 = v3 + c
-  // v2
+  // v2. (-dt m1 / r) first, as addcmul_(mr, v, -dt) forms (-dt mr) v: the
+  // same bits with a host dt, and a device dt (V3 B3) is read on the device
   auto c = cosine_cell_kj;
-  auto mr = m1 / x1v.unsqueeze(0).unsqueeze(1);
-  du[IVY].addcmul_(mr, torch::addcmul(prim[IVY], prim[IVZ], c), -dt);
-  du[IVZ].addcmul_(mr, torch::addcmul(prim[IVZ], prim[IVY], c), -dt);
+  auto mdt = (-dt) * (m1 / x1v.unsqueeze(0).unsqueeze(1));
+  du[IVY].addcmul_(mdt, torch::addcmul(prim[IVY], prim[IVZ], c));
+  du[IVZ].addcmul_(mdt, torch::addcmul(prim[IVZ], prim[IVY], c));
 }
 
 torch::Tensor GnomonicEquiangleImpl::_interp_ghost(torch::Tensor buf,

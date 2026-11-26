@@ -3,6 +3,7 @@
 
 // C/C++
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -22,12 +23,16 @@
 #include <snap/coord/coordinate.hpp>
 #include <snap/hydro/hydro.hpp>
 #include <snap/layout/layout.hpp>
+#include <snap/mesh/mesh.hpp>
+#include <snap/mesh/meshblock.hpp>
 #include <snap/output/output_type.hpp>
 
-// generated from src/options/{coord,layout,internal_boundary}.yaml
+// generated from src/options/{coord,layout}.yaml
+#include <snap/input/check_keys.hpp>
 #include <snap_options/coord_rows.hpp>
-#include <snap_options/internal_boundary_rows.hpp>
-#include <snap_options/layout_rows.hpp>
+namespace snap {
+#include <snap_options/layout_read.inc>
+}  // namespace snap
 
 using namespace snap;
 namespace fs = std::filesystem;
@@ -57,7 +62,8 @@ bool load(fs::path const& p, YAML::Node* config) {
 
 }  // namespace
 
-// The pin's members and defaults (730b3500), default-constructed.
+// The pin's members and defaults (730b3500), default-constructed, less the
+// two output rows F13 removed (cartesian_vector, data_format).
 TEST(options_table, pin_defaults) {
   OutputOptionsImpl o;
   EXPECT_EQ(o.fid(), 0);
@@ -66,16 +72,13 @@ TEST(options_table, pin_defaults) {
   EXPECT_FALSE(o.output_sumx2());
   EXPECT_FALSE(o.output_sumx3());
   EXPECT_FALSE(o.include_ghost_zones());
-  EXPECT_FALSE(o.cartesian_vector());
   EXPECT_TRUE(o.x1_slice().empty());
   EXPECT_TRUE(o.x2_slice().empty());
   EXPECT_TRUE(o.x3_slice().empty());
   EXPECT_EQ(o.file_type(), "");
-  EXPECT_EQ(o.data_format(), "");
   EXPECT_TRUE(o.variables().empty());
   EXPECT_FALSE(o.double_precision());
   EXPECT_TRUE(o.combine());
-  EXPECT_FALSE(o.verbose());
 
   HydroOptionsImpl h;
   EXPECT_FALSE(h.verbose());
@@ -94,17 +97,17 @@ TEST(options_table, pin_defaults) {
   EXPECT_EQ(h.eos(), nullptr);
 }
 
-// The pin's report text for the defaults (730b3500).
+// The pin's report text for the defaults (730b3500), less F13's two rows.
 TEST(options_table, pin_report) {
   std::stringstream so;
   OutputOptionsImpl().report(so);
   EXPECT_EQ(so.str(),
             "-- output options --\n* fid = 0\n* dt = 0\n* output_sumx1 = 0\n"
             "* output_sumx2 = 0\n* output_sumx3 = 0\n"
-            "* include_ghost_zones = 0\n* cartesian_vector = 0\n"
+            "* include_ghost_zones = 0\n"
             "* double_precision = 0\n* x1_slice = []\n* x2_slice = []\n"
-            "* x3_slice = []\n* file_type = \n* data_format = \n"
-            "* variables = []\n* combine = 1\n* verbose = 0\n");
+            "* x3_slice = []\n* file_type = \n"
+            "* variables = []\n* combine = 1\n");
   std::stringstream sh;
   HydroOptionsImpl().report(sh);
   EXPECT_EQ(sh.str(),
@@ -187,6 +190,41 @@ TEST(options_table, output_checks) {
       c10::Error);
 }
 
+// F13: outputs[]/cartesian_vector and outputs[]/data_format were read but no
+// writer used them, so they are gone; a deck that sets either is refused at
+// startup (MeshBlockOptionsImpl::from_yaml), naming the key. The same deck
+// without the key is read.
+TEST(options_table, output_removed_keys_refused) {
+  auto deck = fs::temp_directory_path() / "test_options_table_outputs.yaml";
+  auto read = [&](char const* entry) {
+    auto config = YAML::LoadFile(
+        (fs::path(SNAPY_SOURCE_DIR) / "tests" / "test_budget.yaml").string());
+    config["outputs"].push_back(YAML::Load(entry));
+    {
+      std::ofstream out(deck);
+      out << config << "\n";
+    }
+    return MeshBlockOptionsImpl::from_yaml(deck.string());
+  };
+  EXPECT_EQ(read("{type: netcdf, dt: 1.}")->outputs().size(), 1);
+  for (auto [key, entry] :
+       {std::pair{"cartesian_vector",
+                  "{type: netcdf, dt: 1., cartesian_vector: true}"},
+        std::pair{"data_format",
+                  "{type: netcdf, dt: 1., data_format: \"%12.5e\"}"}}) {
+    SCOPED_TRACE(key);
+    try {
+      read(entry);
+      ADD_FAILURE() << "the deck was read";
+    } catch (c10::Error const& e) {
+      EXPECT_NE(std::string(e.what()).find(
+                    std::string("unknown key 'outputs/0/") + key + "'"),
+                std::string::npos)
+          << e.what();
+    }
+  }
+}
+
 // O8 item sv: output.yaml's `domain` checks against the global grid, with the
 // messages and the order of the deleted MeshBlockImpl::validate_slice.
 TEST(options_table, output_domain_checks) {
@@ -233,9 +271,9 @@ TEST(options_table, output_domain_checks) {
   EXPECT_EQ(error(out), "Slice out of mesh bounds: x3");
 }
 
-// Lane S's three parsers against the generated rows, deck by deck.
+// Lane S's two parsers against the generated rows, deck by deck.
 TEST(options_table, lane_s_rows_match_parsers) {
-  int ndeck = 0, ngeom = 0, nlayout = 0, ninternal = 0;
+  int ndeck = 0, ngeom = 0, nlayout = 0;
   for (auto const& p : in_tree_decks()) {
     YAML::Node config;
     if (!load(p, &config)) continue;
@@ -279,32 +317,39 @@ TEST(options_table, lane_s_rows_match_parsers) {
     }
 
     auto lo = LayoutOptionsImpl::from_yaml(p.string());
-    auto d = DistributeRows::read(config);
-    EXPECT_EQ(d.present(), static_cast<bool>(config["distribute"]));
-    if (d.present()) {
+    if (auto d = config["distribute"]) {
       ++nlayout;
-      EXPECT_EQ(d.type(), lo->type());
-      EXPECT_EQ(d.px(), lo->px());
-      EXPECT_EQ(d.py(), lo->py());
-      EXPECT_EQ(d.pz(), lo->pz());
-      EXPECT_EQ(d.verbose(), lo->verbose());
-      EXPECT_EQ(d.backend(), lo->backend());
-      EXPECT_EQ(d.device(), lo->device());
+      EXPECT_EQ(lo->type(), d["layout"].as<std::string>("slab"));
+      EXPECT_EQ(lo->px(), d["nb2"].as<int>(1));
+      EXPECT_EQ(lo->py(), d["nb3"].as<int>(1));
+      EXPECT_EQ(lo->pz(), d["nb1"].as<int>(1));
+      EXPECT_EQ(lo->blocks_per_process(), d["blocks_per_process"].as<int>(1));
     }
-
-    auto io = InternalBoundaryOptionsImpl::from_yaml(p.string());
-    auto r = InternalBoundaryRows::read(config);
-    if (r.present()) ++ninternal;
-    EXPECT_EQ(r.max_iter(), io->max_iter());
-    EXPECT_EQ(r.solid_density(), io->solid_density());
-    EXPECT_EQ(r.solid_pressure(), io->solid_pressure());
   }
   std::cout << "decks " << ndeck << ": geometry " << ngeom << ", distribute "
-            << nlayout << ", boundary-condition/internal " << ninternal
-            << std::endl;
+            << nlayout << std::endl;
   EXPECT_GT(ngeom, 50);
   EXPECT_GT(nlayout, 20);
-  EXPECT_GT(ninternal, 0);
+}
+
+// boundary-condition/internal is a struct table: its members, defaults and
+// reader are generated from src/options/internal_boundary.yaml.
+TEST(options_table, internal_boundary_struct_table) {
+  auto def = InternalBoundaryOptionsImpl::create();
+  EXPECT_EQ(def->max_iter(), 5);
+  EXPECT_EQ(def->solid_density(), 1.e3);
+  EXPECT_EQ(def->solid_pressure(), 1.e9);
+  auto none = InternalBoundaryOptionsImpl::from_yaml(YAML::Load("{}"));
+  EXPECT_EQ(none->max_iter(), 5);
+  EXPECT_EQ(none->solid_density(), 1.e3);
+  EXPECT_EQ(none->solid_pressure(), 1.e9);
+  auto set = InternalBoundaryOptionsImpl::from_yaml(
+      YAML::Load("{max-iter: 7, solid-density: 2.5, solid-pressure: 3.e5}"));
+  EXPECT_EQ(set->max_iter(), 7);
+  EXPECT_EQ(set->solid_density(), 2.5);
+  EXPECT_EQ(set->solid_pressure(), 3.e5);
+  EXPECT_THROW(InternalBoundaryOptionsImpl::from_yaml(YAML::Load("{bad: 1}")),
+               std::exception);
 }
 
 // The cross-option checks of the geometry table refuse what lane S refuses.
@@ -333,19 +378,77 @@ TEST(options_table, geometry_checks) {
   EXPECT_EQ(g.x2max(), 0.5 * M_PI);
 }
 
-// The distribute backend row follows default_backend() (ucx on Linux with
-// UCX, else gloo), as LayoutOptionsImpl does; BACKEND overrides both.
+// The backend follows default_backend() (ucx on Linux with UCX, else gloo),
+// from the options and from the deck; BACKEND overrides both.
 TEST(options_table, distribute_backend_default) {
   char const* saved = std::getenv("BACKEND");
   std::string keep = saved ? saved : "";
   auto deck = YAML::Load("distribute: {layout: slab}");
   ::unsetenv("BACKEND");
-  EXPECT_EQ(DistributeRows::read(deck).backend(), default_backend());
-  EXPECT_EQ(DistributeRows().backend(), default_backend());
+  LayoutOptionsImpl fresh, read;
+  read_layout_rows(read, deck["distribute"], "distribute");
+  EXPECT_EQ(fresh.backend(), default_backend());
+  EXPECT_EQ(read.backend(), default_backend());
   ::setenv("BACKEND", "gloo", 1);
-  EXPECT_EQ(DistributeRows::read(deck).backend(), "gloo");
+  LayoutOptionsImpl env;
+  read_layout_rows(env, deck["distribute"], "distribute");
+  EXPECT_EQ(env.backend(), "gloo");
   if (saved)
     ::setenv("BACKEND", keep.c_str(), 1);
   else
     ::unsetenv("BACKEND");
+}
+
+// blocks_per_process has one home, the layout: MeshOptions reads and writes
+// it there, and refuses before it has a block
+TEST(options_table, blocks_per_process_lives_in_the_layout) {
+  auto op = MeshOptionsImpl::from_yaml(
+      (fs::path(SNAPY_SOURCE_DIR) / "tests" / "test_budget.yaml").string());
+  EXPECT_EQ(op->blocks_per_process(), 2);
+  EXPECT_EQ(op->block()->layout()->blocks_per_process(), 2);
+  op->blocks_per_process(3);
+  EXPECT_EQ(op->block()->layout()->blocks_per_process(), 3);
+  EXPECT_THROW(MeshOptionsImpl::create()->blocks_per_process(1), c10::Error);
+}
+
+// `word` stands alone in `text`: not inside a longer word (letters, digits and
+// '-' join a word, so "cubed" is not found in "cubed-sphere")
+static bool names_word(std::string const& text, std::string const& word) {
+  auto joins = [](char c) { return std::isalnum(c) || c == '-' || c == '_'; };
+  for (auto at = text.find(word); at != std::string::npos;
+       at = text.find(word, at + 1)) {
+    bool before = at == 0 || !joins(text[at - 1]);
+    auto end = at + word.size();
+    bool after = end == text.size() || !joins(text[end]);
+    if (before && after) return true;
+  }
+  return false;
+}
+
+// the layout row's description names every layout type LayoutImpl::create
+// accepts (it builds the layout without a block), and the probe is not empty
+TEST(options_table, layout_doc_names_every_accepted_type) {
+  auto table = YAML::LoadFile(std::string(SNAPY_SOURCE_DIR) +
+                              "/src/options/layout.yaml");
+  std::string doc;
+  for (auto const& row : table["options"])
+    if (row["name"].as<std::string>() == "type")
+      doc = row["doc"].as<std::string>();
+  ASSERT_FALSE(doc.empty()) << "no layout type row";
+  int accepted = 0;
+  for (auto type : {"slab", "cubed", "cubed-sphere", "no-such-layout"}) {
+    auto op = LayoutOptionsImpl::create();
+    op->type(type);
+    bool ok = true;
+    try {
+      LayoutImpl::create(op, nullptr);
+    } catch (c10::Error const&) {
+      ok = false;
+    }
+    accepted += ok;
+    if (ok)
+      EXPECT_TRUE(names_word(doc, type)) << "LayoutImpl::create accepts '"
+                                         << type << "', the doc says: " << doc;
+  }
+  EXPECT_GE(accepted, 2);
 }

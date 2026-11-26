@@ -117,6 +117,8 @@ void bind_mesh(py::module& m) {
   pyMeshOptions.def(py::init<>())
       .def("__repr__",
            [](const snap::MeshOptions& a) {
+             if (!a->block() || !a->block()->layout())
+               return std::string("MeshOptions(block=None)");
              return fmt::format("MeshOptions(blocks_per_process={})",
                                 a->blocks_per_process());
            })
@@ -152,8 +154,8 @@ void bind_mesh(py::module& m) {
             }
             coord->nx2(nx2);
             coord->nx3(nx3);
-            coord->global_nx2(nx2 * layout->px());
-            coord->global_nx3(nx3 * layout->py());
+            coord->global_nx2(nx2 * layout->nb(2));
+            coord->global_nx3(nx3 * layout->nb(3));
           },
           py::arg("nx2"), py::arg("nx3"))
       .ADD_OPTION(snap::MeshBlockOptions, snap::MeshOptionsImpl, block)
@@ -298,6 +300,19 @@ without its closure (the flux-form Coriolis torque only).)doc")
             d["graph_fp64"] = c.graph_fp64;
             d["graph_fp32"] = c.graph_fp32;
             d["eager_reasons"] = c.eager_reasons;
+            py::list rows;
+            for (auto const& s : c.segments) {
+              py::dict r;
+              r["index"] = s.index;
+              r["kind"] = s.kind;
+              r["capturable"] = s.capturable;
+              r["reads_host_dt"] = s.reads_host_dt;
+              r["host"] = s.host;
+              r["ops"] = s.ops;
+              r["reasons"] = s.reasons;
+              rows.append(r);
+            }
+            d["segments"] = rows;
             return d;
           },
           py::arg("vars"))
@@ -365,6 +380,7 @@ stage's global phase before the final exchange.)doc")
            py::arg("vars"), py::arg("time"), py::arg("dt"))
       .def("check_redo", &snap::MeshImpl::check_redo, py::arg("vars"))
       .def("set_cycle", &snap::MeshImpl::set_cycle, py::arg("cycle"))
+      .def("execution_report", &snap::MeshImpl::execution_report)
       .def("finalize", &snap::MeshImpl::finalize, py::arg("vars"),
            py::arg("time"));
 }

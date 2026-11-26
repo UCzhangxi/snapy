@@ -4,11 +4,15 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 // torch
 #include <torch/torch.h>
+
+// snap
+#include <snap/utils/step_dt.hpp>
 
 namespace harp {
 struct IntegratorWeight;
@@ -60,10 +64,30 @@ class RegisterMonitor {
 
   //! zero the counters, minima, retry flags and amounts (X: step start)
   void begin_step();
-  //! drop a rejected attempt: the census counts accepted steps only
-  void rollback() { begin_step(); }
+  //! drop a rejected attempt: the census counts accepted steps only. The
+  //! device slots are zeroed as at begin_step; the host stage bookkeeping
+  //! (_stage, _ended, _w1, _w2dt) stays: on the cuda-graph path the redo
+  //! replays the captured stages, whose host begin_stage/end_stage do not
+  //! run again, and fold_ would otherwise read S = 0 (no rates, no later
+  //! stages' posts) for the redo and every replayed step after it; eager
+  //! rewrites them at the redo's own begin_stage/end_stage (V3 S4)
+  void rollback();
 
-  void count(std::string const& name, torch::Tensor const& n);  // += n
+  //! += n. A reduced count (0-d) adds at once; a mask or a vector is copied
+  //! into its slot of the stage's fixed count buffer and reduced with the
+  //! others by flush_counts() (V3 S4: one segment sum per stage, not one
+  //! per mask)
+  void count(std::string const& name, torch::Tensor const& n);
+  //! the stage's count buffer into the counters: one integer cumsum, one
+  //! gather of the segment ends, one add, then the buffer is zeroed (no
+  //! atomics; V3 S4); called by end_stage, inside the captured stage, and
+  //! always the same launches once the buffer exists, so a capture of the
+  //! combine replays the reduction over what the replayed advance wrote
+  void flush_counts();
+  //! the count buffer, for the stage executor's save list: a warm-up of the
+  //! combine reduces and zeroes it, and the capture must read what the
+  //! advance wrote (empty before the first mask of a stage)
+  torch::Tensor count_storage() const { return _pend_buf; }
   void record_min(std::string const& name, torch::Tensor const& v);
   void flag_retry(std::string const& cause, torch::Tensor const& any);  // OR
 
@@ -79,29 +103,38 @@ class RegisterMonitor {
   torch::Tensor amounts(std::string const& name) const;
   //! a_s += rate, (nrows,): an area-integrated face change of this stage
   void book(std::string const& name, torch::Tensor const& rate);
-  //! R-5: amount (nrows,) times weight, into this stage's posts when
-  //! in_stage (folded at end_stage, R.rst 3.4), else straight into the step
-  //! amount (after_combine: only later stages' w1 scale it). The name is
-  //! created at its first post with that kind; another kind is an error.
+  //! book by amount index (WallBatch::flush)
+  void book_index(int i, torch::Tensor const& rate);
+  //! R-5: amount (nrows,) times weight into this stage's posts (R.rst 3.4);
+  //! in_stage or after the combine, the post is scaled by the later stages'
+  //! w1 alone, so both land in the stage's post slot. The name is created
+  //! at its first post with that kind; another kind is an error.
   void post(std::string const& name, AmountKind kind,
             torch::Tensor const& amount, double weight, bool in_stage);
-  //! A <- w1 A + w2 dt a_s + p_s, then a_s, p_s <- 0 (FluxRegister::end_stage)
-  void end_stage(double w1, double w2dt);
-
-  //! R-7 (R.rst 4.2 O, L-3): the step's outward transfer through dim's faces
-  //! of the fluid domain's boundary, area-integrated, (nrows,) FP64 (FP32 on
-  //! MPS), in units of each row's conserved quantity: sum A_f S_d over the
-  //! block faces whose S FaceKind is wall, outflow or custom (interior cell
-  //! fluid) and the faces with one solid neighbour, outward from the fluid
-  //! cell. Zero before the first step and for an inactive direction.
-  torch::Tensor boundary(int dim) const;
+  //! V3 S4 (ruling 2026-11-24): the stages' rates a_s and posts p_s stay in
+  //! per-stage slots and are folded once, on the device, when the amounts
+  //! are read: A = sum_s c_s (w2_s dt a_s + p_s), c_s = prod_{t>s} w1_t.
+  //! end_stage records the stage's w1 and w2 dt; it launches nothing.
+  void end_stage(double w1, StepDt w2dt);
+  //! the slots are sized for the integrator's stages (the executor's save
+  //! list is taken after this; a later stage index grows them, eager only)
+  void set_stage_count(int nstage);
+  //! the slot the next book() / post() lands in (FluxRegister::begin_stage)
+  void begin_stage(int stage);
+  //! the amount tensors (stage rates [nstage, namounts, nrows], stage posts
+  //! [nstage, namounts, nrows], the folded step amounts [namounts, nrows]),
+  //! wherever they are; empty before reset_amounts. Every stage writes the
+  //! slots, so the stage executor's save list holds them (X: warm-up and
+  //! capture)
+  std::vector<torch::Tensor> amount_storage() const;
+  //! move them to `device` now, as begin_step would (a copy, which syncs:
+  //! the executor calls it in its sync-exempt prepare step, never in a step)
+  void place_amount_storage(torch::Device device);
 
   std::vector<std::string> const& row_names() const { return _rows; }
   std::vector<std::string> const& counter_names() const { return _counter; }
   std::vector<std::string> const& minimum_names() const { return _minimum; }
-  std::vector<std::string> const& retry_names() const { return _retry; }
   int counter_index(std::string const& name) const;
-  int minimum_index(std::string const& name) const;
   int retry_index(std::string const& name) const;
 
   //! the tensors, on the register's device; int64, FP64 (+inf when unset),
@@ -111,19 +144,106 @@ class RegisterMonitor {
  private:
   std::vector<std::string> _rows, _counter, _minimum, _retry, _amount;
   std::vector<AmountKind> _kind;
-  //! [namounts, nrows]: the step amounts, this stage's booked rates a_s and
-  //! weighted posts p_s, placed on the register's device by
-  //! FluxRegister::begin_step or the first book()/post()
-  torch::Tensor _step_amount, _stage_amount, _stage_post;
+  //! [nstage, namounts, nrows]: the stages' booked rates a_s and weighted
+  //! posts p_s, placed on the register's device by FluxRegister::begin_step
+  //! or the first book()/post(); _step_amount [namounts, nrows] holds the
+  //! fold of the stages ended so far, written by amounts()
+  torch::Tensor _rate, _post;
+  mutable torch::Tensor _step_amount;
+  //! the stage's count masks in fixed device storage: one int64 buffer
+  //! behind a leading zero element, one slot per post in the stage's order
+  //! (the pattern: counter index and numel per slot, grown at a new post,
+  //! eager). A host queue of the masks would be drained by the combine's
+  //! first warm-up and never refilled by a replayed advance, so the captured
+  //! combine would count nothing (V3 S4). The segment ends [2, ncounters,
+  //! dup] into the cumulative sum are cached per pattern
+  torch::Tensor _pend_buf;
+  std::vector<int64_t> _pend_pattern;
+  std::vector<int64_t> _pend_off;
+  size_t _pend_cursor = 0;
+  torch::Tensor _pend_ends;
+  int64_t _pend_dup = 1;
+  //! slot k of the stage holds (counter, numel): grow or rebuild the buffer
+  //! and the segment ends when it is new or differs (eager, never captured)
+  void pend_slot_(size_t k, int counter, int64_t numel,
+                  torch::Tensor const& like);
+  int _stage = 0, _ended = 0;  // the current slot; stages ended this step
+  std::vector<double> _w1;     // per stage, recorded at end_stage
+  std::vector<StepDt> _w2dt;   // per stage, recorded at end_stage
   void place_amounts(torch::Device device);
-  //! R-7: boundary(dim) = _boundary + _bdirect: the stage recursion, which
-  //! FluxRegister folds like S_d's, and the post_split part no w1 scales
-  std::array<torch::Tensor, 3> _boundary, _bdirect;
+  void grow_slots_(int nstage);
+  void zero_attempt_();  // the device slots and pending masks, not the stages
+  torch::Tensor fold_() const;
   friend class FluxRegister;
+};
+
+//! V3 S4: the prescribed-wall rates of one stage, hydro and scalar
+//! registers, x1 to x3, booked in one batch at the stage's end
+//! (MeshBlock::stage_combine, before end_stage): the gathered wall planes
+//! sit in one fixed device buffer, one slot per register and direction;
+//! the flush is one product with the cached -area weights, one segment sum
+//! over the rows, one add per register, then the buffer is zeroed. Fixed
+//! storage, not a host queue of the planes: a user forcing splits the stage
+//! into a captured advance and a captured combine, the combine's first
+//! warm-up would drain a queue, its capture would then record no flush and
+//! its replays never run the host push again, so the wall rates would be
+//! lost under graph while the state stays equal. A register without a
+//! batch books its rate at the call (tests).
+class WallBatch {
+ public:
+  //! delta_flat: one register and direction's after - before over the faces
+  //! it wrote, [nvar, faces] flattened in the wide dtype, copied into their
+  //! slot; weights_flat: the face areas laid out the same way (the register's
+  //! own tensor: a rebuilt one is a new slot). The slot is registered at its
+  //! first push (eager, before any capture) and the batch books each of the
+  //! nvar rows' weighted sum at the flush
+  void push(torch::Tensor const& delta_flat, torch::Tensor const& weights_flat,
+            RegisterMonitor* monitor, int amount_index, int64_t nvar);
+  //! book every slot's rate and zero the buffer: always the same launches
+  //! once a slot exists, so eager and a captured combine do the same
+  void flush();
+  //! zero the buffer (a rejected attempt's writes)
+  void clear();
+  //! the stage's pushes start at the first slot (MeshBlock::stage_advance:
+  //! every pass of the advance, the capture's warm-ups included, runs it)
+  void begin_stage() { _cursor = 0; }
+  bool empty() const { return _pattern.empty(); }
+  //! the buffer, for the stage executor's save list: a warm-up of the
+  //! combine books and zeroes it, and the capture must read what the
+  //! advance wrote (empty before the first push)
+  torch::Tensor storage() const { return _buf; }
+
+ private:
+  //! per slot, in the stage's push order: the monitor and amount index it
+  //! books, the weights it was registered with (the register's own tensor,
+  //! so a rebuild is a new slot), rows (nvar), numel and the offset into the
+  //! buffer; _cursor is the next slot of this stage
+  std::vector<RegisterMonitor*> _monitor;
+  std::vector<int> _index;
+  std::vector<torch::Tensor> _weights;
+  std::vector<int64_t> _pattern;  // per slot: rows, numel
+  std::vector<int64_t> _off;
+  size_t _cursor = 0;
+  //! the slots, one after the other
+  torch::Tensor _buf;
+  //! per layout: the slots' weights laid out like the buffer; each slot's
+  //! rows are a plain sum, deterministic, which a scatter-add (index_add_)
+  //! on CUDA is not, and graph must equal eager bitwise
+  torch::Tensor _w;
+  //! the next slot of the stage, (monitor, amount_index, nvar, numel,
+  //! weights), registered when new (eager, never captured)
+  size_t slot_(torch::Tensor const& delta_flat,
+               torch::Tensor const& weights_flat, RegisterMonitor* monitor,
+               int amount_index, int64_t nvar);
+  void layout_(torch::TensorOptions const& opts);
 };
 
 class FluxRegister {
  public:
+  //! the stage's wall batch, shared by the block's registers (MeshBlock)
+  void set_wall_batch(std::shared_ptr<WallBatch> batch) {
+    _wall_batch = std::move(batch);
+  }
   //! allocate T_d for the active directions (dims 1, 2, 3 are x1, x2, x3),
   //! shape {nvar, nc3, nc2, nc1}, dtype kFlux, zero; mark the step fields of
   //! req.step_field
@@ -143,7 +263,6 @@ class FluxRegister {
   void begin_step();
   //! X, before stage s: its integrator weights
   void begin_stage(int stage, harp::IntegratorWeight const& w);
-  double weight1() const { return _w1; }
   double weight2() const { return _w2; }
   int stage() const { return _stage; }
 
@@ -154,6 +273,10 @@ class FluxRegister {
   //! by the producer, which then calls post_slot with the same name
   torch::Tensor slot(int dim, std::string const& name);
   void post_slot(int dim, std::string const& name);
+  //! add, scale or replace wrote total(dim) since the last
+  //! apply_prescribed(dim): the post-implicit apply re-prescribes only then,
+  //! or after the implicit correction, which writes total(1) directly
+  bool written_since_prescribed(int dim) const { return _written[dim - 1]; }
   //! the name of dim's last posted slot ("" before the first post)
   std::string const& slot_name(int dim) const { return _slot[dim - 1]; }
   //! a requested part, written in place by its producer (C's kernel)
@@ -163,6 +286,7 @@ class FluxRegister {
   //! R-3: total[rows] += increment, in call order and never fused, so
   //! successive adds round as the pin's in-place ones; increment is
   //! [rows.size(), faces...]. A requested part of the same name gets a copy.
+  //! Every write marks the direction for the post-implicit apply.
   void add(int dim, std::string const& name, std::vector<int> const& rows,
            torch::Tensor const& increment);
   //! total[rows] *= factor in place; factor [faces...] (every row) or
@@ -186,6 +310,13 @@ class FluxRegister {
   //! S: mask bool [nvar, faces...] and value [nvar, faces...], held as given
   void set_prescribed(int dim, torch::Tensor const& mask,
                       torch::Tensor const& value);
+  //! V3 E: S's prescription without a solid. The face planes `planes`
+  //! (indices along dim's face axis: the wall block faces) of every row but
+  //! the plane's free_rows are set to 0, and apply_prescribed works on those
+  //! planes alone. It replaces a set_prescribed mask, and set_prescribed
+  //! replaces it. No planes: nothing in dim is prescribed
+  void set_prescribed_walls(int dim, std::vector<int64_t> const& planes,
+                            std::vector<std::vector<int>> const& free_rows);
   //! total[mask] = value and, for each kept part of dim, part[mask] = value;
   //! books sum A_f mask (value - total before) per row of the total as
   //! "boundary.prescribed". No-op when S set no mask for dim.
@@ -208,7 +339,7 @@ class FluxRegister {
 
   //! S_d <- w1_s S_d + w2_s dt T_d for every requested direction; the
   //! monitor's amounts likewise
-  void end_stage(double dt);
+  void end_stage(StepDt dt);
   //! X's decide_retry: zero the step fields and the monitor
   void rollback();
   //! R.rst 3.4, outside the stages (the radial split halves: after
@@ -218,10 +349,6 @@ class FluxRegister {
   //! field; begin_step clears the direct part.
   void post_split(int dim, std::string const& name, torch::Tensor const& flux,
                   double weight, double dt);
-  //! R-7: this stage's immersed-solid cells (nonzero: solid), shaped like a
-  //! cell field, for boundary(dim)'s solid faces; undefined: no solid. The
-  //! face set is rebuilt only when the solid field changes.
-  void set_solid(torch::Tensor const& solid);
 
   RegisterMonitor& monitor() { return _monitor; }
   RegisterMonitor const& monitor() const { return _monitor; }
@@ -239,18 +366,35 @@ class FluxRegister {
   std::map<std::string, torch::Tensor> _parts;
   std::array<std::vector<std::string>, 3> _kept;
   std::array<torch::Tensor, 3> _pmask, _pvalue;
+  //! V3 E: set_prescribed_walls' planes and each plane's free rows per
+  //! direction, and the rows mask ([nvar, planes] bool on the total's device,
+  //! true where a plane's row is prescribed, kept between calls)
+  std::array<std::vector<int64_t>, 3> _pwall;
+  std::array<std::vector<std::vector<int>>, 3> _pfree;
+  std::array<torch::Tensor, 3> _prow;
+  //! the wall planes as an index tensor on the total's device (built at the
+  //! first apply after set_prescribed_walls, so a stage launches no setup)
+  std::array<torch::Tensor, 3> _pidx;
+  //! the face areas as overwrite_'s weights, wide dtype on the total's
+  //! device, laid out like the written faces and flattened: the wall planes'
+  //! and the whole field's, each built once
+  std::array<torch::Tensor, 3> _pwtflat, _oarea;
+  std::shared_ptr<WallBatch> _wall_batch;
+  std::array<bool, 3> _pwall_set = {false, false, false};
+  std::array<bool, 3> _written = {false, false, false};
   CoordinateImpl const* _coord = nullptr;
-  //! total(dim) <- after; books sum A_f (after - before) per row as name
-  void overwrite_(int dim, std::string const& name, torch::Tensor const& after);
-  //! R-7: per direction, the outward sign times A_f of each boundary face,
-  //! zero elsewhere, shaped like total(dim) without rows (FP64, FP32 on MPS);
-  //! undefined until built, rebuilt when the solid field changes
-  std::array<torch::Tensor, 3> _bweight;
-  torch::Tensor _solid;
-  uint32_t _solid_version = 0;
-  torch::Tensor const& boundary_weight_(int dim);
-  void place_boundary_();
+  //! the one write-and-book: total(dim) <- after on the faces of the index
+  //! (along the face axis; undefined: every face) and sum A_f (after -
+  //! before) per row booked as name, through the wall batch when one is set,
+  //! else now. before: the written faces' values, gathered by the caller
+  //! (undefined: gathered here)
+  void overwrite_(int dim, std::string const& name, torch::Tensor const& after,
+                  torch::Tensor const& faces = torch::Tensor(),
+                  torch::Tensor const& before = torch::Tensor());
   std::array<bool, 3> _want_step = {false, false, false};
+  //! the step fields, split posts and stage flag of a fresh attempt: the
+  //! shared part of begin_step and rollback
+  void begin_attempt_();
   RegisterMonitor _monitor;
   int _stage = -1;
   double _w1 = 0., _w2 = 0.;

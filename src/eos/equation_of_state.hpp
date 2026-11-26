@@ -102,6 +102,9 @@ class EquationOfStateImpl {
   //!         units consistent with the underlying thermodynamic model).
   virtual double species_weight(int n = 0) const { return 0.; }
 
+  //! dry gas constant Rgas / weight, in J/(kg K)
+  double gas_constant_dry() const;
+
   //! \brief Return the reference specific heat at constant volume of species \p
   //! n.
   //!
@@ -151,7 +154,16 @@ class EquationOfStateImpl {
   virtual torch::Tensor compute(std::string ab,
                                 std::vector<torch::Tensor> const& args = {});
 
-  // virtual torch::Tensor get_buffer(std::string) const;
+  //! adiabatic index and sound speed of the primitive state w, {gamma, c}:
+  //! "W->A", then "WA->L" (ANEOS: "W->L", then "WL->A")
+  virtual std::pair<torch::Tensor, torch::Tensor> gamma_sound_speed(
+      torch::Tensor const& w);
+
+  //! adiabatic index of w alone: "W->A" (ANEOS: "W->L", then "WL->A")
+  virtual torch::Tensor adiabatic_index(torch::Tensor const& w);
+
+  //! sound speed of w alone: "W->A", then "WA->L" (ANEOS: "W->L")
+  virtual torch::Tensor sound_speed(torch::Tensor const& w);
 
   torch::Tensor forward(torch::Tensor cons,
                         torch::optional<torch::Tensor> out = torch::nullopt);
@@ -208,6 +220,20 @@ class EquationOfStateImpl {
   //! set, if ab is one of the two.
   bool convert_(std::string const& ab, std::vector<torch::Tensor> const& args,
                 torch::Tensor* out);
+
+  //! "WA->L" of an ideal gas (dry or moist): sqrt(gamma p / rho)
+  static torch::Tensor ideal_sound_speed_(torch::Tensor const& w,
+                                          torch::Tensor const& gamma);
+
+  //! kinetic energy 1/2 v . m from the primitive velocity rows of prim and
+  //! the matching (lowered velocity or momentum) rows m
+  static torch::Tensor kinetic_energy_(torch::Tensor const& prim,
+                                       torch::Tensor const& m);
+
+  //! kinetic energy of the conserved state, 1/2 m . raise(m) / rho, with
+  //! rho = dry + the first ny species (species_total order)
+  torch::Tensor cons_kinetic_energy_(torch::Tensor const& cons,
+                                     torch::Tensor const& dry, int ny) const;
 
   //! \brief Convert primitive variables to conserved variables.
   virtual void _prim2cons(torch::Tensor prim, torch::Tensor& cons);

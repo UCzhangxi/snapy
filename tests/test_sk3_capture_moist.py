@@ -25,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from snapy import MeshBlock, MeshBlockOptions, kICY, kIDN, kIPR  # noqa: E402
 from test_stage_executor_capture import KEYS, assert_equal, expect_error, forward_both  # noqa: E402
+from cuda_build import build_has_cuda, skip  # noqa: E402
 
 QVAPOR = 0.005  # kg/kg, saturated below ~287 K at 1 bar: the bubble and aloft
 
@@ -101,7 +102,7 @@ def check_capture(precision):
                 fields["hydro_u"] = fields["hydro_u"].clone()
                 fields["scalar_s"] = fields["scalar_s"].clone()
             recaptures += 1
-        elif dt != last_dt:
+        elif last_dt is None:  # the first step captures; a new dt does not (V3 D)
             recaptures += 1
         if step == 30:  # an in-place edit reaches the captured inputs
             for fields in (state, expected):
@@ -117,7 +118,7 @@ def check_capture(precision):
             assert ncloud > 0, "no cell condensed in the first step; the case is vacuous"
             print(precision, "cells with cloud after step 1:", ncloud, "of", cloud.numel())
 
-    # a forced retry restores the step; the smaller dt recaptures
+    # a forced retry restores the step; the smaller dt replays the same graphs
     before = {k: state[k].clone() for k in ("hydro_u", "scalar_s")}
     forward_both(pair, 0.1)
     for fields in (state, expected):
@@ -131,7 +132,6 @@ def check_capture(precision):
         assert block.check_redo(state) == ref.check_redo(expected) == 0
         assert_equal(state, expected, (precision, "after retry"))
         assert torch.equal(counter(block), counter(ref)), (precision, "after retry", "counter")
-    recaptures += 1
 
     report = block.execution_report()
     assert report["eager"] == 0, report
@@ -141,9 +141,8 @@ def check_capture(precision):
 
 
 def main():
-    if not torch.cuda.is_available():
-        print("SKIP: CUDA unavailable")
-        return 0
+    if not build_has_cuda():
+        skip("CUDA unavailable")
     for precision in ("float64", "float32"):
         check_capture(precision)
     print("PASSED")

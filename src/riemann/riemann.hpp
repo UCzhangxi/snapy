@@ -43,10 +43,12 @@ struct RiemannSolverOptionsImpl {
   static std::shared_ptr<RiemannSolverOptionsImpl> create() {
     return std::make_shared<RiemannSolverOptionsImpl>();
   }
+  //! the `riemann-solver:` node under deck section `section`
   static std::shared_ptr<RiemannSolverOptionsImpl> from_yaml(
       std::string const& filename, std::string const& section);
+  //! a `riemann-solver:` node; `path` names it in a key-check error
   static std::shared_ptr<RiemannSolverOptionsImpl> from_yaml(
-      YAML::Node const& node);
+      YAML::Node const& node, std::string const& path = "riemann-solver");
 
   RiemannSolverOptionsImpl() = default;
   void report(std::ostream& os) const {
@@ -100,10 +102,13 @@ class RiemannSolverImpl : public torch::nn::Cloneable<RiemannSolverImpl> {
   //! the solver, from options->type()
   RiemannKind kind = RiemannKind::hllc;
 
-  //! the last face-function solve's events on its interior faces, int64
-  //! (2,): riemann.pstar_clamp (hllc's contact pressure clamped) and
-  //! riemann.llf (roe's LLF fallback)
-  torch::Tensor events;
+  //! the last face-function solve's events on its interior faces, (row,
+  //! mask) pairs, mask a bool tensor over the interior faces: row 0
+  //! riemann.pstar_clamp (hllc's contact pressure clamped), row 1
+  //! riemann.llf (roe's LLF fallback); the monitor reduces the stage's
+  //! masks together (V3 S4). Only a solver that has the event posts it
+  //! (lmars posts none), so no zero slot is filled per solve
+  std::vector<std::pair<int, torch::Tensor>> events;
 
   //! non-owning reference to parent
   HydroImpl const* phydro = nullptr;

@@ -13,6 +13,8 @@
 // snap
 #include <snap/snap.h>
 
+#include <snap/mesh/exchange_cut.hpp>
+
 #include "connectivity.hpp"
 #include "process_group.hpp"
 
@@ -98,17 +100,19 @@ struct LayoutOptionsImpl {
 
   int process_root_rank() const { return owner_process_rank(root_rank()); }
 
-  //! type of layout
-  ADD_ARG(std::string, type) = "slab";
+  // the rows of src/options/layout.yaml: type, px, py, pz,
+  // blocks_per_process, verbose, backend, device
+#include <snap_options/layout_members.inc>
 
-  //! number of processors in X
-  ADD_ARG(int, px) = 1;
+ public:
+  //! number of blocks along mesh axis 1..3: nb1 = pz, nb2 = px, nb3 = py
+  int nb(int axis) const { return axis == 1 ? pz() : axis == 2 ? px() : py(); }
 
-  //! number of processors in Y
-  ADD_ARG(int, py) = 1;
+  //! number of blocks in the process grid, px * py * pz
+  int nblocks() const { return px() * py() * pz(); }
 
-  //! number of processors in Z
-  ADD_ARG(int, pz) = 1;
+  //! whether this is the six-panel cubed-sphere layout
+  bool is_cubed_sphere() const { return type() == "cubed-sphere"; }
 
   //! periodicity in X
   ADD_ARG(bool, periodic_x) = false;
@@ -119,8 +123,6 @@ struct LayoutOptionsImpl {
   //! periodicity in Z
   ADD_ARG(bool, periodic_z) = false;
 
-  ADD_ARG(std::string, backend) = "gloo";
-  ADD_ARG(std::string, device) = "cpu";
   ADD_ARG(std::string, master_addr) = "127.0.0.1";
   ADD_ARG(int, process_rank) = 0;
   ADD_ARG(int, rank) = 0;
@@ -128,14 +130,12 @@ struct LayoutOptionsImpl {
   ADD_ARG(int, local_rank) = 0;
   ADD_ARG(int, process_world_size) = 1;
   ADD_ARG(int, world_size) = 1;
-  ADD_ARG(int, blocks_per_process) = 1;
   //! the Mesh this block belongs to (S-L1): keys the same-process exchange
   //! state, so two Meshes in one process never meet. MeshImpl::reset sets a
   //! new id for its blocks; 0, blocks built outside a Mesh, share one group.
   ADD_ARG(int64_t, mesh_id) = 0;
   ADD_ARG(int, master_port) = -1;
   ADD_ARG(int, device_id) = -1;
-  ADD_ARG(bool, verbose) = false;
 };
 using LayoutOptions = std::shared_ptr<LayoutOptionsImpl>;
 
@@ -166,11 +166,19 @@ struct SyncOptions {
 
 using Variables = std::map<std::string, torch::Tensor>;
 
+//! A Mesh block worker's "a block job of this Mesh failed" (its pool's error,
+//! stored, then wake_local_exchanges): its same-process waits then throw
+extern thread_local std::function<bool()> g_local_job_failed;
+void wake_local_exchanges();
+void clear_local_exchange(int64_t mesh_id);  // drops its mail, anchors, boards
 //! Cache key of the send/receive buffers of one exchange.
 std::string exchange_buffer_key(SyncOptions const& opts, Variables const& vars);
 
 //! A cached buffer can take `source`: same shape, dtype and device.
 bool buffer_matches(torch::Tensor const& buffer, torch::Tensor const& source);
+
+//! Reallocate `buffer` (torch::empty_like) unless it can take `source`.
+void ensure_like(torch::Tensor& buffer, torch::Tensor const& source);
 
 //! exchange_each_var adds n * 65536 for variable n, so the tag must stay in
 //! [0, 65536) for the tags of different variables to stay distinct.
@@ -214,15 +222,13 @@ class LayoutImpl {
   LayoutImpl() : options(LayoutOptionsImpl::create()) {}
   LayoutImpl(const LayoutOptions& opts, MeshBlockImpl* owner = nullptr)
       : comm(nullptr), options(opts), _owner(owner) {
-    int P = options->px() * options->py() * options->pz();
-    _rankof.resize(P);
+    _rankof.resize(options->nblocks());
   }
 
   std::tuple<int, int, int> get_procs() const {
     return {options->px(), options->py(), options->pz()};
   }
 
-  bool is_root() const { return options->rank() == options->root_rank(); }
   bool use_process_group() const {
     return owner() != nullptr && options->process_world_size() > 1;
   }
@@ -258,10 +264,13 @@ class LayoutImpl {
     int pz = options->pz();
     if (rx < 0 || rx >= px || ry < 0 || ry >= py || rz < 0 || rz >= pz)
       return -1;
-    return _rankof[rz * (px * py) + ry * px + rx];
+    return _rankof[linear_index3(px, py, rz, ry, rx)];
   }
 
   virtual std::tuple<int, int, int> loc_of(int rank) const { return {0, 0, 0}; }
+
+  //! panel of a rank on the cubed-sphere layout (the third loc_of entry)
+  int panel_of(int rank) const { return std::get<2>(loc_of(rank)); }
 
   //! \brief Neighbor -> Z-order rank (3D)
   /*!
@@ -344,8 +353,11 @@ class LayoutImpl {
   virtual std::tuple<int, int, int> _peer_exchange_offset(
       int peer_rank, int target_rank, SyncOptions const& opts,
       std::tuple<int, int, int> offset) const;
+  //! the same-process seam copies of a rendezvous; `cache` is its copy
+  //! graph (B3: replayed inside a cut's host step, run_seam_copies)
   virtual void _copy_local_exchange_buffers(
-      std::vector<LayoutImpl*> const& layouts, SyncOptions const& opts) const;
+      std::vector<LayoutImpl*> const& layouts, SyncOptions const& opts,
+      std::shared_ptr<SeamCopies>& cache) const;
   //! The exchange skips this direction before asking for a neighbour: a
   //! physical boundary of the block.
   virtual bool _skips_direction(MeshBlockImpl const* pmb,

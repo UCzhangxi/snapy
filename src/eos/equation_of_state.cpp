@@ -10,6 +10,8 @@
 #include <ATen/TensorIterator.h>
 
 // kintera
+#include <kintera/constants.h>
+
 #include <kintera/species.hpp>
 
 // snap
@@ -93,13 +95,13 @@ EquationOfStateOptions EquationOfStateOptionsImpl::from_yaml(
 
   op->verbose() = node["verbose"].as<bool>(verbose);
 
-  op->type() = node["type"].as<std::string>("moist-mixture");
+  op->type() = node["type"].as<std::string>(op->type());
   if (op->verbose()) {
     SINFO(EquationOfStateOptions) << "EOS type = " << op->type() << std::endl;
   }
 
-  op->gammad() = node["gammad"].as<double>(1.4);
-  op->weight() = node["weight"].as<double>(29.e-3);
+  op->gammad() = node["gammad"].as<double>(op->gammad());
+  op->weight() = node["weight"].as<double>(op->weight());
 
   op->density_floor() = node["density-floor"].as<double>(op->density_floor());
   if (op->verbose()) {
@@ -112,13 +114,13 @@ EquationOfStateOptions EquationOfStateOptionsImpl::from_yaml(
   op->temperature_floor() =
       node["temperature-floor"].as<double>(op->temperature_floor());
 
-  op->limiter() = node["limiter"].as<bool>(false);
+  op->limiter() = node["limiter"].as<bool>(op->limiter());
   if (op->verbose()) {
     SINFO(EquationOfStateOptions)
         << "limiter = " << (op->limiter() ? "true" : "false") << std::endl;
   }
 
-  op->eos_file() = node["eos-file"].as<std::string>("");
+  op->eos_file() = node["eos-file"].as<std::string>(op->eos_file());
   if (op->verbose() && !op->eos_file().empty()) {
     SINFO(EquationOfStateOptions)
         << "eos file = " << op->eos_file() << std::endl;
@@ -208,6 +210,10 @@ torch::Tensor EquationOfStateImpl::internal_energy_offset(
   return torch::zeros_like(hydro_like[IDN]);
 }
 
+double EquationOfStateImpl::gas_constant_dry() const {
+  return kintera::constants::Rgas / options->weight();
+}
+
 torch::Tensor EquationOfStateImpl::specific_heat_cv(torch::Tensor prim,
                                                     torch::Tensor temp) {
   return torch::zeros_like(temp);
@@ -219,10 +225,40 @@ torch::Tensor EquationOfStateImpl::compute(
               "Please use this method in a derived class.");
 }
 
-/*torch::Tensor EquationOfStateImpl::get_buffer(std::string) const {
-  TORCH_CHECK(false, "[EquationOfState] get_buffer() is not implemented.",
-              "Please use this method in a derived class.");
-}*/
+std::pair<torch::Tensor, torch::Tensor> EquationOfStateImpl::gamma_sound_speed(
+    torch::Tensor const& w) {
+  auto gamma = compute("W->A", {w});
+  auto c = compute("WA->L", {w, gamma});
+  return {gamma, c};
+}
+
+torch::Tensor EquationOfStateImpl::ideal_sound_speed_(
+    torch::Tensor const& w, torch::Tensor const& gamma) {
+  return torch::sqrt(gamma * w[IPR] / w[IDN]);
+}
+
+torch::Tensor EquationOfStateImpl::kinetic_energy_(torch::Tensor const& prim,
+                                                   torch::Tensor const& m) {
+  return 0.5 * (prim.narrow(0, IVX, 3) * m).sum(0);
+}
+
+torch::Tensor EquationOfStateImpl::cons_kinetic_energy_(
+    torch::Tensor const& cons, torch::Tensor const& dry, int ny) const {
+  // (species_total accumulates in species order, see species_sum.hpp)
+  auto rho = dry;
+  if (ny > 0) rho = rho + species_total(cons.narrow(0, ICY, ny));
+  auto mom = cons.narrow(0, IVX, 3).clone();
+  coord_vec_raise_(mom, phydro->pmb->pcoord->cosine_cell_kj);
+  return 0.5 * (mom * cons.narrow(0, IVX, 3)).sum(0) / rho;
+}
+
+torch::Tensor EquationOfStateImpl::adiabatic_index(torch::Tensor const& w) {
+  return compute("W->A", {w});
+}
+
+torch::Tensor EquationOfStateImpl::sound_speed(torch::Tensor const& w) {
+  return gamma_sound_speed(w).second;
+}
 
 bool EquationOfStateImpl::convert_(std::string const& ab,
                                    std::vector<torch::Tensor> const& args,
@@ -301,28 +337,13 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons,
   floor_row_(cons[IDN], options->density_floor(),
              anom ? ref[0] : torch::Tensor(), float_anomaly);
 
-  // for (int i = ICY; i < ICY + nvapor; ++i)
-  //   cons.index(interior)[i] = pull_neighbors3(cons.index(interior)[i]);
-  //  batched
-  // cons.index(interior).narrow(0, ICY, nvapor) =
-  //    pull_neighbors4(cons.index(interior).narrow(0, ICY, nvapor));
-
-  int ny = 0;
-  int nvapor = 0;
-  int ncloud = 0;
-  if (options->thermo()) {
-    nvapor = options->thermo()->vapor_ids().size() - 1;
-    ncloud = options->thermo()->cloud_ids().size();
-    ny = nvapor + ncloud;
-  }
+  auto const& thermo = options->thermo();
+  int nvapor = thermo_vapor_rows(thermo);
+  int ncloud = thermo ? static_cast<int>(thermo->cloud_ids().size()) : 0;
+  int ny = thermo_species_rows(thermo);
 
   if (nvar() > IPR) {
-    auto mom = cons.narrow(0, IVX, 3).clone();
-    coord_vec_raise_(mom, pcoord->cosine_cell_kj);
-    // (species_total accumulates in species order, see species_sum.hpp)
-    auto rho = dry_total(cons);
-    if (ny > 0) rho = rho + species_total(cons.narrow(0, ICY, ny));
-    auto ke = 0.5 * (mom * cons.narrow(0, IVX, 3)).sum(0) / rho;
+    auto ke = cons_kinetic_energy_(cons, dry_total(cons), ny);
     auto min_temp = options->temperature_floor() * torch::ones_like(ke);
     // UT->I reads the dry density: hand it the total
     auto cons_t = cons;
@@ -337,7 +358,6 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons,
   if (mark) status.mark(0, dens_energy().ne(before).any());
 
   if (options->thermo() && ny > 0) {
-    auto nghost = pcoord->options->nghost();
     auto species = [&] { return cons.index(interior).narrow(0, ICY, ny); };
     auto species_before = mark ? species().clone() : torch::Tensor();
 
@@ -385,7 +405,7 @@ void EquationOfStateImpl::apply_conserved_limiter_(torch::Tensor const& cons,
           dry_total(cons).to(field.options()).unsqueeze(0).index(interior);
       auto layout = pmb->get_layout();
       bool split =
-          count > 0 && whole_column && layout && layout->options->pz() > 1;
+          count > 0 && whole_column && layout && layout->options->nb(1) > 1;
       auto column = split ? layout->gather_x1(torch::cat(
                                 {field, major, vol.expand_as(major)}))
                           : torch::Tensor();
@@ -446,6 +466,7 @@ void EquationOfStateImpl::apply_primitive_limiter_(torch::Tensor const& prim) {
   }
   prim.masked_fill_(nan, 0.);
   prim[IDN].clamp_min_(options->density_floor());
+  if (nvar() <= IPR) return;  // shallow water: no pressure or species row
 
   if (options->thermo()) {
     int ny = thermo_species_rows(options->thermo());

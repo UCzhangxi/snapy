@@ -29,11 +29,6 @@
 
 namespace snap {
 
-int64_t MeshBlockImpl::saturation_failures() {
-  auto pthermo = thermo();
-  return pthermo ? pthermo->take_saturation_adjustment_failures() : 0;
-}
-
 int MeshBlockImpl::apply_redo(Variables &vars, int causes) {
   // V3 I-5: the VIC's failed columns (cause bit 5), logged on a redo only
   if ((causes & 32) && phydro->picorr)
@@ -59,6 +54,9 @@ int MeshBlockImpl::apply_redo(Variables &vars, int causes) {
 
     // reset variables
     phydro->flux_register().rollback();  // the census keeps accepted steps
+    for (int s = EfStatus::kPosHits; s < EfStatus::kNumSlots; ++s)
+      if (_meters0[s].defined() && pefs->slot(EfStatus::Slot(s)).defined())
+        pefs->slot(EfStatus::Slot(s)).copy_(_meters0[s]);  // and its meters
     _state.adopt(vars);
     _state.restore();
     for (auto &s : phydro->sources.splits()) s->restore_split(vars["hydro_u"]);
@@ -149,10 +147,10 @@ torch::Tensor MeshBlockImpl::local_redo_flag_tensor(Variables const &vars) {
   return out;
 }
 
-std::array<bool, 7> MeshBlockImpl::read_redo_flags(torch::Tensor const &flags) {
+std::array<bool, 6> MeshBlockImpl::read_redo_flags(torch::Tensor const &flags) {
   auto c = flags.cpu().to(torch::kFloat64);  // the one device-to-host read
   auto a = c.accessor<double, 1>();
-  std::array<bool, 7> out{};
+  std::array<bool, 6> out{};
   for (size_t i = 0; i < 6; ++i) out[i] = a[i] > 0.;
   // a vapor column the limiter could not repair: redo at a smaller dt (#317)
   if (c.size(0) > 6 && a[6] > 0.) {
@@ -162,11 +160,10 @@ std::array<bool, 7> MeshBlockImpl::read_redo_flags(torch::Tensor const &flags) {
     out[2] = true;
   }
   if (c.size(0) > 7 && a[7] > 0.) out[2] = true;
-  if (c.size(0) > 8 && a[8] > 0.) out[6] = true;  // diffusion.radial (V3)
   return out;
 }
 
-std::array<bool, 7> MeshBlockImpl::local_redo_flags(Variables const &vars) {
+std::array<bool, 6> MeshBlockImpl::local_redo_flags(Variables const &vars) {
   return read_redo_flags(local_redo_flag_tensor(vars));
 }
 
@@ -180,7 +177,7 @@ int MeshBlockImpl::decide_retry(std::vector<MeshBlockImpl *> const &blocks,
   bool same_device = true;
   for (auto const &t : local)
     same_device = same_device && t.device() == local.front().device();
-  std::array<bool, 7> flags{};
+  std::array<bool, 6> flags{};
   if (same_device) {
     flags = read_redo_flags(torch::stack(local).amax(0));
   } else {
@@ -189,7 +186,8 @@ int MeshBlockImpl::decide_retry(std::vector<MeshBlockImpl *> const &blocks,
       for (size_t j = 0; j < flags.size(); ++j) flags[j] = flags[j] || f[j];
     }
   }
-  auto flag = torch::zeros({7}, torch::dtype(torch::kFloat64));
+  auto flag = torch::zeros({static_cast<int64_t>(flags.size())},
+                           torch::dtype(torch::kFloat64));
   auto f = flag.accessor<double, 1>();
   for (size_t i = 0; i < flags.size(); ++i) f[i] = flags[i] ? 1. : 0.;
   std::vector<at::Tensor> reduced = {flag};

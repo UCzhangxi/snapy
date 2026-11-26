@@ -23,6 +23,7 @@
 #include <snap/output/writer_core.hpp>
 #include <snap/utils/log.hpp>
 
+#include "exchange_cut.hpp"
 #include "meshblock.hpp"
 #include "meshblock_internal.hpp"
 #include "stage_executor.hpp"
@@ -37,7 +38,7 @@ void MeshBlockImpl::exchange(Variables &vars, SyncOptions const &opts) const {
   // from the edge strips, so they come after both.
   auto const &lo = *options->layout();
   if (opts.interpolate() && !opts.intra_panel_only() &&
-      !opts.cross_panel_only() && lo.type() == "cubed-sphere" &&
+      !opts.cross_panel_only() && lo.is_cubed_sphere() &&
       (lo.px() > 1 || lo.py() > 1)) {
     SyncOptions intra = opts, cross = opts;
     _exchange_once(vars, intra.intra_panel_only(true).interpolate(false));
@@ -57,14 +58,41 @@ void MeshBlockImpl::_exchange_once(Variables &vars,
   finalize_exchange(vars, opts, works);
 }
 
+torch::Tensor MeshBlockImpl::board_buffer(std::tuple<int, int, int> key,
+                                          torch::Tensor const &like) const {
+  auto &buf = board_buffers[key];
+  ensure_like(buf, like);
+  return buf;
+}
+
 void MeshBlockImpl::begin_exchange(Variables &vars,
                                    SyncOptions const &opts) const {
+  // the pack: device copies into the cached send buffers (captured in a
+  // segment, B3; the warm-up allocates them)
   _playout->serialize(this, vars, opts);
 }
 
 void MeshBlockImpl::launch_exchange(SyncOptions const &opts,
                                     std::vector<CommWorkPtr> &works) const {
-  _playout->launch_exchange(this, opts, works);
+  // B3: a cut in a segment capture (exchange_cut decides; else the launch as
+  // is). The host step is the rendezvous with this process's blocks (and
+  // their seam copies) or the communicator, waited on, so the unpack
+  // (finalize_exchange: deserialize into the ghosts) is device work in the
+  // segment's next graph. It runs again at every replay, when the pack ran
+  // inside a graph and set no host state: it restores the send and receive
+  // buffers this pack chose (serialize points them at its cache entry)
+  auto sends = send_bufs;
+  auto recvs = recv_bufs;
+  exchange_cut(
+      [this, opts, sends, recvs]() {
+        send_bufs = sends;
+        recv_bufs = recvs;
+        std::vector<CommWorkPtr> w;
+        _playout->launch_exchange(this, opts, w);
+        for (auto &x : w)
+          if (x) x->wait();
+      },
+      [&]() { _playout->launch_exchange(this, opts, works); });
 }
 
 void MeshBlockImpl::finalize_exchange(Variables &vars, SyncOptions const &opts,
@@ -116,7 +144,7 @@ void MeshBlockImpl::exchange_ghost_zones(Variables &vars) {
       // Cubed-sphere horizontal custom callbacks are built-in no-ops:
       // exchange owns these faces and their radial wall intersections.
       // Check callback identity, not its name, to retain genuine custom BCs.
-      if (options->layout()->type() == "cubed-sphere" && face >= 2 &&
+      if (options->layout()->is_cubed_sphere() && face >= 2 &&
           is_custom_noop(fns[face]))
         return false;
       return !(static_cast<size_t>(face) < names.size() &&

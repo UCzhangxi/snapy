@@ -51,7 +51,6 @@ BC_FUNCTION(periodic_outer, var, dim, op) {
 
 BC_FUNCTION(extrapolation_inner, var, dim, op) {
   if (var.size(dim) == 1) return;
-  int nc = var.size(dim);
   int nghost = op.nghost();
 
   var.narrow(dim, 0, nghost) = var.narrow(dim, nghost, 1);
@@ -153,8 +152,7 @@ void radiating(torch::Tensor const& var, int dim, BoundaryFuncOptions op,
     in_plane = in_plane & keep;
   }
   auto sound = [&](torch::Tensor t, bool background) {
-    auto a = op.eos->compute("W->A", {t});
-    auto c = op.eos->compute("WA->L", {t, a});
+    auto c = op.eos->sound_speed(t);
     // EOS sound speed has spatial axes only, unlike the 4D hydro tensor.
     c = c.narrow(dim - 1, src, 1);
     auto ok = torch::isfinite(c) & (c > 0);

@@ -62,17 +62,20 @@ class CubedSphereLayoutImpl : public LayoutImpl {
   bool _skips_direction(MeshBlockImpl const* pmb,
                         std::tuple<int, int, int> offset) const override;
 
-  //! \brief Interpolate transmitted variable to local ghost zones
-  void _interpolate_to_local(MeshBlockImpl const* pmb,
-                             std::tuple<int, int, int> offset,
-                             torch::Tensor var) const;
-
   torch::Tensor const& _velocity_transform(SyncOptions const& opts,
                                            int buffer_id, bool to_global,
                                            torch::Tensor alpha,
                                            torch::Tensor beta,
                                            torch::Tensor cosine,
                                            torch::Tensor const& velocity) const;
+
+  //! Rotate the velocity rows of `var` (kConserved with the metric cosine at
+  //! cosine_cell[sub3], kPrimitive without; kScalar is left alone)
+  void _transform_velocity_(
+      SyncOptions const& opts, int buffer_id, bool to_global,
+      torch::Tensor alpha, torch::Tensor beta, torch::Tensor const& cosine_cell,
+      std::vector<torch::indexing::TensorIndex> const& sub3,
+      torch::Tensor var) const;
 
   mutable std::map<std::string, torch::Tensor> _velocity_transform_cache;
 

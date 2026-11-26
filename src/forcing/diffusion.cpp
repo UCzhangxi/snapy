@@ -433,8 +433,8 @@ void DiffusionImpl::reset() {
                 "[Diffusion] Cubed sphere requires positive radii, nghost >= 2 "
                 "and at least max(4, nghost) active cells per direction.");
     TORCH_CHECK(
-        phydro->pmb->options->layout()->type() == "cubed-sphere" &&
-            phydro->pmb->options->layout()->pz() == 1,
+        phydro->pmb->options->layout()->is_cubed_sphere() &&
+            phydro->pmb->options->layout()->nb(1) == 1,
         "[Diffusion] Cubed sphere requires cubed-sphere layout and nb1=1.");
     auto const& names = phydro->pmb->options->bcnames();
     TORCH_CHECK(
@@ -463,7 +463,7 @@ void DiffusionImpl::reset() {
   // one value per x1 cell centre, ghosts included, from a tensor or a table
   auto nc1 = coord->options->nc1();
   auto layout = phydro->pmb->options->layout();
-  int nb1 = layout ? layout->pz() : 1;
+  int nb1 = layout ? layout->nb(1) : 1;
   auto profile = [&](torch::Tensor const& cells, torch::Tensor const& table,
                      char const* name, double* max) {
     *max = 1.;
@@ -550,9 +550,8 @@ void DiffusionImpl::profiles_on(torch::Tensor const& w) {
 
 void DiffusionImpl::add(torch::Tensor du, StageState const& s) {
   auto w = s.w, temp = s.temp;
-  double dt = s.dt;
-  auto pmb = phydro->pmb;
-  auto coord = pmb->pcoord;
+  double dt = s.dt.value();
+  auto coord = phydro->pmb->pcoord;
 
   check_profiles();
   profiles_on(w);
@@ -562,6 +561,18 @@ void DiffusionImpl::add(torch::Tensor du, StageState const& s) {
     return;
   }
 
+  // the energy rows are post_fluxes' (A.rst 3.7): only the others enter du
+  auto fluxes = cartesian_fluxes(w, temp);
+  if (!fluxes[0].defined() && !fluxes[1].defined() && !fluxes[2].defined())
+    return;
+  auto div = coord->divergence(fluxes[0], fluxes[1], fluxes[2]);
+  du.narrow(0, 0, IPR) -= dt * div.narrow(0, 0, IPR);
+}
+
+std::array<torch::Tensor, 3> DiffusionImpl::cartesian_fluxes(
+    torch::Tensor w, torch::Tensor temp) {
+  auto pmb = phydro->pmb;
+  auto coord = pmb->pcoord;
   auto [cell_start, cell_end] = region_bounds(
       pmb->part({0, 0, 0}, PartOptions().exterior(false).ndim(3)));
   PartOptions div_options;
@@ -594,10 +605,8 @@ void DiffusionImpl::add(torch::Tensor du, StageState const& s) {
   }
 
   std::array<torch::Tensor, 3> fluxes;
-  bool has_flux = false;
   for (int idir = 0; idir < 3; ++idir) {
     if (!active(coord, idir)) continue;
-    has_flux = true;
 
     auto dim = kSpatialDims[idir] - 1;
     auto face_start = cell_start;
@@ -694,10 +703,7 @@ void DiffusionImpl::add(torch::Tensor du, StageState const& s) {
     }
     fluxes[idir] = flux;
   }
-
-  if (has_flux) {
-    du -= dt * coord->divergence(fluxes[0], fluxes[1], fluxes[2]);
-  }
+  return fluxes;
 }
 
 double DiffusionImpl::max_time_step(StageState const& s) const {

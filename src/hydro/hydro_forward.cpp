@@ -2,6 +2,7 @@
 #include <chrono>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <typeinfo>
 
 // snap
@@ -9,6 +10,7 @@
 
 #include <snap/coord/x1_centroid.hpp>
 #include <snap/eos/ideal_moist.hpp>
+#include <snap/eos/species_sum.hpp>
 #include <snap/layout/exchange.hpp>
 #include <snap/layout/seam_register.hpp>
 #include <snap/mesh/meshblock.hpp>
@@ -41,6 +43,16 @@ static torch::Tensor d1_pressure(torch::Tensor const& p,
   d.select(-1, ie - 1) =
       (p.select(-1, ie) - p.select(-1, ie - 1)) / (x1v[ie] - x1v[ie - 1]);
   return d;
+}
+
+// #289 x1 face-centroid shift, as `like`; undefined where identically zero
+static torch::Tensor centroid_shift_x1(CoordinateImpl const& coord,
+                                       torch::Tensor const& like) {
+  if (coord.face_centroid_shift_zero()) return torch::Tensor();
+  return coord.face_centroid_shift_x1()
+      .to(like.device(), like.scalar_type())
+      .unsqueeze(0)
+      .unsqueeze(1);
 }
 
 torch::Tensor HydroImpl::_flux_covariance(torch::Tensor const& wl,
@@ -127,12 +139,8 @@ torch::Tensor HydroImpl::_flux_covariance(torch::Tensor const& wl,
   // docs/derivations/289-covariance-x3-curved.md.
   // Cartesian (face_centroid_shift_zero): the shift is identically zero, so
   // every centroid part below is an exact zero and is not computed
-  bool centroid = !pcoord->face_centroid_shift_zero();
-  auto ds = centroid ? pcoord->face_centroid_shift_x1()
-                           .to(p.device(), p.scalar_type())
-                           .unsqueeze(0)
-                           .unsqueeze(1)
-                     : torch::Tensor();
+  auto ds = centroid_shift_x1(*pcoord, p);
+  bool centroid = ds.defined();
   auto rho = wbar[IDN];
   auto dx1 = (x1v.narrow(0, 2, n1 - 2) - x1v.narrow(0, 0, n1 - 2));
 
@@ -241,9 +249,7 @@ torch::Tensor HydroImpl::scalar_flux_covariance(torch::Tensor const& rl,
   int n1 = wl.size(-1);
   int ny = wl.size(0) - ICY;
   auto dry_fraction = [&](torch::Tensor const& w) {
-    auto rd = torch::ones_like(w[IDN]);
-    for (int n = 0; n < ny; ++n) rd = rd - w[ICY + n];
-    return rd;
+    return species_complement(w[IDN], w.narrow(0, ICY, ny));
   };
   // past an x1 seam wl/wr hold the neighbour's rows (x1_seam_rows in
   // forward()); the scalar's own face states take the same rows
@@ -254,7 +260,7 @@ torch::Tensor HydroImpl::scalar_flux_covariance(torch::Tensor const& rl,
   if (below >= 0 || above >= 0) {
     sl = rl.clone();
     sr = rr.clone();
-    ex.x1_rows({sl, sr}, 1, false, 0x7740 + 4 * k);
+    ex.x1_rows({sl, sr}, 1, false, kTagScalarCov + 4 * k);
   }
   auto q = 0.5 * (sl * dry_fraction(wl) + sr * dry_fraction(wr));
 
@@ -271,12 +277,8 @@ torch::Tensor HydroImpl::scalar_flux_covariance(torch::Tensor const& rl,
                 .to(un.device(), un.scalar_type())
                 .unsqueeze(0)
                 .unsqueeze(1);
-  bool centroid = !pcoord->face_centroid_shift_zero();
-  auto ds = centroid ? pcoord->face_centroid_shift_x1()
-                           .to(un.device(), un.scalar_type())
-                           .unsqueeze(0)
-                           .unsqueeze(1)
-                     : torch::Tensor();
+  auto ds = centroid_shift_x1(*pcoord, un);
+  bool centroid = ds.defined();
   auto rho = wbar[IDN];
   auto dx1 = (x1v.narrow(0, 2, n1 - 2) - x1v.narrow(0, 0, n1 - 2));
   auto cell = [&](torch::Tensor const& a) { return a.narrow(-1, 1, n1 - 2); };
@@ -294,11 +296,19 @@ torch::Tensor HydroImpl::scalar_flux_covariance(torch::Tensor const& rl,
   return dflx;
 }
 
-torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
+torch::Tensor HydroImpl::forward(StepDt dt, torch::Tensor u,
                                  Variables const& other) {
   enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };
   bool has_solid = other.count("solid");
   auto start = std::chrono::high_resolution_clock::now();
+  // verbose: the time since the last report, then restart the clock
+  auto report_time = [&](std::string const& label) {
+    if (!options->verbose()) return;
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    SINFO(Hydro) << label << " time (s): " << elapsed.count() << "\n";
+    start = std::chrono::high_resolution_clock::now();
+  };
   _check_stretched_x1(u);
 
   auto playout = pmb->get_layout();
@@ -306,11 +316,23 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     _cov_wl[k] = _cov_wr[k] = _cov_dry[k] = torch::Tensor();
   }
   // S step (4), boundary.prescribed: the walls and solid faces S hands to
-  // R's register; R applies them after reconcile and after the implicit step
+  // R's register; R applies them after reconcile and after the implicit step.
+  // A wall whose boundary prescribes a temperature (the diffusion's wall
+  // temperature, or a fixed-temperature boundary function) has no mass flux
+  // but conducts: its energy row stays free
+  std::array<std::vector<int>, 2> x1_wall_rows;
+  for (int lu = 0; lu < 2; ++lu) {
+    double wall_t =
+        lu == 0 ? (pdiffusion ? pdiffusion->options->temperature_inner() : 0.)
+                : (pdiffusion ? pdiffusion->options->temperature_outer() : 0.);
+    auto const& names = pmb->options->bcnames();
+    bool fixed = names.size() > static_cast<size_t>(lu) &&
+                 names[lu] == (lu == 0 ? "fixed_temperature_inner"
+                                       : "fixed_temperature_outer");
+    if (wall_t > 0. || fixed) x1_wall_rows[lu] = {IPR};
+  }
   supply_prescribed(freg, pmb, has_solid ? other.at("solid") : torch::Tensor(),
-                    {IVX, IVX + 1, IVX + 2});
-  // R-7: the solid side of boundary(dim)'s solid faces (R.rst 4.2 O)
-  freg.set_solid(has_solid ? other.at("solid") : torch::Tensor());
+                    {IVX, IVX + 1, IVX + 2}, x1_wall_rows);
 
   //// ------------ (1) Calculate Primitives ------------ ////
   auto const& w = other.at("hydro_w");
@@ -328,10 +350,6 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       TORCH_WARN_ONCE("fewer than 4 x1 cells: wall ghosts stay mirrored");
     wall4[f] = wall4[f] && i1 - i0 >= 3;
   }
-  auto fill4 = [&](torch::Tensor a, int c, bool pos, torch::Tensor ref) {
-    if (wall4[0] || wall4[1])  // key 2 and wall-less blocks never enter
-      conv4_->fill_walls(a, c, pos, ref, {}, _conv4_trips);
-  };
   bool split_flux = options->perturbation_flux();
   IdealMoistPerturbations perturb;
   torch::Tensor raw_primitive;
@@ -359,14 +377,15 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     // Differencing only stored anomalies omits the background curvature.
     // Trips count cells per stage, ghosts included
     conv4_->forward(has_reference() ? total_u(u) : u, w, *peos,
-                    peos->options->limiter(), _conv4_trips);
+                    peos->options->limiter(),
+                    pmb->pefs->slot(EfStatus::kConvTrips));
     // every ghost from the converted owned cells: the block's exchange, the
     // x1 rows again across all x2/x3 columns (the corners past a seam), then
     // the boundary conditions on every ghost layer (outflow from the saved
     // background, as the block's own outflow)
     Variables gv{{"hydro_w", w}};
     pmb->exchange(gv, SyncOptions().interpolate(true).type(kPrimitive));
-    Exchange(pmb).x1_rows({w}, ng, false, 0x772a);
+    Exchange(pmb).x1_rows({w}, ng, false, kTagPrimGhosts);
     BoundaryFuncOptions bop;
     bop.nghost(ng);
     bop.type(kPrimitive);
@@ -380,12 +399,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
           (bop.reference.defined() || !is_outflow(mo->bfuncs()[f])))
         mo->bfuncs()[f](w, 3 - f / 2, bop);
   }
-  if (options->verbose()) {
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    SINFO(Hydro) << "EOS time (s): " << elapsed.count() << "\n";
-    start = std::chrono::high_resolution_clock::now();
-  }
+  report_time("EOS");
 
   if (split_flux && raw_primitive.defined()) {
     // Conversion and its admissibility/ghost decisions remain FP64. Apply its
@@ -428,6 +442,15 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   auto& monitor = freg.monitor();
   // the split path's background and increments for the face sweeps
   IdealMoistPerturbations const* split = split_flux ? &perturb : nullptr;
+  // a disabled direction's hydro flux is zero: its total is rewritten each
+  // stage too, so the sources' posts (diffusion energy) never accumulate
+  bool const off[3] = {options->disable_flux_x1(), options->disable_flux_x2(),
+                       options->disable_flux_x3()};
+  for (int d = 1; d <= 3; ++d)
+    if (off[d - 1] && freg.total(d).defined()) {
+      freg.slot(d, "riemann").zero_();
+      freg.post_slot(d, "riemann");
+    }
   //// ------------ (2) Calculate dimension 1 flux ------------ ////
   if (u.size(DIM1) > 1) {
     // Hydrostatic wall revision is a PHYSICAL-boundary operation: it copies
@@ -474,7 +497,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                          !is_outflow(pmb->options->bfuncs()[1]));
       // seam ghosts: the neighbour's centred plain means, not this block's
       // off-centre ones
-      Exchange(pmb).x1_rows({wx1}, pmb->pcoord->il(), false, 0x7724);
+      Exchange(pmb).x1_rows({wx1}, pmb->pcoord->il(), false, kTagPlainMeans);
     }
     torch::Tensor wtmp;
     if (wb_x1) {
@@ -513,7 +536,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       }
       if (wall4[0] || wall4[1]) {
         wb.conv4 = conv4_.get();
-        wb.conv4_trips = _conv4_trips;
+        wb.conv4_trips = pmb->pefs->slot(EfStatus::kConvTrips);
       }
       wb.covariance = x1_mass_covariance();
       if (split_flux) {
@@ -561,12 +584,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       riemann_solve(*this, wlr1, DIM1, freg.slot(1, "riemann"), face_pressure1,
                     pressure_base1, split);
       freg.post_slot(1, "riemann");
-      if (options->verbose()) {
-        auto end = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = end - start;
-        SINFO(Hydro) << "Flux-x1 time (s): " << elapsed.count() << "\n";
-        start = std::chrono::high_resolution_clock::now();
-      }
+      report_time("Flux-x1");
     }
 
     // sedimentation flux (P1); skipped when x1 flux is off (_flux1 not
@@ -589,11 +607,10 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     // sums telescope across the seam. On every x1 seam, process or same
     // process; nothing at nb1 = 1. The companions (face pressure,
     // pressure base) are not register rows: S averages them alongside.
-    if (!options->disable_flux_x1() && playout && playout->options->pz() > 1) {
+    if (!options->disable_flux_x1() && playout && playout->options->nb(1) > 1) {
       Exchange ex(pmb);
       auto [below, above] = ex.x1_seam_peers(/*process_only=*/false);
       if (above >= 0 || below >= 0) {
-        constexpr int kSeamFluxTag = 0x7720;  // up; down is kSeamFluxTag + 1
         int il = pmb->pcoord->il();
         int iu = pmb->pcoord->iu();
         // R-4's peer rows: the total's, then each kept part's
@@ -620,7 +637,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         if (above >= 0) up_mine = pack(iu + 1);
         if (below >= 0) dn_mine = pack(il);
         auto [from_below, from_above] =
-            ex.x1_seam_slab(dn_mine, up_mine, kSeamFluxTag, false);
+            ex.x1_seam_slab(dn_mine, up_mine, kTagSeamFlux, false);
 
         auto peer = torch::cat(regrows, 0);
         auto faces = torch::zeros(_flux1.sizes().slice(1),
@@ -652,7 +669,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         _face_pressure1.numel() > 0 &&
         options->eos()->type() != "shallow-water") {
       Exchange(pmb).x1_rows({_face_pressure1}, std::min(2, pmb->pcoord->il()),
-                            true, 0x7722);
+                            true, kTagFacePressure);
     }
 
     // SNAP_X1_CENTROID_EXACT: the pressure force is the r^2-weighted
@@ -696,14 +713,14 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   sync_opts.cross_panel_only(true).interpolate(false).type(kPrimitive);
   std::vector<CommWorkPtr> works2, works3;
   Variables send_vars2, send_vars3;
-  FaceDir const dir2{DIM2, 0x7730, options->disable_flux_x2()};
-  FaceDir const dir3{DIM3, 0x7734, options->disable_flux_x3()};
+  FaceDir const dir2{DIM2, kTagFaceX2, options->disable_flux_x2()};
+  FaceDir const dir3{DIM3, kTagFaceX3, options->disable_flux_x3()};
 
   if (u.size(DIM2) > 1) {
     wtmp2 = reconstruct_faces(*this, dir2, w, split, pressure_base2);
 
     // sync left/right states across faces for cubed sphere layout
-    if (playout->options->type() == "cubed-sphere") {
+    if (playout->options->is_cubed_sphere()) {
       send_vars2["hydro_wl:+"] = wtmp2[ILT];
       send_vars2["hydro_wr:-"] = wtmp2[IRT];
       pmb->begin_exchange(send_vars2, sync_opts.dim(DIM2));
@@ -715,14 +732,14 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     wtmp3 = reconstruct_faces(*this, dir3, w, split, pressure_base3);
 
     // sync left/right states across faces for cubed sphere layout
-    if (playout->options->type() == "cubed-sphere") {
+    if (playout->options->is_cubed_sphere()) {
       send_vars3["hydro_wl:+"] = wtmp3[ILT];
       send_vars3["hydro_wr:-"] = wtmp3[IRT];
       pmb->begin_exchange(send_vars3, sync_opts.dim(DIM3));
     }
   }
 
-  if (playout->options->type() == "cubed-sphere") {
+  if (playout->options->is_cubed_sphere()) {
     bool exchange_dim2 = u.size(DIM2) > 1;
     bool exchange_dim3 = u.size(DIM3) > 1;
     if (exchange_dim2) {
@@ -806,13 +823,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     solve_faces(*this, dir, faces, other, split, background, c2, covariance);
     if (dir.disabled) return false;
     if (dcov.defined()) add_cov(flux, dcov);
-    if (options->verbose()) {
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed = end - start;
-      SINFO(Hydro) << "Flux-x" << 4 - dir.dim
-                   << " time (s): " << elapsed.count() << "\n";
-      start = std::chrono::high_resolution_clock::now();
-    }
+    report_time("Flux-x" + std::to_string(4 - dir.dim));
     return dcov.defined();
   };
   if (u.size(DIM2) > 1) cov2 = sweep(dir2, wtmp2, pressure_base2, _flux2, 0);
@@ -823,7 +834,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   // S step (4), row 16r: the panel seams of the cubed sphere take the owning
   // panel's face flux (replace(d, faces, peer, SeamRule::owner_copy)), then
   // boundary.prescribed on the x2/x3 faces
-  reconcile_panel_seams(freg, pmb, 0x7750);
+  reconcile_panel_seams(freg, pmb, kTagPanelSeams);
   for (int d : {2, 3})
     if (freg.total(d).defined()) freg.apply_prescribed(d);
 
@@ -860,7 +871,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
       // of the face: carry each donor's velocity as a face state, synced
       // across the seam like them and taken to that basis, so both copies
       // withhold the same momentum
-      if (playout && playout->options->type() == "cubed-sphere") {
+      if (playout && playout->options->is_cubed_sphere()) {
         std::vector<int> dims;
         if (_flux2.defined() && u.size(DIM2) > 1) dims.push_back(DIM2);
         if (_flux3.defined() && u.size(DIM3) > 1) dims.push_back(DIM3);
@@ -903,12 +914,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     PositivityLimiter(pmb, pmb->pefs.get(), EfStatus::kPosHits)
         .apply(freg, in, "hydro", "positivity.withhold");
 
-    if (options->verbose()) {
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed = end - start;
-      SINFO(Hydro) << "Positivity time (s): " << elapsed.count() << "\n";
-      start = std::chrono::high_resolution_clock::now();
-    }
+    report_time("Positivity");
   }
 
   // R-5: limit ends; the Scalar module's dry-mass flux is row IDN of each
@@ -922,6 +928,11 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   // A-ph3.diffusion_phase): after limit, so EF's scale never sees them, and
   // before the divergence of the totals below
   sources.post_fluxes(freg, {w, torch::Tensor(), dt});
+  // R-5: the posts write the prescribed faces too (diffusion adds its IPR
+  // row on every face); the divergence reads the totals next, so the faces
+  // are prescribed again here, before any reader, and the removal is booked
+  for (int d = 1; d <= 3; ++d)
+    if (freg.total(d).defined()) freg.apply_prescribed(d);
   // #289: the normal-momentum face flux carries p* = p - delta d_1 p (its
   // centroid part), so the geometric pressure source must see the same p*, or
   // a hydrostatic rest state is no longer balanced (derivation 4A.3.2). Only
@@ -966,12 +977,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
                     options->disable_flux_x2() ? torch::Tensor() : _flux2,
                     options->disable_flux_x3() ? torch::Tensor() : _flux3);
   }
-  if (options->verbose()) {
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    SINFO(Hydro) << "Divergence time (s): " << elapsed.count() << "\n";
-    start = std::chrono::high_resolution_clock::now();
-  }
+  report_time("Divergence");
 
   //// ------------ (6) Calculate external forcing ------------ ////
   auto du = torch::zeros_like(_div);
@@ -1055,9 +1061,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     auto volume = pmb->pcoord->cell_volume();
     auto phi_cell = -grav1 * pmb->pcoord->x1v;
     auto vertical_mass_div =
-        (area1.slice(-1, is + 1, ie + 1) *
-             vertical_mass_flux1.slice(-1, is + 1, ie + 1) -
-         area1.slice(-1, is, ie) * vertical_mass_flux1.slice(-1, is, ie)) /
+        pmb->pcoord->x1_face_difference(vertical_mass_flux1, area1) /
         volume.slice(-1, is, ie);
     torch::Tensor face_gravity_work;
     if (pmb->pcoord->options->type() == "cartesian") {
@@ -1072,9 +1076,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
           vertical_mass_flux1 *
           phi_face.narrow(0, 0, vertical_mass_flux1.size(-1));
       auto potential_flux_div =
-          (area1.slice(-1, is + 1, ie + 1) *
-               potential_flux1.slice(-1, is + 1, ie + 1) -
-           area1.slice(-1, is, ie) * potential_flux1.slice(-1, is, ie)) /
+          pmb->pcoord->x1_face_difference(potential_flux1, area1) /
           volume.slice(-1, is, ie);
       face_gravity_work = dt * (phi_cell.slice(0, is, ie) * vertical_mass_div -
                                 potential_flux_div);
@@ -1103,7 +1105,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         shape.back() = pmb->pcoord->x1v.size(0);
         auto full = torch::zeros(shape, drho.options());
         full.slice(-1, is, ie).copy_(drho);
-        Exchange(pmb).x1_rows({full}, 1, false, 0x7726);
+        Exchange(pmb).x1_rows({full}, 1, false, kTagGravityWork);
         face_gravity_work += corrected_pe_work_seam(
             full, pmb->pcoord->x1f, pmb->pcoord->x1v, is, ie, grav1, measure,
             below >= 0, above >= 0, &_pe_work);
@@ -1129,12 +1131,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
         dt * w[IVX] * rho_grav * (1. - options->grav()->non_hydrostatic());
   }
 
-  if (options->verbose()) {
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    SINFO(Hydro) << "Forcing time (s): " << elapsed.count() << "\n";
-    start = std::chrono::high_resolution_clock::now();
-  }
+  report_time("Forcing");
 
   //// ------------ (7) Perform implicit correction ------------ ////
   if (picorr) {
@@ -1150,10 +1147,13 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     // the forcings stay at the full dt, or this becomes a different operator.
     // Applied for integrators of 3+ stages (rk3, rk3s4), matching the behaviour
     // already in production; generalising would change rk1/rk2 results.
-    double dt_corr = dt;
+    // V3 C4: dt_corr and the posts' dt are StepDt; in a captured stage they
+    // are the block's device dt (scaled on the device, bitwise the host
+    // product), so the solve reads no host dt and a dt change replays
+    StepDt dt_corr = dt;
     if (pmb->pintg->stages.size() >= 3) {
       if (rk_stage >= 0 && rk_stage < pmb->pintg->stages.size()) {
-        dt_corr *= pmb->pintg->stages[rk_stage].wght2();
+        dt_corr = dt.scaled(pmb->pintg->stages[rk_stage].wght2());
       } else {
         // Loud, but not fatal: some callers drive HydroImpl::forward directly
         // without the stage loop (tests/test_forcing.cpp), and those must keep
@@ -1176,12 +1176,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
     }
     _apply_implicit_correction(du, w, dt_corr, other, dt);
 
-    if (options->verbose()) {
-      auto end = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed = end - start;
-      SINFO(Hydro) << "Implicit time (s): " << elapsed.count() << "\n";
-      start = std::chrono::high_resolution_clock::now();
-    }
+    report_time("Implicit");
   }
 
   if (gravity_energy_correction.defined()) {
@@ -1191,8 +1186,14 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   }
 
   // R-5, post_implicit starts: S's prescribed x1 faces on the total and the
-  // kept x1 parts, before any reader (a no-op until S sets a mask)
-  if (freg.total(1).defined()) freg.apply_prescribed(1);
+  // kept x1 parts, before any reader (a no-op until S sets a mask). After the
+  // pre-divergence apply the total is written again by the implicit
+  // correction (directly) or through the register's add, scale and replace,
+  // which mark the direction. The apply runs when the implicit correction
+  // ran or the mark is set; otherwise the faces are already prescribed
+  // (main's reporting bitwise)
+  if (freg.total(1).defined() && (picorr || freg.written_since_prescribed(1)))
+    freg.apply_prescribed(1);
 
   //// ------------ (8) x1 mass-flux w in Coriolis and metric sources -------
   // -2 Omega w cos(lat) and -u w / r take rho w from the stage's final x1
@@ -1200,10 +1201,7 @@ torch::Tensor HydroImpl::forward(double dt, torch::Tensor u,
   // by the post_implicit Coriolis and coord's x1 metric source
   if (mass_w) {
     auto pc = pmb->pcoord;
-    auto const& wc2 = px1m->after_solve(
-        _flux1.defined() && !options->disable_flux_x1() ? _flux1
-                                                        : torch::Tensor(),
-        ny, implicit_mass_correction(), dt);
+    auto const& wc2 = px1m->after_solve(_flux1, ny);
     auto m1 = px1m->m1();
     for (auto const& r : sources.runs(SourcePhase::post_implicit))
       sources.run(r, du, {w, temp, dt, wc2});

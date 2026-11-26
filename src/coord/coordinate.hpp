@@ -2,6 +2,7 @@
 
 // C/C++
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <iosfwd>
@@ -13,7 +14,7 @@
 #include <torch/nn/modules/common.h>
 
 // snap
-#include <snap/mesh/mesh_functions.hpp>
+#include <snap/utils/step_dt.hpp>
 #include <snap/utils/tensor_cast_cache.hpp>
 
 // arg
@@ -22,7 +23,6 @@
 namespace snap {
 struct LayoutOptionsImpl;
 using LayoutOptions = std::shared_ptr<LayoutOptionsImpl>;
-using IndexRange = std::vector<torch::indexing::TensorIndex>;
 
 struct EquationOfStateOptionsImpl;
 using EquationOfStateOptions = std::shared_ptr<EquationOfStateOptionsImpl>;
@@ -167,6 +167,8 @@ class CoordinateImpl {
 
   //! data
   torch::Tensor cosine_cell_kj, cosine_face2_kj, cosine_face3_kj;
+  //! the exact sines of the same angles (ones for orthogonal types)
+  torch::Tensor sine_cell_kj, sine_face2_kj, sine_face3_kj;
 
   //! options with which this `Coordinate` was constructed
   CoordinateOptions options;
@@ -187,8 +189,12 @@ class CoordinateImpl {
   virtual ~CoordinateImpl() = default;
 
   //! faces for the per-face x1 rows: r^3/3 on a radial x1, whose cells hold
-  //! r^2 dr averages (#280); undefined where the shipped rows are exact
-  torch::Tensor x1_row_faces(std::string const& interp) const;
+  //! r^2 dr averages (#280); undefined where the shipped rows are exact.
+  //! plain_means: the caller converts its x1 inputs to plain means under
+  //! SNAP_X1_CENTROID_EXACT (hydro_forward.cpp), so on spherical-polar it
+  //! takes a plain grid's faces; a caller that reconstructs the r^2 dr
+  //! averages themselves (the scalar) keeps the r^3/3 table.
+  torch::Tensor x1_row_faces(std::string const& interp, bool plain_means) const;
 
   int il() const { return options->nx1() > 1 ? options->nghost() : 0; }
 
@@ -216,6 +222,12 @@ class CoordinateImpl {
 
   //! dx1f, x1v and dx1v of this block, uniform or stretched (#280)
   std::array<torch::Tensor, 3> x1_metrics_() const;
+
+  //! dxNf, xNv and dxNv of a uniform x2 (axis 2) or x3 (axis 3)
+  std::array<torch::Tensor, 3> uniform_axis_metrics_(int axis) const;
+
+  //! zero cosine_cell_kj, cosine_face2_kj and cosine_face3_kj (orthogonal)
+  std::array<torch::Tensor, 3> zero_cosines_() const;
 
   //! module methods
   virtual torch::Tensor center_width1() const;
@@ -295,6 +307,36 @@ class CoordinateImpl {
    */
   static torch::Tensor radial_face_moment2_(torch::Tensor const& x1f, int nc1);
 
+  //! the x1 cells' lower and upper faces rm, rp, width h = rp - rm and
+  //! midpoint rbar = 0.5 (rm + rp)
+  static std::array<torch::Tensor, 4> radial_cells_(torch::Tensor const& x1f,
+                                                    int nc1);
+
+  //! a degenerate x1 cell (a ghost that reaches r <= 0): rbar <= h / 2
+  static torch::Tensor radial_regular_(torch::Tensor const& h,
+                                       torch::Tensor const& rbar) {
+    return rbar > 0.5 * h;
+  }
+
+  //! spherical shell volume per unit solid angle, (rp^3 - rm^3) / 3
+  static torch::Tensor shell_volume_(torch::Tensor const& rm,
+                                     torch::Tensor const& rp) {
+    return (rp.pow(3) - rm.pow(3)) / 3.0;
+  }
+
+  //! spherical shell area per unit polar angle, (rp^2 - rm^2) / 2
+  static torch::Tensor shell_area_(torch::Tensor const& rm,
+                                   torch::Tensor const& rp) {
+    return 0.5 * (rp.square() - rm.square());
+  }
+
+  //! polar measure of a cell between theta_m and theta_p,
+  //! |cos theta_m - cos theta_p|
+  static torch::Tensor polar_measure_(torch::Tensor const& theta_m,
+                                      torch::Tensor const& theta_p) {
+    return torch::abs(theta_m.cos() - theta_p.cos());
+  }
+
   //! x1 offset between where a CELL average lives and where a FACE average does
   /*!
    * A finite-volume cell stores the average over the CELL measure, whose x1
@@ -354,13 +396,21 @@ class CoordinateImpl {
   torch::Tensor divergence(torch::Tensor flux1, torch::Tensor flux2,
                            torch::Tensor flux3) const;
 
+  //! divergence's x1 term before the division by the cell volume:
+  //! A_{i+1} F_{i+1} - A_i F_i over the interior cells (last axis), with the
+  //! caller's face areas `area1`: divergence() casts them to the flux's dtype,
+  //! the gravity work keeps the FP64 master (an FP32 flux is promoted)
+  torch::Tensor x1_face_difference(torch::Tensor const& flux1,
+                                   torch::Tensor const& area1) const;
+
   //! cell-centered vector curl
   virtual torch::Tensor curl(torch::Tensor velocity) const;
 
   //! metric source terms that carry rho v1 (-u w / r), evaluated by Hydro
-  //! with m1 = rho v1 from the stage's x1 mass transfers; none by default
+  //! with m1 = rho v1 from the stage's x1 mass transfers; none by default.
+  //! dt is the stage's StepDt: the executor's device dt in a captured stage
   virtual void x1_mass_source_(torch::Tensor du, torch::Tensor const& prim,
-                               torch::Tensor const& m1, double dt) const {}
+                               torch::Tensor const& m1, StepDt dt) const {}
 
   virtual torch::Tensor forward(torch::Tensor prim, torch::Tensor flux1,
                                 torch::Tensor flux2, torch::Tensor flux3,

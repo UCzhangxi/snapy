@@ -190,15 +190,29 @@ static std::pair<torch::Tensor, torch::Tensor> cs_ab_to_theta_phi(
   return {theta, phi};
 }
 
+//! gnomonic metric factors at panel tangents (x, y): delta = sqrt(x^2 + y^2 +
+//! 1), C = sqrt(1 + x^2), D = sqrt(1 + y^2)
+static std::array<torch::Tensor, 3> cs_metric(torch::Tensor const &x,
+                                              torch::Tensor const &y) {
+  return {sqrt(x * x + y * y + 1), sqrt(1 + x * x), sqrt(1 + y * y)};
+}
+
+CsMetric cs_metric_at(torch::Tensor const &alpha, torch::Tensor const &beta) {
+  auto x = alpha.tan();
+  auto y = beta.tan();
+  auto [delta, C, D] = cs_metric(x, y);
+  return {x, y, delta, C, D};
+}
+
 //! Transform global cartesian velocity to local panel contravariant velocity
 void cs_cart_to_contra_(torch::Tensor const &vel, torch::Tensor alpha,
                         torch::Tensor beta, int face_id) {
-  auto x = alpha.tan();
-  auto y = beta.tan();
+  cs_cart_to_contra_at_(vel, cs_metric_at(alpha, beta), face_id);
+}
 
-  auto delta = sqrt(x * x + y * y + 1);
-  auto C = sqrt(1 + x * x);
-  auto D = sqrt(1 + y * y);
+void cs_cart_to_contra_at_(torch::Tensor const &vel, CsMetric const &m,
+                           int face_id) {
+  auto x = m.x, y = m.y, delta = m.delta, C = m.C, D = m.D;
 
   std::array<torch::Tensor, 3> local_vel;
 
@@ -220,12 +234,12 @@ void cs_cart_to_contra_(torch::Tensor const &vel, torch::Tensor alpha,
 
 void cs_contra_to_cart_(torch::Tensor const &vel, torch::Tensor alpha,
                         torch::Tensor beta, int face_id) {
-  auto x = alpha.tan();
-  auto y = beta.tan();
+  cs_contra_to_cart_at_(vel, cs_metric_at(alpha, beta), face_id);
+}
 
-  auto delta = sqrt(x * x + y * y + 1);
-  auto C = sqrt(1 + x * x);
-  auto D = sqrt(1 + y * y);
+void cs_contra_to_cart_at_(torch::Tensor const &vel, CsMetric const &m,
+                           int face_id) {
+  auto x = m.x, y = m.y, delta = m.delta, C = m.C, D = m.D;
 
   auto const l2g = CS_LOCAL_TO_CART_VEL;
   auto f = face_id;

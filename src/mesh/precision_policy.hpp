@@ -17,13 +17,7 @@ enum class Quantity {
   kFlux,         // fluxes, du
   kReference,    // reference and geometry masters
   kPrimitive,    // hydro_w totals
-  kGauge,        // gauges, total face pressure
-  kReduction,    // dt, budget and closure sums
-  kImplicit,     // vertical implicit solve
-  kThermo,       // kintera totals, saturation
-  kRegister,     // flux register step accumulator
-  kSource,       // stage-local source accumulator
-  kDiagnostic,   // diagnostic sums
+  kImplicit,     // vertical implicit solve; storage: its FP64 stage
   kCount
 };
 
@@ -31,22 +25,32 @@ struct DtypeRow {
   torch::Dtype storage, compute;
 };
 
-//! One table of dtypes per quantity, built once from dynamics.precision.
-//! The reference is stored FP64 and cast per use. MPS has no FP64: every FP64
-//! row holds FP32 there.
+//! One table of dtypes per quantity, built once from dynamics.precision and
+//! integration.implicit-precision. The reference is stored FP64 and cast per
+//! use. MPS has no FP64: every FP64 row holds FP32 there.
 class PrecisionPolicy {
  public:
   explicit PrecisionPolicy(std::string const& precision = "float64",
-                           torch::Device device = torch::kCPU)
+                           torch::Device device = torch::kCPU,
+                           std::string const& implicit = "auto")
       : _fp32(precision == "float32") {
-    auto wide = device.is_mps() ? torch::kFloat32 : torch::kFloat64;
-    auto narrow = _fp32 ? torch::kFloat32 : wide;
-    _rows.fill({wide, wide});
+    auto const w = wide(device);
+    auto narrow = _fp32 ? torch::kFloat32 : w;
+    _rows.fill({w, w});
     for (auto q :
          {Quantity::kHydroState, Quantity::kBackup, Quantity::kScalarState,
           Quantity::kFlux, Quantity::kImplicit})
       _rows[static_cast<int>(q)] = {narrow, narrow};
     _rows[static_cast<int>(Quantity::kReference)].compute = narrow;
+    _rows[static_cast<int>(Quantity::kImplicit)].storage = w;
+    if (implicit != "auto")  // float32 or float64 overrides the block
+      _rows[static_cast<int>(Quantity::kImplicit)].compute =
+          implicit == "float32" ? torch::kFloat32 : w;
+  }
+
+  //! the widest dtype a device holds: FP64, except FP32 on MPS (no FP64)
+  static torch::Dtype wide(torch::Device device) {
+    return device.is_mps() ? torch::kFloat32 : torch::kFloat64;
   }
 
   bool fp32() const { return _fp32; }

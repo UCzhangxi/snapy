@@ -98,8 +98,6 @@ Tensor transform(Tensor t, Stencil const &stencil, int dim) {
   }
   return result;
 }
-// row 18's face-slab messages carry this tag + the receiver's side (S M6)
-constexpr int kDiffusionSeamTag = 0x7760;
 
 // Exchange outward integrated flux, reconstructed trace, dynamic coefficients,
 // and centre-to-face normal distance. Cartesian channels require no rotation.
@@ -136,7 +134,7 @@ void share_fluxes(MeshBlockImpl const *block, std::array<Tensor, 3> &flux,
     int s0 = dir == 1 ? 0 : 2, axis = dir == 1 ? 2 : 1;  // the face's axis
     auto [below, above] =
         ex.seam_slab(dir + 1, outgoing[s0].squeeze(axis),
-                     outgoing[s0 + 1].squeeze(axis), kDiffusionSeamTag, false);
+                     outgoing[s0 + 1].squeeze(axis), kTagDiffusionSeam, false);
     if (below.defined()) others[s0] = below.unsqueeze(axis);
     if (above.defined()) others[s0 + 1] = above.unsqueeze(axis);
   }
@@ -171,8 +169,7 @@ std::array<Tensor, 3> DiffusionImpl::cubed_sphere_fluxes(Tensor w,
   auto block = phydro->pmb;
   auto c = block->pcoord;
   auto op = c->options;
-  int panel = std::get<2>(
-      block->get_layout()->loc_of(block->options->layout()->rank()));
+  int panel = block->get_layout()->panel_of(block->options->layout()->rank());
   Box lo{c->kl(), c->jl(), c->il()}, hi{c->ku() + 1, c->ju() + 1, c->iu() + 1};
   auto a = c->x2v.to(w.options()).view({1, -1, 1});
   auto b = c->x3v.to(w.options()).view({-1, 1, 1});
@@ -366,40 +363,33 @@ std::array<Tensor, 3> DiffusionImpl::face_fluxes(Tensor w, Tensor temp) {
 }
 
 void DiffusionImpl::post_fluxes(FluxRegister &reg, StageState const &s) {
-  posted_ = {};
-  auto c = phydro->pmb->pcoord;
-  if (c->options->type() != "gnomonic-equiangle") return;
   if (options->nu_iso() == 0. && options->kappa_iso() == 0.) return;
-  for (int d = 1; d <= 3; ++d)
-    if (!reg.total(d).defined()) return;  // add() keeps the energy rows
+  bool cubed = phydro->pmb->pcoord->options->type() == "gnomonic-equiangle";
   check_profiles();
   profiles_on(s.w);
   auto temp = s.temp.defined() ? s.temp : phydro->peos->compute("W->T", {s.w});
-  auto flux = cubed_sphere_fluxes(s.w, temp);
+  auto flux =
+      cubed ? cubed_sphere_fluxes(s.w, temp) : cartesian_fluxes(s.w, temp);
+  // the energy rows' only path; add() keeps the others (A.rst 3.7)
   for (int d = 1; d <= 3; ++d)
-    reg.add(d, "diffusion", {IPR}, flux[d - 1].narrow(0, IPR, 1));
-  posted_ = flux;
+    if (flux[d - 1].defined())
+      reg.add(d, "diffusion", {IPR}, flux[d - 1].narrow(0, IPR, 1));
 }
 
 Tensor DiffusionImpl::forward_cubed_sphere(Tensor du, Tensor w, Tensor temp,
                                            double dt) {
   auto block = phydro->pmb;
   auto c = block->pcoord;
-  int panel = std::get<2>(
-      block->get_layout()->loc_of(block->options->layout()->rank()));
+  int panel = block->get_layout()->panel_of(block->options->layout()->rank());
   auto a = c->x2v.to(w.options()).view({1, -1, 1});
   auto b = c->x3v.to(w.options()).view({-1, 1, 1});
-  // post_fluxes ran this stage: the energy rows are in the register and
-  // only the other rows enter du here (A.rst 3.7)
-  bool posted = posted_[0].defined();
-  auto flux = posted ? posted_ : cubed_sphere_fluxes(w, temp);
-  posted_ = {};
+  // the energy rows are post_fluxes' (A.rst 3.7): only the others enter du
+  auto flux = cubed_sphere_fluxes(w, temp);
   auto tendency = -c->divergence(flux[0], flux[1], flux[2]);
   auto momentum = tendency.narrow(0, IVX, 3);
   cs_cart_to_contra_(momentum, a, b, panel);
   coord_vec_lower_(momentum, c->cosine_cell_kj.to(w.options()));
-  int rows = posted ? IPR : 5;
-  du.narrow(0, 0, rows).add_(dt * tendency.narrow(0, 0, rows));
+  du.narrow(0, 0, IPR).add_(dt * tendency.narrow(0, 0, IPR));
   return du;
 }
 }  // namespace snap

@@ -12,6 +12,7 @@
 // snap
 #include <snap/coord/coordinate.hpp>
 #include <snap/mesh/meshblock.hpp>
+#include <snap/utils/log.hpp>
 
 #include "output_utils.hpp"
 #include "writer_core.hpp"
@@ -97,12 +98,12 @@ void NetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   }
 
   auto layout = pmb->get_layout();
-  auto [level, lx1, lx2, lx3, nb1, nb2, nb3, face] =
+  auto [level, lx1, lx2, lx3, nb1, nb2, nb3, face, pcol, prow] =
       output_block_location(layout, rank);
   int loc[3] = {lx1, lx2, lx3}, nb[3] = {nb1, nb2, nb3};
   for (int d = 0; d < 3; ++d)
     if (sl[d]) loc[d] = 0, nb[d] = 1;
-  bool cs = layout->options->type() == "cubed-sphere";
+  bool cs = layout->options->is_cubed_sphere();
 
   Values val{op.double_precision()};
   const nc_type nctype = val.dbl ? NC_DOUBLE : NC_FLOAT;
@@ -114,14 +115,12 @@ void NetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
 
   std::string const hunits =
       horizontal_axis_units(pmb->options->coord()->type());
-  char const* axis[3] = {"Z", "X", "Y"};
   for (int d = 0; d < 3; ++d) {
-    std::string x = "x" + std::to_string(d + 1), units = d ? hunits : "m";
-    nc_def_var(ifile, x.c_str(), nctype, 1, &idx[d], &ivx[d]);
-    put_text(ifile, ivx[d], "axis", axis[d]);
-    put_text(ifile, ivx[d], "units", units);
-    put_text(ifile, ivx[d], "long_name",
-             std::string(axis[d]) + "-coordinate at cell center");
+    auto t = axis_text(d, hunits);
+    nc_def_var(ifile, t.name.c_str(), nctype, 1, &idx[d], &ivx[d]);
+    put_text(ifile, ivx[d], "axis", t.axis);
+    put_text(ifile, ivx[d], "units", t.units);
+    put_text(ifile, ivx[d], "long_name", t.center);
     auto const& want = d == 0   ? op.x1_slice()
                        : d == 1 ? op.x2_slice()
                                 : op.x3_slice();
@@ -129,17 +128,16 @@ void NetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
                   (sl[d] ? fr.slice_offset[d] : nc[d] * loc[d]) + 1, 0};
     pos[3] = pos[2] + nc[d] - 1;
     if (cs && d > 0 && sl[d]) {  // the panels are laid out 3 x 2
-      int offset = (d == 1 ? face % 3 : face / 3) * want.size();
+      int offset = (d == 1 ? pcol : prow) * want.size();
       pos[1] *= d == 1 ? 3 : 2;
       pos[2] += offset;
       pos[3] += offset;
     }
     nc_put_att_int(ifile, ivx[d], "domain_decomposition", NC_INT, 4, pos);
     if (nc[d] > 1 || sl[d]) {
-      nc_def_var(ifile, (x + "f").c_str(), nctype, 1, &idxf[d], &ivxf[d]);
-      put_text(ifile, ivxf[d], "units", units);
-      put_text(ifile, ivxf[d], "long_name",
-               std::string(axis[d]) + "-coordinate at cell face");
+      nc_def_var(ifile, (t.name + "f").c_str(), nctype, 1, &idxf[d], &ivxf[d]);
+      put_text(ifile, ivxf[d], "units", t.units);
+      put_text(ifile, ivxf[d], "long_name", t.face);
       if (!sl[d]) pos[0]--, pos[2]--;
       nc_put_att_int(ifile, ivxf[d], "domain_decomposition", NC_INT, 4, pos);
     }
@@ -161,11 +159,11 @@ void NetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   };
   auto co = pmb->pcoord->options;
   int nbtotal = count_blocks(op.x1_slice(), co->global_x1min(),
-                             co->global_x1max(), layout->options->pz()) *
+                             co->global_x1max(), layout->options->nb(1)) *
                 count_blocks(op.x2_slice(), co->global_x2min(),
-                             co->global_x2max(), layout->options->px()) *
+                             co->global_x2max(), layout->options->nb(2)) *
                 count_blocks(op.x3_slice(), co->global_x3min(),
-                             co->global_x3max(), layout->options->py());
+                             co->global_x3max(), layout->options->nb(3));
   if (cs) nbtotal *= 6;
   nc_put_att_int(ifile, NC_GLOBAL, "NumFilesInSet", NC_INT, 1, &nbtotal);
 
@@ -173,17 +171,12 @@ void NetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   auto pmeta = MetadataTable::GetInstance();
   std::vector<int> var_ids;
   for (auto const& f : fr.fields) {
-    char k = fr.kind(f);
-    int ax[4] = {idt, k == '1' ? idxf[0] : idx[0], k == '3' ? idxf[2] : idx[2],
-                 k == '2' ? idxf[1] : idx[1]};
-    int ax_p[3] = {idt, idx[2], idx[1]}, ax_f[2] = {idt, idxf[0]};
-    int ndim = k == 'z' ? 2 : k == 'p' ? 3 : k == 'f' ? 2 : k == 's' ? 1 : 4;
-    int* dims = k == 'p' ? ax_p : k == 'f' ? ax_f : ax;
+    auto [ndim, dims] = field_dims(fr.kind(f), idt, idx, idxf);
     for (auto const& raw_name : f.names()) {
       int iv;
       SNAP_NETCDF_CHECK(nc_def_var(ifile,
                                    sanitize_netcdf_name(raw_name).c_str(),
-                                   nctype, ndim, dims, &iv));
+                                   nctype, ndim, dims.data(), &iv));
       auto attr = pmeta->GetUnits(raw_name);
       if (attr != "") put_text(ifile, iv, "units", attr);
       attr = pmeta->GetLongName(raw_name);
@@ -199,7 +192,7 @@ void NetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   // coordinates: the cells (or the selected ones) and their faces; x2 and x3
   // of a cubed-sphere panel shift by its place in the 3 x 2 layout
   int lo[3] = {fr.is, fr.js, fr.ks}, hi[3] = {fr.ie, fr.je, fr.ke};
-  double shift[3] = {0., (face % 3) * M_PI / 2., (face / 3) * M_PI / 2.};
+  double shift[3] = {0., pcol * M_PI / 2., prow * M_PI / 2.};
   auto pc = pmb->pcoord;
   torch::Tensor cv[3] = {pc->x1v, pc->x2v, pc->x3v};
   torch::Tensor cf[3] = {pc->x1f, pc->x2f, pc->x3f};
@@ -249,11 +242,19 @@ std::shared_ptr<Sink> make_netcdf_sink() {
 }
 #else
 namespace {
-// NETCDF=OFF: a netcdf output writes nothing, as NetcdfOutput did
+// NETCDF=OFF: a netcdf output writes nothing; the first write says so once
+// per process instead of leaving the deck's frames silently unwritten
 class NoNetcdfSink : public Sink {
  public:
   void write(MeshBlockImpl*, Frame const&, OutputOptionsImpl const&, int,
-             double) override {}
+             double) override {
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    SINFO(NetcdfOutput) << "netcdf output requested but this build has "
+                           "NETCDF=OFF: nothing is written"
+                        << std::endl;
+  }
 };
 }  // namespace
 

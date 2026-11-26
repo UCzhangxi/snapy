@@ -32,6 +32,15 @@
 
 namespace snap {
 
+// the block's dtypes for the device its tensors are on (MPS holds no FP64):
+// reset() builds them on the factories' default device and to() moves them,
+// so each caller passes that device (a coordinate may hold no tensor)
+void MeshBlockImpl::_reset_policy(torch::Device device) {
+  auto const &icorr = phydro->options->icorr();
+  policy = PrecisionPolicy(phydro->options->precision(), device,
+                           icorr ? icorr->precision() : "auto");
+}
+
 void MeshBlockImpl::to(torch::Device device, torch::Dtype dtype,
                        bool non_blocking) {
   if (policy.fp32())
@@ -39,18 +48,20 @@ void MeshBlockImpl::to(torch::Device device, torch::Dtype dtype,
   else
     torch::nn::Module::to(device, dtype, non_blocking);
   _state.reallocate();  // like the moved u0 and s0
-  if (_executor) _executor->invalidate();
+  _reset_policy(device);
+  if (_executor) _executor->invalidate(_executor_index);
 }
 void MeshBlockImpl::to(torch::Dtype dtype, bool non_blocking) {
   if (policy.fp32()) return;
   torch::nn::Module::to(dtype, non_blocking);
   _state.reallocate();
-  if (_executor) _executor->invalidate();
+  if (_executor) _executor->invalidate(_executor_index);
 }
 void MeshBlockImpl::to(torch::Device device, bool non_blocking) {
   torch::nn::Module::to(device, non_blocking);
   _state.reallocate();
-  if (_executor) _executor->invalidate();
+  _reset_policy(device);
+  if (_executor) _executor->invalidate(_executor_index);
 }
 
 void set_scalar_primitive(Variables &vars, torch::Tensor const &scalar_s,
@@ -118,7 +129,7 @@ void MeshBlockImpl::reset() {
   int pz = options->layout()->pz();
 
   int nranks = px * py * pz;
-  if (options->layout()->type() == "cubed-sphere") {
+  if (options->layout()->is_cubed_sphere()) {
     nranks *= 6;
   }
   int rank = options->layout()->rank();
@@ -128,7 +139,7 @@ void MeshBlockImpl::reset() {
               ") does not match layout partitioning (", nranks, ").");
 
   //// ---- (2) reset internal block boundaries ---- ////
-  if (options->layout()->type() != "cubed-sphere") {  // slab or cubed layout
+  if (!options->layout()->is_cubed_sphere()) {  // slab or cubed layout
     auto [lx2, lx3, lx1] = _playout->loc_of(rank);
 
     // a face inside the layout (or periodic) has no external boundary:
@@ -175,7 +186,7 @@ void MeshBlockImpl::reset() {
   //// -------- (6) set up hydro model -------- ////
   pefs = std::make_shared<EfStatus>();
   phydro = HydroImpl::create(options->hydro(), this);
-  policy = PrecisionPolicy(phydro->options->precision());
+  _reset_policy(torch::TensorOptions().device());
 
   //// -------- (7) set up scalar model ------- ////
   pscalar = ScalarImpl::create(options->scalar(), this);
@@ -205,17 +216,27 @@ void MeshBlockImpl::reset() {
   register_buffer("u0", _state.u0());
   register_buffer("s0", _state.s0());
   for (auto &output_type : output_types) output_type->bind(this);
+  // V3 S4: the monitor's per-stage amount slots, sized for the integrator
+  // before the executor's save list is taken
+  phydro->flux_register().monitor().set_stage_count(
+      static_cast<int>(pintg->stages.size()));
+  // V3 S4: one wall batch for the block's registers
+  _wall_batch = std::make_shared<WallBatch>();
+  phydro->flux_register().set_wall_batch(_wall_batch);
+  pscalar->freg.set_wall_batch(_wall_batch);
   register_flux_storage();
 
-  //// ------- (10) stage executor (eager unless cuda-graph) ------- ////
-  TORCH_CHECK(
-      options->execution() == "eager" || options->execution() == "cuda-graph",
-      "integration/execution must be eager or cuda-graph, got '",
-      options->execution(), "'");
-  TORCH_CHECK(!(options->execution() == "eager" && options->execution_strict()),
-              "integration/execution-strict needs execution: cuda-graph "
-              "(eager is never refused)");
-  _executor = std::make_shared<StageExecutor>(this);
+  //// ------- (10) stage executor (StageExecutor::mode) ------- ////
+  // a Mesh's executor is kept only by the block it holds (a clone gets its own)
+  if (_mesh_executor && _executor &&
+      _executor_index < _executor->num_blocks() &&
+      _executor->block_at(_executor_index) == this) {
+    _executor->invalidate(_executor_index);
+  } else {
+    _executor = std::make_shared<StageExecutor>(this);
+    _executor_index = 0;
+    _mesh_executor = false;
+  }
 }
 
 std::vector<torch::indexing::TensorIndex> MeshBlockImpl::part(
@@ -399,11 +420,21 @@ std::map<std::string, int64_t> MeshBlockImpl::execution_report() const {
 }
 
 Capability MeshBlockImpl::execution_capability(Variables const &vars) const {
-  return _executor->capability(vars);
+  return _executor->capability(_executor_index, vars);
 }
 
 void MeshBlockImpl::bump_config_generation() {
   _executor->bump_config_generation();
+}
+
+void MeshBlockImpl::use_executor(std::shared_ptr<StageExecutor> executor,
+                                 int index) {
+  TORCH_CHECK(executor && index >= 0 && index < executor->num_blocks(),
+              "MeshBlock::use_executor: block index ", index,
+              " not in the executor");
+  _executor = std::move(executor);
+  _executor_index = index;
+  _mesh_executor = true;
 }
 
 void MeshBlockImpl::register_flux_storage() {
@@ -421,6 +452,39 @@ void MeshBlockImpl::register_flux_storage() {
         {"freg.minima", mon.minima},
         {"freg.retry_flags", mon.retry_flags}})
     if (t.defined()) _state.register_storage(name, t);
+  // the amounts, once they are on the register's device: a warm-up or
+  // capture pass books and folds them like a stage. Nothing is moved here
+  // (a copy would sync in a step); place_flux_storage moves them
+  if (mon.counters.defined()) {
+    auto amounts = mon.amount_storage();
+    char const *names[] = {"freg.amount.rate", "freg.amount.post",
+                           "freg.amount.step"};
+    for (size_t i = 0; i < amounts.size(); ++i)
+      if (amounts[i].device() == mon.counters.device())
+        _state.register_storage(names[i], amounts[i]);
+  }
+  // V3 S4: the stage's count masks and the wall planes sit in fixed storage
+  // that the advance writes and the combine reduces, then zeroes; a warm-up
+  // of the combine leaves them zeroed, so they are restored like the amounts
+  // before the capture reads them (allocated at a stage's first post, so a
+  // later registration finds them)
+  if (mon.count_storage().defined())
+    _state.register_storage("freg.counts", mon.count_storage());
+  if (pscalar && pscalar->freg.monitor().count_storage().defined())
+    _state.register_storage("sreg.counts",
+                            pscalar->freg.monitor().count_storage());
+  if (_wall_batch && _wall_batch->storage().defined())
+    _state.register_storage("wall_batch", _wall_batch->storage());
+  // V3 C1: the implicit correction's step status, FP64-stage predicate and
+  // meters, written in every stage with the solve
+  if (phydro->picorr)
+    for (auto const &[name, t] : phydro->picorr->capture_storage())
+      _state.register_storage(name, t);
+}
+
+void MeshBlockImpl::place_flux_storage() {
+  auto &mon = phydro->flux_register().monitor();
+  if (mon.counters.defined()) mon.place_amount_storage(mon.counters.device());
 }
 
 std::shared_ptr<kintera::ThermoYImpl> MeshBlockImpl::thermo() const {
@@ -438,29 +502,40 @@ void MeshBlockImpl::set_chemistry(kintera::KineticsOptionsImpl reactions) {
 }
 
 void MeshBlockImpl::prepare_thermo(torch::Tensor const &hydro_u) {
+  prepare_thermo(hydro_u.device(), hydro_u.scalar_type(), hydro_u.sizes());
+}
+
+void MeshBlockImpl::prepare_thermo(torch::Device device, torch::Dtype dtype,
+                                   at::IntArrayRef shape) {
   auto pthermo = thermo();
   if (!pthermo) return;
   // prepare() (idempotent) gives the counter, the active-set buffers and the
   // table their interior shape, device and dtype before the first adjustment
   // or a capture (K.rst 3.3, 3.5); an unprepared module throws in a capture
   auto sub3 = part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
-  // index() with slices is a view: the interior's shape without a copy
-  auto shape = hydro_u[0].index(sub3).sizes().vec();
+  // the interior's shape, from a meta tensor of the state's shape (no data)
+  auto interior =
+      torch::empty(shape,
+                   torch::TensorOptions().device(torch::kMeta).dtype(dtype))[0]
+          .index(sub3)
+          .sizes()
+          .vec();
   // the EOS computes in the state's dtype; the adjustment takes total_u(),
   // FP64 for an FP32 anomaly state (HydroImpl::total_u). The module's own
   // table is the adjustment's (prepare), so no call inside a capture swaps
   // it (alloc_epoch(m) stays put, K.rst 3.3); the state's table only has to
   // exist in kintera's store before the capture (tables_for)
-  auto dtype = hydro_u.scalar_type();
   auto totals = dtype == torch::kFloat32 && phydro->has_reference()
                     ? torch::kFloat64
                     : dtype;
   if (totals != dtype)
-    kintera::tables_for(pthermo->options, torch::empty({0}, hydro_u.options()));
-  pthermo->prepare(hydro_u.device(), totals, shape);
+    kintera::tables_for(
+        pthermo->options,
+        torch::empty({0}, torch::TensorOptions().device(device).dtype(dtype)));
+  pthermo->prepare(device, totals, interior);
   if (!_active_set0.second.defined() ||
-      _active_set0.second.device() != hydro_u.device() ||
-      !_active_set0.second.sizes().equals(shape))
+      _active_set0.second.device() != device ||
+      !_active_set0.second.sizes().equals(interior))
     _active_set0 = pthermo->make_active_set_storage();
 }
 

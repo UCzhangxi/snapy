@@ -1,7 +1,9 @@
 #include "seam_register.hpp"
 
 // C/C++
+#include <algorithm>
 #include <array>
+#include <memory>
 #include <tuple>
 #include <vector>
 
@@ -10,24 +12,23 @@
 
 #include <snap/coord/coord_rotation.hpp>
 #include <snap/hydro/flux_register.hpp>
+#include <snap/mesh/exchange_cut.hpp>
 #include <snap/mesh/meshblock.hpp>
 
 #include "cubed_sphere_constants.h"
 #include "cubed_sphere_layout.hpp"
+#include "exchange.hpp"
 
 namespace snap {
 
 namespace {
 
-//! a block side of the cubed sphere: L/R are x2 faces, B/T x3 faces
+//! a panel seam side of the block: the exchange's side, whether the two
+//! normals are opposite and whether this block owns the seam
 struct PanelSide {
-  int side, dim, peer, peer_side;
-  bool reversed, opposite, owner;
+  Exchange::SeamSide ex;
+  bool opposite, owner;
 };
-
-//! (dy, dx) of the L, R, B, T neighbours (cubed_sphere_layout.cpp get_side)
-constexpr std::array<std::array<int, 2>, 4> kSideOffset = {
-    {{0, -1}, {0, 1}, {-1, 0}, {1, 0}}};
 
 }  // namespace
 
@@ -44,16 +45,16 @@ void reconcile_panel_seams(FluxRegister& reg, MeshBlockImpl const* pmb,
   int ng = c->options->nghost();
   int is = c->il(), ni = c->iu() + 1 - is;
 
+  Exchange ex(pmb);
   std::vector<PanelSide> sides;
   for (int s = 0; s < 4; ++s) {
     int dim = s < 2 ? 2 : 3;
     if (!reg.total(dim).defined()) continue;
-    int nb =
-        layout->neighbor_rank(iloc, {kSideOffset[s][0], kSideOffset[s][1], 0});
-    if (nb < 0 || std::get<2>(layout->loc_of(nb)) == panel) continue;
-    auto e = CS_FACE_EDGES[panel][s];
-    sides.push_back(
-        {s, dim, nb, e.nside, e.rev != 0, (s % 2) == (e.nside % 2), rank < nb});
+    Exchange::SeamSide side{dim, s};
+    if (!ex.resolve_seam(side, false) || layout->panel_of(side.peer) == panel)
+      continue;
+    side.take = rank > side.peer;  // the lower rank owns the seam
+    sides.push_back({side, (s % 2) == (side.peer_side % 2), !side.take});
   }
   if (sides.empty()) return;
 
@@ -90,72 +91,100 @@ void reconcile_panel_seams(FluxRegister& reg, MeshBlockImpl const* pmb,
       v.push_back(reg.kept(dim, part));
     return v;
   };
-  int nvar = reg.total(sides.front().dim).size(0);
+  int nvar = reg.total(sides.front().ex.dim).size(0);
   PanelRotation rot;
 
-  // owners send: one message per side, Cartesian momentum rows
-  std::vector<std::vector<torch::Tensor>> sbufs;
-  std::vector<CommWorkPtr> sends;
-  sbufs.reserve(sides.size());
-  for (auto const& sd : sides) {
-    if (!sd.owner) continue;
-    std::vector<torch::Tensor> rows;
-    for (auto const& t : rows_of(sd.dim)) rows.push_back(slab(t, sd.side));
-    auto payload = torch::cat(rows, 0);  // fresh storage
-    auto [alpha, beta, cosine] = points(sd.side);
-    for (int64_t r0 = 0; r0 < payload.size(0); r0 += nvar)
-      rot.face_rows_to_cart_(payload.narrow(0, r0 + IVX, 3), panel, alpha, beta,
-                             cosine);
-    int t = tag + sd.peer_side;
-    if (layout->is_local_block(sd.peer)) {
-      layout->post_to_local_block(sd.peer, payload, t);
-    } else {
-      sbufs.push_back({payload});
-      sends.push_back(layout->send_to_block(sbufs.back(), sd.peer, t));
+  // a side's rotation operands, built once per grid (SeamRotationCache)
+  if (!pmb->seam_rotation_cache)
+    pmb->seam_rotation_cache = std::make_shared<SeamRotationCache>();
+  auto& cache = *pmb->seam_rotation_cache;
+  auto operands = [&](int s) -> PanelRotation::FaceOperands const& {
+    using Stamp = SeamRotationCache::Stamp;
+    std::vector<Stamp> grid =
+        s < 2 ? std::vector<Stamp>{Stamp(c->x2f), Stamp(c->x3v),
+                                   Stamp(c->cosine_face2_kj)}
+              : std::vector<Stamp>{Stamp(c->x2v), Stamp(c->x3f),
+                                   Stamp(c->cosine_face3_kj)};
+    std::array<int64_t, 3> extent = {panel, ni, along(s)};
+    auto& side = cache.sides[s];
+    if (side.grid != grid || side.extent != extent) {
+      auto [alpha, beta, cosine] = points(s);
+      side.op =
+          PanelRotation::face_operands({along(s), ni}, alpha, beta, cosine);
+      side.grid = std::move(grid);
+      side.extent = extent;
+      ++cache.builds;
     }
-  }
+    return side.op;
+  };
 
-  // receivers map the owner's rows into this side and replace, per dim
+  // pack: owners' rows, one message per side in Cartesian momentum, into
+  // the block's fixed board buffers (V3 B3: a captured segment's graphs
+  // write them before the cut and the peer's graphs read them after it);
+  // receivers' own values elsewhere and, for a remote owner, a fixed
+  // receive buffer
+  auto seams = std::make_shared<std::vector<Exchange::SeamSide>>();
   std::array<torch::Tensor, 3> peer, faces;
   for (auto const& sd : sides) {
-    if (sd.owner) continue;
-    int d = sd.dim - 1;
-    if (!peer[d].defined()) {
-      peer[d] = torch::cat(rows_of(sd.dim), 0);  // own values elsewhere
-      faces[d] = torch::zeros(reg.total(sd.dim).sizes().slice(1),
-                              reg.total(sd.dim).options().dtype(torch::kBool));
-    }
-    auto like = slab(peer[d], sd.side);
-    torch::Tensor got;
-    int t = tag + sd.side;
-    if (layout->is_local_block(sd.peer)) {
-      got = layout->take_from_local_block(sd.peer, t);
+    auto s = sd.ex;
+    int d = s.dim - 1;
+    if (sd.owner) {
+      std::vector<torch::Tensor> rows;
+      for (auto const& t : rows_of(s.dim)) rows.push_back(slab(t, s.side));
+      auto payload = torch::cat(rows, 0);
+      auto const& op = operands(s.side);
+      for (int64_t r0 = 0; r0 < payload.size(0); r0 += nvar)
+        rot.face_rows_to_cart_(payload.narrow(0, r0 + IVX, 3), panel, op);
+      s.send = pmb->board_buffer({tag, s.side, 0}, payload);
+      s.send.copy_(payload);
     } else {
-      std::vector<torch::Tensor> rbuf = {torch::empty_like(like)};
-      layout->recv_from_block(rbuf, sd.peer, t)->wait();
-      got = rbuf[0];
+      if (!peer[d].defined()) {
+        peer[d] = torch::cat(rows_of(s.dim), 0);  // own values elsewhere
+        faces[d] = torch::zeros(reg.total(s.dim).sizes().slice(1),
+                                reg.total(s.dim).options().dtype(torch::kBool));
+      }
+      if (!layout->is_local_block(s.peer))
+        s.recv = pmb->board_buffer({tag, s.side, 1},
+                                   slab(peer[d], s.side).contiguous());
     }
-    if (sd.reversed) got = got.flip(1);
+    seams->push_back(s);
+  }
+
+  // the host part, a cut in a captured segment: the owners' buffers posted
+  // or sent, the peers' taken or received into the fixed buffers (a local
+  // take hands over the owner's fixed buffer, the same tensor at every
+  // replay)
+  exchange_cut([ex, seams, tag]() { ex.seam_exchange(*seams, tag); });
+
+  // unpack: receivers map the owner's rows into this side and replace, per
+  // dim
+  for (size_t k = 0; k < sides.size(); ++k) {
+    auto const& sd = sides[k];
+    if (sd.owner) continue;
+    auto const& s = (*seams)[k];
+    int d = s.dim - 1;
+    auto like = slab(peer[d], s.side);
+    auto g = s.recv;
+    if (s.reversed) g = g.flip(1);
     if (sd.opposite)
-      got = -got;
+      g = -g;
     else
-      got = got.clone();  // a board hands over the owner's tensor
-    auto [alpha, beta, cosine] = points(sd.side);
-    for (int64_t r0 = 0; r0 < got.size(0); r0 += nvar)
-      rot.cart_to_face_rows_(got.narrow(0, r0 + IVX, 3), panel, alpha, beta,
-                             cosine);
-    like.copy_(got);
-    slab(faces[d].unsqueeze(0), sd.side).fill_(true);
+      g = g.clone();  // a board hands over the owner's tensor
+    auto const& op = operands(s.side);
+    for (int64_t r0 = 0; r0 < g.size(0); r0 += nvar)
+      rot.cart_to_face_rows_(g.narrow(0, r0 + IVX, 3), panel, op);
+    like.copy_(g);
+    slab(faces[d].unsqueeze(0), s.side).fill_(true);
   }
   for (int d = 1; d < 3; ++d)
     if (peer[d].defined())
       reg.replace(d + 1, faces[d], peer[d], SeamRule::owner_copy);
-  for (auto& sw : sends) sw->wait();
 }
 
 void supply_prescribed(FluxRegister& reg, MeshBlockImpl const* pmb,
                        torch::Tensor const& solid,
-                       std::vector<int> const& free_rows) {
+                       std::vector<int> const& free_rows,
+                       std::array<std::vector<int>, 2> const& x1_wall_rows) {
   auto c = pmb->pcoord;
   // (dy, dx, dz) of the lower and upper block face of each direction
   std::array<std::array<std::array<int, 3>, 2>, 3> kFace = {
@@ -168,23 +197,40 @@ void supply_prescribed(FluxRegister& reg, MeshBlockImpl const* pmb,
     auto t = reg.total(dim);
     if (!t.defined()) continue;
     int axis = 3 - dim;  // of a [nc3, nc2, nc1] face tensor
-    auto faces =
-        torch::zeros(t.sizes().slice(1), t.options().dtype(torch::kBool));
+    std::vector<int64_t> planes;
+    std::vector<std::vector<int>> rows;  // each plane's free rows
     for (int lu = 0; lu < 2; ++lu) {
       auto o = kFace[dim - 1][lu];
-      if (pmb->options->face_kind(o[0], o[1], o[2]) == FaceKind::wall)
-        faces.select(axis, kPlane[dim - 1][lu]).fill_(true);
+      if (pmb->options->face_kind(o[0], o[1], o[2]) != FaceKind::wall) continue;
+      planes.push_back(kPlane[dim - 1][lu]);
+      rows.push_back(free_rows);
+      if (dim == 1)
+        rows.back().insert(rows.back().end(), x1_wall_rows[lu].begin(),
+                           x1_wall_rows[lu].end());
     }
-    if (solid.defined()) {
-      // face i lies between cells i - 1 and i
-      auto s = (solid != 0).to(faces.device());
-      int64_t n = s.size(axis);
-      faces.narrow(axis, 1, n - 1)
-          .logical_or_(
-              s.narrow(axis, 0, n - 1).logical_or(s.narrow(axis, 1, n - 1)));
+    if (!solid.defined()) {  // V3 E: the wall planes alone, no full mask
+      reg.set_prescribed_walls(dim, planes, rows);
+      continue;
     }
+    auto faces =
+        torch::zeros(t.sizes().slice(1), t.options().dtype(torch::kBool));
+    for (auto p : planes) faces.select(axis, p).fill_(true);
+    // face i lies between cells i - 1 and i
+    auto s = (solid != 0).to(faces.device());
+    int64_t n = s.size(axis);
+    faces.narrow(axis, 1, n - 1)
+        .logical_or_(
+            s.narrow(axis, 0, n - 1).logical_or(s.narrow(axis, 1, n - 1)));
     auto mask = faces.unsqueeze(0).repeat({t.size(0), 1, 1, 1});
     for (int r : free_rows) mask[r].fill_(false);
+    // the x1 wall planes' extra free rows, on the wall planes alone
+    if (dim == 1)
+      for (int lu = 0; lu < 2; ++lu) {
+        int64_t p = kPlane[0][lu];
+        if (std::find(planes.begin(), planes.end(), p) == planes.end())
+          continue;
+        for (int r : x1_wall_rows[lu]) mask[r].select(axis, p).fill_(false);
+      }
     reg.set_prescribed(dim, mask, torch::zeros_like(t));
   }
 }

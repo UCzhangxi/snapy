@@ -229,8 +229,6 @@ std::tuple<int, int, int, int, int, int> output_range(
   int ks = nc3 > 1 ? nghost : 0;
   int ke = nc3 > 1 ? nc3 - nghost - 1 : 0;
 
-  // FIXME: include_ghost zones probably doesn't work with grids other than
-  // CCC
   if (include_ghost_zones) {
     if (is != ie) {
       is -= nghost;
@@ -257,20 +255,38 @@ void make_output_dir(MeshBlockImpl const* pmb) {
   }
 }
 
+AxisText axis_text(int d, std::string const& hunits) {
+  char const* axis[3] = {"Z", "X", "Y"};
+  std::string a = axis[d];
+  return {"x" + std::to_string(d + 1), a, d ? hunits : "m",
+          a + "-coordinate at cell center", a + "-coordinate at cell face"};
+}
+
+FieldDims field_dims(char k, int idt, int const* idx, int const* idxf) {
+  if (k == 'p') return {3, {idt, idx[2], idx[1], 0}};
+  if (k == 'f') return {2, {idt, idxf[0], 0, 0}};
+  int ndim = k == 'z' ? 2 : k == 's' ? 1 : 4;
+  return {ndim,
+          {idt, k == '1' ? idxf[0] : idx[0], k == '3' ? idxf[2] : idx[2],
+           k == '2' ? idxf[1] : idx[1]}};
+}
+
 OutputBlockLocation output_block_location(Layout const& layout, int rank) {
   OutputBlockLocation loc;
   loc.level = 0;
   std::tie(loc.lx2, loc.lx3, loc.lx1) = layout->loc_of(rank);
-  loc.nb1 = layout->options->pz();
-  loc.nb2 = layout->options->px();
-  loc.nb3 = layout->options->py();
+  loc.nb1 = layout->options->nb(1);
+  loc.nb2 = layout->options->nb(2);
+  loc.nb3 = layout->options->nb(3);
 
-  loc.face = 0;
-  if (layout->options->type() == "cubed-sphere") {
+  loc.face = loc.panel_col = loc.panel_row = 0;
+  if (layout->options->is_cubed_sphere()) {
     loc.face = loc.lx1;
     loc.lx1 = 0;
-    loc.lx2 += (loc.face % 3) * loc.nb2;
-    loc.lx3 += (loc.face / 3) * loc.nb3;
+    loc.panel_col = loc.face % 3;
+    loc.panel_row = loc.face / 3;
+    loc.lx2 += loc.panel_col * loc.nb2;
+    loc.lx3 += loc.panel_row * loc.nb3;
     loc.nb2 *= 3;
     loc.nb3 *= 2;
   }
@@ -313,9 +329,29 @@ void combine_on_root(Layout const& layout, std::string const& key,
     }
   } release{layout};
 
-  if (layout->options->process_rank() == layout->options->process_root_rank()) {
-    root_work();
+  bool root =
+      layout->options->process_rank() == layout->options->process_root_rank();
+  if (!layout->has_process_group()) {
+    if (root) root_work();
+    return;
   }
+  // the root's failure is shared with every rank before anyone returns, so no
+  // rank carries on without the combined file
+  int failed = 0;
+  std::string what;
+  if (root) {
+    try {
+      root_work();
+    } catch (std::exception const& e) {
+      failed = 1;
+      what = e.what();
+    }
+  }
+  std::vector<torch::Tensor> status{torch::tensor({failed}, torch::kInt)};
+  layout->comm->allreduce(status, c10d::ReduceOp::MAX);
+  TORCH_CHECK(status[0].item<int>() == 0,
+              "[combine_on_root] combine failed on the root rank",
+              root ? ": " + what : std::string());
 }
 
 std::vector<std::string> glob_block_files(std::string const& pattern,

@@ -40,9 +40,11 @@ class ANEOSImpl : public EquationOfStateImpl,
   torch::Tensor compute(std::string ab,
                         std::vector<torch::Tensor> const& args) override;
 
-  /*torch::Tensor get_buffer(std::string var) const override {
-    return named_buffers()[var];
-  }*/
+  //! the sound speed first ("W->L"), then the index from it ("WL->A")
+  std::pair<torch::Tensor, torch::Tensor> gamma_sound_speed(
+      torch::Tensor const& w) override;
+  torch::Tensor adiabatic_index(torch::Tensor const& w) override;
+  torch::Tensor sound_speed(torch::Tensor const& w) override;
 
  private:
   //! \brief Convert primitive variables to conserved variables.

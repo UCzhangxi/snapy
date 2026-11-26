@@ -6,13 +6,18 @@
 #include <snap/snap.h>
 #include <torch/torch.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <functional>
 #include <limits>
 #include <snap/hydro/flux_register.hpp>
+#include <snap/layout/seam_register.hpp>
 #include <snap/mesh/meshblock.hpp>
 #include <snap/mesh/precision_policy.hpp>
+
+// tests
+#include "cuda_test_gate.hpp"
 
 using namespace snap;
 
@@ -84,6 +89,7 @@ TEST(RegisterMonitor, census_counts_minima_and_retry_flags) {
   m.record_min("ef.pos_min", torch::tensor(0.75));
   m.flag_retry("ef.nan", torch::tensor({false, true}));
   m.flag_retry("ef.nan", torch::tensor(false));  // an OR: stays set
+  m.flush_counts();  // a mask waits in the stage's batch (V3 S4)
   EXPECT_EQ(m.counters[0].item<int64_t>(), 9);
   EXPECT_EQ(m.counters[1].item<int64_t>(), 0);
   EXPECT_EQ(m.minima[0].item<double>(), 0.25);
@@ -455,6 +461,179 @@ TEST(FluxRegister, apply_prescribed_prescribes_the_kept_parts) {
   EXPECT_LE(rel(reg.monitor().amounts("boundary.prescribed"), ref), 1.e-15);
 }
 
+// V3 E: without a solid, S's boundary.prescribed covers the wall block
+// faces only, so the register works on the wall face planes alone. A face
+// off the walls keeps its bits and never enters the booking: a non-finite
+// flux there leaves "boundary.prescribed" finite
+TEST(FluxRegister, wall_prescription_works_on_the_wall_planes_only) {
+  Seam s;
+  RegisterRequest req;
+  req.keep = {"riemann.central@1"};
+  auto reg = s.make(req, 9);
+  s.stage(reg);
+  auto c = s.block->pcoord;
+  int il = c->il(), iw = c->iu() + 1;
+  // an x1 face between two interior cells, off both walls
+  reg.total(1)[IDN].select(2, il + 2).select(1, c->jl()).fill_(NAN);
+  auto t0 = reg.total(1).clone();
+  auto k0 = reg.kept(1, "riemann.central").clone();
+  supply_prescribed(reg, s.block.get(), torch::Tensor(),
+                    {IVX, IVX + 1, IVX + 2});
+  reg.apply_prescribed(1);
+  auto mask = torch::zeros_like(t0, torch::kBool);
+  for (int r = 0; r < t0.size(0); ++r) {
+    if (r >= IVX && r <= IVX + 2) continue;  // free slip: momentum keeps
+    mask[r].select(2, il).fill_(true);
+    mask[r].select(2, iw).fill_(true);
+  }
+  auto same = [](torch::Tensor const& a, torch::Tensor const& b) {
+    return torch::allclose(a, b, 0., 0., /*equal_nan=*/true);
+  };
+  EXPECT_TRUE(same(reg.total(1), torch::where(mask, 0., t0)));
+  EXPECT_TRUE(same(reg.kept(1, "riemann.central"), torch::where(mask, 0., k0)));
+  reg.end_stage(1.);
+  auto got = reg.monitor().amounts("boundary.prescribed");
+  auto ref = (s.area(1, reg) * torch::where(mask, -t0, 0.)).sum({1, 2, 3});
+  EXPECT_TRUE(torch::isfinite(got).all().item<bool>())
+      << "a face off the walls entered the booking: " << got;
+  EXPECT_LE(rel(got, ref), 1.e-15);
+}
+
+// A float32 register on the device (CUDA when available): apply_prescribed
+// builds its signed row weights in the wide dtype on the total's device. A
+// where() with two Scalar operands would build them as float64 scalar
+// tensors on that device, which a device without float64 (MPS) refuses; the
+// booking must equal the FP64 reference either way
+TEST(FluxRegister, wall_prescription_books_in_float32_on_the_device) {
+  auto device = snapy_cuda_test_enabled() ? torch::Device(torch::kCUDA, 0)
+                                          : torch::Device(torch::kCPU);
+  Variables vars;
+  auto block = bubble(vars);
+  block->to(device, torch::kFloat32);
+  auto& reg = block->phydro->flux_register();
+  reg.set_wall_batch(nullptr);  // book at the call, as a register alone does
+  ASSERT_EQ(reg.total(1).scalar_type(), torch::kFloat32);
+  ASSERT_EQ(reg.total(1).device(), device);
+  torch::manual_seed(11);
+  reg.total(1).copy_(torch::randn_like(reg.total(1)));
+  reg.begin_step();
+  reg.begin_stage(0, block->pintg->stages[0]);
+  auto c = block->pcoord;
+  int il = c->il(), iw = c->iu() + 1;
+  auto t0 = reg.total(1).clone();
+  supply_prescribed(reg, block.get(), torch::Tensor(), {IVX, IVX + 1, IVX + 2});
+  reg.apply_prescribed(1);
+  auto mask = torch::zeros_like(t0, torch::kBool);
+  for (int r = 0; r < t0.size(0); ++r) {
+    if (r >= IVX && r <= IVX + 2) continue;  // free slip: momentum keeps
+    mask[r].select(2, il).fill_(true);
+    mask[r].select(2, iw).fill_(true);
+  }
+  EXPECT_TRUE(torch::equal(reg.total(1), torch::where(mask, 0.f, t0)));
+  reg.end_stage(1.);
+  auto got = reg.monitor().amounts("boundary.prescribed").cpu();
+  auto area = c->face_area1().narrow(2, 0, t0.size(3)).to(torch::kFloat64);
+  auto ref = (area * torch::where(mask, -t0.to(torch::kFloat64), 0.))
+                 .sum({1, 2, 3})
+                 .cpu();
+  EXPECT_GT(ref.abs().max().item<double>(), 0.);
+  EXPECT_LE(rel(got, ref), 1.e-12);
+}
+
+// The wall batch registers a slot by monitor, amount index and shape and
+// books with the weights of its first push. The register rebuilds its
+// weights when the planes or the free rows change (set_prescribed_walls),
+// which the shape does not show: the batch must book with the rebuilt
+// weights. Same two planes, other free rows: the momentum rows' removal is
+// booked only with the rebuilt weights.
+TEST(FluxRegister, the_wall_batch_books_with_the_rebuilt_weights) {
+  Variables vars;
+  auto block = bubble(vars);
+  auto& reg = block->phydro->flux_register();
+  auto batch = std::make_shared<WallBatch>();
+  reg.set_wall_batch(batch);
+  auto c = block->pcoord;
+  int il = c->il(), iw = c->iu() + 1;
+  auto area = c->face_area1().narrow(2, 0, reg.total(1).size(3));
+  auto book = [&](std::vector<int> const& free_rows) {
+    torch::manual_seed(11);
+    reg.total(1).copy_(torch::randn_like(reg.total(1)));
+    auto t0 = reg.total(1).clone();
+    reg.begin_step();
+    reg.begin_stage(0, block->pintg->stages[0]);
+    batch->begin_stage();
+    reg.set_prescribed_walls(1, {il, iw}, {free_rows, free_rows});
+    reg.apply_prescribed(1);
+    batch->flush();
+    reg.end_stage(1.);  // rk3 stage 0: w2 = 1, dt = 1, the amount is the rate
+    auto mask = torch::zeros_like(t0, torch::kBool);
+    for (int r = 0; r < t0.size(0); ++r) {
+      if (std::find(free_rows.begin(), free_rows.end(), r) != free_rows.end())
+        continue;
+      mask[r].select(2, il).fill_(true);
+      mask[r].select(2, iw).fill_(true);
+    }
+    auto ref = (area * torch::where(mask, -t0, 0.)).sum({1, 2, 3});
+    return std::make_pair(reg.monitor().amounts("boundary.prescribed").clone(),
+                          ref);
+  };
+  auto [got1, ref1] = book({IVX, IVX + 1, IVX + 2});
+  EXPECT_LE(rel(got1, ref1), 1.e-12);
+  auto [got2, ref2] = book({});
+  EXPECT_GT(ref2.narrow(0, IVX, 3).abs().max().item<double>(), 0.);
+  EXPECT_LE(rel(got2, ref2), 1.e-12)
+      << "the batch booked with the weights of the first prescription";
+}
+
+// With a solid mask S hands R a full mask instead of the wall planes; the
+// x1 wall rows freed for a wall whose boundary prescribes a temperature
+// must be free on that path too: the energy row of the lower wall plane
+// keeps its flux while the upper wall's and every other row are prescribed.
+TEST(FluxRegister, the_solid_mask_frees_the_x1_wall_rows_too) {
+  Seam s;
+  auto reg = s.make({}, 12);
+  s.stage(reg);
+  auto c = s.block->pcoord;
+  int il = c->il(), iw = c->iu() + 1;
+  auto t0 = reg.total(1).clone();
+  auto solid =
+      torch::zeros({c->options->nc3(), c->options->nc2(), c->options->nc1()},
+                   torch::kBool);  // no solid cell: the mask path
+  supply_prescribed(reg, s.block.get(), solid, {IVX, IVX + 1, IVX + 2},
+                    {{std::vector<int>{IPR}, std::vector<int>{}}});
+  reg.apply_prescribed(1);
+  auto t = reg.total(1);
+  EXPECT_TRUE(torch::equal(t[IPR].select(-1, il), t0[IPR].select(-1, il)))
+      << "the lower wall's energy row was prescribed";
+  EXPECT_EQ(t[IPR].select(-1, iw).abs().max().item<double>(), 0.)
+      << "the upper wall's energy row kept its flux";
+  for (int p : {il, iw})
+    EXPECT_EQ(t[IDN].select(-1, p).abs().max().item<double>(), 0.)
+        << "the mass row on plane " << p;
+}
+
+// reset() starts with no prescription: S's wall planes from before the
+// reset are gone, as its full mask is, so apply_prescribed is a no-op until
+// S supplies again
+TEST(FluxRegister, reset_drops_the_wall_planes) {
+  Seam s;
+  auto reg = s.make({}, 10);
+  s.stage(reg);
+  supply_prescribed(reg, s.block.get(), torch::Tensor(),
+                    {IVX, IVX + 1, IVX + 2});
+  reg.reset(s.block->pcoord.get(), PrecisionPolicy("float64"), s.nvar, {});
+  for (int d : {1, 2}) reg.total(d).copy_(torch::randn_like(reg.total(d)));
+  s.stage(reg);
+  auto t0 = reg.total(1).clone();
+  reg.apply_prescribed(1);
+  EXPECT_TRUE(torch::equal(reg.total(1), t0))
+      << "apply_prescribed after reset() changed the total";
+  reg.end_stage(1.);
+  EXPECT_EQ(
+      reg.monitor().amounts("boundary.prescribed").abs().sum().item<double>(),
+      0.);
+}
+
 // G-R14 (flux corrections only): the amounts' recursion equals
 // sum_s w2_s prod_{t>s} w1_t dt a_s over rk3; a rollback clears them
 TEST(FluxRegister, amounts_fold_like_the_step_field) {
@@ -486,6 +665,36 @@ TEST(FluxRegister, amounts_fold_like_the_step_field) {
   reg.rollback();
   EXPECT_EQ(reg.monitor().amounts("reconcile.x1").abs().sum().item<double>(),
             0.);
+}
+
+// V3 S4 (ruling 2026-11-24, condition b): a rejected attempt leaves the
+// per-stage slots as if it never ran, so the redone step's amounts are those
+// of a clean step with the redo's dt, bitwise
+TEST(FluxRegister, a_rolled_back_attempt_leaves_the_amounts_of_the_redo) {
+  Seam s;
+  auto const& stages = s.block->pintg->stages;
+  auto a = s.make({}, 7), b = s.make({}, 7);
+  auto faces = torch::zeros(a.total(1).sizes().slice(1), torch::kBool);
+  faces.select(2, 3).fill_(true);
+  auto run = [&](FluxRegister& reg, double dt, int seed, int nstages) {
+    torch::manual_seed(seed);
+    for (int st = 0; st < nstages; ++st) {
+      reg.begin_stage(st, stages[st]);
+      reg.replace(1, faces, torch::randn_like(reg.total(1)), SeamRule::mean);
+      reg.end_stage(dt);
+    }
+  };
+  a.begin_step();
+  run(a, 0.41, 11, 2);  // the attempt: two stages in, then rejected
+  a.rollback();
+  a.total(1).copy_(b.total(1));  // the redo restores the step's state
+  run(a, 0.29, 23, stages.size());
+  b.begin_step();
+  run(b, 0.29, 23, stages.size());  // a clean step with the redo's dt
+  auto ra = a.monitor().amounts("reconcile.x1");
+  auto rb = b.monitor().amounts("reconcile.x1");
+  EXPECT_GT(rb.abs().sum().item<double>(), 0.);
+  EXPECT_TRUE(torch::equal(ra, rb)) << ra << " vs " << rb;
 }
 
 // R-5: keep writes a computed one-quantity part on row IDN of its nvar-row
@@ -798,6 +1007,30 @@ TEST(FluxRegister, a_failed_column_flags_implicit_column) {
   }
 }
 
+// Every retry cause the hydro register declares has a setter. Only lane I's
+// implicit.column is flagged (hydro.cpp, after the solve); check_redo reads
+// the EOS causes (floor patch, NaN, vapor and heat-capacity failures) from
+// the EOS status, so register slots for them would read 0 forever.
+TEST(FluxRegister, hydro_declares_only_retry_causes_it_sets) {
+  std::string deck = kDeck;
+  auto at = deck.find("implicit-scheme: 0");
+  ASSERT_NE(at, std::string::npos);
+  deck.replace(at, 18, "implicit-scheme: 1");
+  {
+    std::ofstream f("test_flux_register_retry.yaml");
+    f << deck;
+  }
+  auto block = MeshBlock(
+      MeshBlockOptionsImpl::from_yaml("test_flux_register_retry.yaml"));
+  auto& mon = block->phydro->flux_register().monitor();
+  EXPECT_NO_THROW(mon.retry_index("implicit.column"));
+  for (auto name :
+       {"ef.floor_patch", "ef.nan", "ef.vapor_fail", "ef.heat_capacity"})
+    EXPECT_THROW(mon.retry_index(name), c10::Error)
+        << name << " has a retry slot but no setter";
+  EXPECT_EQ(mon.retry_flags.numel(), 1);
+}
+
 // V3 I-7: gravity-work: cell is removed. A deck that selects cell is
 // refused, from YAML and from code, with a message that names face. The
 // global fixer went in V3 X5: gravity-work-fixer: true is refused with X5's
@@ -886,156 +1119,4 @@ TEST(FluxRegister, post_split_is_never_scaled_by_a_later_w1) {
   // a redone step starts from begin_step: the posts are gone
   reg.begin_step();
   EXPECT_EQ(reg.step_field(1).abs().max().item<double>(), 0.);
-}
-
-// R-7 (R.rst 4.2 O, L-3): boundary(dim) is the area-integrated outward step
-// transfer through the fluid domain's boundary faces: the block faces whose S
-// FaceKind is wall, outflow or custom, and the faces with one solid
-// neighbour, outward from the fluid cell. It follows S_d's recursion, split
-// posts included.
-namespace {
-// sum over dim's faces of sign A_f S, with the sign given by the caller
-torch::Tensor face_sum(Seam& s, FluxRegister& reg, int dim,
-                       torch::Tensor const& sign) {
-  auto f = reg.step_field(dim).to(torch::kFloat64);
-  return (f * (s.area(dim, reg).to(torch::kFloat64) * sign)).sum({1, 2, 3});
-}
-}  // namespace
-
-TEST(FluxRegister, boundary_is_the_outward_step_transfer_of_the_wall_faces) {
-  Seam s;  // the bubble: reflecting (wall) on every face; nx3 = 1
-  RegisterRequest req;
-  req.step_field = {1, 2};
-  auto reg = s.make(req, 21);
-  auto const& stages = s.block->pintg->stages;
-  double const dt = 0.29;
-  torch::manual_seed(23);
-  reg.begin_step();
-  reg.post_split(1, "diffusion.radial", torch::randn_like(reg.total(1)), 0.5,
-                 dt);
-  for (int st = 0; st < stages.size(); ++st) {
-    reg.begin_stage(st, stages[st]);
-    for (int d : {1, 2}) reg.total(d).copy_(torch::randn_like(reg.total(d)));
-    reg.end_stage(dt);
-  }
-  reg.post_split(1, "diffusion.radial", torch::randn_like(reg.total(1)), 0.5,
-                 dt);
-  auto co = s.block->pcoord;
-  int il = co->il(), iu = co->iu(), jl = co->jl(), ju = co->ju();
-  auto in_j = [&](torch::Tensor t) { return t.slice(1, jl, ju + 1); };
-  auto in_i = [&](torch::Tensor t) { return t.slice(2, il, iu + 1); };
-  for (int dim : {1, 2}) {
-    auto sign = torch::zeros_like(reg.total(dim)[0], torch::kFloat64);
-    if (dim == 1) {  // x1 faces il (inward) and iu + 1 (outward)
-      in_j(sign).select(2, il).fill_(-1.);
-      in_j(sign).select(2, iu + 1).fill_(1.);
-    } else {
-      in_i(sign).select(1, jl).fill_(-1.);
-      in_i(sign).select(1, ju + 1).fill_(1.);
-    }
-    auto want = face_sum(s, reg, dim, sign);
-    auto got = reg.monitor().boundary(dim);
-    EXPECT_EQ(got.scalar_type(), torch::kFloat64);
-    EXPECT_LE(rel(got, want), 1.e-14) << dim;
-    EXPECT_GT(want.abs().max().item<double>(), 0.) << dim;
-  }
-  // x3 is inactive (nx3 = 1): no transfer
-  EXPECT_EQ(reg.monitor().boundary(3).abs().max().item<double>(), 0.);
-  // a redone step starts from begin_step: the sums are gone
-  reg.rollback();
-  EXPECT_EQ(reg.monitor().boundary(1).abs().max().item<double>(), 0.);
-}
-
-TEST(FluxRegister, boundary_counts_solid_faces_outward_from_the_fluid) {
-  Seam s;
-  RegisterRequest req;
-  req.step_field = {1, 2};
-  auto reg = s.make(req, 31);
-  auto co = s.block->pcoord;
-  int il = co->il(), iu = co->iu(), jl = co->jl(), ju = co->ju();
-  int const i0 = il + 5, i1 = il + 9, j0 = jl + 4, j1 = jl + 12;
-  auto solid = torch::zeros_like(reg.total(1)[0], torch::kInt32);
-  solid.slice(1, j0, j1 + 1).slice(2, i0, i1 + 1).fill_(1);
-  reg.set_solid(solid);
-  reg.begin_step();
-  reg.begin_stage(0, s.block->pintg->stages[0]);  // rk3 stage 0: w2 = 1
-  reg.end_stage(1.);
-  for (int dim : {1, 2}) {
-    auto sign = torch::zeros_like(reg.total(dim)[0], torch::kFloat64);
-    auto in_j = sign.slice(1, jl, ju + 1);
-    auto in_i = sign.slice(2, il, iu + 1);
-    if (dim == 1) {
-      in_j.select(2, il).fill_(-1.);
-      in_j.select(2, iu + 1).fill_(1.);
-      // fluid left of i0 flows out through face i0; fluid right of i1
-      // through face i1 + 1, towards -x1
-      sign.slice(1, j0, j1 + 1).select(2, i0).fill_(1.);
-      sign.slice(1, j0, j1 + 1).select(2, i1 + 1).fill_(-1.);
-    } else {
-      in_i.select(1, jl).fill_(-1.);
-      in_i.select(1, ju + 1).fill_(1.);
-      sign.slice(2, i0, i1 + 1).select(1, j0).fill_(1.);
-      sign.slice(2, i0, i1 + 1).select(1, j1 + 1).fill_(-1.);
-    }
-    EXPECT_LE(rel(reg.monitor().boundary(dim), face_sum(s, reg, dim, sign)),
-              1.e-14)
-        << dim;
-  }
-}
-
-// G-R4's lane R part: with no source, every conserved row's step change over
-// the interior is minus the outward transfer the register books (O's
-// BudgetConsumer, which reads these sums, is not on this base)
-TEST(FluxRegister, boundary_closes_the_source_free_budget) {
-  std::string deck = kDeck;
-  auto at = deck.find("x2-inner: reflecting");
-  ASSERT_NE(at, std::string::npos);
-  deck.replace(at, 20, "x2-inner: outflow");
-  at = deck.find("x2-outer: reflecting");
-  ASSERT_NE(at, std::string::npos);
-  deck.replace(at, 20, "x2-outer: outflow");
-  at = deck.find("const-gravity: {grav1: -9.8}");
-  ASSERT_NE(at, std::string::npos);
-  deck.replace(at, 28, "const-gravity: {grav1: 0.}");
-  {
-    std::ofstream f("test_flux_register_budget.yaml");
-    f << deck;
-  }
-  auto block = MeshBlock(
-      MeshBlockOptionsImpl::from_yaml("test_flux_register_budget.yaml"));
-  block->to(torch::kCPU, torch::kFloat64);
-  auto co = block->pcoord;
-  auto w = torch::zeros({block->phydro->peos->nvar(), co->options->nc3(),
-                         co->options->nc2(), co->options->nc1()},
-                        torch::kFloat64);
-  auto x1 = co->x1v.view({1, 1, -1}), x2 = co->x2v.view({1, -1, 1});
-  auto L =
-      (((x2 - 6.4e3) / 4.e3).square() + ((x1 - 3.e3) / 2.e3).square()).sqrt();
-  w[IPR].fill_(1.e5);
-  w[IDN] = 1.2 * (1. + 0.1 * torch::where(L <= 1, (L * M_PI).cos() + 1., 0.));
-  w[IVY] = 10. * x2 / 12.8e3;  // into the domain nowhere, out at x2 outer
-  Variables vars;
-  vars["hydro_w"] = w;
-  block->initialize(vars);
-  auto& reg = block->phydro->flux_register();
-  auto in = block->part({0, 0, 0}, PartOptions().exterior(false));
-  auto vol = co->cell_volume();
-  for (int step = 0; step < 3; ++step) {
-    auto before = (vars.at("hydro_u") * vol).index(in).sum({1, 2, 3});
-    double dt = block->max_time_step(vars);
-    for (int st = 0; st < block->pintg->stages.size(); ++st)
-      block->forward(vars, dt, st);
-    ASSERT_EQ(block->check_redo(vars), 0);
-    auto change = (vars.at("hydro_u") * vol).index(in).sum({1, 2, 3}) - before;
-    auto out = reg.monitor().boundary(1) + reg.monitor().boundary(2);
-    for (int row : {IDN, IPR}) {
-      double b = out[row].item<double>(), c = change[row].item<double>();
-      std::printf(
-          "R-7 G-R4 step %d row %d: change %.6e, boundary %.6e, "
-          "residual / boundary %.3e\n",
-          step, row, c, b, std::abs(c + b) / std::abs(b));
-      EXPECT_GT(std::abs(b), 0.) << row;
-      EXPECT_LE(std::abs(c + b), 1.e-12 * std::abs(b)) << row;
-    }
-  }
 }

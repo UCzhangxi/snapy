@@ -10,7 +10,6 @@ class GnomonicEquiangleImpl
       public CoordinateImpl {
  public:
   // geometry data
-  torch::Tensor sine_cell_kj, sine_face2_kj, sine_face3_kj;
   torch::Tensor x_ov_rD_kji, y_ov_rC_kji;
   torch::Tensor dx2f_ang_kj, dx3f_ang_kj;
   torch::Tensor dx2f_ang_face3_kj, dx3f_ang_face2_kj;
@@ -82,7 +81,7 @@ class GnomonicEquiangleImpl
       torch::Tensor flux3,
       torch::Tensor face_pressure1 = torch::Tensor()) override;
   void x1_mass_source_(torch::Tensor du, torch::Tensor const& prim,
-                       torch::Tensor const& m1, double dt) const override;
+                       torch::Tensor const& m1, StepDt dt) const override;
 
  private:
   torch::Tensor _interp_ghost_LR(torch::Tensor buf, bool flip) const;

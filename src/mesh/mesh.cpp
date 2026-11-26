@@ -73,16 +73,17 @@ void check_same_variables(MeshVariables const& vars, char const* caller) {
 
 class MeshImpl::BlockWorkerPool {
  public:
-  BlockWorkerPool(size_t count, torch::Device device)
-      : device_(std::move(device)), remaining_(count) {
+  BlockWorkerPool(size_t count, torch::Device device, int64_t mesh_id)
+      : device_(std::move(device)), mesh_id_(mesh_id), remaining_(count) {
 #ifdef USE_CUDA
     if (device_.is_cuda()) {
       c10::cuda::CUDAGuard device_guard(device_.index());
       streams_.reserve(count);
       done_events_.reserve(count);
       for (size_t i = 0; i < count; ++i) {
-        streams_.push_back(c10::cuda::getStreamFromPool(
-            /*isHighPriority=*/false, device_.index()));
+        owned_.push_back(std::make_unique<OwnedStream>(device_.index()));
+        streams_.push_back(c10::cuda::getStreamFromExternal(
+            static_cast<cudaStream_t>(owned_.back()->stream), device_.index()));
         done_events_.push_back(std::make_unique<at::cuda::CUDAEvent>());
       }
       caller_ready_event_ = std::make_unique<at::cuda::CUDAEvent>();
@@ -97,13 +98,13 @@ class MeshImpl::BlockWorkerPool {
 
   ~BlockWorkerPool() { stop(); }
 
-  //! CUDA streams in the pool: one per block on a CUDA device, else 0.
-  size_t num_streams() const {
+  //! the pool's CUDA streams: one per block on a CUDA device, else none
+  std::vector<void*> streams() const {
+    std::vector<void*> raw;
 #ifdef USE_CUDA
-    return streams_.size();
-#else
-    return 0;
+    for (auto const& s : streams_) raw.push_back(s.stream());
 #endif
+    return raw;
   }
 
   void submit(std::function<void(size_t)> func) {
@@ -137,8 +138,9 @@ class MeshImpl::BlockWorkerPool {
 #endif
 
     if (error_ != nullptr) {
-      auto error = error_;
-      error_ = nullptr;
+      auto error = std::exchange(error_, nullptr);
+      lock.unlock();
+      clear_local_exchange(mesh_id_);  // every job ended: nothing takes it
       std::rethrow_exception(error);
     }
   }
@@ -174,6 +176,10 @@ class MeshImpl::BlockWorkerPool {
 
   void run_loop(size_t index) {
     size_t seen_generation = 0;
+    g_local_job_failed = [this]() {
+      std::lock_guard<std::mutex> lock(mutex_);
+      return error_ != nullptr;
+    };
     while (true) {
       std::function<void(size_t)> func;
       {
@@ -194,10 +200,10 @@ class MeshImpl::BlockWorkerPool {
       try {
         func(index);
       } catch (...) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (error_ == nullptr) {
-          error_ = std::current_exception();
-        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (error_ == nullptr) error_ = std::current_exception();
+        lock.unlock();
+        wake_local_exchanges();  // a block waiting for this one leaves
       }
 
 #ifdef USE_CUDA
@@ -217,6 +223,7 @@ class MeshImpl::BlockWorkerPool {
   }
 
   torch::Device device_;
+  int64_t mesh_id_;
   std::vector<std::thread> workers_;
   std::mutex mutex_;
   std::condition_variable cv_;
@@ -228,6 +235,7 @@ class MeshImpl::BlockWorkerPool {
   bool stopping_ = false;
 
 #ifdef USE_CUDA
+  std::vector<std::unique_ptr<OwnedStream>> owned_;
   std::vector<c10::cuda::CUDAStream> streams_;
   std::vector<std::unique_ptr<at::cuda::CUDAEvent>> done_events_;
   std::unique_ptr<at::cuda::CUDAEvent> caller_ready_event_;
@@ -238,10 +246,6 @@ MeshOptions MeshOptionsImpl::from_yaml(std::string input_file, bool verbose) {
   auto block = MeshBlockOptionsImpl::from_yaml(input_file, verbose);
   auto options = MeshOptionsImpl::create();
   options->block(block);
-
-  auto config = YAML::LoadFile(input_file);
-  options->blocks_per_process(
-      config["distribute"]["blocks_per_process"].as<int>(1));
   return options;
 }
 
@@ -251,6 +255,7 @@ MeshImpl::~MeshImpl() = default;
 
 void MeshImpl::reset() {
   workers_.reset();
+  executor_.reset();
   blocks.clear();
   TORCH_CHECK(options->block() != nullptr, "Mesh requires MeshBlockOptions");
 
@@ -285,14 +290,26 @@ void MeshImpl::reset() {
     blocks.push_back(block);
   }
 
+  // one stage executor for all the blocks (lane B)
+  std::vector<MeshBlockImpl*> members;
+  for (auto& b : blocks) members.push_back(b.get());
+  executor_ = std::make_shared<StageExecutor>(members);
+  for (int i = 0; i < static_cast<int>(blocks.size()); ++i)
+    blocks[i]->use_executor(executor_, i);
+
   if (blocks.size() > 1) {
     workers_ = std::make_shared<BlockWorkerPool>(
-        blocks.size(), torch::Device(blocks.front()->options->device_str()));
+        blocks.size(), torch::Device(blocks.front()->options->device_str()),
+        mesh_id);
   }
 }
 
-size_t MeshImpl::num_worker_streams() const {
-  return workers_ ? workers_->num_streams() : 0;
+std::map<std::string, int64_t> MeshImpl::execution_report() const {
+  return executor_->report();
+}
+
+std::vector<void*> MeshImpl::worker_streams() const {
+  return workers_ ? workers_->streams() : std::vector<void*>{};
 }
 
 void MeshImpl::run_block_jobs(std::function<void(size_t)> func) {
@@ -322,6 +339,7 @@ double MeshImpl::initialize(MeshVariables& vars, char const* restart_file) {
         current_time = block_time;
       }
     }
+    executor_->agree(vars);  // B3 (d)/(e): capability rows see the Mesh
     return current_time;
   }
 
@@ -332,6 +350,7 @@ double MeshImpl::initialize(MeshVariables& vars, char const* restart_file) {
   SignalHandler::GetInstance();
 
   run_block_jobs([&](size_t i) { blocks[i]->initialize_under_mesh(vars[i]); });
+  executor_->agree(vars);  // B3 (d)/(e): capability rows see the Mesh
 
   return 0.;
 }
@@ -352,17 +371,23 @@ double MeshImpl::max_time_step(MeshVariables const& vars) {
 void MeshImpl::forward(MeshVariables& vars, double dt, int stage) {
   TORCH_CHECK(vars.size() == blocks.size(),
               "Mesh::forward expects one Variables map per local MeshBlock");
-  // the blocks of a Mesh run eager in V3 X3 (N-block graphs come with X4)
-  for (auto& b : blocks)
-    TORCH_CHECK(!b->options->execution_strict(),
-                "integration/execution-strict: a Mesh runs its blocks eagerly "
-                "(CUDA graphs cover a single MeshBlock only)");
+  // V3 B2: the blocks' stages run as graphs on the worker pool; strict
+  // refuses a block that cannot capture here, before any launch. B3 (d)/(e):
+  // a block that disagrees with another (one refuses, or their modes differ)
+  // makes every block eager, so the blocks first share their variables'
+  // reasons
+  executor_->agree(vars);
+  for (int i = 0; i < static_cast<int>(blocks.size()); ++i)
+    executor_->check_strict(i, vars[i], stage);
   if (stage == 0)
     for (auto& b : blocks) b->step_dt = dt;
 
   for (auto& b : blocks) b->defer_chemistry = true;
+  // B3: a segment one block must (re)capture is captured by all of them (its
+  // exchanges meet at the same-process rendezvous)
+  executor_->align_captures(vars, dt, stage);
   run_block_jobs(
-      [&](size_t i) { blocks[i]->advance_local(vars[i], dt, stage); });
+      [&](size_t i) { executor_->run_stage(i, vars[i], dt, stage); });
   // conserve-axial-momentum-closure: R and I summed over the local blocks,
   // one reduction, then each block's solid-body increment
   auto root = blocks.front();

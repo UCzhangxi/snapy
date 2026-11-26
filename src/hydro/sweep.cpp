@@ -11,11 +11,27 @@
 
 namespace snap {
 
+// the static face gauge: the mean pressure0 of the two cells beside each face
+// along `axis` (the first face repeats the first cell)
+static torch::Tensor static_face_gauge(torch::Tensor const& p0, int axis) {
+  int n = p0.size(axis);
+  auto below =
+      torch::cat({p0.narrow(axis, 0, 1), p0.narrow(axis, 0, n - 1)}, axis);
+  return 0.5 * (p0 + below);
+}
+
 void post_face_floors(ReconstructImpl const& recon, RegisterMonitor& monitor) {
-  if (!recon.floored.defined()) return;
-  monitor.count("face_floor.rho", recon.floored[0]);
-  monitor.count("face_floor.p", recon.floored[1]);
-  monitor.count("face_floor.species", recon.floored[2]);
+  // one mask per floor that ran: the monitor reduces the stage's masks
+  // together at its flush
+  static char const* const names[] = {"face_floor.rho", "face_floor.p",
+                                      "face_floor.species"};
+  for (auto const& [row, mask] : recon.floored) monitor.count(names[row], mask);
+}
+
+void post_riemann_events(RiemannSolverImpl const& solver,
+                         RegisterMonitor& monitor) {
+  static char const* const names[] = {"riemann.pstar_clamp", "riemann.llf"};
+  for (auto const& [row, mask] : solver.events) monitor.count(names[row], mask);
 }
 
 torch::Tensor reconstruct_faces(HydroImpl& hydro, FaceDir const& dir,
@@ -56,12 +72,7 @@ torch::Tensor reconstruct_faces(HydroImpl& hydro, FaceDir const& dir,
   bool active_horizontal = (dim == DIM2 && !hydro.options->disable_flux_x2()) ||
                            (dim == DIM3 && !hydro.options->disable_flux_x3());
   if (active_horizontal && !hydro.flux_covariance()) {
-    int axis = dim - 1;
-    auto p0 = perturb->pressure0;
-    int n = p0.size(axis);
-    auto below =
-        torch::cat({p0.narrow(axis, 0, 1), p0.narrow(axis, 0, n - 1)}, axis);
-    background = 0.5 * (p0 + below);
+    background = static_face_gauge(perturb->pressure0, dim - 1);
     auto pressure = lr.select(1, IPR).to(torch::kFloat64);
     pressure += gauge;
     monitor.count(
@@ -98,11 +109,7 @@ void riemann_solve(HydroImpl& hydro, torch::Tensor lr, int dim,
                    torch::Tensor central) {
   // the solve's events (C5): hllc's clamped contact pressure, roe's LLF
   auto post_events = [&] {
-    if (!hydro.priemann->events.defined()) return;
-    hydro.flux_register().monitor().count("riemann.pstar_clamp",
-                                          hydro.priemann->events[0]);
-    hydro.flux_register().monitor().count("riemann.llf",
-                                          hydro.priemann->events[1]);
+    post_riemann_events(*hydro.priemann, hydro.flux_register().monitor());
   };
   if (!perturb) {
     hydro.priemann->forward(lr[ILT], lr[IRT], dim, flux, face_pressure,
@@ -115,12 +122,7 @@ void riemann_solve(HydroImpl& hydro, torch::Tensor lr, int dim,
     // be hydrostatic. Its full gradient is retained in the momentum source.
     // A static gauge keeps physical pressure increments in the Riemann
     // flux instead of moving them into a difference of large backgrounds.
-    int axis = dim - 1;
-    auto p0 = perturb->pressure0;
-    int n = p0.size(axis);
-    auto below =
-        torch::cat({p0.narrow(axis, 0, 1), p0.narrow(axis, 0, n - 1)}, axis);
-    background = 0.5 * (p0 + below);
+    background = static_face_gauge(perturb->pressure0, dim - 1);
     lr = lr.clone();
     lr[ILT][IPR] -= background;
     lr[IRT][IPR] -= background;

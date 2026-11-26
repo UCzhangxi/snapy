@@ -5,13 +5,23 @@
 enable_testing()
 
 setup_test(test_eos)
+# shallow water: the primitive limiter has no pressure or species row
+setup_test(test_shallow_water_limiter)
+# the implicit index under ANEOS takes the state being solved (audit 1 E1)
+setup_test(test_aneos_gamma)
 # ideal-gas refuses a moist card; the output frame keeps float32 values
 setup_test(test_eos_io_core)
+# aneos lowers momenta and raises velocities with the cell metric
+setup_test(test_aneos_metric)
 setup_test(test_split_reference)
 setup_test(test_precision_policy)
+# moist-mixture W->T returns a tensor the next call does not overwrite
+setup_test(test_moist_mixture_temp_alias)
 setup_test(test_fp32_typed_constants)
 set_tests_properties(test_fp32_typed_constants.${buildl} PROPERTIES LABELS "fp32-foundations;recon;riemann")
 setup_test(test_state_store)
+# ideal-gas U->W reads cons in the dtype and row stride it writes prim with
+setup_test(test_ideal_gas_cons2prim_layout)
 set_tests_properties(test_split_reference.${buildl} PROPERTIES LABELS "fp32-foundations;fp32-dynamics;hydro")
 setup_test(test_pressure_scan_x1)
 set_tests_properties(test_pressure_scan_x1.${buildl} PROPERTIES
@@ -34,6 +44,7 @@ if(CUDA)
 endif()
 setup_test(test_backward_substitution)
 setup_test(test_lu_failure)
+setup_test(test_redo_causes)
 setup_test(test_scalar)
 setup_test(test_rectify)
 setup_test(test_flip_zero_count)
@@ -46,6 +57,12 @@ setup_test(test_panel_rotation)
 setup_test(test_cp5_nghost)
 setup_test(test_stretched_x1)
 setup_test(test_deck_x1_wiring)
+# the scalar keeps the r^3/3 table under SNAP_X1_CENTROID_EXACT, hydro not
+add_test(NAME test_deck_x1_wiring_x1_centroid.${buildl}
+         COMMAND test_deck_x1_wiring.${buildl}
+                 --gtest_filter=DeckX1Wiring.spherical_scalar_x1_*)
+set_tests_properties(test_deck_x1_wiring_x1_centroid.${buildl}
+                     PROPERTIES ENVIRONMENT "SNAP_X1_CENTROID_EXACT=1")
 setup_test(test_stretched_x1_ref)
 add_test(NAME test_stretched_x1_ref_x1_centroid.${buildl}
          COMMAND test_stretched_x1_ref.${buildl}
@@ -100,11 +117,6 @@ set_tests_properties(test_yamlcpp_cstdint_patch PROPERTIES
 setup_test(test_sedimentation_guards)
 setup_test(test_balance_column)
 setup_test(test_hydro_ref_x1)
-add_test(NAME test_hydro_ref_x1_stretched_cuda.${buildl}
-         COMMAND test_hydro_ref_x1.${buildl}
-                 --gtest_filter=HydroRefX1Dispatch.cuda_matches_cpu_on_the_stretched_rows)
-set_tests_properties(test_hydro_ref_x1_stretched_cuda.${buildl}
-                     PROPERTIES TIMEOUT 120 LABELS "hydro;gpu")
 setup_test(test_uranus_cycle1_abort)
 setup_test(test_pref_local_seam)
 setup_test(test_gravity_work_cache_to)
@@ -122,6 +134,7 @@ function(seam_arm name env test)
                      PASS_REGULAR_EXPRESSION "\\[  PASSED  \\] 1 test\\.")
 endfunction()
 seam_arm("" "" switches_off_nghost_1_sets_up)
+seam_arm(_relays_are_seam_sides "" the_x1_relays_are_seam_sides)
 seam_arm(_x1_centroid "SNAP_X1_CENTROID_EXACT=1"
          centroid_exact_split_matches_one_block)
 seam_arm(_radial_exact "" radial_exact_split_gap)
@@ -222,10 +235,26 @@ setup_test(test_fix_vapor_volume)
 setup_test(test_fix_vapor_deficit)
 setup_test(test_check_redo_vapor_deficit)
 setup_test(test_flux_register)
+# V3 S4: the post-implicit apply after a source's post
+setup_test(test_prescribed_after_sources)
 setup_test(test_species_face_clamp)
 setup_test(test_parentless_cloud_nb1)
 setup_test(test_global_phase)
 setup_test(test_global_phase_closure)
+# lane B: a Mesh owns one stage executor; Mesh::forward runs through it
+setup_test(test_mesh_executor)
+# V3 B2: a Mesh captures its blocks' stages
+setup_test(test_mesh_capture)
+# V3 B3 (d)/(e): a Mesh whose blocks disagree runs eager, in bounded time
+setup_test(test_mesh_disagree)
+# a Mesh's block worker pool gives every block a stream of its own
+setup_test(test_mesh_worker_streams)
+# the capture save list holds the register monitor's amounts
+setup_test(test_graph_monitor_amounts)
+# V3 A2: the segment types of the graph interface
+setup_test(test_stage_schedule)
+# V3 A2: one segment per stage, keyed (block, stage, segment)
+setup_test(test_stage_segments)
 setup_test(test_vapor_column_nb1)
 setup_test(test_wall_saturation)
 setup_test(test_cloud_parent_slots)
@@ -362,6 +391,10 @@ snapy_add_python_test(test_periodic_corners TIMEOUT 120 LABELS "python;exchange"
 # S-L1: a second Mesh in the same process leaves the first one bitwise
 snapy_add_python_test(test_mesh_second_instance TIMEOUT 900 LABELS "python;exchange")
 snapy_add_python_test(test_jit_user_forcing TIMEOUT 30 LABELS "python;forcing")
+# a gnomonic block's netcdf lon/lat are its coordinate's (cubed layout, nb1 = 2)
+snapy_add_python_test(test_netcdf_cubed_lonlat TIMEOUT 120 LABELS "python;output")
+set_tests_properties(test_netcdf_cubed_lonlat_python PROPERTIES
+                     SKIP_RETURN_CODE 125)
 snapy_add_python_test(test_fix_vapor_reports_failure TIMEOUT 60 LABELS "python;eos;positivity")
 snapy_add_python_test(test_fix_vapor_stale_count TIMEOUT 60 LABELS "python;eos;positivity;redo")
 snapy_add_python_test(test_fix_vapor_counts_every_column TIMEOUT 120 LABELS "python;eos;positivity")
@@ -394,6 +427,8 @@ snapy_add_python_test(test_implicit_options_type TIMEOUT 60 LABELS "python;impli
 snapy_add_python_test(test_shear_cfl TIMEOUT 60 LABELS "python;hydro;implicit")
 snapy_add_python_test(test_check_redo_floor TIMEOUT 60 LABELS "python;mesh;redo")
 snapy_add_python_test(test_check_redo_saturation TIMEOUT 60 LABELS "python;mesh;redo;eos")
+# a redo restores the EfStatus positivity meters with the flux register
+snapy_add_python_test(test_redo_positivity_meters TIMEOUT 300 LABELS "python;mesh;redo;positivity")
 # lane K, S-K1: the ThermoY failure counter in the reset list and the retry stack
 snapy_add_python_test(test_sk1_failure_counter TIMEOUT 120 LABELS "python;mesh;redo;eos")
 # lane K, S-K2: the active set snapshot at stage 0, restored on a retry (K-G5)
@@ -427,6 +462,9 @@ snapy_add_python_test(test_flux_positivity_cubedsphere_flux_covariance
 snapy_add_python_test(test_flux_positivity_cubedsphere_moist TIMEOUT 300
                       LABELS "python;positivity;cubed-sphere")
 snapy_add_python_test(test_roe_cubed_sphere_rest TIMEOUT 120
+                      LABELS "python;riemann;cubed-sphere")
+# UCzhangxi/snapy#319: shallow-roe on the cubed sphere refuses dir: xy
+snapy_add_python_test(test_shallow_roe_cubed_sphere_dir TIMEOUT 120
                       LABELS "python;riemann;cubed-sphere")
 snapy_add_python_test(test_cubed_sphere_cell_volume TIMEOUT 120
                       LABELS "python;coordinate;cubed-sphere")
@@ -467,7 +505,59 @@ snapy_add_python_test(test_fp32_science TIMEOUT 300 LABELS "python;hydro;fp32-sc
 # skips without a CUDA device
 snapy_add_python_test(test_stage_executor_capture TIMEOUT 300 LABELS "python;hydro;fp32-science")
 snapy_add_python_test(test_execution_capability TIMEOUT 120 LABELS "python;hydro")
+snapy_add_python_test(test_graph_pool_recapture TIMEOUT 600 LABELS "python;hydro")
+snapy_add_python_test(test_graph_user_forcing TIMEOUT 600 LABELS "python;hydro;forcing")
+snapy_add_python_test(test_cubed_sphere_capture TIMEOUT 900 LABELS "python;hydro")
+# a stretched x1 (explicit faces) cubed sphere captures: no host copy of the
+# x1 reference rows inside a captured segment
+snapy_add_python_test(test_graph_stretched_x1 TIMEOUT 900 LABELS "python;hydro")
+# the panel-seam rotation operands are built once per grid and rebuilt on a change
+snapy_add_python_test(test_seam_rotation_cache TIMEOUT 300 LABELS "python;hydro;cubed-sphere")
+snapy_add_python_test(test_mesh_capture_moist TIMEOUT 900 LABELS "python;hydro;eos")
+# the shipped dry Straka (ideal-gas, lmars; 1 and 2 blocks; no forcing) captures
+snapy_add_python_test(test_graph_capture_lifts TIMEOUT 600 LABELS "python;hydro")
+# integration.execution defaults to cuda-graph on a CUDA device, eager on CPU
+snapy_add_python_test(test_default_execution TIMEOUT 600 LABELS "python;hydro")
+set_tests_properties(test_default_execution_python PROPERTIES SKIP_RETURN_CODE 125)
+# #314: an outflow boundary is refused before a capture; CPU part on every build
+snapy_add_python_test(test_graph_outflow_refused TIMEOUT 300 LABELS "python;hydro")
 snapy_add_python_test(test_sk3_capture_moist TIMEOUT 600 LABELS "python;hydro;eos;fp32-science")
+# V3 C4: an implicit scheme captures; one capture per stage serves every dt
+snapy_add_python_test(test_graph_implicit_dt TIMEOUT 900 LABELS "python;hydro;implicit")
+# V3 C: the chemistry slot as an eager segment beside captured ones, and the
+# vertical implicit correction (with its predicated FP64 retry) under graph
+snapy_add_python_test(test_graph_chemistry_slot TIMEOUT 600 LABELS "python;hydro;eos")
+# V3 C5: a Mesh with chemistry captures its blocks' stages, chemistry eager in
+# its global phase
+snapy_add_python_test(test_graph_mesh_chemistry TIMEOUT 900 LABELS "python;hydro;eos")
+snapy_add_python_test(test_graph_implicit TIMEOUT 600 LABELS "python;hydro;implicit")
+# audit-3 lead 4: with the x1 flux off the implicit solve books its transfers
+# in the register
+snapy_add_python_test(test_implicit_register_x1_off TIMEOUT 600 LABELS "python;hydro;implicit")
+# the block's EfStatus meters (positivity census, lim_cut/lim_flux) and the
+# budget line under graph equal eager: the capture warm-ups count nothing
+snapy_add_python_test(test_graph_positivity_meters_match_eager TIMEOUT 600 LABELS "python;hydro;eos")
+# a Mesh of many blocks captures: no two concurrent captures share a stream
+snapy_add_python_test(test_graph_mesh_many_blocks TIMEOUT 600 LABELS "python;hydro")
+snapy_add_python_test(test_mesh_block_job_failure TIMEOUT 600 LABELS "python;hydro")
+snapy_add_python_test(test_mesh_restep_after_failure TIMEOUT 1200 LABELS "python;hydro")
+# the graph tests end with tests/cuda_build.py's SKIP_RETURN_CODE when the build
+# has no CUDA (or no device is visible): ctest reports them skipped, not passed,
+# after any CPU part they run
+set_tests_properties(
+  test_stage_executor_capture_python test_execution_capability_python
+  test_graph_pool_recapture_python test_graph_user_forcing_python
+  test_cubed_sphere_capture_python test_mesh_capture_moist_python
+  test_graph_capture_lifts_python test_graph_outflow_refused_python
+  test_sk3_capture_moist_python test_graph_implicit_dt_python
+  test_graph_chemistry_slot_python test_graph_mesh_chemistry_python
+  test_graph_implicit_python test_graph_stretched_x1_python
+  test_graph_positivity_meters_match_eager_python
+  test_graph_mesh_many_blocks_python
+  test_mesh_block_job_failure_python
+  test_mesh_restep_after_failure_python
+  test_implicit_register_x1_off_python
+  PROPERTIES SKIP_RETURN_CODE 125)
 snapy_add_python_test(test_fp32_restart TIMEOUT 300 LABELS "python;hydro;fp32-foundations;fp32-restart")
 snapy_add_python_test(test_fp32_policy TIMEOUT 300 LABELS "python;hydro;fp32-foundations;fp32-compute")
 snapy_add_python_test(test_fp32_implicit TIMEOUT 300 LABELS "python;hydro;fp32-foundations;fp32-compute")
@@ -706,6 +796,21 @@ if (NOT APPLE)
       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
       TIMEOUT 600
       LABELS "restart;examples"
+    )
+
+    # a failed combine on the root rank stops every rank (two ranks, gloo)
+    add_test(
+      NAME test_combine_root_throw
+      COMMAND ${Python3_EXECUTABLE}
+              ${CMAKE_CURRENT_SOURCE_DIR}/run_combine_root_throw.py
+              --build-dir ${CMAKE_BINARY_DIR}
+              --build-type release
+    )
+    set_tests_properties(test_combine_root_throw PROPERTIES
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/tests
+      TIMEOUT 300
+      SKIP_RETURN_CODE 125
+      LABELS "output;examples"
     )
 
     set(restart_tests

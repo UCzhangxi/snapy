@@ -74,10 +74,10 @@ class ConstGravityImpl : public torch::nn::Cloneable<ConstGravityImpl> {
   }
   void reset() override {}
 
-  torch::Tensor forward_split(torch::Tensor du, torch::Tensor w, double dt,
+  torch::Tensor forward_split(torch::Tensor du, torch::Tensor w, StepDt dt,
                               torch::Tensor rho1);
   torch::Tensor forward(torch::Tensor du, torch::Tensor w, torch::Tensor temp,
-                        double dt);
+                        StepDt dt);
 };
 TORCH_MODULE(ConstGravity);
 
@@ -221,8 +221,8 @@ class DiffusionImpl : public SourceModule<DiffusionImpl, DiffusionOptions> {
   void reset() override;
   void add(torch::Tensor du, StageState const& s) override;
   double max_time_step(StageState const& s) const override;
-  //! cubed sphere: the energy row of the diffusion face fluxes goes to the
-  //! register as "diffusion" (A.rst 3.7); the momentum rows stay in add()
+  //! the energy row of the diffusion face fluxes goes to the register as
+  //! "diffusion" (A.rst 3.7); the momentum rows stay in add()
   void post_fluxes(FluxRegister& reg, StageState const& s) override;
   //! the cubed-sphere face fluxes (rows IDN..IPR, momentum in Cartesian
   //! channels, seams shared), as post_fluxes and add() build them; G9b
@@ -245,9 +245,10 @@ class DiffusionImpl : public SourceModule<DiffusionImpl, DiffusionOptions> {
   //! the cubed-sphere face fluxes (rows IDN..IPR), seams shared
   std::array<torch::Tensor, 3> cubed_sphere_fluxes(torch::Tensor w,
                                                    torch::Tensor temp);
-  //! this stage's fluxes whose energy rows post_fluxes put in the register;
-  //! add() takes their other rows and clears them
-  std::array<torch::Tensor, 3> posted_;
+  //! the face fluxes of the other grids (w's rows; undefined in an inactive
+  //! direction)
+  std::array<torch::Tensor, 3> cartesian_fluxes(torch::Tensor w,
+                                                torch::Tensor temp);
   torch::Tensor split_initial_;
   //! the x1 profiles in w's device and dtype, so a profile of ones changes
   //! no bit

@@ -79,7 +79,7 @@ void PNetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   int nc[3] = {fr.ie - fr.is + 1, fr.je - fr.js + 1, fr.ke - fr.ks + 1};
   int nf[3];
   for (int d = 0; d < 3; ++d) nf[d] = nc[d] > 1 ? nc[d] + 1 : nc[d];
-  auto [level, lx1, lx2, lx3, nb1, nb2, nb3, face] =
+  auto [level, lx1, lx2, lx3, nb1, nb2, nb3, face, pcol, prow] =
       output_block_location(layout, layout->options->rank());
   int nb[3] = {nb1, nb2, nb3};
 
@@ -101,21 +101,18 @@ void PNetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   put_text(ifile, ivt, "long_name", "time");
   std::string const hunits =
       horizontal_axis_units(pmb->options->coord()->type());
-  char const* axis[3] = {"Z", "X", "Y"};
   for (int d = 0; d < 3; ++d) {
-    std::string x = "x" + std::to_string(d + 1), units = d ? hunits : "m";
+    auto t = axis_text(d, hunits);
     SNAP_PINC_CHECK(
-        ncmpix_def_var(ifile, x.c_str(), NC_FLOAT, 1, &idx[d], &ivx[d]));
-    put_text(ifile, ivx[d], "axis", axis[d]);
-    put_text(ifile, ivx[d], "units", units);
-    put_text(ifile, ivx[d], "long_name",
-             std::string(axis[d]) + "-coordinate at cell center");
+        ncmpix_def_var(ifile, t.name.c_str(), NC_FLOAT, 1, &idx[d], &ivx[d]));
+    put_text(ifile, ivx[d], "axis", t.axis);
+    put_text(ifile, ivx[d], "units", t.units);
+    put_text(ifile, ivx[d], "long_name", t.center);
     if (nc[d] > 1) {
-      SNAP_PINC_CHECK(ncmpix_def_var(ifile, (x + "f").c_str(), NC_FLOAT, 1,
+      SNAP_PINC_CHECK(ncmpix_def_var(ifile, (t.name + "f").c_str(), NC_FLOAT, 1,
                                      &idxf[d], &ivxf[d]));
-      put_text(ifile, ivxf[d], "units", units);
-      put_text(ifile, ivxf[d], "long_name",
-               std::string(axis[d]) + "-coordinate at cell face");
+      put_text(ifile, ivxf[d], "units", t.units);
+      put_text(ifile, ivxf[d], "long_name", t.face);
     }
   }
   int nbtotal = nb1 * nb2 * nb3;
@@ -126,17 +123,12 @@ void PNetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
   auto pmeta = MetadataTable::GetInstance();
   std::vector<int> var_ids;
   for (auto const& f : fr.fields) {
-    char k = fr.kind(f);
-    int ax[4] = {idt, k == '1' ? idxf[0] : idx[0], k == '3' ? idxf[2] : idx[2],
-                 k == '2' ? idxf[1] : idx[1]};
-    int ax_p[3] = {idt, idx[2], idx[1]}, ax_f[2] = {idt, idxf[0]};
-    int ndim = k == 'z' ? 2 : k == 'p' ? 3 : k == 'f' ? 2 : k == 's' ? 1 : 4;
-    int* dims = k == 'p' ? ax_p : k == 'f' ? ax_f : ax;
+    auto [ndim, dims] = field_dims(fr.kind(f), idt, idx, idxf);
     for (auto const& raw_name : f.names()) {
       int iv;
       SNAP_PINC_CHECK(ncmpix_def_var(ifile,
                                      sanitize_netcdf_name(raw_name).c_str(),
-                                     NC_FLOAT, ndim, dims, &iv));
+                                     NC_FLOAT, ndim, dims.data(), &iv));
       auto attr = pmeta->GetUnits(raw_name);
       if (attr != "") put_text(ifile, iv, "units", attr);
       attr = pmeta->GetLongName(raw_name);
@@ -157,7 +149,7 @@ void PNetcdfSink::write(MeshBlockImpl* pmb, Frame const& fr,
                           static_cast<PINC_Offset>(nc[1]) * lx2};
   PINC_Offset off[3] = {start[1], start[3], start[2]};
   int lo[3] = {fr.is, fr.js, fr.ks};
-  double shift[3] = {0., (face % 3) * M_PI / 2., (face / 3) * M_PI / 2.};
+  double shift[3] = {0., pcol * M_PI / 2., prow * M_PI / 2.};
   auto pc = pmb->pcoord;
   torch::Tensor cv[3] = {pc->x1v, pc->x2v, pc->x3v};
   torch::Tensor cf[3] = {pc->x1f, pc->x2f, pc->x3f};

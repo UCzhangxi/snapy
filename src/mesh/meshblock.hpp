@@ -3,7 +3,9 @@
 // C/C++
 #include <array>
 #include <map>
+#include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 // torch
@@ -88,10 +90,12 @@ struct MeshBlockOptionsImpl {
   //! verbose
   ADD_ARG(bool, verbose) = false;
 
-  //! integration.execution: eager (default) or cuda-graph; with
-  //! integration.execution-strict a case that cannot be captured is refused
-  //! (V3 X3; both names provisional, DESIGN.rst "pending Cheng's naming")
-  ADD_ARG(std::string, execution) = "eager";
+  //! integration.execution: auto (default), eager or cuda-graph. auto runs
+  //! cuda-graph when the block is on a CUDA device and eager otherwise; a
+  //! segment that cannot be captured runs eager and its reason is logged.
+  //! With integration.execution-strict a case that cannot be captured is
+  //! refused instead (auto then means cuda-graph)
+  ADD_ARG(std::string, execution) = "auto";
   ADD_ARG(bool, execution_strict) = false;
 
   //! output
@@ -139,6 +143,7 @@ struct PartOptions {
 
 class StageExecutor;
 class ChemistrySource;
+struct SeamRotationCache;
 
 class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   friend class StageExecutor;
@@ -168,6 +173,17 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! Exchange buffers owned by the MeshBlock so Layout stays stateless.
   mutable std::vector<std::vector<torch::Tensor>> send_bufs, recv_bufs;
   mutable std::map<std::string, ExchangeBufferSet> exchange_buffer_cache;
+  //! V3 B3: fixed buffers of the block-to-block messages that are not a ghost
+  //! exchange (the cubed-sphere panel seams' register rows), keyed (tag,
+  //! side, 0 send / 1 receive): a captured segment's graphs read and write
+  //! them across a cut, so they outlive the capture
+  mutable std::map<std::tuple<int, int, int>, torch::Tensor> board_buffers;
+  //! the buffer at `key`, reallocated only when it does not match `like`
+  torch::Tensor board_buffer(std::tuple<int, int, int> key,
+                             torch::Tensor const& like) const;
+  //! the panel seams' grid-only rotation operands (seam_register.hpp), built
+  //! at the first reconcile and rebuilt only when the grid tensors change
+  mutable std::shared_ptr<SeamRotationCache> seam_rotation_cache;
 
   //! submodules
   harp::Integrator pintg = nullptr;
@@ -176,7 +192,7 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   Hydro phydro = nullptr;
   Scalar pscalar = nullptr;
 
-  //! dtypes per quantity, built in reset() from dynamics.precision
+  //! dtypes per quantity for the block's device, built in reset() and to()
   PrecisionPolicy policy;
 
   //! counts the state store's address changes (reset, to, restart, adopt)
@@ -224,7 +240,21 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
 
   //! advance the variables by one stage of the integrator
   void forward(Variables& vars, double dt, int stage);
+  //! the stage without its entry exchange: the executor's schedule, eagerly
   void advance_local(Variables& vars, double dt, int stage);
+  //! the stage's ops, which the executor's schedule runs in this order (A3a,
+  //! A3b): the tendencies (begin, hydro, scalar, native dry carry), the user
+  //! stage forcings (species clip, user dry carry), the combine (end_stage,
+  //! RK combine, limiter, scalar combine, solid fill), the last stage's
+  //! saturation adjustment and chemistry step, the physical boundaries. Each
+  //! takes the StepDt; one that needs the host dt reads dt.value(), which
+  //! throws on the device dt of a capture.
+  void stage_advance(Variables& vars, StepDt dt, int stage);
+  void stage_forcing(Variables& vars, StepDt dt, int stage);
+  void stage_combine(Variables& vars, StepDt dt, int stage);
+  void stage_saturation(Variables& vars, StepDt dt, int stage);
+  void stage_chemistry(Variables& vars, StepDt dt, int stage);
+  void stage_boundaries(Variables& vars, StepDt dt, int stage);
 
   //! V3 S-K4 (K.rst 3.6): the chemistry step after the last stage, from a
   //! by-value copy of the reaction options; one adapter for this block,
@@ -240,6 +270,10 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   Capability execution_capability(Variables const& vars) const;
   //! an option or prescribed-mask change a captured stage depends on
   void bump_config_generation();
+  //! the executor that runs this block's stages: its own, or its Mesh's
+  std::shared_ptr<StageExecutor> executor() const { return _executor; }
+  //! a Mesh hands its blocks its executor; this block is its index-th block
+  void use_executor(std::shared_ptr<StageExecutor> executor, int index);
 
   //! build the anomaly reference (hydro.ref) from the initial hydro_w;
   //! called by finalize_initialization and by a restart without one
@@ -285,15 +319,14 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   int check_redo(Variables& vars);
 
   //! this block's retry causes (one host read; no reduction)
-  std::array<bool, 7> local_redo_flags(Variables const& vars);
+  std::array<bool, 6> local_redo_flags(Variables const& vars);
   //! Device flags (six causes plus vapor/capacity failure latches), folded
   //! into the retry causes by read_redo_flags; built without a host read.
-  //! Drains the saturation-failure count like saturation_failures()
+  //! Drains kintera's saturation-failure count
   torch::Tensor local_redo_flag_tensor(Variables const& vars);
   //! one device-to-host read of a local_redo_flag_tensor (or their max):
-  //! slots 0-5 are causes 0-5, slots 6-7 cause 2, slot 8 (diffusion.radial,
-  //! reserved in V3) cause 6
-  static std::array<bool, 7> read_redo_flags(torch::Tensor const& flags);
+  //! slots 0-5 are causes 0-5, slots 6-7 cause 2
+  static std::array<bool, 6> read_redo_flags(torch::Tensor const& flags);
   //! the one retry decision for a bare block or a Mesh's blocks: their flag
   //! tensors stacked, amax, one host read, one MAX allreduce; the causes bits
   static int decide_retry(std::vector<MeshBlockImpl*> const& blocks,
@@ -301,10 +334,6 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
 
   //! the EOS's kintera ThermoY (hydro.eos.thermo), or null
   std::shared_ptr<kintera::ThermoYImpl> thermo() const;
-
-  //! drains kintera's count of cells whose saturation adjustment failed since
-  //! the last call (also called at step start); 0 without a ThermoY
-  int64_t saturation_failures();
 
   //! roll back (causes != 0: 1 floor, 2 clamp, 4 limiter, 8 nan,
   //! 16 saturation) or accept it
@@ -315,6 +344,7 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   double _init_from_restart(Variables& vars, std::string fname);
 
  private:
+  void _reset_policy(torch::Device device);
   //! one communication round; `exchange` splits a subdivided cubed-sphere
   //! sync into two of these
   void _exchange_once(Variables& vars, SyncOptions const& opts) const;
@@ -331,19 +361,41 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   //! K.rst 3.5: the ThermoY prepared for the interior shape (idempotent) and
   //! _active_set0 made for it; at stage 0 and before a graph warm-up
   void prepare_thermo(torch::Tensor const& hydro_u);
+  //! the same from the state's device, dtype and shape (an Op's prepare)
+  void prepare_thermo(torch::Device device, torch::Dtype dtype,
+                      at::IntArrayRef shape);
 
   //! distribution layout
   Layout _playout;
 
   //! hydro_u, scalar_s, scalar_r and the RK backups in fixed storage
   StateStore _state;
+  //! V3 S4: the stage's prescribed-wall bookings of the hydro and
+  //! scalar registers, flushed once per stage in stage_combine
+  std::shared_ptr<WallBatch> _wall_batch;
 
   //! registers the flux register's tensors in _state (a moved one bumps
   //! the store generation)
   void register_flux_storage();
+  //! moves the monitor's amounts to the register's device (a synchronizing
+  //! copy, as begin_step's; the executor's sync-exempt prepare step)
+  void place_flux_storage();
 
-  //! runs each stage of forward() eagerly or as a captured graph (X3)
+  //! runs each stage of forward() eagerly or as a captured graph (X3); a
+  //! Mesh's when the block is one of its blocks (B), else the block's own
   std::shared_ptr<StageExecutor> _executor;
+  int _executor_index = 0;  //!< this block in _executor
+  //! the stage's hydro and scalar tendencies (A3b), fixed storage registered
+  //! as stage.du / stage.ds: written by stage_advance, read by stage_forcing
+  //! and stage_combine, possibly across a segment boundary
+  torch::Tensor _stage_du, _stage_ds;
+  //! the EfStatus meters at the attempt's start (efs0.<slot>), for a redo
+  std::array<torch::Tensor, EfStatus::kNumSlots> _meters0;
+  void keep_stage_tendency(char const* name, torch::Tensor& slot,
+                           torch::Tensor const& value);
+  void carry_dry_source(Variables& vars, int stage, torch::Tensor const& dry,
+                        torch::Tensor const& scalar_base);
+  bool _mesh_executor = false;  //!< _executor is a Mesh's: reset keeps it
 };
 
 TORCH_MODULE(MeshBlock);

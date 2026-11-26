@@ -25,12 +25,33 @@ enum class FaceKind : uint8_t {
   custom,    // any other boundary function, or one with no recorded name
 };
 
-//! The x1 transport of a block's within-stage exchanges (V3 lane S, step (3),
-//! phase 1: transport only). Exchange moves the bytes of the hand-written x1
-//! relays that hydro used to carry itself; what a received value means (a
-//! ghost row, the mean of a seam flux, a running anchor) stays with the
-//! caller. A same-process neighbour goes through a board, a remote one through
-//! the process group, as before. Holding an Exchange costs one pointer.
+//! The message tags of the within-stage exchanges, in one place so that no
+//! two collide. Every exchange adds the receiver's side to tag: an x1 relay
+//! (x1_rows, x1_seam_slab) has the sides 0 (below) and 1 (above), so its up
+//! message carries tag and its down message tag + 1; a face-slab or panel
+//! seam exchange adds the receiver's side L, R, B, T (0..3).
+enum ExchangeTag : int {
+  kTagWbRef = 0x7715,          // recon x1_reference: the reference anchor
+  kTagWbGhost = 0x7717,        // recon x1_reference: its ghost rows
+  kTagSeamFlux = 0x7720,       // hydro: x1 seam flux slab
+  kTagFacePressure = 0x7722,   // hydro: x1 face-pressure ghost faces
+  kTagPlainMeans = 0x7724,     // hydro: x1 plain-mean ghost rows
+  kTagGravityWork = 0x7726,    // hydro: x1 gravity-work density rows
+  kTagPrimGhosts = 0x772a,     // hydro: x1 primitive ghost layers
+  kTagFaceX2 = 0x7730,         // hydro: x2 face states (x1_seam_rows)
+  kTagFaceX3 = 0x7734,         // hydro: x3 face states (x1_seam_rows)
+  kTagScalarCov = 0x7740,      // hydro: scalar covariance, + 4 for x3
+  kTagPanelSeams = 0x7750,     // hydro: reconcile_panel_seams
+  kTagDiffusionSeam = 0x7760,  // diffusion cubed sphere: row 18 face slabs
+};
+
+//! The transport of a block's within-stage exchanges (V3 lane S, step (3),
+//! phase 1: transport only). Exchange moves the bytes; what a received value
+//! means (a ghost row, the mean of a seam flux, a running anchor) stays with
+//! the caller. Every relay, x1 column and x2/x3 seam alike, is a set of
+//! SeamSides moved by seam_exchange: a same-process neighbour goes through a
+//! board, a remote one through the process group. Holding an Exchange costs
+//! one pointer.
 class Exchange {
  public:
   explicit Exchange(MeshBlockImpl const* pmb) : pmb_(pmb) {}
@@ -94,6 +115,30 @@ class Exchange {
                                                     torch::Tensor const& upper,
                                                     int tag,
                                                     bool process_only) const;
+
+  //! one side of a seam exchange: side (L, R, B, T = 0..3) of dim 2 or 3, or
+  //! side 0 (below) or 1 (above) of the x1 column, dim 1; resolve_seam fills
+  //! the peer block, the peer's side and whether the edge runs the other way
+  //! (CS_FACE_EDGES rev, panel seams only; the caller flips along n);
+  //! seam_exchange posts `send` when defined and, when `take`, receives the
+  //! peer's into `recv` (a remote peer: the caller's fixed buffer, or one
+  //! allocated like `send`) or hands over the peer's posted tensor (a
+  //! same-process peer: the same tensor at every replay)
+  struct SeamSide {
+    int dim, side;
+    torch::Tensor send, recv;
+    bool take = true;
+    int peer = -1, peer_side = -1;
+    bool reversed = false;
+  };
+  //! the peer of a side: false when it has none (process_only: a
+  //! same-process peer counts as none)
+  bool resolve_seam(SeamSide& s, bool process_only) const;
+  //! the host part of every seam exchange: post every send (a board or the
+  //! process group, tag + the peer's side), then take every receive (tag +
+  //! this side); all posts before any take, so a cross-direction panel seam
+  //! completes in one call
+  void seam_exchange(std::vector<SeamSide>& sides, int tag) const;
 
   //! the x1 reference anchor relay down the column (row 6): the running
   //! face value from the block above; undefined when the column is not

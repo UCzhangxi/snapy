@@ -7,6 +7,9 @@
 #include <functional>
 #include <regex>
 
+// POSIX
+#include <unistd.h>
+
 // external
 #include <gtest/gtest.h>
 
@@ -142,6 +145,26 @@ boundary-condition:
 )";
 
 using namespace snap;
+
+// the filename reader reads the section it is given, not always dynamics:
+// (audit 1 row R5)
+TEST(RiemannSolverOptions, from_yaml_reads_its_section) {
+  char fname[] = "/tmp/test-riemann-section-XXXXXX";
+  int fd = mkstemp(fname);
+  ASSERT_NE(fd, -1);
+  close(fd);
+  std::ofstream(fname) << "dynamics:\n  riemann-solver: {type: lmars}\n"
+                       << "other:\n  riemann-solver: {type: roe, dir: yz}\n"
+                       << "bad:\n  riemann-solver: {type: roe, typo: 1}\n";
+  auto other = RiemannSolverOptionsImpl::from_yaml(fname, "other");
+  EXPECT_EQ(other->type(), "roe");
+  EXPECT_EQ(other->dir(), "yz");
+  EXPECT_EQ(RiemannSolverOptionsImpl::from_yaml(fname, "dynamics")->type(),
+            "lmars");
+  EXPECT_ANY_THROW(RiemannSolverOptionsImpl::from_yaml(fname, "bad"))
+      << "the key check must look at the section it reads";
+  std::remove(fname);
+}
 
 TEST(RiemannSolver, hllc_writes_face_pressure_output) {
   auto config = std::regex_replace(std::string(small_ideal_gas_config),
@@ -853,18 +876,26 @@ TEST_P(DeviceTest, riemann_events_count_clamped_and_llf_faces) {
     int64_t n1 = std::min<int64_t>(c->iu() + 2, shape[3]) - c->il();
     int64_t n2 = c->ju() + 1 - c->jl(), n3 = c->ku() + 1 - c->kl();
     int64_t interior = n1 * n2 * n3;
+    // the one counting path: the sweep's post of the masks, the monitor's sum
+    auto& mon = block->phydro->flux_register().monitor();
+    char const* const names[] = {"riemann.pstar_clamp", "riemann.llf"};
+    auto ev = [&](int row) {
+      return mon.counters[mon.counter_index(names[row])].item<int64_t>();
+    };
     for (double u : {1., 2000.}) {
       auto flux = torch::zeros(shape, o);
+      mon.begin_step();  // this solve's events alone
       solver->forward(state(-u), state(u), DIM1, flux);
-      auto ev = solver->events.cpu();
+      post_riemann_events(*solver, mon);
+      mon.flush_counts();
       int k = type == "hllc" ? 0 : 1;
       if (u < 10.) {
-        EXPECT_EQ(ev[0].item<int64_t>() + ev[1].item<int64_t>(), 0) << type;
+        EXPECT_EQ(ev(0) + ev(1), 0) << type;
       } else if (type == "hllc") {
-        EXPECT_EQ(ev[0].item<int64_t>(), interior) << type;
+        EXPECT_EQ(ev(0), interior) << type;
       } else {
-        EXPECT_GT(ev[k].item<int64_t>(), 0) << type;
-        EXPECT_LE(ev[k].item<int64_t>(), interior) << type;
+        EXPECT_GT(ev(k), 0) << type;
+        EXPECT_LE(ev(k), interior) << type;
       }
     }
   }

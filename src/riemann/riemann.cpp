@@ -57,14 +57,14 @@ RiemannSolverOptions RiemannSolverOptionsImpl::from_yaml(
   auto config = YAML::LoadFile(filename);
   if (!config[section]) return op;
   if (!config[section]["riemann-solver"]) return op;
-  check_keys(config["dynamics"]["riemann-solver"], "dynamics/riemann-solver",
-             {"type", "dir"});
-  return from_yaml(config["dynamics"]["riemann-solver"]);
+  return from_yaml(config[section]["riemann-solver"],
+                   section + "/riemann-solver");
 }
 
 RiemannSolverOptions RiemannSolverOptionsImpl::from_yaml(
-    YAML::Node const& node) {
+    YAML::Node const& node, std::string const& path) {
   auto op = RiemannSolverOptionsImpl::create();
+  check_keys(node, path, {"type", "dir"});
 
   // without the key: the type of create() (hllc), as for a deck with no
   // riemann-solver block
@@ -115,7 +115,7 @@ void RiemannSolverImpl::reset() {
                           torch::empty({2, nc3, nc2, nc1}, torch::kFloat64));
   } else if (kind == RiemannKind::shallow_roe) {
     auto pcoord = phydro->pmb->pcoord;
-    if (pcoord->options->type() == "gnomonic_equiangle") {
+    if (pcoord->options->type() == "gnomonic-equiangle") {
       TORCH_CHECK(options->dir() == "yz",
                   "ShallowRoeSolver with GnomonicEquiangle coordinate "
                   "only supports options->dir() = 'yz' but got "
@@ -223,7 +223,6 @@ torch::Tensor RiemannSolverImpl::solve(torch::Tensor wl, torch::Tensor wr,
                                        torch::Tensor central) {
   auto pcoord = phydro->pmb->pcoord;
   auto peos = phydro->peos;
-  bool aneos = peos->options->type() == "aneos";
   RiemannParams params;
   torch::Tensor inv_mu_ratio_m1, cv_ratio_m1, u0;
 
@@ -249,24 +248,15 @@ torch::Tensor RiemannSolverImpl::solve(torch::Tensor wl, torch::Tensor wr,
     for (auto [side, w] :
          {std::pair{ILT, wl_total}, std::pair{IRT, wr_total}}) {
       elr[side] = peos->compute("W->I", {w});
-      if (aneos) {
-        clr[side] = peos->compute("W->L", {w});
-        glr[side] = peos->compute("WL->A", {w, clr[side]});
-      } else {
-        glr[side] = peos->compute("W->A", {w});
-        clr[side] = peos->compute("WA->L", {w, glr[side]});
-      }
+      auto [g, cs] = peos->gamma_sound_speed(w);
+      glr[side] = g;
+      clr[side] = cs;
     }
     e = elr, gamma = glr, c = clr;
   } else if (kind == RiemannKind::lmars) {
     for (auto [side, w] : {std::pair{ILT, wl}, std::pair{IRT, wr}}) {
       elr[side] = peos->compute("W->I", {w}) / w[IDN];
-      if (aneos) {
-        clr[side] = peos->compute("W->L", {w});
-        glr[side] = peos->compute("WL->A", {w, clr[side]});
-      } else {
-        glr[side] = peos->compute("W->A", {w});
-      }
+      glr[side] = peos->adiabatic_index(w);
     }
     e = elr, gamma = glr;
   } else if (kind == RiemannKind::roe) {
@@ -274,7 +264,7 @@ torch::Tensor RiemannSolverImpl::solve(torch::Tensor wl, torch::Tensor wr,
     if (params.ideal_moist) {
       auto moist = dynamic_cast<IdealMoistImpl*>(peos.get());
       TORCH_CHECK(moist != nullptr, "[RoeSolver] ideal-moist EOS cast failed");
-      params.nvapor = moist->pthermo->options->vapor_ids().size() - 1;
+      params.nvapor = thermo_vapor_rows(moist->pthermo->options);
       inv_mu_ratio_m1 = moist->inv_mu_ratio_m1.to(wl);
       cv_ratio_m1 = moist->cv_ratio_m1.to(wl);
       u0 = moist->u0.to(wl);
@@ -283,10 +273,8 @@ torch::Tensor RiemannSolverImpl::solve(torch::Tensor wl, torch::Tensor wr,
 
     auto eil = peos->compute("W->I", {wl});
     auto eir = peos->compute("W->I", {wr});
-    auto gammal = peos->compute("W->A", {wl});
-    auto gammar = peos->compute("W->A", {wr});
-    auto cl = peos->compute("WA->L", {wl, gammal});
-    auto cr = peos->compute("WA->L", {wr, gammar});
+    auto [gammal, cl] = peos->gamma_sound_speed(wl);
+    auto [gammar, cr] = peos->gamma_sound_speed(wr);
     e = torch::stack({eil, eir});
     gamma = torch::stack({gammal, gammar});
     c = torch::stack({cl, cr});
@@ -342,15 +330,15 @@ torch::Tensor RiemannSolverImpl::solve(torch::Tensor wl, torch::Tensor wr,
   // the solve's events on the interior faces (C.rst 3.6; R.rst 2.6 names):
   // hllc's contact pressure clamped to zero (to -p0 on the perturbation
   // entry), the face pressure it writes; roe's LLF fallback
-  events = torch::zeros({2}, torch::dtype(torch::kInt64).device(flx.device()));
+  events.clear();
   if (kind == RiemannKind::hllc) {
     auto clamped = reference_pressure.defined()
                        ? face_pressure_out <= -reference_pressure
                        : face_pressure_out <= 0.;
-    events[0].add_(interior_faces(*pcoord, dim, clamped).sum());
+    events.emplace_back(0, interior_faces(*pcoord, dim, clamped));
   }
   if (llf.defined())
-    events[1].add_(interior_faces(*pcoord, dim, llf > 0.).sum());
+    events.emplace_back(1, interior_faces(*pcoord, dim, llf > 0.));
 
   to_global_frame_(*pcoord, dim, flx);
 

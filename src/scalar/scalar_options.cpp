@@ -23,30 +23,24 @@ ScalarOptions ScalarOptionsImpl::from_yaml(std::string const& filename,
              {"verbose", "nvar", "upper-bound", "names", "reconstruct",
               "riemann-solver"});
   op->verbose() = node["verbose"].as<bool>(verbose);
-  op->nvar() = node["nvar"].as<int>(0);
-  op->upper_bound() = node["upper-bound"].as<double>(-1.);
+  op->nvar() = node["nvar"].as<int>(op->nvar());
+  op->upper_bound() = node["upper-bound"].as<double>(op->upper_bound());
   if (node["names"]) {
     op->names() = node["names"].as<std::vector<std::string>>();
     op->nvar() = op->names().size();
   }
 
   if (node["reconstruct"]) {
-    op->recon() = ReconstructOptionsImpl::create();
-    auto recon = node["reconstruct"];
-    check_keys(recon, "scalar/reconstruct", {"shock", "type"});
-    op->recon()->shock() = recon["shock"].as<bool>(false);
-    op->recon()->interp()->type() = recon["type"].as<std::string>("dc");
+    // no scale key: the scalar always reconstructs scale-invariant (Scalar)
+    op->recon() = ReconstructOptionsImpl::from_node(
+        node["reconstruct"], "scalar/reconstruct", {"shock", "type"});
   } else {
     op->recon() = nullptr;
   }
 
-  // op->thermo() = kintera::ThermoOptionsImpl::from_yaml(filename);
-  // op->kinetics() = kintera::KineticsOptionsImpl::from_yaml(filename);
-
   if (node["riemann-solver"]) {
-    check_keys(node["riemann-solver"], "scalar/riemann-solver",
-               {"type", "dir"});
-    op->riemann() = RiemannSolverOptionsImpl::from_yaml(node["riemann-solver"]);
+    op->riemann() = RiemannSolverOptionsImpl::from_yaml(
+        node["riemann-solver"], "scalar/riemann-solver");
   } else {
     op->riemann() = RiemannSolverOptionsImpl::create();
     op->riemann()->type() = "upwind";

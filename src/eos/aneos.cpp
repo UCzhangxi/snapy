@@ -3,6 +3,10 @@
 
 #include <snap/snap.h>
 
+#include <snap/coord/coord_utils.hpp>
+#include <snap/hydro/hydro.hpp>
+#include <snap/mesh/meshblock.hpp>
+
 namespace snap {
 
 void ANEOSImpl::reset() {
@@ -41,18 +45,32 @@ torch::Tensor ANEOSImpl::compute(std::string ab,
   }
 }
 
+std::pair<torch::Tensor, torch::Tensor> ANEOSImpl::gamma_sound_speed(
+    torch::Tensor const &w) {
+  auto c = compute("W->L", {w});
+  auto gamma = compute("WL->A", {w, c});
+  return {gamma, c};
+}
+
+torch::Tensor ANEOSImpl::adiabatic_index(torch::Tensor const &w) {
+  return gamma_sound_speed(w).first;
+}
+
+torch::Tensor ANEOSImpl::sound_speed(torch::Tensor const &w) {
+  return compute("W->L", {w});
+}
+
 void ANEOSImpl::_prim2cons(torch::Tensor prim, torch::Tensor &cons) {
   apply_primitive_limiter_(prim);
 
   // den -> den
   cons[IDN] = prim[IDN];
 
-  // vel -> mom
-  auto out = cons.narrow(0, IVX, 3);
-  torch::mul_out(out, prim.narrow(0, IVX, 3), prim[IDN]);
+  // vel -> mom (covariant)
+  _mom_from_vel_(prim, cons);
 
   // KE
-  auto ke = 0.5 * (prim.narrow(0, IVX, 3) * cons.narrow(0, IVX, 3)).sum(0);
+  auto ke = kinetic_energy_(prim, cons.narrow(0, IVX, 3));
 
   // IE
   cons[IPR] = _prim2intEng(prim);
@@ -70,9 +88,10 @@ void ANEOSImpl::_cons2prim(torch::Tensor cons, torch::Tensor &prim) {
   // mom -> vel
   auto out = prim.narrow(0, IVX, 3);
   torch::div_out(out, cons.narrow(0, IVX, 3), prim[IDN]);
+  coord_vec_raise_(out, phydro->pmb->pcoord->cosine_cell_kj);
 
   // KE
-  auto ke = 0.5 * (prim.narrow(0, IVX, 3) * cons.narrow(0, IVX, 3)).sum(0);
+  auto ke = kinetic_energy_(prim, cons.narrow(0, IVX, 3));
   auto ie = cons[IPR] - ke;
 
   auto [P, T, L] = pthermo->compute("DU->PTL", {cons[IDN], ie});

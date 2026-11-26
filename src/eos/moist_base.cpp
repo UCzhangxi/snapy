@@ -90,7 +90,7 @@ void MoistEOSImpl::_prim2cons(torch::Tensor prim, torch::Tensor& cons) {
   _mom_from_vel_(prim, cons);
 
   // KE
-  auto ke = 0.5 * (prim.narrow(0, IVX, 3) * cons.narrow(0, IVX, 3)).sum(0);
+  auto ke = kinetic_energy_(prim, cons.narrow(0, IVX, 3));
 
   // IE
   cons[IPR] = _prim2intEng(prim);
@@ -120,19 +120,12 @@ torch::Tensor MoistEOSImpl::_cons2prim_layout(torch::Tensor cons,
 
   coord_vec_raise_(out, pcoord->cosine_cell_kj);
 
-  auto ke = 0.5 * (prim.narrow(0, IVX, 3) * cons.narrow(0, IVX, 3)).sum(0);
+  auto ke = kinetic_energy_(prim, cons.narrow(0, IVX, 3));
   return cons[IPR] - ke;
 }
 
 torch::Tensor MoistEOSImpl::_cons2ke(torch::Tensor cons) {
-  auto pcoord = phydro->pmb->pcoord;
-  int ny = nspecies();
-  auto rho = cons[IDN];
-  if (ny > 0) rho = rho + species_total(cons.narrow(0, ICY, ny));
-
-  auto mom = cons.narrow(0, IVX, 3).clone();
-  coord_vec_raise_(mom, pcoord->cosine_cell_kj);
-  return 0.5 * (cons.narrow(0, IVX, 3) * mom).sum(0) / rho;
+  return cons_kinetic_energy_(cons, cons[IDN], nspecies());
 }
 
 }  // namespace snap

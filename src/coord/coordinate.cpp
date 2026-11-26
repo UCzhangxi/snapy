@@ -10,15 +10,19 @@
 // snap
 #include <snap/snap.h>
 
-#include <snap/input/check_keys.hpp>
 #include <snap/layout/layout.hpp>
 #include <snap/mesh/meshblock.hpp>
+#include <snap_options/coord_rows.hpp>
 
 #include "coordinate.hpp"
 #include "gnomonic_equiangle.hpp"
 #include "spherical_polar.hpp"
+#include "x1_centroid.hpp"
 
 namespace snap {
+
+//! floor of a length or spacing that is divided by (derivative, curl)
+constexpr double kTinyLength = 1.e-30;
 
 torch::Tensor derivative(torch::Tensor value, torch::Tensor distance, int dim) {
   auto grad = torch::zeros_like(value);
@@ -34,7 +38,7 @@ torch::Tensor derivative(torch::Tensor value, torch::Tensor distance, int dim) {
   lo[dim] = 0;
   hi[dim] = 1;
   grad.index_put_(dst, (value.index(hi) - value.index(lo)) /
-                           distance.index(hi).clamp_min(1.e-30));
+                           distance.index(hi).clamp_min(kTinyLength));
 
   if (n > 2) {
     dst[dim] = torch::indexing::Slice(1, n - 1);
@@ -46,15 +50,15 @@ torch::Tensor derivative(torch::Tensor value, torch::Tensor distance, int dim) {
     d_lo[dim] = torch::indexing::Slice(1, n - 1);
     d_hi[dim] = torch::indexing::Slice(2, n);
     auto denom = distance.index(d_lo) + distance.index(d_hi);
-    grad.index_put_(
-        dst, (value.index(hi) - value.index(lo)) / denom.clamp_min(1.e-30));
+    grad.index_put_(dst, (value.index(hi) - value.index(lo)) /
+                             denom.clamp_min(kTinyLength));
   }
 
   dst[dim] = n - 1;
   lo[dim] = n - 2;
   hi[dim] = n - 1;
   grad.index_put_(dst, (value.index(hi) - value.index(lo)) /
-                           distance.index(hi).clamp_min(1.e-30));
+                           distance.index(hi).clamp_min(kTinyLength));
 
   return grad;
 }
@@ -63,48 +67,16 @@ CoordinateOptions CoordinateOptionsImpl::from_yaml(
     std::string const& filename) {
   auto op = CoordinateOptionsImpl::create();
 
+  // the rows of src/options/coord.yaml: key checks, defaults, the _pi
+  // aliases and the x1f/x1rat checks. The grid rules stay here.
   auto config = YAML::LoadFile(filename);
+  auto g = GeometryRows::read(config);
+  if (!g.present()) return op;  // return default options
   auto node = config["geometry"];
-  if (!node) return op;  // return default options
 
-  check_keys(node, "geometry", {"type", "bounds", "cells", "x1f"});
-  op->type(node["type"].as<std::string>("cartesian"));
-
-  double x1min = 0, x2min = 0, x3min = 0, x1max = 1, x2max = 1, x3max = 1;
-
-  if (node["bounds"]) {
-    check_keys(node["bounds"], "geometry/bounds",
-               {"x1min", "x1max", "x2min", "x2max", "x3min", "x3max",
-                "x2min_pi", "x2max_pi", "x3min_pi", "x3max_pi"});
-    x1min = node["bounds"]["x1min"].as<double>(0.0);
-
-    if (node["bounds"]["x2min_pi"]) {
-      x2min = node["bounds"]["x2min_pi"].as<double>() * M_PI;
-    } else {
-      x2min = node["bounds"]["x2min"].as<double>(0.0);
-    }
-
-    if (node["bounds"]["x3min_pi"]) {
-      x3min = node["bounds"]["x3min_pi"].as<double>() * M_PI;
-    } else {
-      x3min = node["bounds"]["x3min"].as<double>(0.0);
-    }
-
-    x1max = node["bounds"]["x1max"].as<double>(1.0);
-
-    if (node["bounds"]["x2max_pi"]) {
-      x2max = node["bounds"]["x2max_pi"].as<double>() * M_PI;
-    } else {
-      x2max = node["bounds"]["x2max"].as<double>(1.0);
-    }
-
-    if (node["bounds"]["x3max_pi"]) {
-      x3max = node["bounds"]["x3max_pi"].as<double>() * M_PI;
-    } else {
-      x3max = node["bounds"]["x3max"].as<double>(1.0);
-    }
-  }
-
+  op->type(g.type());
+  double x1min = g.x1min(), x2min = g.x2min(), x3min = g.x3min();
+  double x1max = g.x1max(), x2max = g.x2max(), x3max = g.x3max();
   op->global_x1min() = x1min;
   op->global_x2min() = x2min;
   op->global_x3min() = x3min;
@@ -116,40 +88,22 @@ CoordinateOptions CoordinateOptionsImpl::from_yaml(
   // it. The block must be given those bounds too, or ixN() offsets it out of
   // its own one-cell face array.
   if (!node["cells"]) {
-    TORCH_CHECK(!node["x1f"], "geometry/x1f needs geometry/cells/nx1");
     op->x1min() = x1min, op->x1max() = x1max, op->global_nx1() = 1;
     op->x2min() = x2min, op->x2max() = x2max, op->global_nx2() = 1;
     op->x3min() = x3min, op->x3max() = x3max, op->global_nx3() = 1;
     return op;
   }
 
-  check_keys(node["cells"], "geometry/cells",
-             {"nx1", "nx2", "nx3", "nghost", "interp_order", "x1rat"});
-  op->global_nx1() = node["cells"]["nx1"].as<int>(1);
-  op->global_nx2() = node["cells"]["nx2"].as<int>(1);
-  op->global_nx3() = node["cells"]["nx3"].as<int>(1);
+  op->global_nx1() = g.nx1();
+  op->global_nx2() = g.nx2();
+  op->global_nx3() = g.nx3();
 
-  auto x1rat = node["cells"]["x1rat"];
-  auto x1f = node["x1f"];
-  TORCH_CHECK(!(x1rat && x1f),
-              "geometry: give cells/x1rat or x1f, not both (#280)");
   int gnx1 = op->global_nx1();
   std::vector<double> faces;
-  if (x1f) {
-    faces = x1f.as<std::vector<double>>();
-    TORCH_CHECK(static_cast<int>(faces.size()) == gnx1 + 1, "geometry/x1f has ",
-                faces.size(), " faces; cells/nx1 = ", gnx1, " needs ",
-                gnx1 + 1);
-    auto bounds = node["bounds"];
-    TORCH_CHECK(!(bounds && bounds["x1min"]) || faces.front() == x1min,
-                "geometry/x1f starts at ", faces.front(),
-                " but bounds/x1min = ", x1min);
-    TORCH_CHECK(!(bounds && bounds["x1max"]) || faces.back() == x1max,
-                "geometry/x1f ends at ", faces.back(),
-                " but bounds/x1max = ", x1max);
-  } else if (x1rat) {
-    double q = x1rat.as<double>();
-    TORCH_CHECK(q > 0., "geometry/cells/x1rat must be > 0, got ", q);
+  if (g.x1f()) {
+    faces = *g.x1f();
+  } else if (g.x1rat()) {
+    double q = *g.x1rat();
     if (q != 1.) {  // q = 1 is the uniform grid: keep today's path
       double lq = std::log(q), den = std::expm1(gnx1 * lq);
       for (int k = 0; k < gnx1; ++k)
@@ -183,11 +137,11 @@ CoordinateOptions CoordinateOptionsImpl::from_yaml(
   int rank = playout->options->rank();
   auto [lx2, lx3, lx1] = playout->loc_of(rank);
 
-  if (playout->options->type() == "cubed-sphere") lx1 = 0;
+  if (playout->options->is_cubed_sphere()) lx1 = 0;
 
-  int nb1 = playout->options->pz();
-  int nb2 = playout->options->px();
-  int nb3 = playout->options->py();
+  int nb1 = playout->options->nb(1);
+  int nb2 = playout->options->nb(2);
+  int nb3 = playout->options->nb(3);
 
   if (op->global_nx1() % nb1 != 0) {
     TORCH_CHECK(
@@ -210,8 +164,8 @@ CoordinateOptions CoordinateOptionsImpl::from_yaml(
         "blocks in x3 direction");
   }
 
-  op->nghost() = node["cells"]["nghost"].as<int>(1);
-  op->interp_order() = node["cells"]["interp_order"].as<int>(2);
+  op->nghost() = g.nghost();
+  op->interp_order() = g.interp_order();
   op->repartition(layout);
 
   TORCH_CHECK(
@@ -343,11 +297,11 @@ void CoordinateOptionsImpl::repartition(LayoutOptions const& layout) {
   int rank = layout->rank();
   auto [lx2, lx3, lx1] = playout->loc_of(rank);
 
-  if (layout->type() == "cubed-sphere") lx1 = 0;
+  if (layout->is_cubed_sphere()) lx1 = 0;
 
-  int nb1 = layout->pz();
-  int nb2 = layout->px();
-  int nb3 = layout->py();
+  int nb1 = layout->nb(1);
+  int nb2 = layout->nb(2);
+  int nb3 = layout->nb(3);
 
   if (stretched_x1()) {  // equal cell counts, bounds read off the faces
     TORCH_CHECK(nb1 > 0 && global_nx1() % nb1 == 0,
@@ -433,6 +387,24 @@ torch::Tensor CoordinateOptionsImpl::global_x1f() const {
   return torch::cat({lo, f, hi});
 }
 
+std::array<torch::Tensor, 3> CoordinateImpl::uniform_axis_metrics_(
+    int axis) const {
+  auto const& op = options;
+  auto const& xf = axis == 2 ? x2f : x3f;
+  int n = axis == 2 ? op->nc2() : op->nc3();
+  double dx = axis == 2 ? op->dx2() : op->dx3();
+  return {torch::ones(n, torch::kFloat64) * dx,
+          0.5 * (xf.slice(0, 0, n) + xf.slice(0, 1, n + 1)),
+          torch::ones(n, torch::kFloat64) * dx};
+}
+
+std::array<torch::Tensor, 3> CoordinateImpl::zero_cosines_() const {
+  auto const& op = options;
+  return {torch::zeros({op->nc3(), op->nc2(), 1}, torch::kFloat64),
+          torch::zeros({op->nc3(), op->nc2() + 1, 1}, torch::kFloat64),
+          torch::zeros({op->nc3() + 1, op->nc2(), 1}, torch::kFloat64)};
+}
+
 std::array<torch::Tensor, 3> CoordinateImpl::x1_metrics_() const {
   auto const& op = options;
   int n = op->nc1();
@@ -469,58 +441,31 @@ torch::Tensor CoordinateImpl::block_faces_(double gmin, double gmax, int gnx,
 }
 
 void CoordinateImpl::print(std::ostream& stream) const {
-  stream << "x1f = [";
-  for (int i = 0; i < x1f.size(0); ++i) {
-    stream << x1f[i].item<float>();
-    if (i < x1f.size(0) - 1) {
-      stream << ", ";
+  auto put = [&](char const* name, torch::Tensor const& x) {
+    stream << name << " = [";
+    for (int i = 0; i < x.size(0); ++i) {
+      stream << x[i].item<float>();
+      if (i < x.size(0) - 1) {
+        stream << ", ";
+      }
     }
-  }
-  stream << "]" << std::endl << "x1v = [";
-  for (int i = 0; i < x1v.size(0); ++i) {
-    stream << x1v[i].item<float>();
-    if (i < x1v.size(0) - 1) {
-      stream << ", ";
-    }
-  }
-  stream << "]" << std::endl;
-
-  stream << "x2f = [";
-  for (int i = 0; i < x2f.size(0); ++i) {
-    stream << x2f[i].item<float>();
-    if (i < x2f.size(0) - 1) {
-      stream << ", ";
-    }
-  }
-  stream << "]" << std::endl << "x2v = [";
-  for (int i = 0; i < x2v.size(0); ++i) {
-    stream << x2v[i].item<float>();
-    if (i < x2v.size(0) - 1) {
-      stream << ", ";
-    }
-  }
-  stream << "]" << std::endl;
-
-  stream << "x3f = [";
-  for (int i = 0; i < x3f.size(0); ++i) {
-    stream << x3f[i].item<float>();
-    if (i < x3f.size(0) - 1) {
-      stream << ", ";
-    }
-  }
-  stream << "]" << std::endl << "x3v = [";
-  for (int i = 0; i < x3v.size(0); ++i) {
-    stream << x3v[i].item<float>();
-    if (i < x3v.size(0) - 1) {
-      stream << ", ";
-    }
-  }
-  stream << "]" << std::endl;
+    stream << "]" << std::endl;
+  };
+  put("x1f", x1f);
+  put("x1v", x1v);
+  put("x2f", x2f);
+  put("x2v", x2v);
+  put("x3f", x3f);
+  put("x3v", x3v);
 }
 
-torch::Tensor CoordinateImpl::x1_row_faces(std::string const& interp) const {
+torch::Tensor CoordinateImpl::x1_row_faces(std::string const& interp,
+                                           bool plain_means) const {
   auto const& t = options->type();
-  bool radial = (t == "spherical-polar" || t == "gnomonic-equiangle") &&
+  bool plain =
+      plain_means && x1_centroid_exact_enabled() && t == "spherical-polar";
+  bool radial = !plain &&
+                (t == "spherical-polar" || t == "gnomonic-equiangle") &&
                 options->nx1() > 1;
   if (!radial || (interp != "weno5" && interp != "cp5"))
     return options->stretched_x1() ? x1f : torch::Tensor();
@@ -615,18 +560,25 @@ torch::Tensor CoordinateImpl::face_moment2_x1() const {
   return dx1f.square() / 12.;
 }
 
-torch::Tensor CoordinateImpl::radial_face_moment2_(torch::Tensor const& x1f,
-                                                   int nc1) {
+std::array<torch::Tensor, 4> CoordinateImpl::radial_cells_(
+    torch::Tensor const& x1f, int nc1) {
   auto rm = x1f.slice(0, 0, nc1);
   auto rp = x1f.slice(0, 1, nc1 + 1);
   auto h = rp - rm;
   auto rbar = 0.5 * (rm + rp);
+  return {rm, rp, h, rbar};
+}
+
+torch::Tensor CoordinateImpl::radial_face_moment2_(torch::Tensor const& x1f,
+                                                   int nc1) {
+  auto [rm, rp, h, rbar] = radial_cells_(x1f, nc1);
   // rbar <= h/2 is a degenerate face (an x1 ghost that reaches r <= 0): the
   // r-weighted moment is not defined there, and neither is the rest of the
   // metric. Drop the correction rather than divide by a vanishing radius.
-  auto frac = torch::where(
-      rbar > 0.5 * h, h.square() / (12. * rbar.square().clamp_min(1.e-300)),
-      torch::zeros_like(h));
+  auto frac =
+      torch::where(radial_regular_(h, rbar),
+                   h.square() / (12. * rbar.square().clamp_min(1.e-300)),
+                   torch::zeros_like(h));
   return h.square() / 12. * (1. - frac);
 }
 
@@ -638,10 +590,7 @@ torch::Tensor CoordinateImpl::face_centroid_shift_x1() const {
 
 torch::Tensor CoordinateImpl::radial_face_centroid_shift_(
     torch::Tensor const& x1f, int nc1) {
-  auto rm = x1f.slice(0, 0, nc1);
-  auto rp = x1f.slice(0, 1, nc1 + 1);
-  auto h = rp - rm;
-  auto rbar = 0.5 * (rm + rp);
+  auto [rm, rp, h, rbar] = radial_cells_(x1f, nc1);
   // r_v - r_c: the VOLUME centroid (weight r^2 -- where a cell average lives)
   // minus the AREA centroid (weight r -- where the face average lives):
   //   r_v = (3/4)(rp^4-rm^4)/(rp^3-rm^3)
@@ -656,7 +605,14 @@ torch::Tensor CoordinateImpl::radial_face_centroid_shift_(
   auto shift = h2 * (twelve_r2 - h2) /
                (12. * rbar * (twelve_r2 + h2)).clamp_min(1.e-300);
   // degenerate face (an x1 ghost reaching r <= 0): no meaningful centroid
-  return torch::where(rbar > 0.5 * h, shift, torch::zeros_like(h));
+  return torch::where(radial_regular_(h, rbar), shift, torch::zeros_like(h));
+}
+
+torch::Tensor CoordinateImpl::x1_face_difference(
+    torch::Tensor const& flux1, torch::Tensor const& area1) const {
+  int si = il(), ei = iu() + 1;
+  return area1.slice(-1, si + 1, ei + 1) * flux1.slice(-1, si + 1, ei + 1) -
+         area1.slice(-1, si, ei) * flux1.slice(-1, si, ei);
 }
 
 torch::Tensor CoordinateImpl::divergence(torch::Tensor flux1,
@@ -684,12 +640,9 @@ torch::Tensor CoordinateImpl::divergence(torch::Tensor flux1,
   int sk = kl();
   int ek = ku() + 1;
 
-  if (flux1.defined() > 0) {
-    auto area = area1_cast_.get(face_area1(), dflx);
+  if (flux1.defined() > 0)
     dflx.slice(DIM1, si, ei) +=
-        area.slice(2, si + 1, ei + 1) * flux1.slice(DIM1, si + 1, ei + 1) -
-        area.slice(2, si, ei) * flux1.slice(DIM1, si, ei);
-  }
+        x1_face_difference(flux1, area1_cast_.get(face_area1(), dflx));
 
   if (flux2.defined() > 0) {
     auto area = area2_cast_.get(face_area2(), dflx);
@@ -728,12 +681,12 @@ torch::Tensor CoordinateImpl::curl(torch::Tensor velocity) const {
   auto dl2 = center_width2().to(device).to(dtype);
   auto dl3 = center_width3().to(device).to(dtype);
 
-  auto curl1 = derivative(v3 * dl3, dx2, DIM2) / dl3.clamp_min(1.e-30) -
-               derivative(v2 * dl2, dx3, DIM3) / dl2.clamp_min(1.e-30);
-  auto curl2 = derivative(v1 * dl1, dx3, DIM3) / dl1.clamp_min(1.e-30) -
-               derivative(v3 * dl3, dx1, DIM1) / dl3.clamp_min(1.e-30);
-  auto curl3 = derivative(v2 * dl2, dx1, DIM1) / dl2.clamp_min(1.e-30) -
-               derivative(v1 * dl1, dx2, DIM2) / dl1.clamp_min(1.e-30);
+  auto curl1 = derivative(v3 * dl3, dx2, DIM2) / dl3.clamp_min(kTinyLength) -
+               derivative(v2 * dl2, dx3, DIM3) / dl2.clamp_min(kTinyLength);
+  auto curl2 = derivative(v1 * dl1, dx3, DIM3) / dl1.clamp_min(kTinyLength) -
+               derivative(v3 * dl3, dx1, DIM1) / dl3.clamp_min(kTinyLength);
+  auto curl3 = derivative(v2 * dl2, dx1, DIM1) / dl2.clamp_min(kTinyLength) -
+               derivative(v1 * dl1, dx2, DIM2) / dl1.clamp_min(kTinyLength);
 
   return torch::stack({curl1, curl2, curl3});
 }
@@ -768,7 +721,7 @@ void CoordinateImpl::boundary_velocity_(torch::Tensor const& w, int axis,
                                         bool inverse) const {
   TORCH_CHECK(axis >= 1 && axis <= 3, "Invalid boundary axis");
   auto c = cosine_cell_kj;
-  auto s = (1. - c.square()).sqrt();
+  auto s = sine_cell_kj;
   // g22 = g33 = 1 and g23 = c, so |v|^2 = vx^2 + vy^2 + vz^2 + 2*c*vy*vz.
   // On x2/x3 the unmixed tangential component has unit scale, not s.
   // The only nonorthogonal metric is g23. Velocities in orthogonal

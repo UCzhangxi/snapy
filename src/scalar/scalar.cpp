@@ -42,8 +42,10 @@ void ScalarImpl::reset() {
   recon->interp() = std::make_shared<InterpOptionsImpl>(*recon->interp());
   recon->interp()->scale() = true;
   precon = ReconstructImpl::create(recon, this);
-  auto x1f =
-      pcoord ? pcoord->x1_row_faces(recon->interp()->type()) : torch::Tensor();
+  // the scalar reconstructs the r^2 dr averages themselves, also under
+  // SNAP_X1_CENTROID_EXACT, so it keeps the r^3/3 table
+  auto x1f = pcoord ? pcoord->x1_row_faces(recon->interp()->type(), false)
+                    : torch::Tensor();
   if (x1f.defined()) {
     precon1 = ReconstructImpl::create(recon, this, "recon1");
     precon1->set_x1_faces(x1f);
@@ -81,13 +83,11 @@ void ScalarImpl::reset() {
 // fixed storage, written in place; sized again (eager) only when the solve's
 // shape, dtype or device changes, as set_data did on every stage before EF-8
 static void put(torch::Tensor& buf, torch::Tensor const& value) {
-  if (buf.sizes() != value.sizes() || buf.dtype() != value.dtype() ||
-      buf.device() != value.device())
-    buf.set_data(torch::empty_like(value));
+  if (!buffer_matches(buf, value)) buf.set_data(torch::empty_like(value));
   buf.copy_(value);
 }
 
-torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
+torch::Tensor ScalarImpl::forward(StepDt dt, torch::Tensor u,
                                   Variables const& other) {
   enum { DIM1 = 3, DIM2 = 2, DIM3 = 1 };
   TORCH_CHECK(pmb != nullptr, "[Scalar] Parent MeshBlock is null");
@@ -122,7 +122,7 @@ torch::Tensor ScalarImpl::forward(double dt, torch::Tensor u,
 
   // cubed sphere: DIRECTION-SUFFIXED keys, as the hydro's, resolve the L/R
   // roles across a panel edge (an un-suffixed key swapped them at flip_flag)
-  bool cubed = pmb->get_layout()->options->type() == "cubed-sphere";
+  bool cubed = pmb->get_layout()->options->is_cubed_sphere();
   Variables send[3];
   std::vector<CommWorkPtr> works[3];
   SyncOptions so;

@@ -153,6 +153,14 @@ TEST(yaml_keys, outputs_refuses_an_unknown_key) {
   expect_refused(card, "outputs/0", "DT");
 }
 
+// `verbose` under an output entry is accepted by the table but read by no
+// writer: a key that does nothing is refused like any other unknown key.
+TEST(yaml_keys, outputs_refuses_verbose) {
+  auto card = YAML::LoadFile(kCard);
+  card["outputs"].push_back(YAML::Load("{type: netcdf}"));
+  expect_refused(card, "outputs/0", "verbose");
+}
+
 TEST(yaml_keys, boundary_condition_refuses_an_unknown_key) {
   expect_refused("boundary-condition", "internl");
 }
@@ -167,6 +175,11 @@ TEST(yaml_keys, scalar_refuses_an_unknown_key) {
 
 TEST(yaml_keys, scalar_reconstruct_refuses_an_unknown_key) {
   expect_refused("scalar/reconstruct", "tpye");
+}
+
+TEST(yaml_keys, scalar_reconstruct_refuses_scale) {
+  // the scalar always reconstructs scale-invariant: no scale key
+  expect_refused("scalar/reconstruct", "scale");
 }
 
 TEST(yaml_keys, scalar_riemann_solver_refuses_an_unknown_key) {

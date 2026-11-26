@@ -4,7 +4,6 @@
 #include <snap/snap.h>
 
 #include <snap/coord/coordinate.hpp>
-#include <snap/coord/x1_centroid.hpp>
 #include <snap/coord/x1_stencil.hpp>
 #include <snap/layout/exchange.hpp>
 #include <snap/mesh/precision_policy.hpp>
@@ -54,10 +53,6 @@ void wb_ref4_faces(FaceDensityRows const& st, torch::Tensor const& dref,
   d.copy_(torch::where(ok, face, d));
 }
 
-// the relay tags of the reference anchor and its ghost rows (down is +1)
-constexpr int kWbRefTag = 0x7715;
-constexpr int kWbGhostTag = 0x7717;
-
 }  // namespace
 
 ExchangeX1Link::ExchangeX1Link(MeshBlockImpl const* pmb) : pmb_(pmb) {
@@ -65,16 +60,16 @@ ExchangeX1Link::ExchangeX1Link(MeshBlockImpl const* pmb) : pmb_(pmb) {
 }
 
 torch::Tensor ExchangeX1Link::take_anchor(torch::Tensor const& like) {
-  return Exchange(pmb_).unpack_anchor(like, kWbRefTag);
+  return Exchange(pmb_).unpack_anchor(like, kTagWbRef);
 }
 
 void ExchangeX1Link::pass_anchor(torch::Tensor const& face) {
-  Exchange(pmb_).pack_anchor(face, kWbRefTag);
+  Exchange(pmb_).pack_anchor(face, kTagWbRef);
 }
 
 void ExchangeX1Link::exchange_ghost_rows(std::vector<torch::Tensor> rows,
                                          int ng) {
-  Exchange(pmb_).x1_rows(rows, ng, false, kWbGhostTag);
+  Exchange(pmb_).x1_rows(rows, ng, false, kTagWbGhost);
 }
 
 ReferenceFaces X1Reference::evaluate(X1ReferenceConfig const& cfg,
@@ -187,12 +182,7 @@ ReferenceFaces X1Reference::evaluate(X1ReferenceConfig const& cfg,
       op->type("cp5");
       dsf_lin_ = std::make_shared<InterpImpl>(op);
       if (cfg.interp_x1_coeffs) {
-        auto const& co = pcoord->options;
-        bool plain =
-            x1_centroid_exact_enabled() && co->type() == "spherical-polar";
-        auto x1f = !plain               ? pcoord->x1_row_faces(itype)
-                   : co->stretched_x1() ? pcoord->x1f
-                                        : torch::Tensor();
+        auto x1f = pcoord->x1_row_faces(itype, true);
         if (x1f.defined()) dsf_lin_->set_x1_coeffs(x1f);
       }
       dsf_lin_->to(w.device(), w.scalar_type());

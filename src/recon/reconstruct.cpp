@@ -196,16 +196,19 @@ ReconstructOptions ReconstructOptionsImpl::from_yaml(
 
 ReconstructOptions ReconstructOptionsImpl::from_yaml(
     const YAML::Node& node, std::string const& section) {
-  auto op = ReconstructOptionsImpl::create();
   check_keys(node, "dynamics/reconstruct", {"vertical", "horizontal"});
-  if (!node[section]) return op;
+  if (!node[section]) return ReconstructOptionsImpl::create();
+  return from_node(node[section], "dynamics/reconstruct/" + section);
+}
 
-  check_keys(node[section], "dynamics/reconstruct/" + section,
-             {"shock", "type", "scale"});
-  op->shock() = node[section]["shock"].as<bool>(false);
-  op->interp() = InterpOptionsImpl::create();
-  op->interp()->type() = node[section]["type"].as<std::string>("dc");
-  op->interp()->scale() = node[section]["scale"].as<bool>(false);
+ReconstructOptions ReconstructOptionsImpl::from_node(
+    const YAML::Node& node, std::string const& path,
+    std::vector<std::string> const& keys) {
+  auto op = ReconstructOptionsImpl::create();
+  check_keys(node, path, keys);
+  op->shock() = node["shock"].as<bool>(op->shock());
+  op->interp()->type() = node["type"].as<std::string>(op->interp()->type());
+  op->interp()->scale() = node["scale"].as<bool>(op->interp()->scale());
   return op;
 }
 
@@ -262,8 +265,10 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
     return result;
   }
 
-  // FaceFloor's counts: the faces a floor changes, on the computed faces
-  floored = torch::zeros({3}, torch::dtype(torch::kInt64).device(w.device()));
+  // FaceFloor's counts: the faces a floor changes, on the computed faces;
+  // a floor that runs leaves its mask, which the sweep posts and the monitor
+  // reduces with the stage's other masks (no zero-filled slots)
+  floored.clear();
   auto faces = [&](torch::Tensor const& x) {
     // face iu+1 exists only when a ghost cell follows (as the slices of
     // _apply_inplace, which stop at the end of the axis)
@@ -275,38 +280,46 @@ torch::Tensor ReconstructImpl::forward(torch::Tensor w, int dim, bool floor) {
   auto floor_species = [&](bool on) {
     if (!on || nvar <= ICY) return;
     auto y = result.narrow(1, ICY, nvar - ICY);
-    floored[2].add_(faces((y < 0.).any(1)).sum());
+    floored.emplace_back(2, faces((y < 0.).any(1)));
     y.clamp_min_(0.);
+  };
+
+  // density and pressure are floored with the eos limiter, on both paths
+  auto eos = phydro->options->eos();
+  bool floors = eos->limiter() && floor;
+  auto floor_density = [&] {
+    if (!floors) return;
+    auto d = result.select(1, IDN);
+    floored.emplace_back(0, faces(d < eos->density_floor()));
+    d.clamp_min_(eos->density_floor());
+  };
+  auto floor_pressure = [&] {
+    if (!floors || result.size(1) <= IPR) return;
+    auto pr = result.select(1, IPR);
+    floored.emplace_back(1, faces(pr < eos->pressure_floor()));
+    pr.clamp_min_(eos->pressure_floor());
   };
 
   if (options->shock()) {
     _apply_inplace(dim, il, iu, w, pinterp1, result);
-    // the species faces get the floor of the non-shock path below: a WENO
-    // undershoot would otherwise carry vapor up the gradient
-    floor_species(phydro->options->eos()->limiter());
+    // the floors of the non-shock path below (V3 C10); for the species, a
+    // WENO undershoot would otherwise carry vapor up the gradient
+    floor_density();
+    floor_pressure();
+    floor_species(eos->limiter());
     return result;
   }
-
-  auto eos = phydro->options->eos();
 
   // density
   _apply_inplace(dim, il, iu, w.narrow(0, IDN, 1), pinterp1,
                  result.narrow(1, IDN, 1));
-  if (eos->limiter() && floor) {
-    auto d = result.select(1, IDN);
-    floored[0].add_(faces(d < eos->density_floor()).sum());
-    d.clamp_min_(eos->density_floor());
-  }
+  floor_density();
 
   // velocity/pressure
   int len = std::min((int)IPR, nvar - 1);
   _apply_inplace(dim, il, iu, w.narrow(0, IVX, len), pinterp2,
                  result.narrow(1, IVX, len));
-  if (eos->limiter() && floor && result.size(1) > IPR) {
-    auto pr = result.select(1, IPR);
-    floored[1].add_(faces(pr < eos->pressure_floor()).sum());
-    pr.clamp_min_(eos->pressure_floor());
-  }
+  floor_pressure();
 
   int ny = nvar - ICY;
   if (ny <= 0) return result;

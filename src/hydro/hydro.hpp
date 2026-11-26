@@ -122,7 +122,7 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
                        torch::Tensor solid = torch::Tensor()) const;
 
   //! Advance the conserved variables by one time step.
-  torch::Tensor forward(double dt, torch::Tensor hydro_u,
+  torch::Tensor forward(StepDt dt, torch::Tensor hydro_u,
                         Variables const& other);
 
   //! In perturbation-flux mode normal momentum excludes the shared face
@@ -170,6 +170,10 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
   }
   torch::Tensor face_pressure1() const { return _face_pressure1; }
   torch::Tensor implicit_mass_correction() const;
+  //! V3 C1: the implicit correction's scratch for the state `w` (hydro_w), in
+  //! the dtypes its call uses: the solve's and, with the FP64 retry on, the
+  //! retry's; outside a capture, before the stage executor's save list
+  void prepare_implicit(torch::Tensor const& w);
 
   //! dry-density increment the forcings added this stage (du[IDN])
   torch::Tensor forcing_dry_increment() const { return _forcing_dry; }
@@ -282,9 +286,9 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
                                torch::Tensor const& dw = torch::Tensor()) const;
   //! post_dt: the step's dt, for the solve's register posts (V3 I-4)
   torch::Tensor _apply_implicit_correction(torch::Tensor& du,
-                                           torch::Tensor const& w, double dt,
+                                           torch::Tensor const& w, StepDt dt,
                                            Variables const& other,
-                                           double post_dt = 0.);
+                                           StepDt post_dt = StepDt(0.));
 
  private:
   //! Register all forcing modules
@@ -310,23 +314,12 @@ class HydroImpl : public torch::nn::Cloneable<HydroImpl> {
     int64_t ver = -1;
   };
   mutable FaceMoment2 _s2;
-  //! cell_volume() for this block's grid, built on first use by the tracer
-  //! positivity limiter. Holds the three face tensors, so a key tensor
-  //! cannot be freed and its address reused
-  struct CellVolume {
-    torch::Tensor f1, f2, f3, val;
-    int64_t v1 = -1, v2 = -1, v3 = -1;
-  };
-  CellVolume _cell_vol;
 
   FluxRegister freg;
   torch::Tensor _flux1, _flux2, _flux3, _face_pressure1, _div, _forcing_dry;
   // Reusable stage scratch; not restart state. Recreated on shape/device
   // change.
   torch::Tensor _forcing_work, _forcing_cast;
-  //! conversion-order 4 cells that kept the second-order w (buffer
-  //! "conversion_trips", registered only with the key at 4)
-  torch::Tensor _conv4_trips;
   //! this stage's x2 [0] / x3 [1] face states the covariance was built from
   //! and the dry-mass row it added (undefined when the switch is off)
   torch::Tensor _cov_wl[2], _cov_wr[2], _cov_dry[2];

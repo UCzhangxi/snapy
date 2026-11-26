@@ -101,10 +101,29 @@ struct OutputBlockLocation {
   int level, lx1, lx2, lx3;  //!< refinement level, block indices
   int nb1, nb2, nb3;         //!< blocks per direction
   int face;                  //!< cubed-sphere panel (0 otherwise)
+  int panel_col, panel_row;  //!< its place in the 3 x 2 panel layout
 };
 
 //! the location of `rank`; cubed-sphere panels are laid out 3 x 2 in (x2, x3)
 OutputBlockLocation output_block_location(Layout const& layout, int rank);
+
+//! the attribute text of coordinate axis d (0: x1) in a netcdf-format file
+struct AxisText {
+  std::string name;    //!< x1, x2, x3
+  std::string axis;    //!< Z, X, Y
+  std::string units;   //!< m on x1, else the horizontal units
+  std::string center;  //!< long_name of the cell-centre variable
+  std::string face;    //!< long_name of the cell-face variable
+};
+AxisText axis_text(int d, std::string const& hunits);
+
+//! the file axes of a field of kind k: (time, x1, x3, x2), a face grid with
+//! its face axis swapped in; idx / idxf are the cell / face dimension ids
+struct FieldDims {
+  int ndim;
+  std::array<int, 4> dims;
+};
+FieldDims field_dims(char k, int idt, int const* idx, int const* idxf);
 
 //! the per-process combine protocol shared by the block writers: every block
 //! of a process counts in under `key` and only the last one combines. All

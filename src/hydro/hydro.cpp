@@ -3,6 +3,7 @@
 // C/C++
 #include <algorithm>
 #include <cstdlib>
+#include <optional>
 
 // snap
 #include <snap/snap.h>
@@ -48,13 +49,9 @@ void HydroImpl::reset() {
   //// ---- (3) set up reconstruction-x1 model ---- ////
   precon1 = ReconstructImpl::create(options->recon1(), this, "recon1");
   if (pmb->pcoord) {
-    auto const& co = pmb->pcoord->options;
     // SNAP_X1_CENTROID_EXACT hands this module plain means (hydro_forward.cpp)
-    bool plain = x1_centroid_exact_enabled() && co->type() == "spherical-polar";
     auto x1f =
-        !plain ? pmb->pcoord->x1_row_faces(options->recon1()->interp()->type())
-        : co->stretched_x1() ? pmb->pcoord->x1f
-                             : torch::Tensor();
+        pmb->pcoord->x1_row_faces(options->recon1()->interp()->type(), true);
     if (x1f.defined()) precon1->set_x1_faces(x1f);
   }
   if (options->verbose()) {
@@ -210,9 +207,9 @@ void HydroImpl::reset() {
   // keep their indices
   req.counters.push_back("implicit.fp64_columns");
   req.minima = {"ef.pos_min"};
-  // V3 I-5: lane I's cause (R.rst 4.5); X maps it to its cause bit 5
-  req.retry = {"ef.floor_patch", "ef.nan", "ef.vapor_fail", "ef.heat_capacity",
-               "implicit.column"};
+  // V3 I-5: lane I's cause (R.rst 4.5), the only one flagged here; the EOS
+  // causes reach check_redo through the EOS status, not the register
+  req.retry = {"implicit.column"};
   // conserve-axial-momentum exact: A's riemann.central on the x2/x3 faces
   // (R-2), kept until the next stage
   paam->request(req);
@@ -272,8 +269,9 @@ void HydroImpl::reset() {
       "positivity_min",
       status.bind(EfStatus::kPosMin, torch::ones({1}, torch::kFloat64)));
   if (options->conversion_order() == 4)
-    _conv4_trips =
-        register_buffer("conversion_trips", torch::zeros({1}, torch::kInt64));
+    register_buffer(
+        "conversion_trips",
+        status.bind(EfStatus::kConvTrips, torch::zeros({1}, torch::kInt64)));
   register_buffer("lim_cut", status.bind(EfStatus::kLimCut,
                                          torch::zeros({1}, torch::kFloat64)));
   register_buffer("lim_flux", status.bind(EfStatus::kLimFlux,
@@ -335,13 +333,7 @@ std::pair<int, int> HydroImpl::x1_neighbors() const {
 double HydroImpl::max_time_step(torch::Tensor w, torch::Tensor solid) const {
   auto sub3 = pmb->part({0, 0, 0}, PartOptions().exterior(false).ndim(3));
 
-  torch::Tensor cs;
-  if (options->eos()->type() == "aneos") {
-    cs = peos->compute("W->L", {w});
-  } else {
-    auto gamma = peos->compute("W->A", {w});
-    cs = peos->compute("WA->L", {w, gamma});
-  }
+  auto cs = peos->sound_speed(w);
 
   if (solid.defined()) {
     cs = torch::where(solid, 1.e-8, cs);
@@ -426,16 +418,24 @@ torch::Tensor HydroImpl::implicit_mass_correction() const {
   return picorr ? picorr->mass_correction() : torch::Tensor();
 }
 
+void HydroImpl::prepare_implicit(torch::Tensor const& w) {
+  if (!picorr) return;
+  // the policy's kImplicit row: the solve's dtype, and the FP64 retry's
+  auto const& row = pmb->policy.row(Quantity::kImplicit);
+  std::optional<torch::Dtype> retry;
+  if (row.compute != row.storage && options->icorr()->fallback_fp64())
+    retry = row.storage;
+  picorr->prepare(w.device(), row.compute, w.sizes(), retry);
+}
+
 torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
                                                     torch::Tensor const& w,
-                                                    double dt,
+                                                    StepDt dt,
                                                     Variables const& other,
-                                                    double post_dt) {
+                                                    StepDt post_dt) {
   if (!picorr) return torch::Tensor();
-  // V3 I-4: the solve posts its face transfers into total(1), which the
-  // Riemann slot rewrites each stage; with the x1 flux off nothing does, so
-  // nothing is posted and m1 keeps the solve's own transfer
-  FluxRegister* reg = options->disable_flux_x1() ? nullptr : &freg;
+  // V3 I-4: the solve posts its face transfers into total(1), which the hydro
+  // rewrites each stage, its flux on or off
 
   // Implicit x1 solve has no cross-rank coupling, so nb1 > 1 would silently
   // solve each rank's own sub-column. Full column <=> both x1 faces physical.
@@ -454,31 +454,25 @@ torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
   }
 
   auto destination = du;
-  bool solve_float = options->icorr()->precision() == "float32" ||
-                     (options->icorr()->precision() == "auto" && fp32());
+  auto const& row = pmb->policy.row(Quantity::kImplicit);
+  // a solve narrower than its FP64 stage (on MPS both rows are FP32)
+  bool solve_float = row.compute != row.storage;
   TORCH_CHECK(
       !solve_float || (options->eos()->type() == "ideal-moist" &&
                        pmb->pcoord->options->type() == "cartesian"),
       "FP32 vertical implicit correction requires Cartesian ideal-moist");
   bool boundary = fp32() || solve_float;
-  if (boundary) du = du.to(torch::kFloat64);
+  if (boundary) du = du.to(row.storage);
   du[IPR].sub_(peos->internal_energy_offset(du));
   auto rhs64 = solve_float ? du.clone() : torch::Tensor();
-  auto wi64 = wi;
+  auto wi64 = wi.to(row.storage);
   if (solve_float) {
     du = du.to(torch::kFloat32);
     wi = wi.to(torch::kFloat32);
   }
-  auto gamma_for = [&](torch::Tensor const& state) {
-    if (options->eos()->type() == "aneos") {
-      auto cs = peos->compute("W->L", {w});
-      return peos->compute("WL->A", {w, cs});
-    }
-    return peos->compute("W->A", {state});
-  };
   auto solid = other.count("solid") ? other.at("solid") : torch::Tensor();
-  auto correction =
-      picorr->forward_masked(du, wi, gamma_for(wi), dt, solid, reg, post_dt);
+  auto correction = picorr->forward_masked(du, wi, peos->adiabatic_index(wi),
+                                           dt, solid, &freg, post_dt);
   // V3 I-6: the predicated FP64 stage, always run with the FP32 solve and
   // its fallback: only the columns whose FP32 solve failed are solved again,
   // from rhs64 and wi64, and no host read decides it; the other columns keep
@@ -486,8 +480,8 @@ torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
   torch::Tensor retry;
   if (solve_float && options->icorr()->fallback_fp64()) {
     retry = picorr->stage_failed();
-    picorr->forward_masked(rhs64, wi64, gamma_for(wi64), dt, solid, reg,
-                           post_dt, retry);
+    picorr->forward_masked(rhs64, wi64, peos->adiabatic_index(wi64), dt, solid,
+                           &freg, post_dt, retry);
     correction = picorr->merge_fp64(retry);
     picorr->count_fp64_columns(retry);
     freg.monitor().count("implicit.fp64_columns", retry);
@@ -498,8 +492,8 @@ torch::Tensor HydroImpl::_apply_implicit_correction(torch::Tensor& du,
   freg.monitor().flag_retry("implicit.column", picorr->status());
   // Restore energy offsets in FP64, then write the increment to state dtype.
   if (boundary) {
-    du = du.to(torch::kFloat64);
-    correction = correction.to(torch::kFloat64);
+    du = du.to(row.storage);
+    correction = correction.to(row.storage);
   }
   // the retried columns' FP64 solution (rhs64 now holds it), in place of
   // the FP32 stage's (I-6)

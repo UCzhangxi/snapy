@@ -1,9 +1,9 @@
 Execution: eager and CUDA graphs
 ================================
 
-``snapy`` runs every stage eagerly by default. A single ``MeshBlock`` on a
-CUDA device can instead run each stage of ``forward()`` as one captured CUDA
-graph. Eager execution is the reference: a graph replay gives the same bits.
+On a CUDA device ``snapy`` runs each stage as captured CUDA graphs by default,
+and eagerly wherever a case cannot be captured; on CPU and MPS it runs
+eagerly. Eager execution is the reference: a graph replay gives the same bits.
 
 Selecting the execution
 -----------------------
@@ -11,16 +11,20 @@ Selecting the execution
 The deck selects it under ``integration``::
 
   integration:
-    execution: eager          # eager | cuda-graph
+    execution: auto           # auto | eager | cuda-graph
     execution-strict: false   # true: refuse a case that cannot be captured
 
 The two key names are provisional until the V3 naming is confirmed.
 
-- ``eager`` (default): every stage runs eagerly. ``execution-strict: true``
-  with ``eager`` is refused when the options are read.
+- ``auto`` (default, also when the key is absent): ``cuda-graph`` when the
+  block is on a CUDA device, ``eager`` otherwise. With
+  ``execution-strict: true`` it means ``cuda-graph``.
+- ``eager``: every stage runs eagerly, on any device. ``execution-strict:
+  true`` with ``eager`` is refused when the options are read.
 - ``cuda-graph``: a case that can be captured runs each stage as a graph; any
-  other case runs eagerly. With ``execution-strict: true`` such a case is
-  refused before its first launch, and the error lists the reasons.
+  other case runs eagerly, and each reason is logged once per block (a
+  warning). With ``execution-strict: true`` such a case is refused before its
+  first launch, and the error lists the reasons.
 - A ``Mesh`` runs its blocks eagerly; ``execution-strict: true`` is refused
   there (graphs for several blocks come with a later milestone).
 
@@ -35,15 +39,16 @@ Numerical support is the eager columns; graph support is separate.
    "Cartesian dry, 1 block", "yes", "yes", "yes (below)", "yes (below)"
    "Cartesian, N blocks, UCX ranks", "yes", "yes", "no (G4)", "no (G4)"
    "kintera moist", "yes", "partly", "no (G2)", "no (G2)"
-   "vertical implicit correction", "yes", "Cartesian ideal-moist", "no (G3)", "no (G3)"
+   "vertical implicit correction", "yes", "Cartesian ideal-moist", "yes (below)", "yes (below)"
    "cubed sphere", "yes", "no (G5)", "no (G6)", "no (G6)"
    "user TorchScript forcing", "yes", "yes", "no", "no"
    "radiation (pyharp/pydisort)", "not on the step path", "no", "no", "no"
 
 CPU and MPS run eager only. The graph rows that say yes cover the dry Straka
 case: a CUDA device, Cartesian geometry, one species, no reactions, the EOS
-limiter off, an ideal-moist EOS, the hllc Riemann solver, no implicit
-scheme, rk3, one block, const-gravity as the only forcing and no solid mask.
+limiter off, an ideal-moist EOS, the hllc Riemann solver, rk3, one block,
+const-gravity as the only forcing and no solid mask. A vertical implicit
+scheme captures on that case: its solve reads the block's device ``dt``.
 
 ``MeshBlock.execution_capability(vars)`` returns a block's row for its own
 configuration and variables: ``eager_fp64``/``eager_fp32`` (its precision),

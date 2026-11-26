@@ -2,6 +2,8 @@
 
 // C/C++
 #include <memory>
+#include <utility>
+#include <vector>
 
 // torch
 #include <torch/nn/cloneable.h>
@@ -108,6 +110,12 @@ struct ReconstructOptionsImpl {
       std::string const& filename, std::string const& section);
   static std::shared_ptr<ReconstructOptionsImpl> from_yaml(
       const YAML::Node& node, std::string const& section);
+  //! one reconstruct section node at YAML path `path`, whose keys must be in
+  //! `keys` (a scalar's section has no scale); a missing key keeps its ADD_ARG
+  //! default
+  static std::shared_ptr<ReconstructOptionsImpl> from_node(
+      const YAML::Node& node, std::string const& path,
+      std::vector<std::string> const& keys = {"shock", "type", "scale"});
 
   ReconstructOptionsImpl() = default;
   void report(std::ostream& os) const {
@@ -116,8 +124,8 @@ struct ReconstructOptionsImpl {
     os << "* shock = " << (shock() ? "true" : "false") << "\n";
   }
 
-  //! configure options
-  ADD_ARG(bool, shock) = true;
+  //! configure options; false as in the YAML reader (V3 C10)
+  ADD_ARG(bool, shock) = false;
 
   //! abstract submodules
   ADD_ARG(InterpOptions, interp) = nullptr;
@@ -157,11 +165,14 @@ class ReconstructImpl : public torch::nn::Cloneable<ReconstructImpl> {
   // negative and enforces positivity itself); the scalar floor is kept.
   torch::Tensor forward(torch::Tensor w, int dim, bool floor = true);
 
-  //! FaceFloor's counts of the last forward (C.rst 3.7): int64 (3,), the
-  //! faces the floors changed, density, pressure and species (a face counts
-  //! once for any species row), each side of the faces il..iu+1 the
-  //! reconstruction computes. Undefined without a parent Hydro.
-  torch::Tensor floored;
+  //! FaceFloor's counts of the last forward (C.rst 3.7): (row, mask) pairs,
+  //! row 0 density, 1 pressure, 2 species (a face counts once for any
+  //! species row), mask a bool tensor over each side of the faces il..iu+1
+  //! the reconstruction computes, true where the floor changed the face;
+  //! the monitor reduces the stage's masks together (V3 S4). Only a floor
+  //! that ran posts a pair, so a forward with the floors off launches
+  //! nothing for the census. Empty without a parent Hydro.
+  std::vector<std::pair<int, torch::Tensor>> floored;
 };
 
 TORCH_MODULE(Reconstruct);
