@@ -89,7 +89,7 @@ torch::Tensor MoistMixtureImpl::_prim2intEng(torch::Tensor prim) {
 
 torch::Tensor MoistMixtureImpl::_prim2temp(torch::Tensor prim) {
   _ensure_cache(prim);
-  return temp;
+  return temp.clone();  // the cache is refreshed in place by the next call
 }
 
 torch::Tensor MoistMixtureImpl::species_pressure_share(torch::Tensor prim) {
