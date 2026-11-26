@@ -20,6 +20,8 @@ setup_test(test_moist_mixture_temp_alias)
 setup_test(test_fp32_typed_constants)
 set_tests_properties(test_fp32_typed_constants.${buildl} PROPERTIES LABELS "fp32-foundations;recon;riemann")
 setup_test(test_state_store)
+# ideal-gas U->W reads cons in the dtype and row stride it writes prim with
+setup_test(test_ideal_gas_cons2prim_layout)
 set_tests_properties(test_split_reference.${buildl} PROPERTIES LABELS "fp32-foundations;fp32-dynamics;hydro")
 setup_test(test_pressure_scan_x1)
 set_tests_properties(test_pressure_scan_x1.${buildl} PROPERTIES
