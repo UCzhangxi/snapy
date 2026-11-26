@@ -76,15 +76,21 @@ void IdealGasImpl::_cons2prim(torch::Tensor cons, torch::Tensor &prim) {
 
   auto gammad = options->gammad();
 
-  auto iter =
-      at::TensorIteratorConfig()
-          .resize_outputs(false)
-          .check_all_same_dtype(false)
-          .declare_static_shape(prim.sizes(), /*squash_dims=*/0)
-          .add_output(prim)
-          .add_input(cons)
-          .add_owned_input(pcoord->cosine_cell_kj.unsqueeze(0).expand_as(prim))
-          .build();
+  // the kernel reads cons in prim's dtype and steps its rows by prim's stride
+  auto c = cons;
+  if (c.scalar_type() != prim.scalar_type() || c.stride(0) != prim.stride(0))
+    c = torch::empty_strided(prim.sizes(), prim.strides(), prim.options())
+            .copy_(cons);
+  auto cth = pcoord->cosine_cell_kj.to(prim.options());
+
+  auto iter = at::TensorIteratorConfig()
+                  .resize_outputs(false)
+                  .check_all_same_dtype(true)
+                  .declare_static_shape(prim.sizes(), /*squash_dims=*/0)
+                  .add_output(prim)
+                  .add_input(c)
+                  .add_owned_input(cth.unsqueeze(0).expand_as(prim))
+                  .build();
 
   at::native::ideal_gas_cons2prim(cons.device().type(), iter, gammad);
 
