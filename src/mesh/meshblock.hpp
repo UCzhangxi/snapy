@@ -319,15 +319,14 @@ class MeshBlockImpl : public torch::nn::Cloneable<MeshBlockImpl> {
   int check_redo(Variables& vars);
 
   //! this block's retry causes (one host read; no reduction)
-  std::array<bool, 7> local_redo_flags(Variables const& vars);
+  std::array<bool, 6> local_redo_flags(Variables const& vars);
   //! Device flags (six causes plus vapor/capacity failure latches), folded
   //! into the retry causes by read_redo_flags; built without a host read.
   //! Drains kintera's saturation-failure count
   torch::Tensor local_redo_flag_tensor(Variables const& vars);
   //! one device-to-host read of a local_redo_flag_tensor (or their max):
-  //! slots 0-5 are causes 0-5, slots 6-7 cause 2, slot 8 (diffusion.radial,
-  //! reserved in V3) cause 6
-  static std::array<bool, 7> read_redo_flags(torch::Tensor const& flags);
+  //! slots 0-5 are causes 0-5, slots 6-7 cause 2
+  static std::array<bool, 6> read_redo_flags(torch::Tensor const& flags);
   //! the one retry decision for a bare block or a Mesh's blocks: their flag
   //! tensors stacked, amax, one host read, one MAX allreduce; the causes bits
   static int decide_retry(std::vector<MeshBlockImpl*> const& blocks,
