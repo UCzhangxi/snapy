@@ -15,6 +15,8 @@ setup_test(test_eos_io_core)
 setup_test(test_aneos_metric)
 setup_test(test_split_reference)
 setup_test(test_precision_policy)
+# moist-mixture W->T returns a tensor the next call does not overwrite
+setup_test(test_moist_mixture_temp_alias)
 setup_test(test_fp32_typed_constants)
 set_tests_properties(test_fp32_typed_constants.${buildl} PROPERTIES LABELS "fp32-foundations;recon;riemann")
 setup_test(test_state_store)
