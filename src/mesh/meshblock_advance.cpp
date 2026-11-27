@@ -388,9 +388,9 @@ void MeshBlockImpl::stage_saturation(Variables &vars, StepDt dt, int stage) {
 
 void MeshBlockImpl::stage_chemistry(Variables &vars, StepDt dt, int stage) {
   DeferVaporCheck defer(phydro->peos.get());
-  // S-K4 (K.rst 3.5): the chemistry step, the last op of the last stage of a
-  // bare block (a Mesh runs it over its blocks before its final exchange)
-  if (stage == pintg->stages.size() - 1 && _chemistry && !defer_chemistry)
+  // S-K4 (K.rst 3.5): the chemistry step, the last op of the last stage, on a
+  // bare block and on a Mesh's block alike (before the axial closure)
+  if (stage == pintg->stages.size() - 1 && _chemistry)
     _chemistry->forward(*this, vars, dt.value());
 }
 

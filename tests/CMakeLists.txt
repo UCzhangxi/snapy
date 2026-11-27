@@ -437,6 +437,8 @@ snapy_add_python_test(test_sk1_failure_counter TIMEOUT 120 LABELS "python;mesh;r
 snapy_add_python_test(test_sk2_active_set TIMEOUT 180 LABELS "python;mesh;redo;eos")
 snapy_add_python_test(test_sk4_chemistry_source TIMEOUT 600 LABELS "python;mesh;eos;kinetics")
 snapy_add_python_test(test_sk4_mesh_chemistry TIMEOUT 600 LABELS "python;mesh;eos;kinetics")
+# A Mesh runs chemistry in the bare block's order relative to the axial closure
+snapy_add_python_test(test_mesh_chemistry_order TIMEOUT 600 LABELS "python;mesh;eos;kinetics")
 snapy_add_python_test(test_eos_temp2inteng TIMEOUT 60 LABELS "python;eos")
 # EF-13: the ideal-moist species sums give bitwise-equal x2 columns
 snapy_add_python_test(test_eos_species_sum_layout TIMEOUT 120 LABELS "python;eos")
@@ -529,8 +531,8 @@ snapy_add_python_test(test_graph_implicit_dt TIMEOUT 900 LABELS "python;hydro;im
 # V3 C: the chemistry slot as an eager segment beside captured ones, and the
 # vertical implicit correction (with its predicated FP64 retry) under graph
 snapy_add_python_test(test_graph_chemistry_slot TIMEOUT 600 LABELS "python;hydro;eos")
-# V3 C5: a Mesh with chemistry captures its blocks' stages, chemistry eager in
-# its global phase
+# V3 C5: a Mesh with chemistry captures its blocks' stages, chemistry an eager
+# segment of each block's last stage
 snapy_add_python_test(test_graph_mesh_chemistry TIMEOUT 900 LABELS "python;hydro;eos")
 snapy_add_python_test(test_graph_implicit TIMEOUT 600 LABELS "python;hydro;implicit")
 # audit-3 lead 4: with the x1 flux off the implicit solve books its transfers

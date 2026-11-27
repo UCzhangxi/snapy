@@ -360,8 +360,8 @@ without its closure (the flux-form Coriolis torque only).)doc")
             self.set_chemistry(*r);
           },
           py::arg("reactions"),
-          R"doc(V3 S-K4: one chemistry adapter per block, run in the last
-stage's global phase before the final exchange.)doc")
+          R"doc(V3 S-K4: one chemistry adapter per block, run as each block's
+last-stage op, before the axial closure, as on a bare block.)doc")
       .def("exchange", &snap::MeshImpl::exchange, py::arg("vars"),
            py::arg("opts"), py::call_guard<py::gil_scoped_release>())
       .def("exchange_ghost_zones", &snap::MeshImpl::exchange_ghost_zones,

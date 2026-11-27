@@ -182,11 +182,7 @@ bool StageExecutor::user_forcing(int block) const {
 }
 
 bool StageExecutor::chemistry_slot(int block) const {
-  // V3 C5: a Mesh's block defers its chemistry to the Mesh's global phase
-  // (Mesh::forward runs it after the stages, eagerly, before the final
-  // exchange), so its chemistry op does nothing and stays in the graph
-  auto* pmb = block_at(block);
-  return pmb->_chemistry != nullptr && !pmb->_mesh_executor;
+  return block_at(block)->_chemistry != nullptr;
 }
 
 int StageExecutor::schedule_signature(int block) const {
