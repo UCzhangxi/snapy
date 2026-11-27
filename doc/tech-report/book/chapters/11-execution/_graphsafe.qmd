@@ -41,7 +41,7 @@ its segment keeps $\Delta t$ in its graph key.
 `test_graph_stretched_x1_python` (@tbl-ch11-graphsafe-tests).
 :::
 
-Local symbols of this section: $\Delta t$ the step size, a host FP64 number; $\tau$[^rg-a28f2ca785d8] the block's device copy of
+Local symbols of this section: $\Delta t$ the step size, a host FP64 number; $\Delta t_{\mathrm{dev}}$ the block's device copy of
 it, a 0-dimensional FP64 tensor; $x$ a tensor of dtype $d$; $\mathrm{rd}_d(\cdot)$ rounding to $d$.
 
 ### Derivation
@@ -56,18 +56,18 @@ it, a 0-dimensional FP64 tensor; $x$ a tensor of dtype $d$; $\mathrm{rd}_d(\cdot
 4. build a table on first use: the recording would hold the build. Such work goes in the op's `prepare`, which
    runs before the save list and the warm-ups (@sec-ch11-capture).
 
-**The step.** $\tau$ holds $\Delta t$ exactly, as both are FP64. For a product, torch rounds a host scalar to the
+**The step.** $\Delta t_{\mathrm{dev}}$ holds $\Delta t$ exactly, as both are FP64. For a product, torch rounds a host scalar to the
 tensor's dtype before multiplying, and a 0-dimensional FP64 tensor is rounded the same way, so
 
 $$
-x \cdot \tau = x \cdot \mathrm{rd}_d(\Delta t)
+x \cdot \Delta t_{\mathrm{dev}} = x \cdot \mathrm{rd}_d(\Delta t)
 $$ {#eq-ch11-dt-mul}
 
 bit for bit, whatever $d$ is. For a quotient, torch on CUDA divides a tensor by a host scalar as a product with
-the reciprocal formed in FP64; `StepDt::divide` forms the same reciprocal from $\tau$, so
+the reciprocal formed in FP64; `StepDt::divide` forms the same reciprocal from $\Delta t_{\mathrm{dev}}$, so
 
 $$
-x \,/\, \Delta t \;\equiv\; x \cdot \mathrm{rd}_d\!\left(\frac{1}{\Delta t}\right) = x \cdot \mathrm{rd}_d\!\left(\frac{1}{\tau}\right)
+x \,/\, \Delta t \;\equiv\; x \cdot \mathrm{rd}_d\!\left(\frac{1}{\Delta t}\right) = x \cdot \mathrm{rd}_d\!\left(\frac{1}{\Delta t_{\mathrm{dev}}}\right)
 $$ {#eq-ch11-dt-divide}
 
 bit for bit on CUDA. A scaled step $a\,\Delta t$ (the Runge–Kutta weights) is formed in FP64 on either side,
@@ -77,12 +77,12 @@ $a$.
 ### Numerical method
 
 **Filling the device step.** `StageExecutor::device_dt`
-({{< code src/mesh/stage_executor.cpp StageExecutor::device_dt >}}) keeps one $\tau$ per block on the state's
+({{< code src/mesh/stage_executor.cpp StageExecutor::device_dt >}}) keeps one $\Delta t_{\mathrm{dev}}$ per block on the state's
 device (a new device allocates a new one and drops the block's graphs) and fills it with $\Delta t$ on the current
 stream before each capture and replay. Each block of a Mesh has its own, so blocks replaying on their own worker
 streams never write each other's.
 
-**Reading it.** `StepDt` ({{< code src/utils/step_dt.hpp StepDt >}}) holds either a host value or $\tau$.
+**Reading it.** `StepDt` ({{< code src/utils/step_dt.hpp StepDt >}}) holds either a host value or $\Delta t_{\mathrm{dev}}$.
 `StepDt::value` ({{< code src/utils/step_dt.cpp StepDt::value >}}) throws for a device step ("this stage reads dt
 on the host, so it cannot replay with another dt"). `StepDt::divide`
 ({{< code src/utils/step_dt.cpp StepDt::divide >}}) implements @eq-ch11-dt-divide, `StepDt::scaled`
@@ -93,7 +93,7 @@ Runge–Kutta combine's weights, the flux register's end of stage, the vertical 
 **Host-step ops.** An op that sets `Op::reads_host_dt` ({{< code src/mesh/segment.hpp Op >}}) is given the host
 value; a captured segment holding one records with that value and keeps $\Delta t$ in its graph key, so a new
 step records again. At the pin the only ops that read the host step are the user forcing and the chemistry step,
-and both run eager (@sec-ch11-eagerops); every captured segment reads $\tau$.
+and both run eager (@sec-ch11-eagerops); every captured segment reads $\Delta t_{\mathrm{dev}}$.
 
 **A host copy removed from the stage.** The $x_1$ well-balanced reference on a stretched grid evaluates quadrature
 rows of the grid every stage. `X1Reference` ({{< code src/recon/x1_reference.hpp X1Reference >}}) builds them once
@@ -145,6 +145,4 @@ not a 0-dimensional FP64 tensor.
 
 <!-- reader glossary notes -->
 [^rg-d34c0e1bcdff]: $\Delta t$ — the step
-
-[^rg-a28f2ca785d8]: $\tau$ — a relaxation time scale (named); {{< code src/forcing/relax_bot_temp.cpp RelaxBotTempImpl::add >}}
 <!-- end reader glossary notes -->
