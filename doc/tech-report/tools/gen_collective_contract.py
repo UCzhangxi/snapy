@@ -8,7 +8,7 @@ import code_anchors
 
 REPORT = Path(__file__).resolve().parent.parent
 TARGET = 'book/chapters/14-parallelism-io/_howto.qmd'
-PIN = '919936da07d80a310b98ab11da184972a3203274'
+PIN = '73c45a7c8c991209924e1137992352c335575062'
 
 
 def generate(report):
@@ -55,18 +55,18 @@ def generate(report):
     _, send_cite = excerpt('src/layout/process_group.cpp',
         r'    TORCH_CHECK\(tensor\.device\(\)\.is_cpu\(\),\n\s+"Gloo communication requires CPU tensors"\);\n'
         r'  \}\n  TORCH_CHECK\(tensors\.size\(\) == 1,\n\s+"ProcessGroupContext::send', 'send')
-    _, shutdown_cite = excerpt('src/mesh/meshblock.cpp',
-        r'  if \(_playout->has_process_group\(\) && _playout->comm->owns_process_group\(\)\) \{\n'
-        r'    _playout->comm->shutdown\(\);', 'shutdown')
+    _, shutdown_cite = excerpt('src/mesh/meshblock_output.cpp',
+        r'    if \(layout->comm->owns_process_group\(\)\) \{\n'
+        r'      layout->comm->shutdown\(\);', 'shutdown')
     _, allreduce_cite = excerpt('src/layout/process_group.cpp',
         r'  pg->allreduce\(tensors, opts\)->wait\(\);', 'allreduce')
-    reduction, reduction_cite = excerpt('src/mesh/meshblock.cpp',
-        r'  op\.reduceOp = c10d::ReduceOp::MIN;\n  if \(_playout->has_process_group\(\)\) \{\n'
-        r'    _playout->comm->allreduce\(dt_reduce, op\.reduceOp\);\n  \}')
-    _, scale_cite = excerpt('src/mesh/meshblock.cpp',
+    reduction, reduction_cite = excerpt('src/mesh/meshblock_advance.cpp',
+        r'  if \(_playout->has_process_group\(\)\)\n'
+        r'    _playout->comm->allreduce\(dt_reduce, c10d::ReduceOp::MIN\);')
+    _, scale_cite = excerpt('src/mesh/meshblock_advance.cpp',
         r'  return pow\(2\., -pintg->current_redo\) \* pintg->options->cfl\(\) \* dt;', 'scaling')
-    _, dead_cite = excerpt('src/layout/layout.cpp',
-        r'"backend"\}\);  // dead since #181; BACKEND env', 'ignored')
+    _, dead_cite = excerpt('src/options/layout.yaml',
+        r'  backend is accepted but dead since #181 \(the BACKEND environment variable', 'ignored')
     native, native_cite = excerpt('src/layout/process_group.cpp',
         r'  if \(backend == "ucx"\) \{\n    _init_ucx\(\);\n  \} else if \(backend == "gloo"\) \{\n'
         r'    _init_gloo\(\);\n  \} else \{\n    throw std::runtime_error\("Unsupported BACKEND=" \+ backend\);\n  \}')

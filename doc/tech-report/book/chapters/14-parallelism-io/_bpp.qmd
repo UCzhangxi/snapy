@@ -1,8 +1,9 @@
 ## Several blocks per process and GPU streams (`distribute.blocks_per_process`) {#sec-ch14-bpp}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/mesh/mesh.cpp, src/layout/layout.cpp, src/output/pnetcdf.cpp, tests/test_cubed_sphere_exchange.cpp, tests/test_output_barrier.cpp
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
+sources: src/mesh/mesh.cpp, src/mesh/stage_executor.cpp, src/layout/layout.cpp, src/output/pnetcdf.cpp,
+         tests/test_cubed_sphere_exchange.cpp, tests/test_output_barrier.cpp
 status: draft
 -->
 
@@ -69,10 +70,13 @@ records a completion event that every block's stream then waits on (`_prepare_lo
 The boards of @sec-ch14-msgmatch synchronise the posting stream before they publish a tensor, and the reader
 calls `record_stream` on it.
 
-`MeshImpl::forward` runs the advance, then the ghost exchange, as pool jobs. Between them, on the last stage with
-the gravity-work fixer on, it sums the five fixer sums of the local blocks in block order on the host and
-all-reduces them once per process (`MeshImpl::forward`, {{< code src/mesh/mesh.cpp MeshImpl::forward >}}). The fixer is the subject of
-the gravity-work chapter (@sec-ch06); this section only records where its reduction sits.
+`MeshImpl::forward` runs each block's stage through the stage executor as one pool job; on CUDA a block's stage
+can run as captured graphs, and a segment that one block must capture is captured by all of them, because their
+exchanges meet at the same-process rendezvous (@sec-ch09-rk). Then comes the global phase: with the axial closure
+of @sec-ch07-axial on, the blocks' partial sums are reduced once and each block applies the closure as a pool job;
+at the last stage each block's chemistry step runs, one block after another on the calling thread, not on the
+pool. The ghost exchange of every block is the last pool job (`MeshImpl::forward`,
+{{< code src/mesh/mesh.cpp MeshImpl::forward >}}).
 
 ### Code
 
@@ -127,15 +131,13 @@ done_events_.at(index)->record(streams_.at(index));    // step 3
 There is no check script: steps 1 to 5 are read from the code, and no test asserts the event order itself; the
 CUDA case asserts one stream per block.[^ch14-bpp-run]
 
-[^ch14-bpp-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the `ch14-bpp` card;
-    run: `DEVICE=cuda ./straka.release card.yaml`, CUDA, RTX 5090, 1 rank(s);
-    torch 2.10.0+cu128, kintera 2.6.2]. The dated N8 `validation_log` in
-    `tools/do-cards.yaml` records exit 0 on 2026-10-14. This is a card result, not a claim that every
-    registered test in the table ran. The [pinned CPU test run](https://github.com/chengcli/snapy/actions/runs/38197324901)
-    supplies individual Passed lines for the CPU tests; CUDA-only rows require separate evidence.
+[^ch14-bpp-run]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; run: `ctest -j1 -R <names>` on a CPU Release
+    build of the pin (@tbl-ch14-ctest-run); reps: 1]. `test_output_barrier`, `test_exchange` and the CPU cases of
+    `test_cubed_sphere_exchange` passed. The CUDA case and the `ch14-bpp` card (`DEVICE=cuda`) were not run at this
+    pin: no GPU was used for this chapter.
 
 The stream checks are in `run` of {{< code tests/test_cubed_sphere_exchange.cpp run >}}.
-The CUDA case runs only in a CUDA build with a visible device (`snapy_cuda_test_enabled`, @sec-ch14-gpu). The N8 CUDA card ran; it does not establish every table assertion.
+The CUDA case runs only in a CUDA build with a visible device (`snapy_cuda_test_enabled`, @sec-ch14-gpu).
 
 ### Limits
 
@@ -143,4 +145,8 @@ The CUDA case runs only in a CUDA build with a visible device (`snapy_cuda_test_
 - PnetCDF output requires $b = 1$ and throws otherwise (@sec-ch14-pnetcdf).
 - Block-to-block messages ($x_1$ relays) require $b \le 16$.
 - All workers of a pool use the first block's device; blocks of one process cannot be spread over several GPUs.
+- The chemistry step of the local blocks runs one block after another, not on the pool. The code comment gives the
+  reason: kintera's `LogSVPFunc` keeps one process-global operator that each call reassigns, so two blocks'
+  kinetics on two threads would race on it ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}). Read from the code,
+  not run.
 :::

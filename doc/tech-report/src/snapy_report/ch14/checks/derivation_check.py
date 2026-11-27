@@ -1,6 +1,6 @@
 """Chapter 14 derivation checks: the algebra behind the why-steps of the chapter 14 sections.
 
-Ports of the code at the book pin chengcli/snapy 6fbb39750f62b83df096058a4746e77d0a634bc5 (sympy, numpy, fractions).
+Ports of the code at the book pin chengcli/snapy 73c45a7c8c991209924e1137992352c335575062 (sympy, numpy, fractions).
 Each line prints [Cn] PASS or FAIL and the claim. Run: python3 src/snapy_report/ch14/checks/derivation_check.py
 """
 import sympy as sp
@@ -34,14 +34,15 @@ ok("C14-3 loc=32 gives the tag of loc=0 at phy+1", all(1024*p+32*32+b==1024*(p+1
 ok("C14-3 n <= 32767 keeps tag = tag0 + 65536 n below 2^31", 65535+65536*32767 < 2**31 and 65536*32768==2**31)
 ok("C14-3 tag < 2^24 for every tag0 iff n <= 255 (256 variables)", 65535+65536*255 < 2**24 and 0+65536*256 >= 2**24)
 k=sp.symbols('k',integer=True)
-relay=[0x7715,0x7717,0x7718,0x7720,0x7721,0x7722,0x7724,0x7726,0x7730,0x7732,0x7734,0x7736,0x7740,0x7742,0x7744,0x7746]
+# the ExchangeTag values (layout/exchange.hpp:34-45, + 4 for kTagScalarCov in x3) plus the receiver's side 0..3
+relay=sorted({t+s for t in [0x7715,0x7717,0x7720,0x7722,0x7724,0x7726,0x772a,0x7730,0x7734,0x7740,0x7744,0x7750,0x7760] for s in range(4)})
 base16={1024*p+32*l+b for p in range(64) for l in range(16) for b in range(27)}
-ok("C14-4 none of the 16 relay tags at the pin is a base tag with loc < 16", not any(t in base16 for t in relay))
+ok("C14-4 none of the %d relay tags at the pin is a base tag with loc < 16"%len(relay), not any(t in base16 for t in relay))
 ok("C14-4 folded with 65536*f, f < 256 (b <= 16), relay tags keep their low 16 bits and stay below 2^24",
    all((t+65536*f)%65536==t and t+65536*f<2**24 for t in relay for f in range(256)))
 ok("C14-4 the 15 b<=16 fold factors f = loc_send*b + loc_recv are < 256", max(ls*b+lr for b in range(1,17) for ls in range(b) for lr in range(b))<256)
 
-# C14-8: weighted Welford induction step (output_type.cpp:282-294)
+# C14-8: weighted Welford induction step (update_weighted_moments, output_type.cpp:111-124)
 W1,wi,qi,mb,M2=sp.symbols('W_prev w_i q_i qbar_prev M2_prev',positive=True)
 Wi=W1+wi
 qbar=mb+wi/Wi*(qi-mb)

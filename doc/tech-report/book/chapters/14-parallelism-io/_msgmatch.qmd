@@ -1,8 +1,9 @@
 ## Exchange message matching and in-process copies (`SyncOptions.phyid`) {#sec-ch14-msgmatch}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/layout/layout.hpp, src/layout/layout.cpp, src/layout/cubed_sphere_layout.cpp, tests/test_cubed_sphere_exchange.cpp, tests/test_exchange.cpp
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
+sources: src/layout/layout.hpp, src/layout/layout.cpp, src/layout/exchange.hpp, src/layout/exchange.cpp, src/mesh/mesh.cpp,
+         tests/test_cubed_sphere_exchange.cpp, tests/test_exchange.cpp
 status: draft
 -->
 
@@ -70,25 +71,28 @@ Two other kinds of message share the process group:
 1. Block-to-block messages (`send_to_block`, `recv_from_block`), used by the $x_1$[^rg-e4c312927e59] relays of @sec-ch03-x1seams.
    They add $65536\,(\mathrm{loc}_\text{send}\, b + \mathrm{loc}_\text{recv})$ to a caller tag. With $b \le 16$ (checked) the factor is
    below 256, so the low 16 bits stay the caller's tag (`send_to_block`, {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}}).
-   The comment above `send_to_block` {{< code src/layout/layout.hpp LayoutImpl::send_to_block >}} gives the argument: the hydro relay
-   tags (`0x77xx`) are not values of $\mathrm{tag}_0$ at $b \le 16$, and the total stays below the gather tags.
+   The comment above `send_to_block` {{< code src/layout/layout.hpp LayoutImpl::send_to_block >}} gives the argument: the relay
+   tags (`0x77xx`) are not values of $\mathrm{tag}_0$ at $b \le 16$, and the total stays below the gather tags. The
+   within-stage relays go through `Exchange`, which posts a same-process peer to a board instead
+   (`seam_exchange`, {{< code src/layout/exchange.cpp Exchange::seam_exchange >}}).
 2. `gather_x1` uses $2^{24} + \mathrm{loc}_\text{send}\, b + \mathrm{loc}_\text{recv}$
    ({{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}}).
 
-At the pin the hydro relays use sixteen tags: `0x7715`, `0x7717`, `0x7718`, `0x7720`, `0x7721`, `0x7722`, `0x7724`,
-`0x7726`, `0x7730`, `0x7732`, `0x7734`, `0x7736` and `0x7740`–`0x7746` in steps of two (the last four are
-`0x7740 + 4k`, `0x7742 + 4k` with `k` 0 for $x_2$ and 1 for $x_3$, in `HydroImpl::scalar_flux_covariance`). The
-comment's argument holds for all of them, in three steps:
+The relay tags are listed in one enum, `ExchangeTag`: `0x7715`, `0x7717`, `0x7720`, `0x7722`, `0x7724`, `0x7726`,
+`0x772a`, `0x7730`, `0x7734`, `0x7740` (with `+ 4` for $x_3$ in the scalar covariance), `0x7750` and `0x7760`
+({{< code src/layout/exchange.hpp ExchangeTag >}}). Every exchange adds the receiving side to its tag, 0 or 1 for an
+$x_1$ relay and 0 to 3 for a face-slab or panel seam, so every relay tag lies in the set of the enum values plus
+0 to 3, 44 tags from `0x7715` to `0x7763`. The comment's argument holds for all of them, in three steps:
 
-1. *Their low ten bits are 789 to 838.* A base tag with $\mathrm{loc}<16$ and buffer id below 27 has low ten bits
+1. *Their low ten bits are 789 to 867.* A base tag with $\mathrm{loc}<16$ and buffer id below 27 has low ten bits
    $32\,\mathrm{loc}+\mathrm{buf}\le 506$. So no relay tag is a base tag at $b\le16$.
 2. *The fold adds $65536\,f$ with $f=\mathrm{loc}_{\mathrm{send}}\,b+\mathrm{loc}_{\mathrm{recv}}\le 15\cdot16+15=255$.*
    Adding a multiple of 65536 leaves the low 16 bits unchanged.
-3. *The largest folded tag is $\mathtt{0x7746}+65536\cdot255 = 16\,742\,214 < 2^{24}$.* So it stays below the
+3. *The largest folded tag is $\mathtt{0x7763}+65536\cdot255 = 16\,742\,243 < 2^{24}$.* So it stays below the
    `gather_x1` base.
 
-`[C7]`–`[C9]` of `derivation_check.py` check the three steps on the sixteen tags; `[C4]` of `msgmatch_check.py`
-covers all sixteen. Exchange tags stay below the `gather_x1` base $2^{24}$ only while an exchange has at
+`[C7]`–`[C9]` of `derivation_check.py` check the three steps on the 44 tags; `[C4]` of `msgmatch_check.py`
+covers all 44. Exchange tags stay below the `gather_x1` base $2^{24}$ only while an exchange has at
 most 256 variables (`msgmatch_check.py` `[C5]`).
 
 ### Numerical method
@@ -97,13 +101,13 @@ most 256 variables (`msgmatch_check.py` `[C5]`).
 A neighbour that is the block itself (a periodic direction with one block) is copied from the send buffer to the
 opposite receive buffer. A neighbour in another process becomes one operation with the send and receive tags
 of @eq-ch14-msgmatch-tag. All operations of the block are then posted under one process-wide mutex. On UCX they are
-posted inside one coalescing group (`exchange_remote`, {{< code src/layout/layout.cpp LayoutImpl::exchange_remote >}}). With two blocks in a
-periodic direction, the first block walks that direction in reverse order (`dx_sgn = -1`; the code comment says
-"swap the order of first block for periodic condition"). The set of offsets is unchanged, only the posting order.
-The comment gives no reason; one hypothesis, not tested, is that it keeps the two messages to the same neighbour in
-the order that neighbour posts them. The cubed-sphere layout posts its
-remote operations under its own mutex and without a coalescing group
-(`g_cubed_sphere_comm_mutex`, {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::exchange_remote >}}).
+posted inside one coalescing group (`exchange_remote`, {{< code src/layout/layout.cpp LayoutImpl::exchange_remote >}}).
+The slab and cubed-sphere layouts share this function; a cubed-sphere block that is its own neighbour is refused,
+because across a panel seam the receiving slot is not the reversed direction. With two blocks in a periodic
+direction, the first block walks that direction in reverse order (`dx_sgn = -1` in `_remap_exchange_offset`,
+{{< code src/layout/layout.cpp LayoutImpl::_remap_exchange_offset >}}). The set of offsets is unchanged, only the
+posting order. The code gives no reason; one hypothesis, not tested, is that it keeps the two messages to the same
+neighbour in the order that neighbour posts them.
 
 **Same-process neighbours.** `_prepare_local_exchange` is a rendezvous keyed by the sync signature: process, $b$,
 `dim`, $\mathrm{phy}$, type, the phase, corner and interpolation flags, the layout type and the device
@@ -114,7 +118,10 @@ Each block increments an arrival count. The last block to arrive copies every sa
 A generation counter keeps one sync's release from waking a block that has already entered the next. An exception
 in the copy is re-thrown in every block of the process. On a CUDA device each block records an arrival event on its
 stream; the copying block waits on all of them and records a completion event that the others wait on
-(@sec-ch14-bpp). This rendezvous has no timeout.
+(@sec-ch14-bpp). This rendezvous has no practical timeout (its wait is capped at a year), but every same-process
+wait of a `Mesh` ends with "same-process wait left: a block job failed" once another block job of the Mesh has
+failed (`local_wait`, {{< code src/layout/layout.cpp local_wait >}}; the hook is set by the Mesh's worker pool,
+{{< code src/mesh/mesh.cpp MeshImpl::BlockWorkerPool::run_loop >}}).
 
 **In-process boards.** Messages between blocks of one process that are not a whole sync go through boards guarded by
 the same mutex: the $x_1$ reference anchors (`take_x1_anchor`), per-tag mailboxes (`post_to_local_block`,
@@ -164,7 +171,8 @@ TORCH_CHECK(phyid >= 0 && tag >= 0 && tag < 65536, "comm tag ", tag, ...);
 | block-to-block tags | {{< code src/layout/layout.cpp LayoutImpl::send_to_block >}} | `send_to_block` | none |
 | $x_1$ column gather | {{< code src/layout/layout.cpp LayoutImpl::gather_x1 >}} | `gather_x1` | `nb1`[^rg-3ac9b49e27c2] |
 | boards with 5-minute waits | {{< code src/layout/layout.cpp LayoutImpl::take_from_local_block >}} | `take_from_local_block` | none |
-| cubed-sphere remote posts | {{< code src/layout/cubed_sphere_layout.cpp CubedSphereLayoutImpl::exchange_remote >}} | `g_cubed_sphere_comm_mutex` | `layout: cubed-sphere` |
+| relay tags | {{< code src/layout/exchange.hpp ExchangeTag >}} | `ExchangeTag` | none |
+| same-process waits that end on a failed job | {{< code src/layout/layout.cpp local_wait >}} | `local_wait` | `Mesh` |
 
 : Code map of message matching. {#tbl-ch14-msgmatch-code}
 
@@ -183,16 +191,17 @@ TORCH_CHECK(phyid >= 0 && tag >= 0 && tag < 65536, "comm tag ", tag, ...);
 bound $2^{31}$ and the collision at $\mathrm{loc}=32$; `[C4]` and `[C5]` the relay tags and the 256-variable limit.
 `[C2]`–`[C9]` of `derivation_check.py` repeat steps 2 to 5 and check the sixteen relay tags.[^ch14-msgmatch-chk]
 
-[^ch14-msgmatch-chk]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the check itself; run:
+[^ch14-msgmatch-chk]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the check itself; run:
     `python3 src/snapy_report/ch14/checks/msgmatch_check.py`, CPU, double, 1 process;
-    Python 3.14.7, numpy 2.5.1; output identical to the committed file]. Output `msgmatch_check.out`, lines `[C1]`–`[C5]`. The same for
+    Python 3.12.3, numpy 2.2.4, sympy 1.14.0; output identical to the committed file, regenerated in this rewrite for
+    the 44 relay tags of the pin]. Output `msgmatch_check.out`, lines `[C1]`–`[C5]`. The same for
     `derivation_check.py`, output `derivation_check.out`, lines `[C2]`–`[C9]`.
 
 The tag check calls `make_comm_tag` {{< code tests/test_cubed_sphere_exchange.cpp CommTag.rejects_tags_that_collide_with_the_variable_offset >}}; the
 pointer and neighbour checks are in `main` of {{< code tests/test_exchange.cpp main >}}. The two refusals are
 asserted in {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.mesh_exchange_refuses_a_block_missing_a_variable >}}
 and {{< code tests/test_cubed_sphere_exchange.cpp CubedSphere.block_exchange_refuses_mismatched_variables >}}.
-Their pass status at the pin was not run for this chapter. No test posts two variables between the same two
+All three pass at the pin (@tbl-ch14-ctest-run). No test posts two variables between the same two
 processes with tags that would alias if the offset were missing; the argument above is the evidence.
 
 ### Limits

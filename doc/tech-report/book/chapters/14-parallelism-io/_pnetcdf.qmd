@@ -1,8 +1,8 @@
 ## PnetCDF output (`outputs: type: pnetcdf`) {#sec-ch14-pnetcdf}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/output/pnetcdf.cpp, src/mesh/meshblock.cpp, cmake/parameters.cmake, CMakeLists.txt
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
+sources: src/output/pnetcdf.cpp, src/output/writer_core.cpp, src/mesh/meshblock.cpp, cmake/parameters.cmake, CMakeLists.txt
 status: draft
 -->
 
@@ -33,22 +33,25 @@ The PnetCDF writer always writes float32 (`ncmpix_iput_vara_float`), so every va
 @sec-ch14-netcdf: at most $2^{-24}$ relative in the normal range. There is no double-precision path, which is why
 `double_precision: true` is refused. Why the refusal comes at setup, in two steps:
 
-1. *The constructor checks it.* `PNetcdfOutput`'s constructor refuses `double_precision: true`, so the error is raised
-   when the block builds its outputs.
-2. *The write checks it again.* `write_output_file` repeats the check, for an option changed after construction.
+1. *The setup checks it.* `make_pnetcdf_sink`, which the gridded writer calls when it is built, refuses
+   `double_precision: true`, so the error is raised when the block builds its outputs.
+2. *The write checks it again.* The sink's `write` repeats the check, for an option changed after construction.
 
 ### Numerical method
 
-`PNetcdfOutput`'s constructor rejects `double_precision: true` and any slice list, so a misconfigured run fails at setup and not at its
-first output (`PNetcdfOutput`, {{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}}). `write_output_file` skips the final write,
-repeats the precision check, and throws if the process holds more than one block
-({{< code src/output/pnetcdf.cpp PNetcdfOutput::write_output_file >}}). Each block then posts its own slab of each variable with
+The `pnetcdf` stream is the gridded writer of @sec-ch14-netcdf with the PnetCDF sink in place of the NetCDF one
+({{< code src/output/writer_core.cpp GriddedWriter::GriddedWriter >}}). `make_pnetcdf_sink` rejects
+`double_precision: true` and any slice list, so a misconfigured run fails at setup and not at its first output
+({{< code src/output/pnetcdf.cpp make_pnetcdf_sink >}}). The gridded writer skips the final write; the sink's `write`
+repeats the precision check and throws if the process holds more than one block
+({{< code src/output/pnetcdf.cpp PNetcdfSink::write >}}). Each block then posts its own slab of each variable with
 a non-blocking `ncmpix_iput_vara_float` and waits for it.
 
 With `PNETCDF=ON`, CMake runs the configured Python to import `pinc` and takes its include directory and library;
 configuring fails if `pinc` cannot be imported ({{< code cmake/parameters.cmake >}}). A
 build without it rejects `type: pnetcdf` when the block reads its outputs: "Output type 'pnetcdf' requires
-PNETCDF=ON" (`PNETCDFOUTPUT`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}).
+PNETCDF=ON" (`PNETCDFOUTPUT`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}); the sink factory of such a
+build throws the same message.
 
 ### Code
 
@@ -68,12 +71,12 @@ outputs:
    it would silently write NC_FLOAT". The check runs at setup, not at the first output.
 3. *More than one block per process*: "PNetcdfOutput currently requires blocks_per_process=1".
 4. *Any `x1_slice`, `x2_slice` or `x3_slice` list*, at construction: "Slice lists require type: netcdf with block
-   combining." ({{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}}). The collective writer has no path
+   combining." ({{< code src/output/pnetcdf.cpp make_pnetcdf_sink >}}). The collective writer has no path
    for the selected planes; slices are written by the NetCDF writer (@sec-ch14-netcdf).
 
 The output-entry refusals of @sec-ch14-netcdf apply first.
 
-**The excerpt.** Refusal 2, in the constructor:
+**The excerpt.** Refusal 2, in `make_pnetcdf_sink`:
 
 ```cpp
 TORCH_CHECK(!options->double_precision(),
@@ -83,10 +86,10 @@ TORCH_CHECK(!options->double_precision(),
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| float only, at setup | {{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}} | `PNetcdfOutput` | `double_precision` |
-| one block per process | {{< code src/output/pnetcdf.cpp PNetcdfOutput::write_output_file >}} | `PNetcdfOutput::write_output_file` | `blocks_per_process` |
+| float only and no slices, at setup | {{< code src/output/pnetcdf.cpp make_pnetcdf_sink >}} | `make_pnetcdf_sink` | `double_precision` |
+| one block per process | {{< code src/output/pnetcdf.cpp PNetcdfSink::write >}} | `PNetcdfSink::write` | `blocks_per_process` |
 | `pinc` probe | {{< code cmake/parameters.cmake >}} | `PNETCDF_OPTION` | `PNETCDF` |
-| type dispatch | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `PNetcdfOutput` | `type: pnetcdf` |
+| type dispatch | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `GriddedWriter` | `type: pnetcdf` |
 
 : Code map of PnetCDF output. {#tbl-ch14-pnetcdf-code}
 
@@ -99,13 +102,19 @@ TORCH_CHECK(!options->double_precision(),
 
 : Tests of PnetCDF output. {#tbl-ch14-pnetcdf-tests}
 
-The float32 bound is the one `[C17]` and `[C18]` check for @sec-ch14-netcdf; the refusals are read from the code, and
-no registered test exercises them.[^ch14-pnetcdf-run]
+The float32 bound is the one `[C17]` and `[C18]` check for @sec-ch14-netcdf. No registered test exercises the
+refusals; they were run by hand on one process.[^ch14-pnetcdf-run][^ch14-pnetcdf-card]
 
-[^ch14-pnetcdf-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the check itself; run:
+[^ch14-pnetcdf-run]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the check itself; run:
     `python3 src/snapy_report/ch14/checks/derivation_check.py`, CPU, double, 1 process;
-    Python 3.13.15, numpy 2.5.3, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C17]`–`[C18]`. The
-    `double_precision` refusal was checked by hand on one rank, per the text of chengcli/snapy#213.
+    Python 3.12.3, numpy 2.2.4, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`,
+    lines `[C17]`–`[C18]`.
+
+[^ch14-pnetcdf-card]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: `examples/straka_single.yaml` with
+    `nlim: 20` and a `type: pnetcdf` stream; run: `./straka.release card.yaml` on a CPU Release build of the pin
+    with `PNETCDF=ON`, 1 process; scope: the whole run, wall time; reps: 1]. The card exited 0 in 0.62 s and wrote
+    `card.out0.00000.nc`; adding `double_precision: true`, an `x1_slice`, or `nb2: 2` with `blocks_per_process: 2`
+    stopped the run with refusal 2, 4 and 3 respectively.
 
 ### Limits
 

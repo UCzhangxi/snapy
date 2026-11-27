@@ -1,8 +1,10 @@
 ## Collectives and global decisions {#sec-ch14-collectives}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/mesh/mesh.cpp, src/mesh/meshblock.cpp, src/utils/signal_handler.cpp, tests/test_check_redo_parallel.cpp, tests/test_cycle_diagnostics_parallel.cpp
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
+sources: src/mesh/mesh.cpp, src/mesh/meshblock_advance.cpp, src/mesh/meshblock_redo.cpp, src/mesh/meshblock_output.cpp,
+         src/mesh/stage_executor.cpp, src/mesh/signal_handler.cpp, src/diagnostics/budget.cpp,
+         src/output/load_diag_output_data.cpp, tests/test_check_redo_parallel.cpp, tests/test_cycle_diagnostics_parallel.cpp
 status: draft
 -->
 
@@ -16,13 +18,13 @@ what each one combines, and which of them give the same result on any number of 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Makes the decisions every rank must share (time step, redo, stop) identical on every process.
 
-**Data.** Small host tensors: the local stable step, six redo flags, the signal count, the fixer sums.
+**Data.** Small host tensors: the local stable step, seven redo flags, the signal count, the global-phase sums.
 
-**Placement.** Once per step in `MeshImpl` (`max_time_step`, `check_redo`) and at output and finalisation.
+**Placement.** Once per step in `MeshImpl` (`max_time_step`, `check_redo`), in the global phase, and at output and finalisation.
 
 **Activation.** Always with more than one process; no option. One process reduces nothing.
 
-**Guarantee / limits.** MIN and MAX are exact and order free; the fixer SUM is order dependent, bounded below.
+**Guarantee / limits.** MIN and MAX are exact and order free; the global-phase SUM is order dependent, bounded below.
 
 **Evidence.** The Tests layer below, @tbl-ch14-collectives-tests.
 :::
@@ -33,12 +35,13 @@ limiter's donor factor [-] and $\epsilon_{\mathrm m}$[^rg-6f5d38ae36e6] the mach
 
 | decision | reduction | tensor | where |
 |---|---|---|---|
-| time step | MIN of the local stable step | 1 double | `MeshImpl::max_time_step` |
-| redo | MAX of 6 cause flags | 6 doubles (0 or 1) | `reduce_redo_flags` |
+| time step | MIN of the local stable step | 1 double | `MeshBlockImpl::global_time_step` |
+| redo | MAX of 7 cause flags | 7 doubles (0 or 1) | `MeshBlockImpl::decide_retry` |
 | stop on a signal | MAX of the caught-signal count | 1 int32 | `SignalHandler::CheckSignalFlags` |
-| gravity-work fixer | SUM of 5 sums | 5 doubles | `MeshImpl::forward`; see below |
-| cycle line: totals, energies and meters | SUM, MIN of $\Theta$, MAX of the VIC[^rg-0726addd7156] residual, to the root | small doubles | `print_cycle_diagnostics` |
-| cell count for the timing line | SUM to the root | 1 int64 | `MeshBlockImpl::finalize` |
+| global phase (axial closure) | SUM of the blocks' partial sums | small doubles | `global_phase_sum`; see below |
+| cycle line: totals, energies and meters | SUM, MIN of $\Theta$, MAX of the VIC[^rg-0726addd7156] residual, to the root | small doubles | `print_cycle_line` |
+| budget output | SUM of totals, changes, boundary flows and counters; MIN of the minima | small doubles | `reduce_budget` |
+| zonal means of a diagnostic output | SUM to the root | one profile per variable | `OutputType::loadDiagOutputData` |
 
 : The collectives of one run. {#tbl-ch14-collectives}
 
@@ -53,14 +56,14 @@ Why every rank takes the same decision, in four steps:
    arithmetic, so it is exact and equal to one of the values reduced.
 2. *That input does not depend on the order.* The minimum of a finite set is the same set element whatever order the
    backend combines the values in. So every rank receives the same bits whatever the process count or backend.
-3. *The decisions use MIN or MAX only.* The time step is a MIN (`MeshImpl::max_time_step`), the redo causes and the
-   signal count are MAX (`reduce_redo_flags`, `CheckSignalFlags`). So every rank takes the same step, the same redo
+3. *The decisions use MIN or MAX only.* The time step is a MIN (`global_time_step`), the redo causes and the
+   signal count are MAX (`decide_retry`, `CheckSignalFlags`). So every rank takes the same step, the same redo
    decision and the same stop.
 4. *A SUM is different.* A floating-point sum of $N$ terms $b_k$, combined in any order or tree, differs from the exact
    sum by at most $(N-1)\,\tfrac12\epsilon_{\mathrm m}\sum_k\lvert b_k\rvert$: each of its $N-1$ additions rounds a
    partial sum bounded by $\sum_k\lvert b_k\rvert$ with relative error at most $\tfrac12\epsilon_{\mathrm m}=2^{-53}$,
-   as in the round-off bound of @sec-ch07-framework. Two orders can differ by twice that. The gravity-work fixer SUM
-   is the one SUM that feeds the state (@sec-ch14-repro).
+   as in the round-off bound of @sec-ch07-framework. Two orders can differ by twice that. The global-phase SUM of the
+   axial closure is the one SUM that feeds the state (@sec-ch14-repro).
 
 `[C14]` of `derivation_check.py` confirms steps 1 and 2 over all 720 orders of six doubles, and `[C15]` the bound of
 step 4 on 300 random summation trees.
@@ -68,53 +71,50 @@ step 4 on 300 random summation trees.
 ### Numerical method
 
 **Time step.** `MeshImpl::max_time_step` takes the minimum of `local_max_time_step` over the local blocks on the
-host, all-reduces it with MIN and returns $2^{-n_{\mathrm{redo}}}\,C\,\Delta t$, with $n_{\mathrm{redo}}$ the current redo
-count and $C$ the CFL[^rg-e0adecef2ed5] number ({{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}}). The single-block path does the same per block
-(`MeshBlockImpl::max_time_step`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}}).
+host ({{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}}); `global_time_step` all-reduces it with MIN and returns
+$2^{-n_{\mathrm{redo}}}\,C\,\Delta t$, with $n_{\mathrm{redo}}$ the current redo count and $C$ the CFL[^rg-e0adecef2ed5] number
+({{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::global_time_step >}}). The single-block path calls the same
+two functions (`MeshBlockImpl::max_time_step`, {{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::max_time_step >}}).
 
-**Redo.** `MeshImpl::check_redo` first checks signals. Each local block then forms its six flags as one float64
-tensor on its device: density or pressure floor hit, VIC dry clamp, the two limiter marks, saturation-adjustment
-failure and implicit solve failure. A seventh entry carries the vapour-repair failures counted during
-the step (`local_redo_flag_tensor`,
-{{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}}). When the local blocks share a device,
-the mesh stacks the tensors, takes their element-wise maximum on the device and reads it to the host once;
-otherwise it reads each block's tensor and ORs them. The read sets the limiter flag when the seventh
-entry is set, and returns the six flags (`read_redo_flags`,
-{{< code src/mesh/meshblock.cpp MeshBlockImpl::read_redo_flags >}}; {{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}).
-`reduce_redo_flags` all-reduces the six values with MAX and packs the result into a cause bit mask
-({{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}}).
-Every block on every process then applies the same decision: a hit anywhere rolls back every block
-(`MeshImpl::check_redo`, {{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). The redo itself is the subject of @sec-ch09-redo.
+**Redo.** `MeshImpl::check_redo` first checks signals. Each local block then forms its redo entries as one tensor on
+its device: the density or pressure floor hit, the VIC dry clamp, the two limiter marks, the saturation-adjustment
+failure, the implicit solve failure, the vapour-repair failures of the step and the heat-capacity latch
+(`local_redo_flag_tensor`, {{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::local_redo_flag_tensor >}}). When the
+local blocks share a device, `decide_retry` stacks the tensors, takes their element-wise maximum on the device and
+reads it to the host once; otherwise it reads each block's tensor and ORs them. The read folds the last two entries
+into the limiter flag and returns seven flags (`read_redo_flags`,
+{{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::read_redo_flags >}}). `decide_retry` all-reduces the seven values
+with MAX and packs the result into a cause bit mask
+({{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::decide_retry >}}). Every block on every process then applies the
+same decision: a hit anywhere rolls back every block (`MeshImpl::check_redo`,
+{{< code src/mesh/mesh.cpp MeshImpl::check_redo >}}). The redo itself is the subject of @sec-ch09-redo.
 
 **Signals.** SIGTERM, SIGINT and SIGALRM set flags. `CheckSignalFlags` sums the local flags with the signals blocked,
 all-reduces the count with MAX, and returns it; a non-zero value makes `check_redo` return $-1$ and the driver stop.
 With no snapy process group it falls back to a registered external group
-(`CheckSignalFlags`, {{< code src/utils/signal_handler.cpp SignalHandler::CheckSignalFlags >}}).
+(`CheckSignalFlags`, {{< code src/mesh/signal_handler.cpp SignalHandler::CheckSignalFlags >}}).
 
-**Cycle line.** On every cycle that prints a line (each `ncycle_out`[^rg-9751aed7d553]-th), `print_cycle_diagnostics` reduces the
-conserved totals, the kinetic and potential energies and the
-limiter meters with SUM, the smallest $\Theta$ with MIN and the VIC clamp residual with MAX, each a `reduce` to the
-root process, which prints them ({{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}}, `reduce`). These sums are printed
-only; nothing in the state depends on them.
+**Global phase.** With the axial closure on (@sec-ch07-axial), every block forms its partial sums on its device
+(`axial_closure_sums`), the Mesh adds them in block index order, $0,1,\dots$, into a zero tensor, and one
+allreduce SUM on the host combines the processes (`global_phase_sum`,
+{{< code src/mesh/stage_executor.cpp global_phase_sum >}}; {{< code src/mesh/mesh.cpp MeshImpl::forward >}}); a single
+block reduces its own partials the same way ({{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::forward >}}). The
+order in which the allreduce adds the processes' tensors is the backend's; the code does not fix it. Every block then
+applies the same reduced sums.
 
-**Gravity-work fixer.**
-
-The fixer runs only with `gravity-work: cell`, which is not the default (`face` is), so a default run makes no
-fixer reduction (@sec-ch13-fixgrav). When it runs, after the last stage of each step every block forms five
-float64 numbers on the host in `gravity_work_fixer_sums` ({{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}}):
-the stage-weighted $E_{\mathrm{tot}}+\mathrm{PE}_d$ defect, the fluid mass, the mass through the $x_1$ boundary faces, the mass of
-the wall cells and a redo flag. Each is itself a sum over the block's cells, formed by torch on the block's device.
-With one block per process the block all-reduces its vector with SUM directly
-(`gravity_work_fixer_sums`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}}). With several local blocks,
-`MeshImpl::forward` sets `defer_gravity_work_fixer` on every block, adds the blocks' vectors into a zero vector in
-block index order, $0,1,\dots$, and makes one allreduce SUM for the process
-(`gravity_work_fixer_sums`, {{< code src/mesh/mesh.cpp MeshImpl::forward >}}). The order in which the allreduce adds the
-processes' vectors is the backend's; the code does not fix it. Every block then applies the same reduced vector.
+**Cycle line and outputs.** On every cycle that prints a line (each `ncycle_out`[^rg-9751aed7d553]-th), `print_cycle_line`
+reduces the conserved totals, the kinetic and potential energies and the limiter meters with SUM, the smallest $\Theta$
+with MIN and the VIC clamp residual with MAX, each a `reduce` to the root process, which prints them
+({{< code src/diagnostics/budget.cpp print_cycle_line >}}). The budget output all-reduces its records with SUM and MIN
+({{< code src/diagnostics/budget.cpp reduce_budget >}}), and a diagnostic output with zonal means reduces its sums to
+the root ({{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}}). These are written or
+printed only; nothing in the state depends on them.
 
 **Barriers.** `initialize` holds all processes at a barrier before the first step
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::initialize >}}); the combines of NetCDF and restart files each have
-a barrier and a mirror barrier; `finalize` ends with a barrier and, if snapy owns the group, a shutdown
-(`MeshImpl::finalize`, {{< code src/mesh/mesh.cpp MeshImpl::finalize >}}).
+a barrier and a mirror barrier; `finish_run` ends with a barrier and, if snapy owns the group, a shutdown
+({{< code src/mesh/meshblock_output.cpp MeshBlockImpl::finish_run >}}; `MeshImpl::finalize`,
+{{< code src/mesh/mesh.cpp MeshImpl::finalize >}}).
 
 ### Code
 
@@ -124,28 +124,27 @@ process (@sec-ch14-launch), and a single process skips every collective (`has_pr
 **What is refused, and why.** Nothing is refused here. A rank that never reaches a collective leaves the others
 waiting in it (Limits).
 
-**The excerpt.** Step 3 for the time step, in `MeshImpl::max_time_step`:
+**The excerpt.** Step 3 for the time step, in `MeshBlockImpl::global_time_step`:
 
 ```cpp
-op.reduceOp = c10d::ReduceOp::MIN;
-if (layout->has_process_group()) layout->comm->allreduce(dt_reduce, op.reduceOp);
-...
-return pow(2., -redo) * cfl * dt;   // 2^{-n_redo} C dt
+  if (_playout->has_process_group())
+    _playout->comm->allreduce(dt_reduce, c10d::ReduceOp::MIN);
+  auto dt = dt_reduce[0].item<double>();
+  return pow(2., -pintg->current_redo) * pintg->options->cfl() * dt;
 ```
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| time step MIN | {{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}} | `max_time_step` | none |
-| single-block time step MIN | {{< code src/mesh/meshblock.cpp MeshBlockImpl::max_time_step >}} | `max_time_step` | none |
-| local redo causes | {{< code src/mesh/meshblock.cpp MeshBlockImpl::local_redo_flag_tensor >}} | `local_redo_flag_tensor` | none |
-| redo MAX | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reduce_redo_flags >}} | `reduce_redo_flags` | none |
+| local minimum over the blocks | {{< code src/mesh/mesh.cpp MeshImpl::max_time_step >}} | `max_time_step` | none |
+| time step MIN | {{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::global_time_step >}} | `global_time_step` | none |
+| local redo causes | {{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::local_redo_flag_tensor >}} | `local_redo_flag_tensor` | none |
+| redo MAX | {{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::decide_retry >}} | `decide_retry` | none |
 | one decision for all blocks | {{< code src/mesh/mesh.cpp MeshImpl::check_redo >}} | `check_redo` | none |
-| signal MAX | {{< code src/utils/signal_handler.cpp SignalHandler::CheckSignalFlags >}} | `CheckSignalFlags` | none |
-| cycle-line reductions | {{< code src/mesh/meshblock.cpp print_cycle_diagnostics >}} | `reduce` | none |
-| final barrier and shutdown | {{< code src/mesh/mesh.cpp MeshImpl::finalize >}} | `finalize` | none |
-| fixer sums of one block | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `gravity_work_fixer_sums` | `gravity-work: cell` |
-| fixer SUM, one block per process | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `gravity_work_fixer_sums` | `gravity-work: cell` |
-| fixer SUM, several local blocks | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `gravity_work_fixer_sums` | `gravity-work: cell` |
+| signal MAX | {{< code src/mesh/signal_handler.cpp SignalHandler::CheckSignalFlags >}} | `CheckSignalFlags` | none |
+| global-phase SUM | {{< code src/mesh/stage_executor.cpp global_phase_sum >}} | `global_phase_sum` | `conserve-axial-momentum` |
+| cycle-line reductions | {{< code src/diagnostics/budget.cpp print_cycle_line >}} | `reduce` | none |
+| budget output reductions | {{< code src/diagnostics/budget.cpp reduce_budget >}} | `reduce_budget` | budget output |
+| final barrier and shutdown | {{< code src/mesh/meshblock_output.cpp MeshBlockImpl::finish_run >}} | `finish_run` | none |
 
 : Code map of the collectives. {#tbl-ch14-collectives-code}
 
@@ -161,24 +160,24 @@ return pow(2., -redo) * cfl * dt;   // 2^{-n_redo} C dt
 `[C14]` of `derivation_check.py`: MIN and MAX of six doubles give one result over all 720 orders, equal to an input.
 `[C15]`: on 300 random summation trees of up to 39 terms the error stays within the bound of step 4.[^ch14-coll-chk]
 
-[^ch14-coll-chk]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the check itself; run:
+[^ch14-coll-chk]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the check itself; run:
     `python3 src/snapy_report/ch14/checks/derivation_check.py`, CPU, double, 1 process;
-    Python 3.11.13, numpy 2.4.6, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C14]`–`[C15]`.
+    Python 3.12.3, numpy 2.2.4, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C14]`–`[C15]`.
 
 The redo check is `check_redo_is_one_decision_across_ranks` in {{< code tests/test_check_redo_parallel.cpp Mesh.check_redo_is_one_decision_across_ranks >}}. No test
-reduces a time step over ranks with different local steps, or delivers a signal to one rank only. Pass status at
-the pin was not run for this chapter.
+delivers a signal to one rank only. Both tests pass at the pin (@tbl-ch14-ctest-run); the `ch14-backends` card
+reduces a time step over two ranks with different local steps (@sec-ch14-backends).
 
 ### Limits
 
 ::: {.callout-warning title="Limits"}
 - Signals are read only in `check_redo`, once per cycle. A rank that never reaches it (a hang elsewhere) never
   handles its signal, and the others wait in the collective; the comment in
-  `CheckSignalFlags` {{< code src/utils/signal_handler.cpp SignalHandler::CheckSignalFlags >}} says so.
+  `CheckSignalFlags` {{< code src/mesh/signal_handler.cpp SignalHandler::CheckSignalFlags >}} says so.
 - Every collective is blocking and sits on the host, so each costs a device-to-host copy on GPU (@sec-ch14-gpu).
-- The fixer SUM is a floating-point sum whose grouping changes with the decomposition (cells per block, blocks per
-  process, process count) and whose order across processes is left to the backend; no test measures its effect
-  (@sec-ch14-repro).
+- The global-phase SUM is a floating-point sum whose grouping changes with the decomposition (cells per block,
+  blocks per process, process count) and whose order across processes is left to the backend; no test measures its
+  effect on a decomposed run (@sec-ch14-repro).
 :::
 
 <!-- reader glossary notes -->

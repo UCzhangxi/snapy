@@ -1,8 +1,8 @@
 ## Reproducibility: what is shown bit for bit and what is not {#sec-ch14-repro}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: tests/test_coordinate.cpp, tests/test_cubed_sphere_exchange.cpp, tests/run_seam_backends.py, tests/run_restart_*.py, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp, tests/run_shallow_xy_decomp.py, src/hydro/hydro_forward.cpp, src/bc/bc_dispatch.cpp, src/eos/eos_dispatch.cpp, examples/run_hydro.cpp, examples/straka.cpp, python/__init__.py
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
+sources: tests/test_coordinate.cpp, tests/test_cubed_sphere_exchange.cpp, tests/run_seam_backends.py, tests/run_restart_*.py, tests/test_x1_seam_split.cpp, tests/test_x1_seam_split_mp.cpp, tests/run_shallow_xy_decomp.py, src/hydro/hydro_forward.cpp, src/forcing/axial_momentum.cpp, src/mesh/stage_executor.cpp, src/bc/bc_dispatch.cpp, src/eos/eos_dispatch.cpp, examples/run_hydro.cpp, examples/straka.cpp, python/__init__.py
 status: draft
 -->
 
@@ -17,24 +17,24 @@ marked as such.
 
 **Data.** The registered tests and the code lines that decide each claim.
 
-**Placement.** Across the chapter: exchange, collectives, restart, output and the gravity-work fixer.
+**Placement.** Across the chapter: exchange, collectives, restart, output and the global phase.
 
 **Activation.** No option; an evidence inventory.
 
-**Guarantee / limits.** Bitwise where listed; the fixer SUM can move every cell's energy by the bound below.
+**Guarantee / limits.** Bitwise where listed; the global-phase SUM can move every cell's momentum by the bound below.
 
 **Evidence.** @tbl-ch14-repro-claims and @tbl-ch14-repro-matrix.
 :::
 
-Local symbols: $N$ the global number of interior cells [count]; $d_i$ the cell term
-of the defect $\mathcal D$[^rg-8588edf5444d] [J]; $M$ the fluid mass the fixer divides by [kg]; $\rho_i$ a cell's density;
-$\varepsilon_{\mathcal D}$, $\varepsilon_M$ [-] the relative round-off of $\mathcal D$ and $M$ (subscripted, as appendix A
-requires). $\mathcal D$ and $\epsilon_{\mathrm m}$ are defined in @sec-appa.
+Local symbols: $N$ the global number of interior cells [count]; $R$ the axial-momentum sum of the closure and $r_i$ its
+cell term, $I$ its moment-of-inertia sum (@sec-ch07-axial); $\omega$ [s$^{-1}$] the solid-body rate it applies; $w_2$ the
+stage weight; $\rho_i$ a cell's density and $r$[^rg-0eb96caaf93f] its radius; $\varepsilon_R$, $\varepsilon_I$ [-] the relative round-off of
+$R$ and $I$ (subscripted, as appendix A requires). $\epsilon_{\mathrm m}$ is defined in @sec-appa.
 
 ### Derivation
 
-None for the inventory: it is an evidence table. The one derived item is the round-off bound of the gravity-work
-fixer SUM, under Sources of difference below.
+None for the inventory: it is an evidence table. The one derived item is the round-off bound of the global-phase
+SUM, under Sources of difference below.
 
 ### Numerical method
 
@@ -84,49 +84,50 @@ The rows, with the line that decides each:
   ({{< code examples/straka.cpp main >}}; Python: `set_num_threads` in {{< code python/__init__.py >}}), which removes the
   thread count as a source of reduction-order changes inside snapy. Libraries called through kintera and pyharp
   manage their own threads.
-- **Seam fluxes between processes.** At a split $x_1$ seam, the flux slab and face pressure are exchanged only with a
-  neighbour in another process; a neighbour in the same process is skipped (`is_local_block`,
-  {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The same split therefore takes different
-  code paths in one process and across processes. The $10^{-13}$ bound above covers the difference; bitwise equality
-  is not claimed.
+- **Seam fluxes.** At a split $x_1$ seam, the flux slab and the face pressure are exchanged with the neighbour and
+  both blocks take the mean, on every $x_1$ seam, in one process or across processes (`x1_seam_peers` with
+  `process_only=false`, {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}). The same split takes the same
+  arithmetic in one process and across processes; the $10^{-13}$ bound above covers the remaining difference from
+  one block, and bitwise equality is not claimed.
 - **Reductions.** MIN and MAX collectives are order independent (@sec-ch14-collectives).
 
-- **Gravity-work fixer SUM.** It applies only with `gravity-work: cell`, which is not the default (`face` is). The fixer's five-double SUM
-  (@sec-ch14-collectives) is the one floating-point sum among the collectives that feeds back into the state (the
-  SUMs of the cycle line are only printed), and its result is written into the state: every cell's energy gets $-\mathcal D\rho_i/M$ (`efix`, {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}).
-  The terms of $\mathcal D$ and $M$ are grouped by block (a torch sum over the block's cells on its device), then
-  by process (block index order), then across processes (the backend's order). A different decomposition, device or
-  backend regroups them. How far that can move the result, in three steps:
+- **Global-phase SUM.** It applies only with the global solid-body closure of `conserve-axial-momentum`
+  (@sec-ch07-axial). The two sums $R$ and $I$ (@sec-ch14-collectives) are the one floating-point sum among the
+  collectives that feeds back into the state (the SUMs of the cycle line and the budget output are only written),
+  and its result is written into the state: every cell's tangential momentum changes by $\omega\,\rho_i r^2$ times a
+  geometric factor, with $\omega=-w_2\,\Delta t\,R/I$ (`omega`,
+  {{< code src/forcing/axial_momentum.cpp AxialClosureFixer::apply >}}). The terms of $R$ and $I$ are grouped by
+  block (a torch sum over the block's cells on its device), then by process (block index order), then across
+  processes (the backend's order). A different decomposition, device or backend regroups them. How far that can
+  move the result, in three steps:
 
-  1. *Each of $\mathcal D$ and $M$ is a floating-point sum of $N$ cell terms*, combined over a tree that depends on
-     the decomposition. Any such tree differs from the exact sum by at most
+  1. *Each of $R$ and $I$ is a floating-point sum of $N$ cell terms*, combined over a tree that depends on the
+     decomposition. Any such tree differs from the exact sum by at most
      $(N-1)\,\tfrac12\epsilon_{\mathrm m}\sum\lvert\text{terms}\rvert$ (@sec-ch14-collectives, step 4), so two
      decompositions differ by at most twice that.
   2. *Relative to the sums,* this is
-     $\varepsilon_{\mathcal D}\le(N-1)\,\epsilon_{\mathrm m}\sum\lvert d_i\rvert/\lvert\mathcal D\rvert$ for the defect,
-     whose cell terms can cancel, and $\varepsilon_M\le(N-1)\,\epsilon_{\mathrm m}$ for the mass, whose terms are all
-     positive.
-  3. *Every cell's energy change is $-\mathcal D\rho_i/M$.* To first order its relative change is
-     $\varepsilon_{\mathcal D}-\varepsilon_M$, so it is bounded by $\varepsilon_{\mathcal D}+\varepsilon_M$. Once
-     $\mathcal D$ is computed, the bound is computable from its cell terms. No test
-  measures this: `test_gravity_work_fixer_python` runs one block in one process on CPU, the six-panel arm of
-  `test_flux_covariance_seams_python` runs six local blocks in one process and asserts conservation of
-  $E_{\mathrm{tot}}+\mathrm{PE}_d$ to $10^{-12}$, not agreement with another decomposition, and no test runs the fixer on more
-  than one process or compares two decompositions or backends with it on.
+     $\varepsilon_R\le(N-1)\,\epsilon_{\mathrm m}\sum\lvert r_i\rvert/\lvert R\rvert$ for $R$, whose cell terms can
+     cancel, and $\varepsilon_I\le(N-1)\,\epsilon_{\mathrm m}$ for $I$, whose terms are all positive.
+  3. *Every cell's change is proportional to $R/I$.* To first order its relative change is $\varepsilon_R-\varepsilon_I$,
+     so it is bounded by $\varepsilon_R+\varepsilon_I$. Once $R$ is computed, the bound is computable from its cell
+     terms. No test measures this: `test_global_phase` runs the six panels of the closure in one process and
+     asserts conservation of the axial angular momentum to $10^{-12}$, not agreement with another decomposition,
+     and no test runs the closure on more than one process or compares two decompositions or backends with it on.
 
 ### Code
 
 **A minimal input.** No option belongs to this section. To exercise the decomposition claims, configure with
 `FULL_TESTS=ON` and run the tests of @tbl-ch14-repro-claims, for example `ctest -R 'shallow_xy_decomp|restart'`; the
-fixer bound applies only to a card with `gravity-work: cell` (@sec-ch13-fixgrav).
+global-phase bound applies only to a card with the axial closure on (@sec-ch07-axial).
 
 **What is refused, and why.** Nothing is refused here; the refusals of each mechanism are in its own section.
 
-**The excerpt.** Step 3 of the fixer bound, in `MeshBlockImpl::apply_gravity_work_fixer`:
+**The excerpt.** Step 3 of the global-phase bound, in `AxialClosureFixer::apply`:
 
 ```cpp
-double efix = -D / mass;                            // -D/M, J/kg
-hydro_u[IPR].index(in3) += m.index(in3) * efix;     // rho_i times -D/M per cell
+  auto R = g[0], I = g[1];
+  ...
+  auto omega = -stage_weight * dt * R / I;
 ```
 
 | what | code link | symbol | switch |
@@ -136,25 +137,26 @@ hydro_u[IPR].index(in3) += m.index(in3) * efix;     // rho_i times -D/M per cell
 | unseeded noise | {{< code examples/run_hydro.cpp main >}} | `rand_like` | example only |
 | one torch thread (C++) | {{< code examples/straka.cpp main >}} | `set_num_threads` | none |
 | one torch thread (Python) | {{< code python/__init__.py >}} | `set_num_threads` | none |
-| seam fluxes only across processes | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `is_local_block` | `nb1` |
+| seam fluxes averaged on every $x_1$ seam | {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}} | `x1_seam_peers` | `nb1` |
+| the global-phase SUM | {{< code src/mesh/stage_executor.cpp global_phase_sum >}} | `global_phase_sum` | `conserve-axial-momentum` |
+| the state it moves | {{< code src/forcing/axial_momentum.cpp AxialClosureFixer::apply >}} | `omega` | closure |
 
 : Code behind the sources of difference. {#tbl-ch14-repro-code}
 
 ### Tests
 
-The evidence tests are listed in @tbl-ch14-repro-claims. CPU tests have pinned test evidence, and the N8 decomposition/restart card records exit 0.[^ch14-repro-run] `[C15]` of `derivation_check.py` checks the any-order bound of step 1 on 300 random
-summation trees, and `[C16]` the first-order quotient rule of step 3.[^ch14-repro-chk]
+The evidence tests are listed in @tbl-ch14-repro-claims. Their CPU entries pass on a CPU build of the pin
+(@tbl-ch14-ctest-run), except `test_shallow_xy_decomp`, which that build does not register (`FULL_TESTS` off), and the
+CUDA arms, which were not run.[^ch14-repro-run] `[C15]` of `derivation_check.py` checks the any-order bound of step 1
+on 300 random summation trees, and `[C16]` the first-order quotient rule of step 3.[^ch14-repro-chk]
 
-[^ch14-repro-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the `ch14-repro` card;
-    run: `ctest -R 'shallow_xy_decomp|restart' --output-on-failure`, CPU, 4 rank(s);
-    torch 2.10.0+cu128, kintera 2.6.2]. The dated N8 `validation_log` in
-    `tools/do-cards.yaml` records exit 0 on 2026-10-14. This is a card result, not a claim that every
-    registered test in the table ran. The [pinned CPU test run](https://github.com/chengcli/snapy/actions/runs/38197324901)
-    supplies individual Passed lines for the CPU tests; CUDA-only rows require separate evidence.
+[^ch14-repro-run]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; run: `ctest -j1 -R <names>` on a CPU Release
+    build of the pin with `FULL_TESTS` off; reps: 1]. The `ch14-repro` card (`FULL_TESTS=ON`, `ctest -R
+    'shallow_xy_decomp|restart'`) was not run at this pin; its restart half is the six restart runners, which passed.
 
-[^ch14-repro-chk]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the check itself; run:
+[^ch14-repro-chk]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the check itself; run:
     `python3 src/snapy_report/ch14/checks/derivation_check.py`, CPU, double, 1 process;
-    Python 3.13.15, numpy 2.5.3, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C15]`–`[C16]`.
+    Python 3.12.3, numpy 2.2.4, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C15]`–`[C16]`.
 
 | configuration | bitwise | tolerance | untested |
 |---|---|---|---|
@@ -176,12 +178,9 @@ summation trees, and `[C16]` the first-order quotient rule of step 3.[^ch14-repr
 - The cubed-sphere decomposition evidence is one stage, in one process.
 - Restart continuation is checked on a printed cycle line, not on the fields.
 - Determinism case batteries in downstream repositories are not snapy evidence and are not listed.
-- Bit identity with other builds is not claimed: the cubed-sphere NetCDF axis variables differ by one float ulp from
-  builds that rounded them twice.[^ch14-repro-ulp]
+- Bit identity with other builds is not claimed.
 :::
 
-[^ch14-repro-ulp]: The double rounding was removed in chengcli/snapy#213.
-
 <!-- reader glossary notes -->
-[^rg-8588edf5444d]: $\mathcal D$ — the $E+\mathrm{PE}_d$ defect of a step, the quantity the gravity-work fixer removes [J]
+[^rg-0eb96caaf93f]: $r$ — $x_1$ on a spherical-polar grid (radius) [m]
 <!-- end reader glossary notes -->
