@@ -1,7 +1,7 @@
 ## Communication backends: Gloo, UCX through commux, an external group (`BACKEND`) {#sec-ch14-backends}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
 sources: src/layout/process_group.hpp, src/layout/process_group.cpp, src/layout/process_group_ucx.cpp, src/layout/distributed.cpp, src/layout/layout.cpp, CMakeLists.txt, tests/CMakeLists.txt, tests/test_gloo_one_tensor.cpp, tests/run_seam_backends.py, tests/expect_gloo_invalid_interface.py
 status: draft
 -->
@@ -165,16 +165,16 @@ for (auto const& tensor : tensors) {
 There is no check script: the section derives nothing beyond the routing above, which the refusal tests exercise.
 The table lists the registered entries.[^ch14-backends-run]
 
-[^ch14-backends-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the `ch14-backends` card;
-    run: `BACKEND=gloo torchrun --nproc-per-node=2 --master-port=29511 collective.py`, CPU, 2 rank(s);
-    torch 2.10.0+cu128, kintera 2.6.2]. The dated N8 `validation_log` in
-    `tools/do-cards.yaml` records exit 0 on 2026-10-14. This is a card result, not a claim that every
-    registered test in the table ran. The [pinned CPU test run](https://github.com/chengcli/snapy/actions/runs/38197324901)
-    supplies individual Passed lines for the CPU tests; CUDA-only rows require separate evidence.
+[^ch14-backends-run]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the `ch14-backends` card, the five
+    steps of the generated block above in one file; run: `BACKEND=gloo python -m torch.distributed.run
+    --nproc-per-node=2 --master-port=29513 collective.py` on a CPU Release build of the pin, 2 ranks; Python 3.12.3,
+    torch 2.10.0, kintera 2.6.13; reps: 1]. Both ranks printed `dt=1.360672 = cfl*min(steps)` and exited 0. The
+    CPU ctests of the table ran on the same build (@tbl-ch14-ctest-run); `test_gloo_one_tensor` is registered only
+    on macOS and `test_exchange_ucx_cuda` only with CUDA, so neither ran there.
 
 The registrations use `setup_parallel_test` and `add_test` {{< code tests/CMakeLists.txt >}}; the one-tensor check is
 `a_message_of_two_tensors_is_refused_with_the_fix`, {{< code tests/test_gloo_one_tensor.cpp gloo.a_message_of_two_tensors_is_refused_with_the_fix >}}, and the Gloo-versus-UCX compare is
-`main` in {{< code tests/run_seam_backends.py main >}}. CPU pass evidence and the N8 card result are distinguished in the run record above.
+`main` in {{< code tests/run_seam_backends.py main >}}.
 
 ### Limits
 

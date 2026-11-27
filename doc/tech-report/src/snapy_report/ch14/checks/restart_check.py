@@ -1,8 +1,8 @@
 """Executable check of the resumed output times (chapter 14, _restart.qmd).
 
-What is checked, at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below:
-- the next_time rule of MeshBlockImpl::_init_from_restart (src/mesh/meshblock.cpp:1376-1398);
-- the output test and advance of MeshBlockImpl::make_outputs (src/mesh/meshblock.cpp:991-995).
+What is checked, at snapy@73c45a7c8c991209924e1137992352c335575062, ported line for line below:
+- the next_time rule of MeshBlockImpl::_init_from_restart (src/mesh/meshblock_restart.cpp:105-123);
+- the output test and advance of MeshBlockImpl::make_outputs (src/mesh/meshblock_output.cpp:33-46).
 Claims C1-C3.
 
 Run: python3 restart_check.py   (numpy; exits with the number of failed claims)

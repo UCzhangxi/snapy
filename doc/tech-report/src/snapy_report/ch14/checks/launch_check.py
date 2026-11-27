@@ -1,8 +1,8 @@
 """Executable check of the global block rank (chapter 14, _launch.qmd).
 
-What is checked, at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below:
+What is checked, at snapy@73c45a7c8c991209924e1137992352c335575062, ported line for line below:
 - owner_process_rank, local_block_index and global_block_rank of LayoutOptions
-  (src/layout/layout.hpp:83-93).
+  (src/layout/layout.hpp:89-99).
 Claims C1-C3.
 
 Run: python3 launch_check.py   (standard library only; exits with the number of failed claims)

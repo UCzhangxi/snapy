@@ -1,11 +1,12 @@
 """Executable check of the exchange message tags (chapter 14, _msgmatch.qmd).
 
-What is checked, at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below:
-- get_buffer_id and make_comm_tag (src/layout/layout.hpp:32-35, 161-170);
-- the per-variable tag of exchange_each_var (src/layout/layout.cpp:652-666);
-- the block-to-block fold of send_to_block (src/layout/layout.cpp:849-877) applied to the
-  hydro relay tags 0x7715-0x7724 (src/hydro/hydro.cpp:518, 594-595; src/hydro/hydro_forward.cpp:284, 447-448, 507);
-- the gather_x1 tag base 1 << 24 (src/layout/layout.cpp:777-847).
+What is checked, at snapy@73c45a7c8c991209924e1137992352c335575062, ported line for line below:
+- get_buffer_id and make_comm_tag (src/layout/layout.hpp, make_comm_tag at 185-192);
+- the per-variable tag of exchange_each_var (src/layout/layout.cpp:677-683);
+- the block-to-block fold of send_to_block (src/layout/layout.cpp:837-866) applied to the
+  within-stage relay tags: the ExchangeTag values (src/layout/exchange.hpp:33-46) plus the receiver's side,
+  0..3 (Exchange::seam_exchange, src/layout/exchange.cpp:174-213), a superset of the tags in use;
+- the gather_x1 tag base 1 << 24 (src/layout/layout.cpp:798-801).
 Claims C1-C5.
 
 Run: python3 msgmatch_check.py   (standard library only; exits with the number of failed claims)
@@ -32,8 +33,9 @@ def make_comm_tag(local_block_index, offset, phyid):  # layout.hpp:161-170
 
 
 OFFSETS = list(itertools.product((-1, 0, 1), repeat=3))
-RELAY = [0x7715, 0x7717, 0x7718, 0x7720, 0x7721, 0x7722, 0x7724, 0x7726, 0x7730, 0x7732,
-         0x7734, 0x7736, 0x7740, 0x7742, 0x7744, 0x7746]  # hydro.cpp:533, 608-609; hydro_forward.cpp:240-241, 367, 530-531, 590, 695-696, 729-730, 953
+EXCHANGE_TAGS = [0x7715, 0x7717, 0x7720, 0x7722, 0x7724, 0x7726, 0x772a, 0x7730, 0x7734, 0x7740, 0x7744,
+                 0x7750, 0x7760]  # exchange.hpp:34-45; 0x7744 = kTagScalarCov + 4 (hydro_forward.cpp:263)
+RELAY = sorted({t + side for t in EXCHANGE_TAGS for side in range(4)})  # + the receiver's side (exchange.cpp)
 GATHER = 1 << 24
 
 
@@ -78,7 +80,8 @@ def check_C4_relay_tags():
               for me in range(bpp) for peer in range(bpp)]
     low = all(f % 65536 in RELAY for f in folded)
     return report("C4", not hit and low and max(folded) < GATHER,
-                  "the hydro relay tags are no T0 at l < 16; folded, they keep their low 16 bits and stay below 2^24",
+                  "the %d relay tags are no T0 at l < 16; folded, they keep their low 16 bits and stay below 2^24"
+                  % len(RELAY),
                   "relay tags hitting T0: %d; largest folded tag %d = 2^24 - %d" % (len(hit), max(folded),
                                                                                    GATHER - max(folded)))
 

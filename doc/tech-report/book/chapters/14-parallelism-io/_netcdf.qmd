@@ -1,8 +1,11 @@
 ## NetCDF output: per-block files and the combine (`outputs: type: netcdf`) {#sec-ch14-netcdf}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
-sources: src/output/output_type.hpp, src/output/output_type.cpp, src/output/netcdf.cpp, src/output/combine_netcdf.cpp, src/output/mppnccombine.cpp, tests/test_user_output.cpp, tests/test_output_barrier.cpp, tests/test_netcdf_utils.cpp
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
+sources: src/options/output.yaml, src/output/output_type.hpp, src/output/output_type.cpp, src/output/writer_core.hpp,
+         src/output/writer_core.cpp, src/output/netcdf.cpp, src/output/combine_netcdf.cpp, src/output/combine_parts.cpp,
+         src/output/output_utils.cpp, src/output/load_*_output_data.cpp, src/mesh/meshblock.cpp,
+         tests/test_user_output.cpp, tests/test_output_barrier.cpp, tests/test_netcdf_utils.cpp
 status: draft
 -->
 
@@ -17,7 +20,7 @@ from the write only after the combined file exists.
 
 **Data.** Reads the selected variables of the block; writes `<basename>.out<n>.<kkkkk>.nc`.
 
-**Placement.** `make_outputs` after an accepted step; the root joins the parts with the in-tree `mppnccombine`.
+**Placement.** `make_outputs` after an accepted step; the root joins the parts with the in-tree `combine_parts`.
 
 **Activation.** `outputs: - type: netcdf` with `dt`, `variables`[^rg-9edf1a86e51f] and options; CMake `NETCDF` (default ON).
 
@@ -30,8 +33,8 @@ Local symbols: $f$ a cubed-sphere panel, $0..5$ [count]; $n_{b2}$, $n_{b3}$ the
 blocks per panel along $x_2$, $x_3$ [count]; $\mathrm{fl}_{32}(x)$ the float32 value nearest a double $x$; $t$ the
 written time [s].
 
-Units of the output fields: a variable carries a `units` attribute where the output code sets one, in SI[^rg-8c117ccbf00d]: `rho`
-kg/m^3, `press` "pa", `vel1..3` m/s, `temp` and `theta` K, the coordinates "m" and `time` "s"; `dens`, `Etot`,
+Units of the output fields: a variable carries a `units` attribute where the metadata table sets one, in SI[^rg-8c117ccbf00d]: `rho`
+kg/m^3, `press` Pa, `vel1..3` m/s, `temp` and `theta` K, the vertical coordinate m and `time` s; `dens`, `Etot`,
 `mom1..3` and the species fields carry none (@tbl-ch14-netcdf-contract-4, @tbl-ch14-netcdf-contract-5,
 @tbl-ch14-netcdf-contract-6).
 
@@ -58,80 +61,86 @@ T.plot(x="x2", y="x1")                               # needs matplotlib
 
 The output copies values and, by default, rounds them to float32. What that rounding costs, in four steps:
 
-1. *The conversion.* Each value is converted with `static_cast<float>` into an `NC_FLOAT` buffer unless
-   `double_precision: true` ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}). The cast rounds to
-   nearest.
+1. *The conversion.* Unless `double_precision: true`, each value is converted with `t.to(torch::kFloat32)` before
+   `nc_put_vara_float`, so snapy narrows and NetCDF does not ({{< code src/output/netcdf.cpp Values >}}). The cast
+   rounds to nearest.
 2. *Relative error.* For $\lvert x\rvert$ in the float32 normal range $[2^{-126},\,(2-2^{-23})\,2^{127}]$, rounding to the
    nearest of 24 significant bits gives $\lvert\mathrm{fl}_{32}(x)-x\rvert\le 2^{-24}\lvert x\rvert\approx5.96\times10^{-8}\lvert x\rvert$.
-3. *Outside that range.* A value above $\approx3.40\times10^{38}$ becomes infinite. One below $2^{-126}$ goes
+3. *Outside that range.* A value above $\approx3.40\times10^{38}$ becomes infinite, and stays so in the file, because
+   the narrowing is snapy's, not NetCDF's (which would store the float fill value). One below $2^{-126}$ goes
    subnormal, with absolute error at most $2^{-150}$.
 4. *The time.* The time is written in the same type. Near $t$ the float32 spacing lies between $2^{-24}t$ and
    $2^{-23}t$, so a step shorter than $2^{-25}t$ always vanishes from the written time and one longer than
-   $2^{-23}t$ always shows. This is the "time step below about $10^{-7}t$" of the code comment.
+   $2^{-23}t$ always shows. This is the "time step below ~1e-7 * t" of the code comment.
 
 With `double_precision: true` the file holds the doubles exactly. `[C17]`–`[C19]` of `derivation_check.py` check
 steps 2 to 4.
 
 ### Numerical method
 
-**Options.** `OutputOptionsImpl::from_yaml` accepts only the keys listed above plus `data_format` and `verbose`; it
-rejects a slice and a sum along the same axis and requires `type`[^rg-ddd3dfc3359d]
-({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}). The defaults are where `OutputOptionsImpl` declares each option with `ADD_ARG`
-({{< code src/output/output_type.hpp OutputOptionsImpl >}}).
+**Options.** The keys of one stream are the rows of the options table `src/options/output.yaml`, read by the
+generated `read_output_rows`; any other key is an error ({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}).
+The slice checks run when the card is read and again against the resolved global grid, through `check_domain`
+({{< code src/output/output_type.cpp OutputOptionsImpl::check_domain >}}), which the block calls for every output
+when it builds them ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}).
 
-**One block's file.** `NetcdfOutput::write_output_file` does nothing on the final write, so the last frame of a run is
-the last scheduled one (@sec-ch14-schedule). It writes the interior, or with `include_ghost_zones` the interior plus
-$n_g$[^rg-88a9e0a977ff] ghosts on every axis with more than one cell. It applies slices and sums, then creates the file with
-`nc_create(..., NC_NETCDF4, ...)` ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}). A slice
-key holds a list of coordinates: each selects the cell that contains it, with no interpolation, a list on several
-axes selects their Cartesian product, and a block that contains none of them writes no slice
-(`SliceOutputData`, {{< code src/output/output_type.cpp OutputType::SliceOutputData >}}). The `pnetcdf` writer refuses
-any slice list in its constructor ("Slice lists require type: netcdf with block combining.",
-{{< code src/output/pnetcdf.cpp PNetcdfOutput::PNetcdfOutput >}}). Each block records its
-position in the global block grid. For the cubed sphere the six panels are laid out as a $3 \times 2$ tile: panel $f$
-is shifted by $(f \bmod 3)\,n_{b2}$ in $x_2$ and $\lfloor f/3 \rfloor\,n_{b3}$ in $x_3$, and the global counts become
-$3n_{b2}$ and $2n_{b3}$ (`nb2`, {{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}). Every variable, the time
+**One block's file.** `GriddedWriter`, the writer of `netcdf` and `pnetcdf`, does nothing on the final write, so the
+last frame of a run is the last scheduled one (@sec-ch14-schedule). It loads the selected fields, copies each to the
+host as float64 once, sets the index range (the interior, or with `include_ghost_zones` the interior plus
+$n_g$[^rg-88a9e0a977ff] ghosts on every axis with more than one cell), applies slices and sums, and hands the frame to
+the NetCDF sink ({{< code src/output/writer_core.cpp GriddedWriter::write_output_file >}};
+{{< code src/output/writer_core.cpp output_range >}}). A slice key holds a list of coordinates: each selects the cell
+that contains it, with no interpolation, a list on several axes selects their Cartesian product, and a block that
+contains none of them writes no part (`Frame::transform`, {{< code src/output/writer_core.cpp Frame::transform >}}).
+The sink creates the file with `nc_create(..., NC_NETCDF4, ...)` ({{< code src/output/netcdf.cpp NetcdfSink::write >}}).
+Each block records its position in the global block grid as the `domain_decomposition` attribute of each axis. For
+the cubed sphere the six panels are laid out as a $3 \times 2$ tile: panel $f$ is shifted by $(f \bmod 3)\,n_{b2}$ in
+$x_2$ and $\lfloor f/3 \rfloor\,n_{b3}$ in $x_3$, and the global counts become $3n_{b2}$ and $2n_{b3}$
+(`output_block_location`, {{< code src/output/writer_core.cpp output_block_location >}}). Every variable, the time
 included, is NC_FLOAT unless `double_precision: true`, which makes it NC_DOUBLE
-({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}).
+({{< code src/output/netcdf.cpp NetcdfSink::write >}}).
 
-**The combine.** `combine_blocks` counts the blocks of the process that have written this frame. Only the last of
-them goes on, so one thread per process enters the collective part (`ready_to_combine`, {{< code src/output/combine_netcdf.cpp ready_to_combine >}}).
-That thread waits at a barrier. It then creates a scope guard whose destructor is a second barrier, so no rank
-returns before the root has finished, and a throw on the root still releases the others. On the root it globs
-`<basename>.block*.out<n>.<kkkkk>.nc` and removes any old combined file. One part is renamed; several parts are passed
-to `mppnccombine -r`, which joins them and removes the parts (`ReleaseOnExit`, {{< code src/output/combine_netcdf.cpp NetcdfOutput::combine_blocks >}}).
-`mppnccombine` is GFDL's tool for joining decomposed NetCDF files, compiled in as a function
-({{< code src/output/mppnccombine.cpp mppnccombine >}}).
+**The combine.** `combine_on_root` counts the blocks of the process that have reached this frame. Only the last of
+them goes on, so one thread per process enters the collective part. That thread waits at a barrier. It then
+creates a scope guard whose destructor is a second barrier, so no rank returns before the root has finished, and a
+throw on the root still releases the others ({{< code src/output/writer_core.cpp combine_on_root >}}). On the root,
+`combine_netcdf_blocks` globs `<basename>.block*.out<n>.<kkkkk>.nc` and removes any old combined file. One part is
+renamed; several parts are passed to `combine_parts`, which joins them and removes the parts
+({{< code src/output/combine_netcdf.cpp combine_netcdf_blocks >}}). `combine_parts` is snapy's own joiner: it takes the
+structure of the first part, places every split variable at the offset its `domain_decomposition` attribute gives,
+requires one time record per part and refuses to overwrite an existing file
+({{< code src/output/combine_parts.cpp combine_parts >}}).
 
-With `combine: false` the per-block files stay. Joining them later needs an external `mppnccombine`;
-`pd-combine` does not join blocks (@sec-ch14-tools).
+With `combine: false` the per-block files stay. Joining them later needs an external joiner such as GFDL's
+`mppnccombine`; `pd-combine` does not join blocks (@sec-ch14-tools).
 
 #### What is in the file
 
 **Which writers exist.**
 
-A first-year reading: every entry of the `outputs:` list in the YAML card is one *stream*. Its `type:` picks the writer.
+A first-year reading: every entry of the `outputs:` list in the YAML card is one *stream*. Its `type:` picks the writer
+({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}).
 
-| id | `type:` | what you get | source |
-|---|---|---|---|
-| O-1 | `netcdf` | one NetCDF-4 file per block per frame, joined into one file per frame | [meshblock.cpp#L215-L216](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/mesh/meshblock.cpp#L215-L216), [netcdf.cpp#L127](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L127) |
-| O-2 | `pnetcdf` | parallel-NetCDF writer; needs the build option `PNETCDF=ON`, otherwise "Output type 'pnetcdf' requires PNETCDF[^rg-0346eddcaa68]=ON." | [meshblock.cpp#L217-L222](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/mesh/meshblock.cpp#L217-L222) |
-| O-3 | `restart` | binary tensor dump of the whole block state, for resuming | [meshblock.cpp#L213-L214](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/mesh/meshblock.cpp#L213-L214), [restart.cpp#L97](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/restart.cpp#L97) |
-| O-4 | anything else (`hdf5`, `fits`, …) | refused: "Output type '…' is not implemented." The HDF5 branch is commented out | [meshblock.cpp#L223-L229](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/mesh/meshblock.cpp#L223-L229) |
-| O-5 | (no `type:`) | refused: "output file type must be specified" | [output_type.cpp#L100-L106](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L100-L106) |
+| id | `type:` | what you get |
+|---|---|---|
+| O-1 | `netcdf` | one NetCDF-4 file per block per frame, joined into one file per frame (`GriddedWriter` with the NetCDF sink) |
+| O-2 | `pnetcdf` | parallel-NetCDF writer (@sec-ch14-pnetcdf); needs the build option `PNETCDF=ON`, otherwise "Output type 'pnetcdf' requires PNETCDF[^rg-0346eddcaa68]=ON." |
+| O-3 | `restart` | tensor dump of the block state, for resuming (@sec-ch14-restart) |
+| O-3b | `budget` | the budget time series of the flux register (@sec-ch13) |
+| O-4 | anything else (`hdf5`, `fits`, …) | refused: "Output type '…' is not implemented." |
+| O-5 | (no `type:`) | refused: "OutputOptions::from_yaml: output file type must be specified" |
 
 : Netcdf contract, table 1. {#tbl-ch14-netcdf-contract-1}
 
 **The YAML keys of one stream, and the cadence.**
 
-| id | key (default) | meaning | source |
-|---|---|---|---|
-| O-6 | the accepted keys | `dt, output_sumx1, output_sumx2, output_sumx3, include_ghost_zones, cartesian_vector, double_precision, x1_slice, x2_slice, x3_slice, type, data_format, variables, combine, verbose, super-resolution`. Any other key is an error | [output_type.cpp#L66-L70](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L66-L70) |
-| O-7 | `dt` (0.) | output interval in simulation seconds | [output_type.cpp#L73](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L73) |
-| O-8 | `double_precision` (false) | NetCDF variables are `NC_FLOAT` unless this is true. `pnetcdf` refuses `true` | [netcdf.cpp#L194-L198](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L194-L198), [pnetcdf.cpp#L53-L60](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/pnetcdf.cpp#L53-L60) |
-| O-9 | `super-resolution` (false) | spelled with a **hyphen** in YAML, although the C++ option is `super_resolution`. When on, `nx2`[^rg-c42b14679d58] and `nx3`[^rg-641319d314a5] are doubled for the written block | [output_type.cpp#L121](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L121), [output_type.cpp#L143-L154](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L143-L154) |
-| O-10 | `cartesian_vector`, `data_format` | accepted and stored, but they **change nothing**. The only uses of `cartesian_vector` are commented out, and `data_format` is never read after parsing | [output_type.cpp#L80](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L80), [output_type.cpp#L108-L110](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.cpp#L108-L110), [load_hydro_output_data.cpp#L96](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L96) (search of `src/` and `python/` at the pin) |
-| O-11 | stream number | streams are numbered from 0 in card order, and stream *n* is named `out<n>` | [meshblock_options.cpp#L49-L54](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/mesh/meshblock_options.cpp#L49-L54), [output_type.hpp#L39](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_type.hpp#L39) |
+| id | key (default) | meaning |
+|---|---|---|
+| O-6 | the accepted keys | `dt`, `output_sumx1`, `output_sumx2`, `output_sumx3`, `include_ghost_zones`, `double_precision`, `x1_slice`, `x2_slice`, `x3_slice`, `type`[^rg-ddd3dfc3359d], `variables`, `combine`, `verbose`: the rows of `src/options/output.yaml`. Any other key is an error |
+| O-7 | `dt` (0.) | output interval in simulation seconds |
+| O-8 | `double_precision` (false) | NetCDF variables are `NC_FLOAT` unless this is true. `pnetcdf` refuses `true` (@sec-ch14-pnetcdf) |
+| O-9 | `combine` (true) | join the per-block parts after each write |
+| O-11 | stream number | streams are numbered from 0 in card order, and stream *n* is named `out<n>` ({{< code src/output/output_type.hpp OutputOptionsImpl::file_id >}}) |
 
 : Netcdf contract, table 2. {#tbl-ch14-netcdf-contract-2}
 
@@ -144,8 +153,8 @@ Two state arrays sit behind the names:
 
 | id | fact | source |
 |---|---|---|
-| O-16 | Row order of both arrays in the default build (`NMASS` = 0): 0 density, 1-3 velocity or momentum, 4 pressure or energy, 5 onward species | [parameters.cmake#L3](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/cmake/parameters.cmake#L3), [snap.h#L34-L41](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/snap.h#L34-L41) |
-| O-17 | In `hydro_u`, row 0 is the **dry** density $(1-\sum y)\rho$, the species rows are partial densities $y\rho$, and the momentum is $\rho v$ (lowered with the cell cosine). In `hydro_w`, row 0 is the **total** density $\rho$ and the species rows are mass fractions $y$ (shown for `ideal-moist`) | [ideal_moist.cpp#L140-L152](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/eos/ideal_moist.cpp#L140-L152) |
+| O-16 | Row order of both arrays in the default build (`NMASS` = 0): 0 density, 1-3 velocity or momentum, 4 pressure or energy, 5 onward species | `NMASS` in `cmake/parameters.cmake`, the index enum of {{< code src/snap.h >}} |
+| O-17 | In `hydro_u`, row 0 is the **dry** density $(1-\sum y)\rho$ and the species rows are partial densities $y\rho$; in `hydro_w`, row 0 is the **total** density $\rho$ and the species rows are mass fractions $y$ (`ideal-moist`) | @sec-ch02 |
 
 : Netcdf contract, table 3. {#tbl-ch14-netcdf-contract-3}
 
@@ -153,16 +162,16 @@ What each `variables:` keyword writes:
 
 | id | keyword | NetCDF variable names; `units` attribute | from; kind | source |
 | --- | --- | --- | --- | --- |
-| O-18 | `prim` (or `d`, `p`, `v`, `v1..v3`/`vx..vz`) | `rho`, `press`, `vel1 vel2 vel3`, and one variable per species named after it; units: `rho` kg/m^3, `press` "pa", `vel*` m/s; **species: none** | `hydro_w`; primitive (derived from the conserved state) | [load_hydro_output_data.cpp#L76-L91](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L76-L91), [L122-L157](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L122-L157), [output_utils.cpp#L37-L41](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/output_utils.cpp#L37-L41) |
-| O-19 | `cons` (or `D`, `E`, `m`, `m1..m3`) | `dens`, `Etot`, `mom1 mom2 mom3`, and one variable per species (same names as in `prim`); units: **none** (`dens`, `Etot` and `mom*` are not in the metadata table) | `hydro_u`; prognostic | [load_hydro_output_data.cpp#L71-L120](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L71-L120), [L159-L161](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L159-L161), [output_utils.cpp#L29-L187](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/output_utils.cpp#L29-L187) |
-| O-20 | species names | the kintera species names after the first ("dry" is not written), with `(`, `)` and `,` replaced by `_`, so `H2O(l,p)` becomes `H2O_l_p_` |  | [output_utils.cpp#L276-L298](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_utils.cpp#L276-L298) |
-| O-21 | a vector name | `mom`, `vel` and `curl` become `<name>1`, `<name>2`, `<name>3` |  | [netcdf.cpp#L354-L362](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L354-L362) |
-| O-22 | `scalar`[^rg-0a77b7001f11], `scalar_cons`, `scalar_prim` | `s_<name>` (conserved) and `r_<name>` (primitive), or `s<n>`/`r<n>` when unnamed; units: none | `scalar_s`, `scalar_r`; prognostic / derived | [load_scalar_output_data.cpp#L20-L54](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_scalar_output_data.cpp#L20-L54) |
-| O-23 | `prim_stat`, `scalar_stat` | `<name>_mean`, `<name>_std`; units: the base name's units (the `_mean`/`_std` suffix is stripped for the lookup) | running statistics; diagnostic | [load_hydro_output_data.cpp#L41-L69](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L41-L69), [output_utils.cpp#L16-L25](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_utils.cpp#L16-L25), [L240-L260](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_utils.cpp#L240-L260) |
-| O-24 | `thermo` | `temp`, `theta`, `theta_v`, `entropy`, `rh_<product>`; units: K, K, K, J/(kg.K); **`rh_*` none** (the table lists only `rh1`, `rh2`) | kintera; diagnostic | [load_diag_output_data.cpp#L54-L55](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_diag_output_data.cpp#L54-L55), [L116-L158](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_diag_output_data.cpp#L116-L158), [output_utils.cpp#L42-L52](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_utils.cpp#L42-L52) |
-| O-25 | `diagnostics`, `div`, `div_h`, `curl`, `implicit`, `path`, `avg` | see @sec-ch13-output-diag; units: `div`, `div_h`, `curl1..3` 1/s; `path_*` kg/m^2 | diagnostic | [load_diag_output_data.cpp#L166-L285](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_diag_output_data.cpp#L166-L285), [output_utils.cpp#L59-L64](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_utils.cpp#L59-L64), [L247-L250](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/output_utils.cpp#L247-L250) |
-| O-26 | `uov` / `user_out_var` | whatever the user callback returns. The run refuses this keyword if no callback is registered; units: none | user; user | [load_user_output_data.cpp#L8-L24](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_user_output_data.cpp#L8-L24) |
-| O-27 | cubed sphere | with `prim` or `cons` on `gnomonic-equiangle`, `lon` and `lat` in rad are added; units: rad | coordinate | [load_hydro_output_data.cpp#L165-L183](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L165-L183) |
+| O-18 | `prim` (or `d`, `p`, `v`, `v1..v3`/`vx..vz`) | `rho`, `press`, `vel1 vel2 vel3`, and one variable per species named after it; units: `rho` kg/m^3, `press` Pa, `vel*` m/s; **species: none** | `hydro_w`; primitive (derived from the conserved state) | {{< code src/output/load_hydro_output_data.cpp OutputType::loadHydroOutputData >}} |
+| O-19 | `cons` (or `D`, `E`, `m`, `m1..m3`) | `dens`, `Etot`, `mom1 mom2 mom3`, and one variable per species (same names as in `prim`); units: **none** | `hydro_u`; prognostic | as O-18 |
+| O-20 | species names | the kintera species names after the first ("dry" is not written), with `(`, `)` and `,` replaced by `_`, so `H2O(l,p)` becomes `H2O_l_p_`; the writer then makes any remaining character outside `[A-Za-z0-9_]` a `_` |  | {{< code src/output/output_utils.cpp get_hydro_names >}}; {{< code src/output/writer_core.cpp sanitize_netcdf_name >}} |
+| O-21 | a vector name | `mom`, `vel` and `curl` become `<name>1`, `<name>2`, `<name>3` |  | {{< code src/output/writer_core.cpp Field::names >}} |
+| O-22 | `scalar`[^rg-0a77b7001f11], `scalar_cons`, `scalar_prim` | the conserved and primitive scalars, one variable each; units: none | `scalar_s`, `scalar_r`; prognostic / derived | {{< code src/output/load_scalar_output_data.cpp OutputType::loadScalarOutputData >}} |
+| O-23 | `prim_stat`, `scalar_stat` | `<name>_mean`, `<name>_std` | running statistics; diagnostic | {{< code src/output/load_hydro_output_data.cpp OutputType::loadHydroOutputData >}} |
+| O-24 | `thermo` | `temp`, `theta`, `theta_v`, `entropy`, `rh_<product>`; units: K, K, K, J/(kg.K); **`rh_*` none** (the table lists only `rh1`, `rh2`) | kintera; diagnostic | {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}} |
+| O-25 | `diagnostics`, `div`, `div_h`, `curl`, `implicit`, `path`, `avg` | see @sec-ch13-output-diag | diagnostic | as O-24 |
+| O-26 | `uov` / `user_out_var` | whatever the user callback returns. The run refuses this keyword if no callback is registered; units: none | user; user | {{< code src/output/load_user_output_data.cpp OutputType::loadUserOutputData >}} |
+| O-27 | cubed sphere | with `prim` or `cons` on `gnomonic-equiangle`, `lon` and `lat`, the panel's buffers, are added; units: rad | coordinate | as O-18 |
 
 : Netcdf contract, table 4. {#tbl-ch14-netcdf-contract-4}
 
@@ -170,26 +179,26 @@ To add a field, follow @sec-ch14-add-output-field; the existing diagnostic group
 
 | id | quantity | meaning | source |
 |---|---|---|---|
-| O-28 | time | variable `time`, units "s", in the same float or double type as the data | [netcdf.cpp#L200-L203](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L200-L203), [L466-L471](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L466-L471) |
+| O-28 | time | variable `time`, units "s", in the same float or double type as the data | {{< code src/output/netcdf.cpp NetcdfSink::write >}} |
 
 : Netcdf contract, table 5. {#tbl-ch14-netcdf-contract-5}
 
 Watch-outs for a reader of the files:
 
-- The pressure unit string is lower-case "pa" (O-18).
-- Mass fractions, partial densities, `dens`, `Etot` and `mom*` carry no `units` attribute at all (O-18, O-19). Their SI units are not stated in any output code.
-- **Hypothesis, not run:** `variables: [prim, cons]` on a deck with species defines each species name twice: once from `hydro_w`, once from `hydro_u` ([load_hydro_output_data.cpp#L155-L161](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L155-L161)). `nc_def_var` is wrapped in a check that throws on error ([netcdf.cpp#L371-L394](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L371-L394)), so a "name in use" write failure is expected. This hypothesis has not been run.
+- Mass fractions, partial densities, `dens`, `Etot` and `mom*` carry no `units` attribute at all (O-18, O-19). Their
+  SI units are not stated in any output code.
+- **Hypothesis, not run:** `variables: [prim, cons]` on a deck with species defines each species name twice: once
+  from `hydro_w`, once from `hydro_u` (O-18, O-19), and the second `nc_def_var` of a name would fail.
 
 **Dimensions, coordinates and ghost cells in NetCDF.**
 
 | id | fact | source |
 |---|---|---|
-| O-29 | A cell-centred 3-D field has dimensions **`(time, x1, x3, x2)`**: x1 (vertical) comes first and x2 comes last. Face fields swap in `x1f`, `x2f` or `x3f` at the same slot | [netcdf.cpp#L324-L329](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L324-L329) |
-| O-30 | `time` is unlimited, but each file holds **one** time record (start index 0, count 1). A run gives one file per frame | [netcdf.cpp#L144](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L144), [L459-L460](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L459-L460) |
-| O-33 | The coordinate variables carry axis labels `x1`[^rg-9792da14d102] "Z", `x2` "X" and `x3` "Y". Every coordinate gets units "m", whatever the grid | [netcdf.cpp#L202-L256](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/netcdf.cpp#L202-L256) |
-| O-34 | On `gnomonic-equiangle`, `x2v` and `x3v` are the panel angles fed to `cs_ab_to_lonlat`, yet they are written with units "m" (O-33). **Source inconsistency** | [load_hydro_output_data.cpp#L172-L175](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/load_hydro_output_data.cpp#L172-L175), [netcdf.cpp#L224](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/netcdf.cpp#L224) |
-| O-35 | The long names disagree across centre and face: `x2` is "X-coordinate at cell center" but `x2f` is "Y-coordinate at cell face", and `x3` is "Y-…" but `x3f` is "X-…" | [netcdf.cpp#L232](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L232), [L236](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/netcdf.cpp#L236), [L261](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L261), [L256](https://github.com/chengcli/snapy/blob/ccf40f9565642c32be69f4b9ef0cfa6daff3f201/src/output/netcdf.cpp#L256) |
-| O-36 | Part names concatenate `<basename>`, `.block<r>`, `.out<n>` and `.<kkkkk>.nc`; joined names omit `.block<r>`. The global attribute `NumFilesInSet` holds the number of blocks that write a part: every block, or with slice lists the blocks whose cells contain a listed coordinate on each sliced axis, times six on the cubed sphere | [netcdf.cpp#L98-L115](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L98-L115), [join: L99–106](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/combine_netcdf.cpp#L99-L106), [netcdf.cpp#L287-L309](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/output/netcdf.cpp#L287-L309) |
+| O-29 | A cell-centred 3-D field has dimensions **`(time, x1, x3, x2)`**: x1 (vertical) comes first and x2 comes last. Face fields swap in `x1f`, `x2f` or `x3f` at the same slot | {{< code src/output/writer_core.cpp field_dims >}} |
+| O-30 | `time` is unlimited, but each file holds **one** time record. A run gives one file per frame | {{< code src/output/netcdf.cpp NetcdfSink::write >}} |
+| O-33 | The coordinate variables carry axis labels `x1`[^rg-9792da14d102] "Z", `x2` "X" and `x3` "Y", with long names "<axis>-coordinate at cell center" and "…at cell face". `x1` has units "m"; `x2` and `x3` have "radian" on `gnomonic-equiangle` and `spherical-polar` grids and "m" otherwise | {{< code src/output/writer_core.cpp axis_text >}}; {{< code src/output/output_utils.hpp horizontal_axis_units >}} |
+| O-34 | On `gnomonic-equiangle`, the written `x2` and `x3` of a panel are shifted by $\tfrac\pi2$ times its column and row in the $3\times2$ layout, so the panels' angles follow one another along each joined axis | {{< code src/output/netcdf.cpp NetcdfSink::write >}} |
+| O-36 | Part names concatenate `<basename>`, `.block<r>`, `.out<n>` and `.<kkkkk>.nc`; joined names omit `.block<r>`. The global attribute `NumFilesInSet` holds the number of blocks that write a part: every block, or with slice lists the blocks whose cells contain a listed coordinate on each sliced axis, times six on the cubed sphere | {{< code src/output/netcdf.cpp NetcdfSink::write >}}; {{< code src/output/combine_netcdf.cpp combine_netcdf_blocks >}} |
 
 : Netcdf contract, table 6. {#tbl-ch14-netcdf-contract-6}
 
@@ -206,7 +215,7 @@ The procedure below adds a cell-centred scalar without adding a writer.
 1. **Choose the loader.** For a case-specific field, register `MeshBlockImpl::user_output_callback` on each block
    before its first output, following {{< code examples/run_hydro.cpp main >}}. Return a map from a nonempty field
    name to a tensor; select `variables: [uov]` (or `[user_out_var]`) to write all entries.
-   `OutputType::loadUserOutputData` refuses a missing callback and appends each entry as a scalar
+   `OutputType::loadUserOutputData` refuses a missing callback and appends each entry as one field
    ({{< code src/output/load_user_output_data.cpp OutputType::loadUserOutputData >}}).
    For a built-in diagnostic, edit `OutputType::loadDiagOutputData` in
    {{< code src/output/load_diag_output_data.cpp OutputType::loadDiagOutputData >}};
@@ -221,18 +230,19 @@ The procedure below adds a cell-centred scalar without adding a writer.
    ```cpp
    if (ContainVariable("rho_copy")) {
      auto const& w = vars.at("hydro_w");
-     appendTensorOutput("SCALARS", "rho_copy", w[IDN]);
+     appendTensorOutput("rho_copy", w[IDN]);
    }
    ```
 
    Place this branch directly in the loader body, outside the other keyword guards. Retain the full cell array,
-   including its ghosts, as the existing loaders do. `OutputType::appendTensorOutput` copies the tensor, links the `OutputData` node and increments the
-   variable count ({{< code src/output/output_type.cpp OutputType::appendTensorOutput >}}).
+   including its ghosts, as the existing loaders do. `OutputType::appendTensorOutput` accepts a tensor of one to three
+   dimensions and adds it to the frame as one field
+   ({{< code src/output/output_type.cpp OutputType::appendTensorOutput >}}).
 3. **Add metadata and rebuild.** Add `{"rho_copy", "copy of total density", "kg/m^3", "CCC"}` to the table in
    `MetadataTable::MetadataTable` ({{< code src/output/output_utils.cpp MetadataTable::MetadataTable >}}).
-   The columns are name, long name, units and grid location. `NetcdfOutput::write_output_file` obtains attributes
-   from that table by field name, not from `OutputData::units`; an unknown name gets no units or long name
-   ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}).
+   The columns are name, long name, units and grid location. The NetCDF sink takes the attributes from that table by
+   field name; an unknown name gets no units or long name, and its grid location defaults to cells
+   ({{< code src/output/netcdf.cpp NetcdfSink::write >}}).
 4. **Select and locate it.** After rebuilding the source change, add this stream to the input deck:
 
    ```yaml
@@ -246,9 +256,9 @@ The procedure below adds a cell-centred scalar without adding a writer.
    ({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}).
    As the first stream, it writes `rho_copy(time, x1, x3, x2)` in
    `<basename>.out0.<kkkkk>.nc`; with `combine: false`, use `<basename>.block<r>.out0.<kkkkk>.nc`.
-   The writer defines the variable and `NetcdfOutput::combine_blocks` joins the block files
-   ({{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}};
-   {{< code src/output/combine_netcdf.cpp NetcdfOutput::combine_blocks >}}).
+   The sink defines the variable and `combine_netcdf_blocks` joins the block files
+   ({{< code src/output/netcdf.cpp NetcdfSink::write >}};
+   {{< code src/output/combine_netcdf.cpp combine_netcdf_blocks >}}).
    Choosing `[rho_copy]` before adding its loader branch silently selects no such field.
 
 For a new field, check its values, shape, name and units in a written file against the defining calculation.
@@ -273,39 +283,40 @@ outputs:
 ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}), and `OutputOptionsImpl::from_yaml`
 parses each entry ({{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}}). In order:
 
-1. *An unknown key* in the entry is an error (`check_keys` with the accepted keys), so a misspelt option is not
-   silently dropped.
+1. *An unknown key* in the entry is an error, so a misspelt option, or one this pin does not have
+   (`cartesian_vector`, `data_format`, `super-resolution`), is not silently dropped.
 2. *A slice and a sum along the same axis* ("Cannot request both slice and sum along x1") is an error. One axis
    cannot be both cut and summed.
 3. *A missing `type`* is an error ("output file type must be specified"). There is no default writer.
 4. *A slice outside the mesh* is an error ("Slice out of mesh bounds: x1"), checked against the global
    lower-inclusive, upper-exclusive bounds, and so is *a slice list that is not strictly increasing* ("Slices must be
-   strictly increasing: x1"); both when the card is read ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}) and again at
-   construction ({{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}}). A slice
-   is a YAML list, even for one coordinate (`x1_slice: [1.25]`); a scalar value fails to parse.
+   strictly increasing: x1"), both checked by `check_domain` when the block builds its outputs. A slice is a YAML
+   list, even for one coordinate (`x1_slice: [1.25]`); a scalar value fails to parse.
 5. *An unknown `type`* is an error when the block builds its outputs ("Output type '…' is not implemented"); `pnetcdf`
    without `PNETCDF=ON` is refused there too.
 
-**The excerpt.** The precision switch of step 1, in `NetcdfOutput::write_output_file`:
+**The excerpt.** The precision switch of step 1, in the NetCDF sink:
 
 ```cpp
-const bool nc_dbl = options->double_precision();
-const nc_type nctype = nc_dbl ? NC_DOUBLE : NC_FLOAT;
-...
-f[i] = static_cast<float>(v);      // fl32(x) of step 2 when nc_dbl is false
+    if (dbl)
+      t = t.contiguous();
+    else
+      t = t.to(torch::kFloat32).contiguous();
 ```
 
 | what | code link | symbol | switch |
 |---|---|---|---|
-| option defaults | {{< code src/output/output_type.hpp OutputOptionsImpl >}} | `ADD_ARG` | none |
-| options from YAML | {{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}} | `OutputOptionsImpl::from_yaml` | `outputs` |
+| option rows | {{< code src/output/output_type.cpp OutputOptionsImpl::from_yaml >}} | `read_output_rows` | `outputs` |
+| slice checks against the grid | {{< code src/output/output_type.cpp OutputOptionsImpl::check_domain >}} | `check_domain` | slices |
 | stream name | {{< code src/output/output_type.hpp OutputOptionsImpl::file_id >}} | `file_id` | none |
-| one block's file | {{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}} | `NetcdfOutput::write_output_file` | `include_ghost_zones` |
-| cubed-sphere tile | {{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}} | `nb2` | `layout: cubed-sphere` |
-| float or double | {{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}} | `nc_dbl` | `double_precision` |
-| last block of the process | {{< code src/output/combine_netcdf.cpp ready_to_combine >}} | `ready_to_combine` | none |
-| barriers and the combine | {{< code src/output/combine_netcdf.cpp NetcdfOutput::combine_blocks >}} | `NetcdfOutput::combine_blocks` | `combine` |
-| GFDL combiner | {{< code src/output/mppnccombine.cpp mppnccombine >}} | `mppnccombine` | none |
+| one write of a gridded stream | {{< code src/output/writer_core.cpp GriddedWriter::write_output_file >}} | `GriddedWriter` | `type` |
+| slices and sums | {{< code src/output/writer_core.cpp Frame::transform >}} | `transform` | `x*_slice`, `output_sumx*` |
+| one block's file | {{< code src/output/netcdf.cpp NetcdfSink::write >}} | `NetcdfSink::write` | `include_ghost_zones` |
+| cubed-sphere tile | {{< code src/output/writer_core.cpp output_block_location >}} | `output_block_location` | `layout: cubed-sphere` |
+| float or double | {{< code src/output/netcdf.cpp Values >}} | `Values` | `double_precision` |
+| last block of the process, barriers | {{< code src/output/writer_core.cpp combine_on_root >}} | `combine_on_root` | none |
+| the combine | {{< code src/output/combine_netcdf.cpp combine_netcdf_blocks >}} | `combine_netcdf_blocks` | `combine` |
+| the joiner | {{< code src/output/combine_parts.cpp combine_parts >}} | `combine_parts` | none |
 
 : Code map of NetCDF output. {#tbl-ch14-netcdf-code}
 
@@ -315,8 +326,8 @@ f[i] = static_cast<float>(v);      // fl32(x) of step 2 when nc_dbl is false
 |---|---|---|---|
 | `test_user_output` `OutputPrecision` (double) | values written with `double_precision` read back bit for bit | exact | NC_DOUBLE |
 | `test_user_output` `OutputPrecision` (non-finite) | a non-finite value (an infinity) survives the float output | exact class | IEEE |
-| `test_user_output` `OutputPrecision` (default) | default off; reported by the options printout | exact | string compare |
-| `test_user_output` `OutputSlice.*`, `OutputSelection.*`, `OutputStatistics.*`, `SuperResolution.*` | slices, selections, statistics (@sec-ch14-schedule) and refined output | per case | the test cases |
+| `test_user_output` `OutputPrecision` (default, no NetCDF) | default off and reported by the options printout; a build without NetCDF writes nothing | exact | string compare |
+| `test_user_output` `OutputSlice.*`, `OutputSelection.*`, `OutputDiagnostics.*`, `OutputStatistics.*` | slices, selections, diagnostics and statistics (@sec-ch14-schedule) | per case | the test cases |
 | `test_output_barrier` | two ranks, two blocks each: on return every rank opens the combined file, which holds every global cell with its value | exact | file contents |
 | `test_netcdf_utils` | variable names are sanitised to NetCDF rules | exact | string compare |
 
@@ -326,15 +337,22 @@ f[i] = static_cast<float>(v);      // fl32(x) of step 2 when nc_dbl is false
 $5.948\times10^{-8}\le2^{-24}$. `[C18]`: a value above the float32 maximum becomes infinite. `[C19]`: on
 $2\times10^4$ float32-exact times, a step below $2^{-25}t$ vanishes and one above $2^{-23}t$ shows.[^ch14-netcdf-chk]
 
-[^ch14-netcdf-chk]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the check itself; run:
+[^ch14-netcdf-chk]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the check itself; run:
     `python3 src/snapy_report/ch14/checks/derivation_check.py`, CPU, double, 1 process;
-    Python 3.13.15, numpy 2.5.3, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C17]`–`[C19]`.
+    Python 3.12.3, numpy 2.2.4, sympy 1.14.0; output identical to the committed file]. Output `derivation_check.out`, lines `[C17]`–`[C19]`.
 
 The precision cases are the `OutputPrecision` tests in {{< code tests/test_user_output.cpp >}} (`yaml_double_precision_defaults_off_and_is_reported`,
-`netcdf_float_output_keeps_nonfinite`, `netcdf_double_precision_reads_back_exactly`); the barrier case is
-`combined_output_is_complete_when_every_rank_returns`
-({{< code tests/test_output_barrier.cpp Mesh.combined_output_is_complete_when_every_rank_returns >}}). Pass status at the pin was not run for
-this chapter.
+`netcdf_float_output_keeps_nonfinite`, `netcdf_double_precision_reads_back_exactly`,
+`netcdf_output_without_netcdf_writes_nothing`); the barrier case is `combined_output_is_complete_when_every_rank_returns`
+({{< code tests/test_output_barrier.cpp Mesh.combined_output_is_complete_when_every_rank_returns >}}). All three
+ctests pass at the pin (@tbl-ch14-ctest-run), and the `ch14-netcdf` card ran there.[^ch14-netcdf-card]
+
+[^ch14-netcdf-card]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: `examples/straka_single.yaml` with
+    `nlim: 20`; run: `./straka.release card.yaml` in `build/bin` of a CPU Release build of the pin, 1 process;
+    scope: the whole run, wall time; reps: 1]. Exit 0 in 0.66 s of wall time. The run wrote one
+    combined frame, `card.out0.00000.nc`, at $t=0$, with `rho` of dimensions `(time, x1, x3, x2)` in float32, `press`
+    in Pa, and the `temp` and `theta` of the example's user output; the next frame, at `dt: 900`, lies beyond 20
+    cycles.
 
 ### Limits
 
@@ -342,7 +360,7 @@ this chapter.
 - The default float output hides relative changes below about $10^{-7}$. Conservation is read from the
   double-precision cycle line, not from the files.
 - `include_ghost_zones` carries a FIXME: it "probably doesn't work with grids other than CCC"
-  (`FIXME`, {{< code src/output/netcdf.cpp NetcdfOutput::write_output_file >}}).
+  ({{< code src/output/writer_core.cpp output_range >}}).
 - The root globs every `block*` part of the frame in the output directory. Parts left over from an earlier run
   with more blocks would be joined in. This is read from the code and has not been run.
 - The error path of the scope guard (a throw on the root) is not covered by a test.
@@ -355,15 +373,11 @@ this chapter.
 
 [^rg-8c117ccbf00d]: SI — International System of Units; notation only; see @sec-appa
 
-[^rg-ddd3dfc3359d]: type — implementation selector for the enclosing options block
-
 [^rg-88a9e0a977ff]: $n_g$ — ghost cells on each side
 
 [^rg-0346eddcaa68]: PNETCDF — parallel NetCDF
 
-[^rg-c42b14679d58]: nx2 — number of cells in the second coordinate direction
-
-[^rg-641319d314a5]: nx3 — number of cells in the third coordinate direction
+[^rg-ddd3dfc3359d]: type — implementation selector for the enclosing options block
 
 [^rg-bc477a8d0f7b]: $\rho$ — total density, dry plus every species that carries mass [kg m$^{-3}$]
 

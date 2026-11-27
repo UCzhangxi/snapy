@@ -1,8 +1,8 @@
 """Executable check of the output statistics (chapter 14, _schedule.qmd).
 
-What is checked, at snapy@e894700ff7aee30b52882e5202b16461413780b0, ported line for line below:
-- update_weighted_moments, OutputType::AccumulateStats, ResetStats and PrimStatStd
-  (src/output/output_type.cpp:282-360).
+What is checked, at snapy@73c45a7c8c991209924e1137992352c335575062, ported line for line below:
+- update_weighted_moments, OutputType::AccumulateStats, ResetStats and PrimStatStd with its stat_std
+  (src/output/output_type.cpp:111-199).
 Claims C1-C3.
 
 Run: python3 schedule_check.py   (numpy; exits with the number of failed claims)
@@ -46,7 +46,7 @@ class Stats:  # the members of OutputType that the statistics use
             self.m2[...] = 0.
         self.elapsed, self.last, self.initialized = 0.0, t, True
 
-    def std(self, current):  # PrimStatStd, output_type.cpp:354-360
+    def std(self, current):  # PrimStatStd -> stat_std, output_type.cpp:185-190
         if self.elapsed <= 0.0 or self.m2 is None:
             return np.zeros_like(current)
         return np.sqrt(np.maximum(self.m2 / self.elapsed, 0.0))

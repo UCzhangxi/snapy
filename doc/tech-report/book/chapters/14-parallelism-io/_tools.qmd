@@ -1,7 +1,7 @@
 ## Combine and inspect tools (`pd-combine`, `pd-inspect`) {#sec-ch14-tools}
 
 <!-- PROVENANCE
-pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy); kintera@c55b13b2204997d2d09e04498558ab9495d8ee77
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (chengcli/snapy)
 sources: pyproject.toml, python/api/pd_combine.py, python/api/pd_inspect.py
 status: draft
 -->
@@ -9,7 +9,7 @@ status: draft
 ### Summary
 
 Both are entry points of the `snapy` package (`[project.scripts]`,
-{{< code pyproject.toml >}}).
+{{< code pyproject.toml >}}); the launcher `pd-run` of @sec-ch14-launch is installed beside them as a script file.
 
 ::: {.callout-note title="At a glance"}
 **Purpose.** Two command-line tools: `pd-combine` joins frames in time and merges streams; `pd-inspect` lists tensors.
@@ -135,12 +135,13 @@ case: `run_shallow_splash_decomp.py` skips (exit 125) without it, and `run_shall
 - It does not join per-block files in space.
 :::
 
-[^ch14-tools-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the `ch14-tools` card;
-    run: `torchrun --no-python --nproc-per-node=2 --master-port=29573 ../straka.release card.yaml && pd-combine 1,2 -d . -o main --no-remove && pd-inspect card.00002.restart`, CPU, 2 rank(s);
-    torch 2.10.0+cu128, kintera 2.6.2]. The dated N8 `validation_log` in
-    `tools/do-cards.yaml` records exit 0 on 2026-10-14. This is a card result, not a claim that every
-    registered test in the table ran. The [pinned CPU test run](https://github.com/chengcli/snapy/actions/runs/38197324901)
-    supplies individual Passed lines for the CPU tests; CUDA-only rows require separate evidence.
+[^ch14-tools-run]: [sha: snapy@73c45a7c8c991209924e1137992352c335575062; deck: the `ch14-tools` card, a copy of
+    `examples/straka_proc2.yaml` with the three outputs above at `dt: 2.0` and `nlim: 20`; run: `torchrun --no-python
+    --nproc-per-node=2 --master-port=29573 straka.release card.yaml`, then `pd-combine 1,2 -d . -o main --no-remove`
+    and `pd-inspect card.00002.restart`, on a CPU Release build of the pin, 2 ranks; Python 3.12.3, NCO from the
+    system; scope: each command whole, wall time; reps: 1]. All three exited 0 (the run in 1.61 s). `card-main.nc` holds the frames at $t=0$, 2.0766 and
+    4.1531 s of both streams, `rho` of shape $(3, 64, 1, 256)$; `pd-inspect` listed the two parts of the bundle,
+    `card.block0.00002.part` and `card.block1.00002.part`.
 
 <!-- reader glossary notes -->
 [^rg-03439042d4b4]: NCO — NetCDF Operators
