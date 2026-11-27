@@ -1,4 +1,4 @@
-"""A Mesh runs chemistry in the same order as a bare block (#318).
+"""A Mesh runs chemistry in the same order as a bare block.
 
 On the last stage a bare MeshBlock runs its scheduled chemistry op, then the stage boundaries, then the axial
 closure (MeshBlockImpl::forward). A Mesh runs the stage, then the axial closure over its blocks, then the

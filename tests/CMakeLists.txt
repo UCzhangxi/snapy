@@ -435,7 +435,7 @@ snapy_add_python_test(test_sk1_failure_counter TIMEOUT 120 LABELS "python;mesh;r
 snapy_add_python_test(test_sk2_active_set TIMEOUT 180 LABELS "python;mesh;redo;eos")
 snapy_add_python_test(test_sk4_chemistry_source TIMEOUT 600 LABELS "python;mesh;eos;kinetics")
 snapy_add_python_test(test_sk4_mesh_chemistry TIMEOUT 600 LABELS "python;mesh;eos;kinetics")
-# #318: a Mesh runs chemistry in the bare block's order relative to the axial closure
+# A Mesh runs chemistry in the bare block's order relative to the axial closure
 snapy_add_python_test(test_mesh_chemistry_order TIMEOUT 600 LABELS "python;mesh;eos;kinetics")
 snapy_add_python_test(test_eos_temp2inteng TIMEOUT 60 LABELS "python;eos")
 # EF-13: the ideal-moist species sums give bitwise-equal x2 columns
