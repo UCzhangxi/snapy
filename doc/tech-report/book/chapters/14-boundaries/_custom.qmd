@@ -1,4 +1,4 @@
-## Reserve a face or fill a solid mask (`custom; solid`) {#sec-ch11-custom}
+## Reserve a face or fill a solid mask (`custom; solid`) {#sec-ch14-custom}
 
 <!-- PROVENANCE
 pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy)
@@ -11,11 +11,11 @@ reviewer:
 ### Summary
 
 Both callbacks exist for a caller that writes the ghosts itself. A `custom` face keeps a non-null entry in
-the callback table, so every physical-face predicate of @sec-ch11-registry is true there while the
+the callback table, so every physical-face predicate of @sec-ch14-registry is true there while the
 callback writes nothing; the user code or layout that installed it owns the fill. The corner refresh after an
 exchange is the one exception: on a cubed-sphere block it treats an $x_2$ or $x_3$ face that holds the built-in
 `custom` no-op as owned by the panel exchange (@sec-ch03-cornerrefresh). A `solid` face is the
-mask-fill primitive: on a Boolean mask, one means solid, and the rectification of @sec-ch11-solids uses the
+mask-fill primitive: on a Boolean mask, one means solid, and the rectification of @sec-ch14-solids uses the
 callback to declare every ghost slab solid before it sweeps.
 Neither callback introduces a PDE[^rg-8c4d78431fa1] discretization.
 
@@ -44,13 +44,13 @@ it is merely the number one in every row and is not a physical state constructio
 have empty bodies; `solid_inner` and `solid_outer`
 ([`bc_func.cpp:68-87`](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/bc/bc_func.cpp#L68-L87))
 assign one to the width-$n_g$ slab. Check C1 verifies the identity and the constant-one ghost fill without
-assuming a thermodynamic meaning [check `src/snapy_report/ch11/checks/boundary_check.py`, output
-`src/snapy_report/ch11/checks/boundary_check.out`]. The checks do not call a snapy kernel.
+assuming a thermodynamic meaning [check `src/snapy_report/ch14/checks/boundary_check.py`, output
+`src/snapy_report/ch14/checks/boundary_check.out`]. The checks do not call a snapy kernel.
 
 ### Numerical method
 
 Custom keeps a non-null callback slot for a user or layout operation and is called like any other callback
-by the physical fills and the corner refresh of @sec-ch11-timing. On an $x_2$ or $x_3$ face of a cubed-sphere block
+by the physical fills and the corner refresh of @sec-ch14-timing. On an $x_2$ or $x_3$ face of a cubed-sphere block
 the built-in no-op also marks the face as exchange-owned for that refresh, which then re-applies the $x_1$ functions
 inside the face's ghost slab. `is_custom_noop` recognises the no-op by function identity, so a function a caller
 installs on the face keeps it physical even when the face's name is still `custom`
@@ -60,14 +60,14 @@ given and skips a collapsed direction. `InternalBoundaryImpl::rectify_solid`
 its mask on every direction with more than one cell before the directional sweeps, and after the sweeps
 applies the callbacks its caller supplies. No independent spatial accuracy order applies.
 
-@fig-ch11-custom-stencil illustrates the operations, with labelled roles independent of colour.
+@fig-ch14-custom-stencil illustrates the operations, with labelled roles independent of colour.
 
 ```{python}
-#| label: fig-ch11-custom-stencil
+#| label: fig-ch14-custom-stencil
 #| fig-cap: "Reserve a face or fill a solid mask. Schematic only; no simulation measurements."
 #| fig-alt: "Labelled schematic of the custom boundary operation; ghosts and owned cells have separate text labels."
 #| echo: false
-from snapy_report.ch11.figures.fig_custom_stencil import make_fig
+from snapy_report.ch14.figures.fig_custom_stencil import make_fig
 make_fig()
 ```
 
@@ -90,7 +90,7 @@ The generated recipe below installs and tests a Python zero-gradient fill.
 
 **Refusals and prerequisites.** Neither callback checks whether the supplied tensor has a physical interpretation.
 Custom silently preserves stale ghosts if the caller fails to fill them; parser name/key refusals remain those of
-@sec-ch11-registry.
+@sec-ch14-registry.
 
 **Read the implementation.** `solid_inner` ({{< code src/bc/bc_func.cpp BC_FUNCTION overload=9 >}}) contains:
 
@@ -108,7 +108,7 @@ The assignment is the constant map in the Derivation layer. On a Boolean mask it
 | classify | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::is_wall_boundary >}} | `is_wall_boundary` | none |
 | no-op by identity | {{< code src/bc/bc_func.cpp is_custom_noop >}} | `is_custom_noop` | `custom` on $x_2$/$x_3$, cubed sphere |
 
-: Implementation sites for custom. {#tbl-ch11-custom-code}
+: Implementation sites for custom. {#tbl-ch14-custom-code}
 
 1. Leave the tensor unchanged for custom. The anchor `custom_inner` is in
    [`bc_func.cpp:7-8`](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/bc/bc_func.cpp#L7-L8).
@@ -117,7 +117,7 @@ The assignment is the constant map in the Derivation layer. On a Boolean mask it
 3. Use solid on a mask; do not infer a hydro wall from the function name. The anchor `rectify_solid` is in
    {{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}.
 
-{{< include 11-boundaries/_howto.qmd >}}
+{{< include 14-boundaries/_howto.qmd >}}
 
 ### Tests
 
@@ -130,7 +130,7 @@ preservation and repeated slab fills through the N8 runner.
 | `test_rectify.release` | After rectification of an $8^3$ mask with two solid cells, every inner and outer ghost slab is solid | exact equality to one | test fixture (`nghost`[^rg-fd6fa2a1ed93] 1 without a block) |
 | `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-test assertions and report-only checks for custom. {#tbl-ch11-custom-tests}
+: Source-test assertions and report-only checks for custom. {#tbl-ch14-custom-tests}
 
 The assertion is the ghost-slab loop of `test2` ({{< code tests/test_rectify.cpp test2 >}}).
 
@@ -144,7 +144,7 @@ These checks exercise report formulas, not the compiled boundary kernels. The so
 assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 
 [^ch11-custom-run]: [sha: snapy@68f4e066974ede87e4379285c4fba895b970b7f1; deck: the deterministic fixtures in the check;
-    run: `python src/snapy_report/ch11/checks/boundary_check.py`, CPU, one process;
+    run: `python src/snapy_report/ch14/checks/boundary_check.py`, CPU, one process;
     Python 3.11.13, numpy 2.4.6, sympy 1.14.0; exact symbolic/rational and integer checks;
     7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 

@@ -183,17 +183,17 @@ Regenerate every figure: `python3 tools/render_figures.py` (to `build/figures/<c
 
 | figure | section file | code | data (written by) |
 |---|---|---|---|
-| `fig-ch11-custom-stencil` | `11-boundaries/_custom.qmd` | `snapy_report/ch11/figures/fig_custom_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-exchange-stencil` | `11-boundaries/_exchange.qmd` | `snapy_report/ch11/figures/fig_exchange_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-extrapolation-stencil` | `11-boundaries/_extrapolation.qmd` | `snapy_report/ch11/figures/fig_extrapolation_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-opening-dependencies` | `11-boundaries/_opening.qmd` | `snapy_report/ch11/figures/fig_dependencies.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-outflow-stencil` | `11-boundaries/_outflow.qmd` | `snapy_report/ch11/figures/fig_outflow_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-periodic-stencil` | `11-boundaries/_periodic.qmd` | `snapy_report/ch11/figures/fig_periodic_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-reflecting-stencil` | `11-boundaries/_reflecting.qmd` | `snapy_report/ch11/figures/fig_reflecting_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-registry-stencil` | `11-boundaries/_registry.qmd` | `snapy_report/ch11/figures/fig_registry_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-solids-stencil` | `11-boundaries/_solids.qmd` | `snapy_report/ch11/figures/fig_solids_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-timing-stencil` | `11-boundaries/_timing.qmd` | `snapy_report/ch11/figures/fig_timing_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
-| `fig-ch11-wb-stencil` | `11-boundaries/_wb.qmd` | `snapy_report/ch11/figures/fig_wb_stencil.py`<br>`snapy_report/ch11/diagrams.py` | - |
+| `fig-ch14-custom-stencil` | `14-boundaries/_custom.qmd` | `snapy_report/ch14/figures/fig_custom_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-exchange-stencil` | `14-boundaries/_exchange.qmd` | `snapy_report/ch14/figures/fig_exchange_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-extrapolation-stencil` | `14-boundaries/_extrapolation.qmd` | `snapy_report/ch14/figures/fig_extrapolation_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-opening-dependencies` | `14-boundaries/_opening.qmd` | `snapy_report/ch14/figures/fig_dependencies.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-outflow-stencil` | `14-boundaries/_outflow.qmd` | `snapy_report/ch14/figures/fig_outflow_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-periodic-stencil` | `14-boundaries/_periodic.qmd` | `snapy_report/ch14/figures/fig_periodic_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-reflecting-stencil` | `14-boundaries/_reflecting.qmd` | `snapy_report/ch14/figures/fig_reflecting_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-registry-stencil` | `14-boundaries/_registry.qmd` | `snapy_report/ch14/figures/fig_registry_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-solids-stencil` | `14-boundaries/_solids.qmd` | `snapy_report/ch14/figures/fig_solids_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-timing-stencil` | `14-boundaries/_timing.qmd` | `snapy_report/ch14/figures/fig_timing_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
+| `fig-ch14-wb-stencil` | `14-boundaries/_wb.qmd` | `snapy_report/ch14/figures/fig_wb_stencil.py`<br>`snapy_report/ch14/diagrams.py` | - |
 
 ## ch12
 

@@ -48,7 +48,7 @@ FRAGMENT = BOOK / "chapters" / "17-appendices" / "_appa-notation.qmd"
 OUTLINE_REFS = {
     "chapter 1.13": "@sec-ch01-dependencies",
     "chapter 10.7": "@sec-ch10-tracer",
-    "chapter 11.5": "@sec-ch11-outflow",
+    "chapter 11.5": "@sec-ch14-outflow",
     "Chapter 6": "@sec-ch06",
     "chapter 6": "@sec-ch06",
     "Appendix E": "@sec-appe",

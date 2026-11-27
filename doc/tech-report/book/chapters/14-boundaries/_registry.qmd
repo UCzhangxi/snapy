@@ -1,4 +1,4 @@
-## Register and classify block faces (`boundary-condition/external/*`) {#sec-ch11-registry}
+## Register and classify block faces (`boundary-condition/external/*`) {#sec-ch14-registry}
 
 <!-- PROVENANCE
 pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy)
@@ -52,10 +52,10 @@ neither kind of wall.
 
 A repeated fill must reproduce the same ghost values from the owned slab. This idempotence is a contract on the
 callback, not a property of every tensor map; the registry asks for it because the corner refresh of
-@sec-ch11-timing calls the x1 callbacks a second time on a slab that is only $n_g$[^rg-eb437280a055] cells wide in the
+@sec-ch14-timing calls the x1 callbacks a second time on a slab that is only $n_g$[^rg-eb437280a055] cells wide in the
 tangential direction. Check C1 exercises the contract for the built-in mirror and copy rules; no spatial order
-is assigned to dispatch [check `src/snapy_report/ch11/checks/boundary_check.py`, output
-`src/snapy_report/ch11/checks/boundary_check.out`]. The checks do not call a snapy kernel.
+is assigned to dispatch [check `src/snapy_report/ch14/checks/boundary_check.py`, output
+`src/snapy_report/ch14/checks/boundary_check.out`]. The checks do not call a snapy kernel.
 
 ### Numerical method
 
@@ -74,14 +74,14 @@ periodic in the layout; the cubed-sphere layout keeps its own panel rules and is
 non-null custom callback therefore still counts as physical for every predicate above. No accuracy order
 follows from classification.
 
-@fig-ch11-registry-stencil illustrates the operations, with labelled roles independent of colour.
+@fig-ch14-registry-stencil illustrates the operations, with labelled roles independent of colour.
 
 ```{python}
-#| label: fig-ch11-registry-stencil
+#| label: fig-ch14-registry-stencil
 #| fig-cap: "Register and classify block faces. Schematic only; no simulation measurements."
 #| fig-alt: "Labelled schematic of the registry boundary operation; ghosts and owned cells have separate text labels."
 #| echo: false
-from snapy_report.ch11.figures.fig_registry_stencil import make_fig
+from snapy_report.ch14.figures.fig_registry_stencil import make_fig
 make_fig()
 ```
 
@@ -103,7 +103,7 @@ boundary-condition:
 A horizontally periodic domain with a solid wall at the bottom names `reflecting` on `x1-inner` (the wall; also the
 default) and `periodic` on both faces of each horizontal direction, `x2-inner`[^rg-ca644c32b84d] and `x2-outer`[^rg-403816b79256], and on a 3-D grid
 `x3-inner`[^rg-0d81f54dfb8b] and `x3-outer`[^rg-e3d917b0e6fe], as in {{< code examples/earth_crm.yaml >}}; a periodic direction needs the name on both
-of its faces (@sec-ch11-periodic), and $x_1$[^rg-ead169ed7570] is the vertical (@sec-appa-conventions).
+of its faces (@sec-ch14-periodic), and $x_1$[^rg-ead169ed7570] is the vertical (@sec-appa-conventions).
 
 **Refusals and prerequisites.** An unregistered name such as `typo` is refused as "Boundary function 'typo_inner'
 is not defined." Unknown map keys are rejected by `check_keys`; a collapsed direction does not read its face names.
@@ -128,7 +128,7 @@ The default supplies the face name; the following registry lookup realizes the d
 | null | {{< code src/mesh/meshblock.cpp MeshBlockImpl::reset >}} | `bfuncs` | layout periodic flags |
 | x1wall | {{< code src/hydro/hydro.cpp HydroImpl::is_x1_wall >}} | `is_x1_wall` | none |
 
-: Implementation sites for registry. {#tbl-ch11-registry-code}
+: Implementation sites for registry. {#tbl-ch14-registry-code}
 
 1. Validate the keys under `boundary-condition` and `boundary-condition/external`, read each face name with
    the default `reflecting`, append `_inner` or `_outer`, and reject a name absent from the registry. A
@@ -149,7 +149,7 @@ The default supplies the face name; the following registry lookup realizes the d
 | `test_wb_wall_corner.release` | A stock reflecting wall and a user-installed wall both keep a resting column at rest | Mach at most $10^{-12}$ | test constant |
 | `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-test assertions and report-only checks for registry. {#tbl-ch11-registry-tests}
+: Source-test assertions and report-only checks for registry. {#tbl-ch14-registry-tests}
 
 The refusal helper is `expect_refused` ({{< code tests/test_yaml_keys.cpp expect_refused overload=1 >}},
 {{< code tests/test_yaml_keys.cpp expect_refused overload=2 >}}); the boundary cases are
@@ -171,7 +171,7 @@ assertions and tolerances, not new CPU[^rg-0053a75b1713], CUDA[^rg-df3b18643faf]
 
 [^ch11-registry-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the deterministic fixtures in the
     check;
-    run: `python src/snapy_report/ch11/checks/boundary_check.py`, CPU, one process;
+    run: `python src/snapy_report/ch14/checks/boundary_check.py`, CPU, one process;
     Python 3.13.15, numpy 2.5.3, sympy 1.14.0; exact symbolic/rational and integer checks;
     7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
@@ -180,7 +180,7 @@ assertions and tolerances, not new CPU[^rg-0053a75b1713], CUDA[^rg-df3b18643faf]
 ::: {.callout-warning title="Limits"}
 The fixed-temperature names are accepted by the diffusion whitelist, but the boundary sources at the pin
 register no callback under them, so the card cannot select a thermal wall. The comment above the whitelist
-describes the outflow ghost as a zero-gradient statement, while the outflow callback of @sec-ch11-outflow
+describes the outflow ghost as a zero-gradient statement, while the outflow callback of @sec-ch14-outflow
 builds a characteristic state; the classification itself (not a wall) is unaffected. A cubed-sphere panel
 face that carries a custom callback counts as physical wherever a physical-face test is used.
 
