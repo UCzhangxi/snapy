@@ -1,0 +1,123 @@
+## The default execution and strict {#sec-ch11-default}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: src/mesh/meshblock.hpp (MeshBlockOptionsImpl: execution, execution_strict),
+         src/mesh/meshblock_options.cpp (MeshBlockOptionsImpl::from_yaml), src/mesh/stage_executor.cpp (mode,
+         check_strict, run_stage), src/mesh/mesh.cpp (MeshImpl::forward), tests/test_default_execution.py,
+         tests/test_execution_capability.py, tests/CMakeLists.txt, all read at the pin
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+Two deck keys under `integration`[^rg-8af4d8f27442] choose how a block's stages run. `execution` takes `auto`, `eager` or
+`cuda-graph`, and `auto` is the default, also when the key is absent: a block whose coordinates live on a CUDA
+device runs cuda-graph, any other block runs eager. An explicit value is followed as written. In cuda-graph mode a
+refused case or segment runs eager and is logged (@sec-ch11-refusals). `execution-strict` turns that fallback into
+an error: a strict case that cannot be captured stops before its first launch and names the first eager segment
+and its reasons. Strict needs cuda-graph (or `auto`, which strict resolves to cuda-graph); `eager` with strict is
+refused when the deck is read, as an eager case is never refused.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Choose eager or graph execution per block, and whether a refusal is an error.
+
+**Data.** Reads `integration/execution` and `integration/execution-strict` from the deck, and the device of the
+block's coordinates.
+
+**Placement.** Read once when the deck is parsed; resolved at every stage by `StageExecutor::mode`.
+
+**Activation.** `execution: auto | eager | cuda-graph` (default `auto`); `execution-strict: true | false` (default
+`false`).
+
+**Guarantee / limits.** `auto` captures on CUDA and never on the CPU; an explicit `eager` is never captured. A
+strict case either captures every non-host segment or stops before launching anything.
+
+**Evidence.** `test_default_execution_python`, `test_execution_capability_python` (@tbl-ch11-default-tests).
+:::
+
+Local symbols of this section: none.
+
+### Derivation
+
+None: two rules. The mode of a block is
+
+| `execution` | `execution-strict` | block on CUDA | mode |
+|---|---|---|---|
+| `eager` | false | any | eager |
+| `eager` | true | any | refused when the deck is read |
+| `cuda-graph` | any | any | cuda-graph (on the CPU: every stage refused, so eager or, with strict, an error) |
+| `auto` | true | any | cuda-graph |
+| `auto` | false | yes | cuda-graph |
+| `auto` | false | no | eager |
+
+: The mode of `StageExecutor::mode` ({{< code src/mesh/stage_executor.cpp StageExecutor::mode >}}) and the deck
+check of `MeshBlockOptionsImpl::from_yaml` ({{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}}).
+{#tbl-ch11-default-mode}
+
+and in cuda-graph mode a non-empty reason list runs eager without strict and stops the run with it.
+
+### Numerical method
+
+**Reading the keys.** `MeshBlockOptionsImpl::from_yaml` reads both keys from the `integration` node, checks that
+`execution` is one of the three values ("integration/execution must be auto, eager or cuda-graph") and refuses
+strict with `eager`. The defaults are in the options class
+({{< code src/mesh/meshblock.hpp MeshBlockOptionsImpl >}}).
+
+**Strict.** `StageExecutor::check_strict` ({{< code src/mesh/stage_executor.cpp StageExecutor::check_strict >}})
+runs before any launch: in `run_stage` for a bare block and, for a Mesh, on the calling thread for every block
+before any block starts (`MeshImpl::forward`). It skips host segments, which are boundaries, and stops at the
+first segment with a reason: "integration/execution-strict: this case cannot run as a CUDA graph: segment *i*
+(*ops*) of block *b*, stage *s* runs eager:" followed by the reasons, one per line.
+
+### Code
+
+**How to use it.**
+
+<!-- reader glossary keys -->Keys in this fragment: `type`[^rg-6776b325d30c].
+```yaml
+integration:
+  type: rk3
+  execution: auto          # auto (default), eager or cuda-graph
+  execution-strict: false  # true: refuse a case that cannot be captured
+```
+
+To compare a run with its eager twin, set `execution: eager` on one copy of the deck; the two must agree bit for
+bit (@sec-ch11-graphsafe).
+
+**What is refused, and why.** An unknown `execution` value, and `execution: eager` with `execution-strict: true`,
+when the deck is read. With strict, any case or segment with a reason, before the first launch.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| the keys and defaults | {{< code src/mesh/meshblock.hpp MeshBlockOptionsImpl >}} | `execution`, `execution_strict` | `integration/execution`, `integration/execution-strict` |
+| reading and checking them | {{< code src/mesh/meshblock_options.cpp MeshBlockOptionsImpl::from_yaml >}} | `MeshBlockOptionsImpl::from_yaml` | same |
+| the resolved mode | {{< code src/mesh/stage_executor.cpp StageExecutor::mode >}} | `StageExecutor::mode` | `execution` |
+| the strict refusal | {{< code src/mesh/stage_executor.cpp StageExecutor::check_strict >}} | `StageExecutor::check_strict` | `execution-strict` |
+
+: Code map of the execution keys. {#tbl-ch11-default-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_default_execution_python` | the shipped Straka deck with no `execution` key: on CPU it runs every stage eager and equals `execution: eager`; on CUDA it captures, replays every stage with none eager, and equals `execution: eager`, which captures nothing; a six-panel cubed-sphere Mesh with two by two and four by four blocks per panel captures and equals eager; FP64, ten steps with a changing step | `torch.equal` (bitwise), after every step | {{< code tests/test_default_execution.py >}} |
+| `test_execution_capability_python` | the capability row on CPU and CUDA, FP64 and FP32 (@tbl-ch11-refusals-tests) | none (pass/fail checks) | {{< code tests/test_execution_capability.py >}} |
+
+: Tests of the default execution; the CUDA part ends with the skip code when the build has no CUDA or no device.
+{#tbl-ch11-default-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `auto` follows the device of the block's coordinates; a block built on the CPU and moved later resolves its
+  mode from where its coordinates are at each stage.
+- Without strict, a refusal is a warning printed once per block and reason; a long run's log can hide it.
+:::
+
+<!-- reader glossary notes -->
+[^rg-8af4d8f27442]: integration — time-integration options
+
+[^rg-6776b325d30c]: type — implementation selector for the enclosing options block
+<!-- end reader glossary notes -->

@@ -1,0 +1,112 @@
+## Eager ops inside a captured stage: the user forcing and the chemistry segment {#sec-ch11-eagerops}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: src/mesh/stage_executor.{hpp,cpp} (build_schedule, user_forcing, chemistry_slot, schedule_signature,
+         run_segments), src/mesh/meshblock.hpp (set_user_stage_forcings, set_chemistry), src/mesh/mesh.cpp
+         (MeshImpl::forward, the global phase), tests/test_graph_chemistry_slot.py,
+         tests/test_graph_mesh_chemistry.py, tests/test_graph_user_forcing.py, tests/test_sk4_chemistry_source.py,
+         tests/CMakeLists.txt, all read at the pin
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+Some ops of a stage cannot be captured, but the rest of the stage can. Such an op runs eagerly as a segment of its
+own, between two captured segments, and is given the host step size. Two ops are of this kind when they are set.
+A user TorchScript stage forcing is opaque to the executor. A registered chemistry step runs kintera's kinetics
+in FP64, and kintera builds its tables on first use, which a recording refuses. On a bare block both run eagerly
+inside the stage; the tendencies and the state cross the segment boundary in the block's fixed storage, which
+the graphs on either side read and write. A block of a Mesh does not run its chemistry inside the stage at all:
+the Mesh runs every block's chemistry step after the stages, in its global phase, so the block's chemistry op does
+nothing and stays in the graph.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Run an op that cannot be captured eagerly between captured segments, so the rest of the stage still
+captures.
+
+**Data.** The forcing reads the state and adds to the stage tendencies `du`, `ds`; the chemistry step reads and
+writes `hydro_u` and `hydro_w`. Both read the host step.
+
+**Placement.** The `forcing` op sits between `advance` and `combine`; the `chemistry` op between `saturation` and
+`boundaries` (@sec-ch11-segments). A Mesh's chemistry runs after the last stage, before the final exchange.
+
+**Activation.** `set_user_stage_forcings` on a block; `set_chemistry` on a block or a Mesh. Default: neither set,
+and both ops capture as no-ops.
+
+**Guarantee / limits.** A stage with such an op equals the eager stage bit for bit. Strict refuses it, as it has
+an eager segment.
+
+**Evidence.** `test_graph_user_forcing_python`, `test_graph_chemistry_slot_python`,
+`test_graph_mesh_chemistry_python`, `test_sk4_chemistry_source_python` (@tbl-ch11-eagerops-tests).
+:::
+
+Local symbols of this section: none.
+
+### Derivation
+
+None: control flow. An eager op splits the captured run around it (@sec-ch11-segments), so a stage with a user
+forcing has the segments [exchange], [advance], [forcing], [combine, saturation, chemistry, boundaries], and one
+with a chemistry step on a bare block [exchange], [advance, forcing, combine, saturation], [chemistry],
+[boundaries]. The captured segments read the device step (@sec-ch11-graphsafe), so their graphs serve every step;
+the eager op reads the host step and keeps no graph.
+
+### Numerical method
+
+**When each op is eager.** `StageExecutor::user_forcing`
+({{< code src/mesh/stage_executor.cpp StageExecutor::user_forcing >}}) is true when the block holds a user stage
+forcing; `StageExecutor::chemistry_slot` ({{< code src/mesh/stage_executor.cpp StageExecutor::chemistry_slot >}})
+is true when the block has a chemistry step and is not a block of a Mesh. `StageExecutor::build_schedule` then
+marks the op not capturable, with the reason "a user TorchScript stage forcing is set" or "a chemistry step is
+registered (eager FP64 kinetics, V3 C2)", and sets its `reads_host_dt`.
+
+**A change after construction.** A forcing or chemistry step set after the block's first stage changes the
+block's schedule signature (`StageExecutor::schedule_signature`); the next stage rebuilds the schedule and drops
+the block's graphs, and the new segments are captured afresh.
+
+**A Mesh's chemistry.** `MeshImpl::forward` ({{< code src/mesh/mesh.cpp MeshImpl::forward >}}) sets every block to
+defer its chemistry, runs the blocks' stages (captured), and then, after the last stage, runs each block's
+chemistry step eagerly, one block after another, before the final exchange.
+
+### Code
+
+**How to use it.**
+
+```python
+block.set_user_stage_forcings(["forcing.pt"])   # a TorchScript module per forcing
+block.set_chemistry(reactions)                  # kintera kinetics options
+```
+
+**What is refused, and why.** Nothing is refused without strict: the op runs eager and its reason is logged once.
+With strict, the case stops before its first launch, naming the segment.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| a user forcing is set | {{< code src/mesh/stage_executor.cpp StageExecutor::user_forcing >}} | `StageExecutor::user_forcing` | `set_user_stage_forcings` |
+| a chemistry step on a bare block | {{< code src/mesh/stage_executor.cpp StageExecutor::chemistry_slot >}} | `StageExecutor::chemistry_slot` | `set_chemistry` |
+| the ops and their reasons | {{< code src/mesh/stage_executor.cpp StageExecutor::build_schedule >}} | `StageExecutor::build_schedule` | none |
+| a Mesh's chemistry phase | {{< code src/mesh/mesh.cpp MeshImpl::forward >}} | `MeshImpl::forward` | `set_chemistry` |
+
+: Code map of the eager ops. {#tbl-ch11-eagerops-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_graph_user_forcing_python` | the forcing op runs eager between two graphs and the block equals an eager block in FP64 and FP32 with a changing step, also when the forcing is set after the block has captured; strict refuses the case | `torch.equal` (bitwise) | {{< code tests/test_graph_user_forcing.py >}} |
+| `test_graph_chemistry_slot_python` | a 2-D moist column with a rain species and two kinetic reactions: the graph block captures and replays its compute segments, runs the chemistry segment eager, and equals eager in FP64 and FP32 after every step (state, failure counter, redo flag), with a step change, a rebind and an in-place edit; strict refuses the case; on CPU cuda-graph runs eager and equals eager | `torch.equal` (bitwise) | {{< code tests/test_graph_chemistry_slot.py >}} |
+| `test_graph_mesh_chemistry_python` | a Mesh with a chemistry step captures its blocks' stages, runs its chemistry eager in the global phase, and equals an eager Mesh | `torch.equal` (bitwise) | {{< code tests/test_graph_mesh_chemistry.py >}} |
+| `test_sk4_chemistry_source_python` | on a reduced Jupiter cloud-resolving case, a block with a registered chemistry step equals a block stepped by hand with the same sequence (rates, Jacobian, one implicit step, species increment) after every step, in FP64 and FP32 | `torch.equal` (bitwise) | {{< code tests/test_sk4_chemistry_source.py >}} |
+
+: Tests of the eager ops; the graph tests end with the skip code when the build has no CUDA.
+{#tbl-ch11-eagerops-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- A stage with an eager op launches its captured segments and the eager op separately, so it costs more launches
+  than a stage captured whole.
+- A Mesh runs its blocks' chemistry steps one after another, not on its worker pool, because kintera keeps
+  process-global state in its evaporation kinetics.
+:::

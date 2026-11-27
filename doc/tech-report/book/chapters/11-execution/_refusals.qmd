@@ -1,0 +1,139 @@
+## The refusal list and the allow-lists {#sec-ch11-refusals}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: src/mesh/stage_executor.{hpp,cpp} (config_reasons, vars_reasons, capture_reasons, capability,
+         Capability), python/csrc/pymesh.cpp (execution_capability), tests/test_execution_capability.py,
+         tests/test_graph_capture_lifts.py, tests/test_graph_outflow_refused.py, tests/test_graph_user_forcing.py,
+         tests/CMakeLists.txt, all read at the pin
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+Not every case can be captured. A case that the executor cannot prove safe in a graph runs eager, and the
+executor says why: each refusal is a sentence naming the cause. Refusals come in two widths. A case-wide refusal
+(the geometry, the equation of state, the Riemann solver, the integrator, several processes, an $x_1$[^rg-ead169ed7570] split, a
+forcing other than constant gravity, a state not on a CUDA device, a solid mask) makes every segment of the stage
+eager. A per-op refusal (an outflow boundary, a user forcing, a chemistry step) makes only that op's segment eager,
+and the rest of the stage still captures. The equations of state and Riemann solvers are allow-lists: only those
+a capture test covers are accepted, and every other one is refused by name.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Decide, before a stage runs, whether a block's segments may be captured, and name the reason when not.
+
+**Data.** Reads the block's options and its variables (their device, and whether a `solid` mask is present).
+
+**Placement.** At every stage in cuda-graph mode (`StageExecutor::run_stage`), and on demand through the
+capability row.
+
+**Activation.** Only in cuda-graph mode (@sec-ch11-default); in eager mode nothing is checked.
+
+**Guarantee / limits.** A case is captured only when its reason list is empty; each refusal is logged once per
+block and reason (or, with strict, stops the run). The allow-lists name what a test covers, not every scheme
+that could be captured.
+
+**Evidence.** `test_execution_capability_python`, `test_graph_capture_lifts_python`,
+`test_graph_outflow_refused_python`, `test_graph_user_forcing_python` (@tbl-ch11-refusals-tests).
+:::
+
+Local symbols of this section: none.
+
+### Derivation
+
+None: the list is a set of rules. Each rule names a code path that would read the host, copy from the host or
+change shape inside a captured segment, or one that no capture test covers. @tbl-ch11-refusals gives every rule
+at the pin, with its width and the message it logs.
+
+| refusal (message, abridged) | width | why |
+|---|---|---|
+| snapy was built without CUDA | case | no graph exists |
+| geometry is *type*, not cartesian or a cubed sphere | case | the other geometries have no capture test |
+| the EOS limiter is on | case | the limiter is not cleared for capture |
+| equation of state is *type*; capture allows ideal-gas, ideal-moist | case | allow-list |
+| riemann solver is *type*; capture allows lmars, hllc | case | allow-list |
+| integration type is *type*, not rk3 | case | only rk3 is covered |
+| more than one process | case | a rank's exchanges run on the host between segments |
+| an $x_1$ split (pz > 1) | case | its relays inside the stage are not cut into segments |
+| forcing is not const-gravity alone | case | any Coriolis, diffusion, heating, cooling, relaxation, sponge or plume block |
+| an outflow boundary is set with conversion-order 4 | case | the hydro step refills its primitive ghosts with it |
+| the state is not on a CUDA device | case | from the variables |
+| a solid mask is set | case | from the variables |
+| a Mesh whose blocks disagree | case | another block of the Mesh refuses or runs another mode (@sec-ch13) |
+| an outflow boundary is set | op `boundaries` | its ghost fill checks its inputs on the host |
+| a user TorchScript stage forcing is set | op `forcing` | opaque to the executor (@sec-ch11-eagerops) |
+| a chemistry step is registered | op `chemistry` | eager FP64 kinetics that build tables on first use (@sec-ch11-eagerops) |
+
+: The refusals at the pin: the case-wide ones from `StageExecutor::config_reasons`
+({{< code src/mesh/stage_executor.cpp StageExecutor::config_reasons >}}) and `StageExecutor::vars_reasons`
+({{< code src/mesh/stage_executor.cpp StageExecutor::vars_reasons >}}), the Mesh rule from
+`StageExecutor::capture_reasons` ({{< code src/mesh/stage_executor.cpp StageExecutor::capture_reasons >}}), and the
+per-op ones from `StageExecutor::build_schedule`. {#tbl-ch11-refusals}
+
+### Numerical method
+
+**Order.** `capture_reasons` returns the variables' reasons, then the configuration's, then, for a Mesh of two or
+more blocks with none of its own, the first other block that disagrees. `run_stage` asks for it at every stage
+of a cuda-graph block: a non-empty list runs the stage eager, and the per-op reasons are read from the schedule's
+segments as they run.
+
+**Logging.** Without strict, `StageExecutor::log_eager`
+({{< code src/mesh/stage_executor.cpp StageExecutor::log_eager >}}) warns once per block and reason:
+"integration/execution: block *n* runs eager where it cannot be captured: *reason*". With strict, the run stops
+instead (@sec-ch11-default).
+
+**The capability row.** `StageExecutor::capability`
+({{< code src/mesh/stage_executor.cpp StageExecutor::capability >}}) returns the same reasons without running a
+step: the case's reasons, one row per segment with its kind, ops, whether it would capture and why not, and
+whether the block can run eager and as a graph in its precision (`Capability`,
+{{< code src/mesh/stage_executor.hpp Capability >}}).
+
+### Code
+
+**How to use it.** Ask before running:
+
+```python
+caps = block.execution_capability(vars)
+print(caps["graph_fp64"], caps["graph_fp32"], caps["eager_reasons"])
+```
+
+**What is refused, and why.** Every row of @tbl-ch11-refusals; none of them is an error unless strict is set, and
+@sec-ch17 holds those that are lasting limits.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| configuration reasons | {{< code src/mesh/stage_executor.cpp StageExecutor::config_reasons >}} | `StageExecutor::config_reasons` | none |
+| variable reasons | {{< code src/mesh/stage_executor.cpp StageExecutor::vars_reasons >}} | `StageExecutor::vars_reasons` | none |
+| all reasons of a block | {{< code src/mesh/stage_executor.cpp StageExecutor::capture_reasons >}} | `StageExecutor::capture_reasons` | none |
+| the warning | {{< code src/mesh/stage_executor.cpp StageExecutor::log_eager >}} | `StageExecutor::log_eager` | `execution-strict`[^rg-ab49a8a08a9f] off |
+| the capability row | {{< code src/mesh/stage_executor.cpp StageExecutor::capability >}} | `StageExecutor::capability` | none |
+
+: Code map of the refusals. {#tbl-ch11-refusals-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_execution_capability_python` | the dry Straka case in FP64 and FP32: on CPU eager only, with its reason; on CUDA graph-capable in its own precision, and eager again with "a solid mask is set" when the variables hold one | none (pass/fail checks) | {{< code tests/test_execution_capability.py >}} |
+| `test_graph_capture_lifts_python` | the shipped Straka deck (ideal-gas, lmars; one and two blocks; without its forcing block) has no reason left and its strict cuda-graph Mesh equals an eager Mesh; with roe it is refused by name, and strict throws that reason | `torch.equal` (bitwise) | {{< code tests/test_graph_capture_lifts.py >}} |
+| `test_graph_outflow_refused_python` | an outflow boundary is a per-op refusal: the capability row names it, strict stops before the first launch naming the boundaries segment, and a non-strict case equals an eager block | `torch.equal` (bitwise) | {{< code tests/test_graph_outflow_refused.py >}} |
+| `test_graph_user_forcing_python` | a user forcing is a per-op refusal: strict stops naming the forcing segment, and a non-strict case equals an eager block in FP64 and FP32 with a changing step | `torch.equal` (bitwise) | {{< code tests/test_graph_user_forcing.py >}} |
+
+: Tests of the refusals; the launch parts end with the skip code when the build has no CUDA.
+{#tbl-ch11-refusals-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Several processes, an $x_1$ split, any geometry but Cartesian and the cubed sphere, any forcing but constant
+  gravity, and every equation of state and Riemann solver outside the allow-lists run eager on CUDA.
+- A refusal is a warning by default: a case that a user expects to be captured can run eager with no error. The
+  warning, `execution_report()` or the capability row show it.
+:::
+
+<!-- reader glossary notes -->
+[^rg-ead169ed7570]: $x_1, x_2, x_3$ — the three coordinate directions; $x_1$ is always the vertical (radial) direction
+
+[^rg-ab49a8a08a9f]: execution-strict — stop a case that cannot run as a CUDA graph instead of running it eager
+<!-- end reader glossary notes -->
