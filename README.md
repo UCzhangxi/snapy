@@ -57,7 +57,7 @@ On macOS, use `brew install netcdf nco`. From the repository root, install the P
 
 ```bash
 python -m pip install numpy pyyaml wheel setuptools-scm pytest netcdf4 \
-  'torch==2.10.0' 'kintera==2.6.13' 'pyharp>=2.7.17' \
+  'torch==2.10.0' 'kintera==2.6.14' 'pyharp>=2.7.17' \
   'commux>=0.1.4; platform_system == "Linux"' \
   'pinc>=0.2.0; platform_system == "Linux"'
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCUDA=OFF -DNETCDF=ON -DBUILD_TESTS=ON
