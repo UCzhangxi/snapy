@@ -98,7 +98,7 @@ def test_a_generated_first_use_note_is_not_a_definition():
     order, paras = registry.paragraphs(REPORT)
     cpu = dict(kind='acronym', term='CPU', meaning='central processing unit')
     assert not any(registry.defines(cpu, p) for s in order for p in paras.get(s, []))
-    assert 'central processing unit' in (REPORT / 'book/chapters/01-overview/_driver.qmd').read_text()
+    assert 'central processing unit' in (REPORT / 'book/chapters/01-overview/_opening.qmd').read_text()
 
 
 # The definitions the earlier recognisers missed (the review of the registry): under an unlabelled heading or in an
