@@ -1,4 +1,4 @@
-## Rectify a mask and close fluid faces against solids (`boundary-condition/internal/*; vars["solid"]`) {#sec-ch11-solids}
+## Rectify a mask and close fluid faces against solids (`boundary-condition/internal/*; vars["solid"]`) {#sec-ch14-solids}
 
 <!-- PROVENANCE
 pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy)
@@ -20,7 +20,7 @@ reconstruction and the implicit solve can read without producing a flux, which i
 the face mirror and the masked rows provide.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Repair mask runs and close solid faces; @eq-ch11-solids-dp.
+**Purpose.** Repair mask runs and close solid faces; @eq-ch14-solids-dp.
 
 **Data.** Boolean cell mask and placeholder hydro state.
 
@@ -35,15 +35,15 @@ the face mirror and the masked rows provide.
 
 Local symbols: $D_i(b,\ell)$ is the minimum flip count after processing $i$ mask entries, ending with bit $b$ and capped
 run length $\ell$; $\ell^{\min}_b$ is the required run length of bit $b$ (counts): $\ell^{\min}_0=3$ for fluid, $\ell^{\min}_1=2$
-for solid. ($l$[^rg-60eca0916b8b] is appendix A’s stencil offset and $m_1$[^rg-7793eb0d9526] its momentum component, so neither is used here.)
+for solid. ($l$[^rg-36a067af690d] is appendix A’s stencil offset and $m_1$[^rg-d6696182bc0f] its momentum component, so neither is used here.)
 Bits and $\mathrm{cost}_i(b)$, the candidate flip cost at position $i$, are dimensionless.
-$\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$[^rg-64869d64225f].
+$\mathsf H$ is the dimensionless reflection matrix, distinct from the Riemann eigenvector matrix $\mathsf R$[^rg-fbf95e060345].
 These symbols are local to this section.
 
 ### Derivation
 
 At a single fluid-solid interface, copy the fluid reconstructed state to the solid side and negate its normal
-velocity. This yields the reflecting pair derived in @sec-ch11-reflecting, now at a face of a staircase mask.
+velocity. This yields the reflecting pair derived in @sec-ch14-reflecting, now at a face of a staircase mask.
 `InternalBoundaryImpl::forward` ({{< code src/bc/internal_boundary.cpp InternalBoundaryImpl::forward >}})
 applies that rule after the fluid side has been reconstructed: for every row the solid-side face state
 takes the fluid-side value, and the normal velocity row of the direction being swept takes its negative. A
@@ -59,9 +59,9 @@ of its existing cost and predecessor cost plus the flip cost:
 $$
 D_{i+1}(b,\ell)\leftarrow\min\bigl(D_{i+1}(b,\ell),D_i(b_{\mathrm{old}},\ell_{\mathrm{old}})
 +\mathrm{cost}_i(b)\bigr).
-$$ {#eq-ch11-solids-dp}
+$$ {#eq-ch14-solids-dp}
 
-`compute_min_flips` ({{< code src/bc/flip_zero_impl.h compute_min_flips >}}) implements @eq-ch11-solids-dp
+`compute_min_flips` ({{< code src/bc/flip_zero_impl.h compute_min_flips >}}) implements @eq-ch14-solids-dp
 with the cost rule of `can_flip` ({{< code src/bc/flip_zero_impl.h can_flip >}}) and records the predecessor
 only on a strict improvement. The terminal run must also reach its minimum: the answer is the least cost
 over the end states whose run length is at least $\ell^{\min}_b$, and a line with no admissible end state returns
@@ -76,7 +76,7 @@ for every binary line of lengths two through eight.
 
 For the partial implicit system, $\mathsf H=\operatorname{diag}(1,-1,1)$ on the density, normal momentum and
 energy rows. Row $i$ of the column system reads $\mathsf B_i\boldsymbol\delta_{i-1}+\mathsf A_i\boldsymbol\delta_i+\mathsf C_i\boldsymbol\delta_{i+1}$,
-with $\boldsymbol\delta_i$[^rg-b2213240fb46] the implicit solve's unknown (appendix A, notation group 7). Next to a solid below, the ghost increment is
+with $\boldsymbol\delta_i$[^rg-99b561f97866] the implicit solve's unknown (appendix A, notation group 7). Next to a solid below, the ghost increment is
 the reflection $\boldsymbol\delta_{i-1}=\mathsf H\boldsymbol\delta_i$, so the lower term becomes $\mathsf B_i\mathsf H\boldsymbol\delta_i$ and
 joins the diagonal; next to a solid above, $\boldsymbol\delta_{i+1}=\mathsf H\boldsymbol\delta_i$ and $\mathsf C_i\mathsf H\boldsymbol\delta_i$ joins it.
 This is the closure of @sec-ch09-vic-closure, where $\mathsf H$ is written `Bnd`. Thus
@@ -86,29 +86,29 @@ $$
 \mathsf A_i&\leftarrow\mathsf A_i+\mathsf B_i\mathsf H,\\
 \mathsf A_i&\leftarrow\mathsf A_i+\mathsf C_i\mathsf H.
 \end{aligned}
-$$ {#eq-ch11-solids-closure}
+$$ {#eq-ch14-solids-closure}
 
 Apply each row only at its relevant fluid boundary. The vector `Bnd` of `vic_assemble_partial_impl`
 ({{< code src/implicit/vic_assemble_partial_impl.h vic_assemble_partial_impl >}}) implements
-@eq-ch11-solids-closure: the lower row is added when the cell is the first of the column or `solid_lower`
+@eq-ch14-solids-closure: the lower row is added when the cell is the first of the column or `solid_lower`
 is set, the upper row when it is the last or `solid_upper` is set. With `solid_lower` the same function also
 mirrors the base state used in the lower face Jacobian, copying the cell's primitives to the solid side
-with the normal velocity negated. A solid row has the identity divided by $\Delta t$[^rg-d34c0e1bcdff] on the diagonal and
+with the normal velocity negated. A solid row has the identity divided by $\Delta t$[^rg-007123c4e2b1] on the diagonal and
 zero neighbour blocks (`setIdentity`, {{< code src/implicit/implicit_dispatch.cpp vic_assemble_partial_cpu >}}),
 and its right-hand side is zeroed before the solve (`forward_masked`,
 {{< code src/hydro/hydro.cpp HydroImpl::_apply_implicit_correction >}}), so that row has a zero solved
 increment. Check C6 verifies the block substitution algebra. The full-system closure
 ({{< code src/implicit/vic_assemble_full_impl.h vic_assemble_full_impl >}}) adds the same rows under an
 additional non-periodic guard; this derivation does not assert an untested periodic-solid combination.
-Checks C5 and C6 are [check `src/snapy_report/ch11/checks/boundary_check.py`, output
-`src/snapy_report/ch11/checks/boundary_check.out`]; they do not call a snapy kernel.
+Checks C5 and C6 are [check `src/snapy_report/ch14/checks/boundary_check.py`, output
+`src/snapy_report/ch14/checks/boundary_check.out`]; they do not call a snapy kernel.
 
 ### Numerical method
 
 The mask has the three spatial extents of the block, ghosts included. `InternalBoundaryImpl::rectify_solid`
 ({{< code src/bc/rectify_solid.cpp InternalBoundaryImpl::rectify_solid >}}) makes it contiguous (which may
 alias an already contiguous input), fills every ghost slab of every direction with more than one cell with
-ones through the solid callbacks of @sec-ch11-custom, then sweeps x1, x2 and x3 in turn, alternating the
+ones through the solid callbacks of @sec-ch14-custom, then sweeps x1, x2 and x3 in turn, alternating the
 traversal direction, until a sweep makes no flip. Exhausting `max-iter` throws. The callbacks the caller
 supplies are applied afterwards.
 
@@ -131,14 +131,14 @@ gravity-work fixer (`MeshBlockImpl::gravity_work_fixer_sums`,
 before it sums, so they take no share of the energy correction. The staircase geometry is cell-aligned, not a
 cut-cell representation, and no geometric convergence order is measured.
 
-@fig-ch11-solids-stencil illustrates the operations, with labelled roles independent of colour.
+@fig-ch14-solids-stencil illustrates the operations, with labelled roles independent of colour.
 
 ```{python}
-#| label: fig-ch11-solids-stencil
+#| label: fig-ch14-solids-stencil
 #| fig-cap: "Rectify a mask and close fluid faces against solids. Schematic only; no simulation measurements."
 #| fig-alt: "Labelled schematic of the solids boundary operation; ghosts and owned cells have separate text labels."
 #| echo: false
-from snapy_report.ch11.figures.fig_solids_stencil import make_fig
+from snapy_report.ch14.figures.fig_solids_stencil import make_fig
 make_fig()
 ```
 
@@ -150,7 +150,7 @@ stepping and retain the driver solid refill.
 
 This is a configuration fragment, not a standalone simulation deck.
 
-<!-- reader glossary keys -->Keys in this fragment: `internal`[^rg-f5d7cf40e168], `solid-density`[^rg-ed6646560858], `solid-pressure`[^rg-4a6fe14f4824].
+<!-- reader glossary keys -->Keys in this fragment: `internal`[^rg-e44a54e61108], `solid-density`[^rg-dda2e20d5447], `solid-pressure`[^rg-67c475f957a9].
 ```yaml
 boundary-condition:
   internal:
@@ -173,7 +173,7 @@ total_num_flips += num_flips;
 dir *= -1;
 ```
 
-Each directional sweep uses @eq-ch11-solids-dp. A sweep with no flips terminates; otherwise the next sweep reverses direction. The implicit face substitution is separately mapped by @eq-ch11-solids-closure.
+Each directional sweep uses @eq-ch14-solids-dp. A sweep with no flips terminates; otherwise the next sweep reverses direction. The implicit face substitution is separately mapped by @eq-ch14-solids-closure.
 
 The stage sweep calls `mark_prim_solid_` and the `pib` face mirror of the x1, x2 and x3 face states in
 `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}).
@@ -199,7 +199,7 @@ The stage sweep calls `mark_prim_solid_` and the `pib` face mirror of the x1, x2
 | refill | {{< code src/mesh/meshblock.cpp MeshBlockImpl::advance_local >}} | `fill_cons_solid_` | `vars["solid"]` |
 | fixer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::gravity_work_fixer_sums >}} | `solid` | `gravity-work-fixer` |
 
-: Implementation sites for solids. {#tbl-ch11-solids-code}
+: Implementation sites for solids. {#tbl-ch14-solids-code}
 
 1. Read `max-iter` and the solid placeholders; require the mask shape at initialization. The anchor
    `max_iter` is in {{< code src/bc/internal_boundary.cpp InternalBoundaryOptionsImpl::from_yaml overload=2 >}}.
@@ -221,7 +221,7 @@ The stage sweep calls `mark_prim_solid_` and the `pib` face mirror of the x1, x2
 | `test_implicit_stratified_solid_python` | A column with a solid segment or strided solids keeps the fluid mass of each segment and stays finite | mass error below $10^{-12}$ | script threshold |
 | `boundary_check.py` (report only) | `[C5]`, `[C6]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-test assertions and report-only checks for solids. {#tbl-ch11-solids-tests}
+: Source-test assertions and report-only checks for solids. {#tbl-ch14-solids-tests}
 
 The ghost-slab assertion is in `test2` ({{< code tests/test_rectify.cpp test2 >}}).
 
@@ -242,7 +242,7 @@ These checks exercise report formulas, not the compiled boundary kernels. The so
 assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 
 [^ch11-solids-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the deterministic fixtures in the check;
-    run: `python src/snapy_report/ch11/checks/boundary_check.py`, CPU, one process;
+    run: `python src/snapy_report/ch14/checks/boundary_check.py`, CPU, one process;
     Python 3.13.15, numpy 2.5.3, sympy 1.14.0; exact symbolic/rational and integer checks;
     7 passed, 0 failed]. Output: `boundary_check.out`, `[C5]`, `[C6]`.
 
@@ -262,19 +262,19 @@ is claimed.
 :::
 
 <!-- reader glossary notes -->
-[^rg-60eca0916b8b]: $l$ — stencil offset index ($\bar\rho_{i+l}$); never $k$, which is the $x_3$ index
+[^rg-36a067af690d]: $l$ — stencil offset index ($\bar\rho_{i+l}$); never $k$, which is the $x_3$ index
 
-[^rg-7793eb0d9526]: $m_1, m_2, m_3$ — momentum density $\rho v_a$
+[^rg-d6696182bc0f]: $m_1, m_2, m_3$ — momentum density $\rho v_a$
 
-[^rg-64869d64225f]: $\mathsf R, \mathsf R^{-1}$ — right eigenvectors and their inverse
+[^rg-fbf95e060345]: $\mathsf R, \mathsf R^{-1}$ — right eigenvectors and their inverse
 
-[^rg-b2213240fb46]: $\boldsymbol\delta_i$ — the implicit solve's unknown in cell $i$ (total mass, normal momentum, [tangential momenta], energy)
+[^rg-99b561f97866]: $\boldsymbol\delta_i$ — the implicit solve's unknown in cell $i$ (total mass, normal momentum, [tangential momenta], energy)
 
-[^rg-d34c0e1bcdff]: $\Delta t$ — the step
+[^rg-007123c4e2b1]: $\Delta t$ — the step
 
-[^rg-f5d7cf40e168]: internal — internal-boundary options
+[^rg-e44a54e61108]: internal — internal-boundary options
 
-[^rg-ed6646560858]: solid-density — density assigned to internal solid cells
+[^rg-dda2e20d5447]: solid-density — density assigned to internal solid cells
 
-[^rg-4a6fe14f4824]: solid-pressure — pressure assigned to internal solid cells
+[^rg-67c475f957a9]: solid-pressure — pressure assigned to internal solid cells
 <!-- end reader glossary notes -->

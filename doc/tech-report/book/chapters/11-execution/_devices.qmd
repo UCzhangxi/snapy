@@ -1,0 +1,144 @@
+## The device: driver choice, long lines, the CUDA test gate and host read-backs {#sec-ch11-devices}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: examples/run_hydro.cpp (main), src/recon/recon_line.cuh (recon_tile_width), src/recon/recon_dispatch.cu,
+         tests/cuda_test_gate.hpp (snapy_cuda_test_enabled), src/hydro/hydro.cpp (HydroImpl::max_time_step),
+         src/mesh/meshblock_advance.cpp (global_time_step), src/mesh/meshblock_redo.cpp (read_redo_flags),
+         src/mesh/stage_executor.cpp (global_phase_sum), src/implicit/implicit_hydro.hpp, tests/CMakeLists.txt,
+         tests/test_vic_moist_device.py, tests/test_weno5_cuda_line.cpp, all read at the pin
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+Four things decide what a run does on a GPU[^rg-979790aabd25] before any stage is captured. The example driver puts the block on
+CUDA only when torch sees a device and the deck asks for one; otherwise the run stays on the CPU and says
+nothing. A reconstruction line longer than 1024 cells does not fit in one CUDA thread block, so the kernel is
+tiled. A CUDA test of snapy runs only in a CUDA build with a visible device; a CPU build skips it even when a
+GPU is present. And a few values cross from the device to the host every step: the time step, the redo flags
+and, with several processes, the global-phase sum. Each such read synchronises the device, and it sits outside
+the captured segments (@sec-ch11-graphsafe).
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Say where a run executes, how long lines are launched, when a CUDA test runs, and which values the
+step reads back to the host.
+
+**Data.** Reads the deck's layout device (`DEVICE`, `DEVICE_ID`) and torch's device availability; per step,
+reads back the block's time-step minimum and its redo flags.
+
+**Placement.** The device choice at driver start; the tiling at every reconstruction launch on CUDA; the read-backs
+between stages and at the end of the step.
+
+**Activation.** `DEVICE=cuda` in a CUDA build on a machine with a GPU. Default: CPU.
+
+**Guarantee / limits.** A run asked for CUDA on a machine without one runs on the CPU with no error or warning.
+The tiled and untiled reconstruction agree with the CPU to $10^{-12}$ per line.
+
+**Evidence.** `test_weno5_cuda_line.release`, `test_vic_moist_device_python` and the CUDA Python arms
+(@tbl-ch11-devices-tests).
+:::
+
+Local symbols of this section: $n$ the cells of a reconstruction line; $w$ the tile width; $s$ the stencil
+width; $n_v$ the variables of the launch; $n_c$ the shared weights; $b$ the bytes of one value.
+
+### Derivation
+
+**The tile width.** A line of $n \le 1024$ cells runs as one thread block, with no tile. For a longer line the
+tile starts at $w = 256$ and halves while its shared memory exceeds 48 KiB:
+
+$$
+\mathrm{bytes}(w) = \big((w + s - 1)\,n_v + n_c\big)\,b \;\le\; 48 \cdot 1024,
+$$ {#eq-ch11-tile}
+
+the tile's inputs with their stencil halo, plus the weights. A width that cannot fit even at $w = 1$ is refused
+("recon tile does not fit in shared memory").
+
+The device choice and the test gate are rules, given in the Numerical method.
+
+### Numerical method
+
+**The driver's device.** `run_hydro` ({{< code examples/run_hydro.cpp main >}}) starts on `torch::kCPU`. It moves
+the block to `cuda:<id>` only when `torch::cuda::is_available()` and the layout's device is `cuda`, printing
+"Running on CUDA" then; the id is `DEVICE_ID`, or the local rank when it is negative. There is no else branch: a
+`DEVICE=cuda` run on a machine without a usable GPU runs on the CPU and prints nothing about it. The executor then
+resolves `auto` to eager for that block (@sec-ch11-default).
+
+**Long lines.** `recon_tile_width` ({{< code src/recon/recon_line.cuh recon_tile_width >}}) returns 0 for a line
+that fits in one block, and otherwise the width of @eq-ch11-tile and its shared-memory size. The caller in
+{{< code src/recon/recon_dispatch.cu >}} launches the untiled kernel for 0 and the tiled one otherwise, still one
+block per line.
+
+**The CUDA test gate.** `snapy_cuda_test_enabled` ({{< code tests/cuda_test_gate.hpp snapy_cuda_test_enabled >}})
+returns `torch::cuda::is_available()` only when snapy was compiled with `USE_CUDA`, and false otherwise, so a
+CPU build of snapy never enters a CUDA test because torch happens to see a GPU. The Python tests make the same
+check and end with the skip code 125.
+
+**Host read-backs per step.** Each read synchronises the device and cannot sit inside a captured segment:
+
+1. the time step: `HydroImpl::max_time_step` ({{< code src/hydro/hydro.cpp HydroImpl::max_time_step >}}) reads the
+   block's minimum, and `MeshBlockImpl::global_time_step`
+   ({{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::global_time_step >}}) reads the reduced value back;
+2. the redo decision: `MeshBlockImpl::read_redo_flags`
+   ({{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::read_redo_flags >}}) copies the stacked flags in one
+   device-to-host read;
+3. with a process group only, the global phase: `global_phase_sum`
+   ({{< code src/mesh/stage_executor.cpp global_phase_sum >}}) copies the summed partials to the host for one
+   allreduce.
+
+The vertical implicit solve keeps its status on the device ({{< code src/implicit/implicit_hydro.hpp ImplicitHydroImpl >}});
+its host accessor `solve_failed` has no caller in `src/` at the pin, so the solve adds no read. Output, restart
+and the signal check read on the host at their own cadence and are not counted here; the number of reads per step
+was not measured for this chapter.
+
+### Code
+
+**How to use it.**
+
+```bash
+cmake -B build -DCUDA=ON && cmake --build build
+cd build/bin
+DEVICE=cuda DEVICE_ID=0 ./run_hydro.release -i <deck>.yaml   # "Running on CUDA"
+```
+
+A run that does not print "Running on CUDA" is on the CPU.
+
+**What is refused, and why.** Nothing at the device choice: the CPU is the fallback, silently. A tile that does
+not fit in 48 KiB of shared memory even at width 1 stops the launch with its message.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| the driver's device | {{< code examples/run_hydro.cpp main >}} | `main` | `DEVICE`, `DEVICE_ID` |
+| the tile width | {{< code src/recon/recon_line.cuh recon_tile_width >}} | `recon_tile_width` | lines over 1024 cells |
+| the CUDA test gate | {{< code tests/cuda_test_gate.hpp snapy_cuda_test_enabled >}} | `snapy_cuda_test_enabled` | a CUDA build |
+| the time-step read | {{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::global_time_step >}} | `global_time_step` | none |
+| the redo read | {{< code src/mesh/meshblock_redo.cpp MeshBlockImpl::read_redo_flags >}} | `read_redo_flags` | none |
+
+: Code map of the device choice, tiling, test gate and read-backs. {#tbl-ch11-devices-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_weno5_cuda_line.release` (CUDA builds) | each reconstruction on lines of 32, 1024, 1025, 1030 and 1280 cells (untiled and tiled) matches the CPU; a many-variable launch equals single-variable launches | $10^{-12}$ absolute; bitwise for the launch split | {{< code tests/test_weno5_cuda_line.cpp >}} |
+| `test_vic_moist_device_python` (CUDA builds) | one implicit moist step with schemes 1 and 9 agrees between CPU and CUDA, and each moves the state by more than `VIC_FLOOR` from scheme 0 | `DEVICE_TOL` $= 10^{-9}$ max abs. | the source comment: about 17 times a measured $5.8\times10^{-11}$ on one H100 ({{< code tests/test_vic_moist_device.py DEVICE_TOL >}}) |
+| the 25 Python registrations of the `if(CUDA)` block of {{< code tests/CMakeLists.txt >}} (`*_cuda_python`, `test_vic_moist_device_python`) | the CPU tests' scripts rerun with `--device cuda`: anomaly storage, vapour repair, saturation redo, the kintera failure counter and active set, the chemistry source, flux positivity, conversion order, the implicit gravity work, the well-balanced, centroid and radial-order cases, scalar covariance and bounds, tracers, the density-reference ladder | each script's own | the same scripts' assertions; skip code 125 without a device |
+
+: Tests of the device paths; every entry needs a CUDA build, and none was run for this chapter.
+{#tbl-ch11-devices-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- `DEVICE=cuda` on a machine without a usable GPU runs on the CPU with no message beyond the missing "Running on
+  CUDA".
+- A CPU build skips every CUDA test, so a CPU-only CI[^rg-f7623a802949] run says nothing about the CUDA paths.
+- The per-step read-backs synchronise the device; their number and cost per step are not measured here.
+:::
+
+<!-- reader glossary notes -->
+[^rg-979790aabd25]: GPU — graphics processing unit
+
+[^rg-f7623a802949]: CI — continuous integration
+<!-- end reader glossary notes -->

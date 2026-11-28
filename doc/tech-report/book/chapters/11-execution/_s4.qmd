@@ -1,0 +1,112 @@
+## The eager-path cost and the measured gap {#sec-ch11-s4}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: docs/v3/closing/s4_eager_gap.md on cshsgy/snapy branch v3/closing-dryrun-plan at be267b70, sections 1
+         (the bound as ruled), 2 (method), 3 (cells), 4 (launches per step), 5 (ms/step) and 6 (reading), read at
+         that commit; the code the catalogue cites, read at the pin: src/hydro/flux_register.{hpp,cpp},
+         src/recon/reconstruct.hpp, src/riemann/riemann.hpp, src/recon/well_balanced_x1.cpp,
+         src/implicit/implicit_hydro.cpp, src/mesh/meshblock_advance.cpp, src/mesh/meshblock.cpp (each site
+         marked "V3 S4" in its comment)
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+The eager step of the V3 code issues more device launches than the pre-V3 code did: kernels, copies and fills
+that the new structure (the register, the status slots, the split stage) adds. On a GPU an eager step's cost
+follows its launch count more than its arithmetic, so the eager step is slower than the pre-V3 eager step, and
+the CUDA graph path, which replays a whole segment as one launch, is the remedy. The launch reductions made in the
+kernels themselves are listed here by the code that carries them, and the section cites the record that measured
+the gap and the bound ruled from it. It repeats none of the record's numbers.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Say what the eager path costs against the pre-V3 code, where the launch reductions are, and where the
+measurement is recorded.
+
+**Data.** None at run time; cites the S4 record (launches per step and milliseconds per step on four cells).
+
+**Placement.** Outside the solver: a record on the closing-plan branch.
+
+**Activation.** None.
+
+**Guarantee / limits.** The bound as ruled: on CUDA the default execution is no slower per step than the pre-V3
+eager code on every cell, and on the CPU the eager step is within 5 % of it; an explicit `execution: eager` on
+CUDA is reported, not bounded.[^ch11-s4-src]
+
+**Evidence.** The S4 record; no ctest at the pin (@tbl-ch11-s4-tests).
+:::
+
+Local symbols of this section: none.
+
+### Derivation
+
+None: a catalogue and a citation. The record compares three columns on each cell, measured in one session on one
+build of each side: the pre-V3 code (eager only), the V3 code with no execution key, and the V3 code with
+`execution: eager`. Its four cells are the Straka case with HLLC[^rg-150c5a646a54] in FP64, the shipped Straka deck, a six-panel
+moist cubed sphere, and the same sphere with an implicit scheme and a varying step. Launches are counted from the
+profiler trace by the method of @sec-ch16-launches; times are medians of repeated runs.[^ch11-s4-src]
+
+### Numerical method
+
+**Where the launches are reduced.** At the pin each reduction sits in the code it changes, which marks it "V3 S4"
+in a comment. No chapter of this book describes them one by one, so the catalogue cites the code:
+
+| what | code |
+|---|---|
+| the reconstruction floors and the Riemann events post masks (row, mask pairs), and the monitor reduces a stage's masks together: one integer cumulative sum and one gather per stage, no atomics | `floored` of {{< code src/recon/reconstruct.hpp ReconstructImpl >}}, `events` of {{< code src/riemann/riemann.hpp RiemannSolverImpl >}}, {{< code src/hydro/flux_register.cpp RegisterMonitor::flush_counts >}} |
+| the well-balanced $x_1$ fallback computes its positivity mask once and shares it | {{< code src/recon/well_balanced_x1.cpp >}} |
+| the register's stage rates and posts stay in per-stage slots and are folded once, on the device, when the amounts are read; `end_stage` launches nothing | {{< code src/hydro/flux_register.cpp RegisterMonitor::end_stage >}}, {{< code src/hydro/flux_register.cpp RegisterMonitor::fold_ >}} |
+| a contiguous row range is one plain add on a narrow view instead of an atomic `index_add_` | {{< code src/hydro/flux_register.cpp FluxRegister::add >}} |
+| the prescribed-wall rates of a stage are booked in one batch for every register and direction | {{< code src/hydro/flux_register.hpp WallBatch >}} |
+| the implicit solve's five status bits index a cached truth table: one gather and one reduction | {{< code src/implicit/implicit_hydro.cpp ImplicitHydroImpl::status >}} |
+| the implicit tracer transfer builds its shifted copies with one pad each, without a zero fill | {{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::stage_advance >}} |
+
+: The S4 catalogue: the eager-path launch reductions at the pin, by the code that carries them.
+{#tbl-ch11-s4-catalogue}
+
+**Why the graph path is the remedy.** The record reads its counts and times together: the eager gap is
+launch-bound, as the times order the same way as the launch counts, and the graph path, which replays each
+captured segment as one launch, runs every cell faster than the pre-V3 eager code.[^ch11-s4-src] This is why
+`auto` resolves to cuda-graph on CUDA (@sec-ch11-default), rather than every remaining extra launch being removed
+from the eager path.
+
+### Code
+
+**How to use it.** To see which path a run took, read its counters after a few steps:
+
+```python
+r = block.execution_report()
+print(r["replays"], r["eager"])    # graph path: replays, no eager stage
+```
+
+**What is refused, and why.** Nothing: this section changes no code. The counting tool and the record are on the
+closing-plan branch, not in the snapy tree at the pin.
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| none at the pin | the record is a measurement, not a ctest entry | none | the bound as ruled in the record, section 1 |
+
+: Tests of the eager-path cost. {#tbl-ch11-s4-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The record's numbers belong to the commits it names, on the machines it names; this report cites them and does
+  not re-measure them at its pin.
+- Times on a shared node move with its load; the record says which of its tables were measured on an idle GPU.
+- The eager path on CUDA has no bound: a case that runs eager there (a refusal, or `execution: eager`) pays the
+  launch gap.
+:::
+
+[^ch11-s4-src]: [source: `docs/v3/closing/s4_eager_gap.md` on cshsgy/snapy branch `v3/closing-dryrun-plan` at
+    `be267b70`: section 1 (the bound as ruled), section 2 (method), section 3 (cells), section 4 (launches per
+    step), section 5 (ms/step) and section 6 (the reading: the eager gap is launch-bound, and the cuda-graph
+    default)]
+
+<!-- reader glossary notes -->
+[^rg-150c5a646a54]: HLLC — Harten–Lax–van Leer solver with the contact restored
+<!-- end reader glossary notes -->

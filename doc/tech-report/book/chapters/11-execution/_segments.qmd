@@ -1,0 +1,157 @@
+## The execution model: segments and the stage schedule {#sec-ch11-segments}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: src/mesh/segment.{hpp,cpp} (SegmentKind, Op, Segment, StageSchedule), src/mesh/stage_executor.{hpp,cpp}
+         (build_schedule, run_stage, run_segments, run_eager), src/mesh/meshblock_advance.cpp (forward),
+         src/mesh/mesh.cpp (forward), tests/test_stage_schedule.cpp, tests/test_stage_segments.cpp,
+         tests/test_mesh_executor.cpp, tests/CMakeLists.txt, all read at the pin;
+         src/snapy_report/ch11/figures/fig_segments.py
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+Every stage of every block runs through one object, the stage executor. The executor holds, per block, a stage
+schedule: the stage's operations (ops) in order, each with a kind and a flag that says whether it may be captured
+in a CUDA graph. Consecutive ops of the same kind and capturability form a segment, and the segment is the unit
+the executor runs: eagerly, or as one captured graph. An op that cannot be captured, such as a user forcing or an
+outflow ghost fill, ends the segment before it and starts one of its own, so the rest of the stage can still be
+captured. A host exchange is always a segment of its own and always runs eager; it is a boundary between
+segments, not a refusal. The schedule is rebuilt when a block's configuration changes what it holds (an outflow
+boundary, a user forcing or a chemistry step set after construction), and its graphs are then dropped.
+@fig-ch11-segments shows the schedule of a bare block.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Run a block's stage as an ordered list of ops grouped into segments, each run eagerly or as a graph.
+
+**Data.** Reads the block's variables (`hydro_u`, `hydro_w`, `scalar_s`, `scalar_r`) and options; writes the
+same variables in place.
+
+**Placement.** Every stage: `MeshBlock::forward` and `Mesh::forward` call `StageExecutor::run_stage` for each
+block.
+
+**Activation.** Always on; the deck key `integration/execution` chooses eager or graph per segment
+(@sec-ch11-default). Default: `auto`.
+
+**Guarantee / limits.** The ops run in the same order whichever way a segment runs. An op that is not capturable
+must carry a reason; the schedule refuses one without.
+
+**Evidence.** `test_stage_schedule.release`, `test_stage_segments.release`, `test_mesh_executor.release`
+(@tbl-ch11-segments-tests).
+:::
+
+Local symbols of this section: none.
+
+### Derivation
+
+None: the schedule is control flow. Its one rule is how ops form segments. `StageSchedule::add`
+({{< code src/mesh/segment.cpp StageSchedule::add >}}) appends an op with a kind (@tbl-ch11-segments-kinds) and
+regroups; `StageSchedule::regroup` ({{< code src/mesh/segment.cpp StageSchedule::regroup >}}) starts a new segment
+when the op's kind or capturability differs from the open segment's, or when either is a host exchange or a
+global op. A host-exchange, global or eager op is never capturable: `add` clears its flag and, when the op names
+no reason, gives it one ("a host-exchange op"). A segment records the names of its ops, the reasons of its eager
+ops, and whether any of its ops reads the host step (@sec-ch11-graphsafe).
+
+| kind | runs | its own segment | a refusal |
+|---|---|---|---|
+| `compute` | as a graph when every op is capturable, else eager | no | no |
+| `pack`, `unpack` | as `compute` | no | no |
+| `host-exchange` | eager, on the host | yes | no: a boundary |
+| `global` | eager, on the host | yes | no: a boundary |
+| `eager` | eager | no | yes, with the op's reason |
+
+: The segment kinds of `SegmentKind` ({{< code src/mesh/segment.hpp SegmentKind >}}); `runs_on_host`
+({{< code src/mesh/segment.cpp runs_on_host >}}) is true for the two host kinds. {#tbl-ch11-segments-kinds}
+
+### Numerical method
+
+**The schedule of a block.** `StageExecutor::build_schedule`
+({{< code src/mesh/stage_executor.cpp StageExecutor::build_schedule >}}) declares the ops of a stage in this order:
+
+1. `exchange` (host exchange; a bare block only): the stage-entry ghost exchange. A block of a Mesh has none, as
+   the Mesh exchanges its blocks after their stages;
+2. `advance`: the fluxes, sources, register posts and the vertical implicit correction
+   (`MeshBlockImpl::stage_advance`); its `prepare` step, run outside any capture, sets up the thermodynamics
+   tables, the implicit scratch and the flux register's storage;
+3. `forcing`[^rg-c2adbe6bd0b3]: the user stage forcings; not capturable when one is set (@sec-ch11-eagerops);
+4. `combine`: the Runge–Kutta combine and the register's end of stage;
+5. `saturation`: the saturation adjustment;
+6. `chemistry`: the registered chemistry step; not capturable on a bare block with one (@sec-ch11-eagerops);
+7. `boundaries`: the ghost fill; not capturable when an outflow boundary is set.
+
+With none of these set, a bare block's stage is two segments: the exchange, then one compute segment holding the
+other six ops (@fig-ch11-segments). Each not-capturable op splits the compute run around it.
+
+```{python}
+#| label: fig-ch11-segments
+#| fig-cap: "The stage schedule of a bare block. Top: no eager op is set, so the stage is the host exchange and one captured segment. Bottom: a user forcing and an outflow boundary are set, so their ops run eager and the stage has five segments, two of them captured."
+#| fig-alt: "Two rows of seven boxes, the ops of a stage, grouped by brackets into segments; eager ops are shaded."
+#| echo: false
+from snapy_report.ch11.figures.fig_segments import make_fig
+make_fig()
+```
+
+**Running a stage.** `StageExecutor::run_stage` ({{< code src/mesh/stage_executor.cpp StageExecutor::run_stage >}})
+runs the whole schedule eagerly when the block's mode is eager, or when the case has a refusal
+(@sec-ch11-refusals). Otherwise `StageExecutor::run_segments`
+({{< code src/mesh/stage_executor.cpp StageExecutor::run_segments >}}) walks the segments: a host segment and an
+eager segment run their ops eagerly, and every other segment is captured if it has no graph yet (or its graph's
+key moved) and then replayed (@sec-ch11-capture). `StageExecutor::run_eager`
+({{< code src/mesh/stage_executor.cpp StageExecutor::run_eager >}}) is the one eager loop, over a whole stage or
+one segment.
+
+**Who calls it.** A bare block's `forward` ({{< code src/mesh/meshblock_advance.cpp MeshBlockImpl::forward >}})
+calls `run_stage` for its own index. A Mesh owns one executor for all its blocks; `MeshImpl::forward`
+({{< code src/mesh/mesh.cpp MeshImpl::forward >}}) checks strictness for every block, aligns their captures and
+runs their stages on its block worker pool (@sec-ch13).
+
+### Code
+
+**How to use it.** The schedule is internal; Python sees it through a block's capability row, one entry per
+segment:
+
+```python
+caps = block.execution_capability(vars)
+for row in caps["segments"]:
+    print(row["index"], row["kind"], row["ops"], row["capturable"], row["reasons"])
+```
+
+**What is refused, and why.** `StageSchedule::add` refuses an op with no name, no run function, or no reason
+when it is not capturable, so every eager segment names why it is eager.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| op, segment, schedule | {{< code src/mesh/segment.hpp StageSchedule >}} | `Op`, `Segment`, `StageSchedule` | none |
+| grouping rule | {{< code src/mesh/segment.cpp StageSchedule::regroup >}} | `StageSchedule::regroup` | none |
+| the block's ops | {{< code src/mesh/stage_executor.cpp StageExecutor::build_schedule >}} | `StageExecutor::build_schedule` | outflow, user forcing, chemistry |
+| a stage | {{< code src/mesh/stage_executor.cpp StageExecutor::run_stage >}} | `StageExecutor::run_stage` | `execution`[^rg-27806788f448] |
+| the segments of a stage | {{< code src/mesh/stage_executor.cpp StageExecutor::run_segments >}} | `StageExecutor::run_segments` | none |
+
+: Code map of the stage schedule. {#tbl-ch11-segments-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_stage_schedule.release` | one capturable run is one segment; a change of kind or capturability starts a new segment and the eager one carries its reason; host-exchange and global ops are eager and alone | none (pass/fail checks) | the grouping rule |
+| `test_stage_segments.release` | a bare block's stage is a host-exchange segment, then one compute segment of `advance`, `forcing`, `combine`, `saturation`, `chemistry`, `boundaries` that reads no host step; the capability row marks the exchange as host, with no reason; strict names segment 1 and its reason; on CUDA the graph block equals the eager block and a new step replays without a new capture | `EXPECT_EQ` on the segments; `torch::equal` (bitwise) on the state | {{< code tests/test_stage_segments.cpp >}} |
+| `test_mesh_executor.release` | a Mesh owns one executor for its blocks and steps through it under `execution: eager`, equal to the same blocks stepped by their own local advance and exchange; its report counts every stage eager and no capture | `torch::equal` (bitwise) | {{< code tests/test_mesh_executor.cpp >}} |
+
+: Tests of the stage schedule. {#tbl-ch11-segments-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- The schedule is fixed by the code: a new op must be added in `StageExecutor::build_schedule`; a driver cannot
+  insert one between the existing ops.
+- A user forcing or chemistry step set after the first stage rebuilds the schedule and drops every graph of the
+  block, so the next stage captures again.
+:::
+
+<!-- reader glossary notes -->
+[^rg-c2adbe6bd0b3]: forcing — forcing options block: a map with one sub-block per forcing component
+
+[^rg-27806788f448]: execution — run mode of the integrator: auto, eager or cuda-graph
+<!-- end reader glossary notes -->

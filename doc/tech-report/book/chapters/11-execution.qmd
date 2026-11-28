@@ -1,0 +1,52 @@
+# Execution: the stage executor and CUDA graphs {#sec-ch11}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: STRUCTURE.md chapter 11 (11.1-11.7); src/mesh/stage_executor.{hpp,cpp}, src/mesh/segment.{hpp,cpp},
+         src/mesh/state_store.hpp, src/utils/step_dt.{hpp,cpp}, src/mesh/meshblock.hpp,
+         src/mesh/meshblock_options.cpp, src/mesh/meshblock_advance.cpp, src/mesh/mesh.cpp,
+         src/recon/x1_reference.hpp, tests/CMakeLists.txt and the tests named in each Tests layer, all read at
+         the pin; the S4 record docs/v3/closing/s4_eager_gap.md on cshsgy/snapy branch v3/closing-dryrun-plan at
+         be267b70, read at that commit
+status: draft
+author: Linfeng Li
+-->
+
+The earlier chapters describe what one stage computes. This chapter describes how a stage is run. A block's
+stage is a short list of operations: the stage-entry exchange, the advance (fluxes, sources and the implicit
+correction), the user forcing, the Runge–Kutta combine, the saturation adjustment, the chemistry step and the
+ghost fill. The stage executor groups that list into segments and runs each segment in one of two ways: eagerly,
+launching every kernel from the host as the code reaches it, or as a CUDA[^rg-df3b18643faf] graph, captured once and then replayed
+as a single launch. Both ways compute the same bits; the graph saves the cost of issuing the kernels one by one.
+
+@sec-ch11-segments gives the schedule and its segments. @sec-ch11-capture describes how a segment is captured
+and replayed, and what is saved and restored around the capture. @sec-ch11-refusals lists the reasons a block
+runs eager instead, and @sec-ch11-default the deck keys that choose the execution and make a refusal an error.
+@sec-ch11-graphsafe gives the rules a kernel must follow to run inside a graph, and the device step that lets
+one capture serve every step size. @sec-ch11-devices covers where a run executes, the tiling of long
+reconstruction lines, the CUDA test gate and the values read back to the host every step. @sec-ch11-s4 says what the eager path costs and where that cost is measured,
+and @sec-ch11-eagerops how an operation that cannot be captured runs between captured segments. A Mesh of several
+blocks captures its blocks together; the exchange cuts and the agreement rule are @sec-ch13. How a test run under
+the default execution is classified is @sec-ch16-capture.
+
+{{< include 11-execution/_segments.qmd >}}
+
+{{< include 11-execution/_capture.qmd >}}
+
+{{< include 11-execution/_refusals.qmd >}}
+
+{{< include 11-execution/_default.qmd >}}
+
+{{< include 11-execution/_graphsafe.qmd >}}
+
+{{< include 11-execution/_devices.qmd >}}
+
+{{< include 11-execution/_s4.qmd >}}
+
+{{< include 11-execution/_eagerops.qmd >}}
+
+The limits this chapter states are collected with those of the other chapters in @sec-ch17-wrong, @sec-ch17-restricted and @sec-ch17-usability.
+
+<!-- reader glossary notes -->
+[^rg-df3b18643faf]: CUDA — NVIDIA's parallel computing platform
+<!-- end reader glossary notes -->

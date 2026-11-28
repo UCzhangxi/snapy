@@ -12,7 +12,7 @@ author: Linfeng Li
 
 ### Summary
 
-On a CUDA device the default execution captures each stage as a CUDA graph and replays it (@sec-ch11). A test
+On a CUDA device the default execution captures each stage as a CUDA graph and replays it (@sec-ch11-default). A test
 written for the eager path can therefore run, unchanged, through a path it was never written for. The capture
 sweep runs every shipped test on a CUDA build with no execution key and sorts each one into three bins:
 *captured* (its blocks replayed graphs and the test passed), *refused* (the executor ran some or all of it eager
@@ -47,11 +47,11 @@ Local symbols of this section: none.
 None: the sweep is a method. The bins follow from how the executor decides, in this order:
 
 1. `StageExecutor::mode` ({{< code src/mesh/stage_executor.cpp StageExecutor::mode >}}) returns the deck's
-   `execution`[^rg-e5e558d3a04b] when it is not `auto`; with `auto` it returns cuda-graph when `execution-strict` is set or the
+   `execution`[^rg-e5e558d3a04b] when it is not `auto`; with `auto` it returns cuda-graph when `execution-strict`[^rg-45a85d4e1795] is set or the
    block's coordinates live on a CUDA device, and eager otherwise. The default is `auto`
    ({{< code src/mesh/meshblock.hpp MeshBlockOptionsImpl >}}).
-2. In cuda-graph mode a segment whose operations carry eager reasons, or a case with case-wide reasons, runs
-   eager. Without `execution-strict`, `StageExecutor::log_eager`
+2. In cuda-graph mode a segment whose operations carry eager reasons (@sec-ch11-eagerops), or a case with
+   case-wide reasons, runs eager. Without `execution-strict`, `StageExecutor::log_eager`
    ({{< code src/mesh/stage_executor.cpp StageExecutor::log_eager >}}) warns once per block and reason:
    "integration/execution: block *n* runs eager where it cannot be captured: *reason*". With it,
    `StageExecutor::check_strict` ({{< code src/mesh/stage_executor.cpp StageExecutor::check_strict >}}) stops
@@ -94,7 +94,7 @@ print(report["replays"], report["eager"], caps["eager_reasons"])
 
 **What is refused, and why.** The executor refuses capture for the reasons that `StageExecutor::config_reasons`
 ({{< code src/mesh/stage_executor.cpp StageExecutor::config_reasons >}}) and `StageExecutor::vars_reasons`
-({{< code src/mesh/stage_executor.cpp StageExecutor::vars_reasons >}}) return; @sec-ch11 lists them and @sec-ch17
+({{< code src/mesh/stage_executor.cpp StageExecutor::vars_reasons >}}) return; @sec-ch11-refusals lists them and @sec-ch17
 holds the ones that are lasting limits. The sweep reports them; it adds no refusal of its own.
 
 | what | code link | symbol | switch |
@@ -133,4 +133,6 @@ record when that lands.
 
 <!-- reader glossary notes -->
 [^rg-e5e558d3a04b]: execution — run mode of the integrator: auto, eager or cuda-graph
+
+[^rg-45a85d4e1795]: execution-strict — stop a case that cannot run as a CUDA graph instead of running it eager
 <!-- end reader glossary notes -->

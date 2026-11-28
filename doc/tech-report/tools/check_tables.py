@@ -49,7 +49,7 @@ _HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*(\{[^}]*\})?\s*$")
 _LABEL = re.compile(r"\{#tbl-[\w-]+\}\s*$")
 # appendix B's per-chapter fragments are written by tools/gen_derivation_index.py, one six-column table each: the
 # generator owns their shape, so they are not counted here
-_GENERATED = re.compile(r"_appb-ch\d\d\.qmd")
+_GENERATED = re.compile(r"_appb-ch\d\d[a-z]?\.qmd")
 
 
 def chapter_of(rel: str) -> str:

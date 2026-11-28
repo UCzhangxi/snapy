@@ -6,7 +6,7 @@ from pathlib import Path
 import code_anchors
 
 REPORT = Path(__file__).resolve().parent.parent
-TARGET = 'book/chapters/11-boundaries/_howto.qmd'
+TARGET = 'book/chapters/14-boundaries/_howto.qmd'
 PIN = '919936da07d80a310b98ab11da184972a3203274'
 
 
@@ -282,7 +282,7 @@ boundary-condition:
 
 The parser appends `_inner` or `_outer` to each face value, checks the registry,
 then installs the function (@inner_lookup_cite@; @outer_lookup_cite@).
-See the existing registry explanation in @sec-ch11-registry. The generated
+See the existing registry explanation in @sec-ch14-registry. The generated
 lookup and refusal facts are:
 
 ```cpp
