@@ -114,3 +114,49 @@ def test_provenance_a_relocation_with_a_new_finding_fails(tmp_path, snapy, monke
     _set(report, {"ch04": 3})
     assert _gate(report, snapy, monkeypatch, base) >= 1
     assert "ch04: the baseline rises" in capsys.readouterr().out
+
+
+# --- a renamed file the gate does not count carries no credit (review 6095629692) ---------------------------------
+
+def test_ratchet_an_uncounted_renamed_file_gives_no_credit(tmp_path, capsys):
+    """A non-.qmd file with off-pin shas moves out of a chapter that counts none, and three new findings appear in
+    the target chapter, written into its baseline by hand: no credit, the rise fails."""
+    root = make(tmp_path, owners=OWNERS + "ch04\tdave\nch05\terin\n")
+    notes = root / "book" / "chapters" / "05-src" / "notes.txt"
+    notes.parent.mkdir(parents=True)
+    notes.write_text("".join(f"snapy@{c * 40}\n" for c in "567"))
+    assert rg.main(["--root", str(root), "update"]) == 0
+    git(root, "init", "-q")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "base")
+    git(root, "tag", "base")
+    (root / "book" / "chapters" / "04-new").mkdir()
+    git(root, "mv", "book/chapters/05-src/notes.txt", "book/chapters/04-new/notes.txt")
+    (root / "book" / "chapters" / "04-new" / "_x.qmd").write_text(
+        "## X\n\n" + "".join(f"See snapy@{c * 40}.\n" for c in "89a"))
+    b = json.loads((root / "tools" / "ratchet-baseline.json").read_text())
+    b["chapters"]["ch04"] = {"history": 0, "offpin": 3, "status": 0, "xref": 0}
+    (root / "tools" / "ratchet-baseline.json").write_text(json.dumps(b))
+    assert check(root) == 0
+    assert check(root, "--base-ref", "base") == 1
+    out = capsys.readouterr().out
+    assert "ch04 offpin: the baseline rises 0 -> 3" in out
+    assert "relocation credit" not in out
+
+
+def test_provenance_an_uncounted_renamed_file_gives_no_credit(tmp_path, snapy, monkeypatch, capsys):
+    report = _report(tmp_path, snapy, "complete.qmd", baseline={})
+    notes = report / "book" / "chapters" / "05-src" / "notes.txt"
+    notes.parent.mkdir(parents=True)
+    notes.write_text((NO_COMMAND * 3).replace("{pin}", snapy[1]["pin"]))
+    base = _target(report)
+    (report / "book" / "chapters" / "04-new").mkdir()
+    subprocess.run(["git", "-C", str(report), "mv", "book/chapters/05-src/notes.txt",
+                    "book/chapters/04-new/notes.txt"], check=True)
+    (report / "book" / "chapters" / "04-new" / "_x.qmd").write_text(
+        "## X\n" + (NO_COMMAND * 3).replace("{pin}", snapy[1]["pin"]))
+    _set(report, {"ch04": 3})
+    assert _gate(report, snapy, monkeypatch, base) >= 1
+    out = capsys.readouterr().out
+    assert "ch04: the baseline rises 0 -> 3 against" in out
+    assert "relocation credit" not in out

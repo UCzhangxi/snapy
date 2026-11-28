@@ -155,6 +155,11 @@ def chapter_of(rel: str) -> str:
     return f"ch{m.group(1)}" if m else top
 
 
+def counted(rel: str) -> bool:
+    """Whether the ratchet reads the file at `rel` (relative to book/): the filter of sources()."""
+    return rel == "index.qmd" or (rel.startswith("chapters/") and rel.endswith(".qmd"))
+
+
 def sources(book: pathlib.Path) -> list[pathlib.Path]:
     """Every file the ratchet reads: the preface and every chapter and scheme file."""
     out = sorted((book / "chapters").rglob("*.qmd"))
@@ -436,7 +441,7 @@ def baseline_raised(root: pathlib.Path, ref: str, baseline: dict) -> list[str]:
     # `ref` to the target's; nothing else is credited
     from relocation_credit import adjusted, credit, describe, relocated_files
     pin = pins(root)
-    credits = credit(relocated_files(root, ref, chapter_of),
+    credits = credit(relocated_files(root, ref, chapter_of, counted),
                      lambda rel: offpin_hits(_git_show(root, ref, f"book/{rel}") or "", pin),
                      lambda rel: offpin_hits((root / "book" / rel).read_text(), pin))
     old_offpin = adjusted({ch: c.get("offpin", 0) for ch, c in old_chapters.items()}, credits)

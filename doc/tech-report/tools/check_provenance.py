@@ -46,6 +46,11 @@ _CODE = re.compile(r"`[^`]+`")
 
 # --- the book -----------------------------------------------------------------------------------------------------
 
+def _counted(rel):
+    """Whether this gate reads the file at `rel` (relative to book/): the filter of _sources()."""
+    return rel.endswith(".qmd") and not rel.startswith(("_", "."))
+
+
 def _sources(book):
     for q in sorted(Path(book).rglob("*.qmd")):
         rel = q.relative_to(book).as_posix()
@@ -257,7 +262,7 @@ def raised(report, ref, baseline, resolve=None):
         return []  # the pin moves in this change: which shas count moves with it
     old = json.loads(old)
     resolve = resolve or Resolver(Path(report), read_pin(report))
-    credits = credit(relocated_files(Path(report), ref, _chapter),
+    credits = credit(relocated_files(Path(report), ref, _chapter, _counted),
                      lambda rel: file_findings(rel, _git_show(Path(report), ref, f"book/{rel}") or "", resolve),
                      lambda rel: file_findings(rel, (Path(report) / "book" / rel).read_text(encoding="utf-8"),
                                                resolve))
