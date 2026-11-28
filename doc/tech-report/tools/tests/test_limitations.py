@@ -47,7 +47,7 @@ def test_warning_exit_and_reachable_includes(tmp_path, capsys):
 
 def test_audited_boundary_and_spatial_prose_is_converted():
     book = Path(__file__).resolve().parents[2] / "book"
-    files = list((book / "chapters/11-boundaries").glob("*.qmd"))
+    files = list((book / "chapters/14-boundaries").glob("*.qmd"))
     files.append(book / "chapters/16-verification/_ch04-spatial-discretization.qmd")
     files.append(book / "chapters/08-positivity/_eoslimiter.qmd")
     files.append(book / "chapters/09-time-integration/_vic-assembly.qmd")
@@ -84,7 +84,7 @@ def test_review_deferral_forms_warn(phrase):
 # Note counts retain the limitation even if somebody deletes its wording instead
 # of converting it. Reasons are checked separately for the repeated review defect.
 AUDITED_NOTES = {
-    "11-boundaries/" + name + ".qmd": 1
+    "14-boundaries/" + name + ".qmd": 1
     for name in ["_custom", "_exchange", "_extrapolation", "_outflow", "_periodic",
                  "_reflecting", "_registry", "_solids", "_timing", "_wb"]
 }
@@ -108,6 +108,6 @@ def test_review_notes_keep_the_limitation_and_reason(relative, count):
     text = (book / relative).read_text()
     assert text.count("**Not provided:**") >= count
     assert not lint.findings(text)
-    if relative.startswith("11-boundaries/"):
+    if relative.startswith("14-boundaries/"):
         assert "without deriving each round-off bound" in text
         assert "this book does not derive those bounds" in text

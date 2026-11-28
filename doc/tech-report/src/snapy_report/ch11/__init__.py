@@ -1,1 +1,1 @@
-"""Boundary-condition derivations and figures."""
+"""Execution: the stage executor and CUDA graphs (chapter 11) figures."""

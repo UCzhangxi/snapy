@@ -1,0 +1,148 @@
+## Graph equals eager: graph-safe code and the device step {#sec-ch11-graphsafe}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: src/utils/step_dt.{hpp,cpp} (StepDt, axpy_), src/mesh/stage_executor.{hpp,cpp} (device_dt, make_key,
+         build_schedule), src/mesh/segment.hpp (Op::reads_host_dt), src/mesh/state_store.hpp,
+         src/recon/x1_reference.hpp (X1Reference), tests/test_sk3_capture_moist.py,
+         tests/test_graph_implicit_dt.py, tests/test_graph_chemistry_slot.py, tests/test_graph_stretched_x1.py,
+         tests/CMakeLists.txt, all read at the pin
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+A captured segment must compute, on replay, what the eager segment computes, bit for bit. That holds only if
+the code inside the segment follows a few rules: it reads nothing back to the host, copies nothing from the host,
+keeps every shape fixed, and keeps the state it changes on the device in fixed storage. The one value that
+changes every step is the step size itself. A captured segment does not read it as a host number, which would
+freeze the first step's value into the graph; it reads a per-block device scalar that the executor fills before
+each replay. The step type `StepDt` carries that scalar and forms every product and quotient with the step
+exactly as the host number would, so one capture serves every step size and still equals eager.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** State what code may run inside a captured segment, and give captured segments the step size without
+a host read.
+
+**Data.** Reads the step size $\Delta t$[^rg-d34c0e1bcdff] from the driver; writes it into the block's 0-dimensional FP64 device
+tensor before each capture and replay.
+
+**Placement.** Every op of a captured segment receives a `StepDt` in its stage context; the executor fills the
+device value in stream order.
+
+**Activation.** Always, in cuda-graph mode. An op that sets `reads_host_dt` instead receives the host value, and
+its segment keeps $\Delta t$ in its graph key.
+
+**Guarantee / limits.** Products and quotients with a device step equal those with the host step bit for bit
+(@eq-ch11-dt-mul, @eq-ch11-dt-divide). A host read of a device step throws.
+
+**Evidence.** `test_sk3_capture_moist_python`, `test_graph_implicit_dt_python`, `test_graph_chemistry_slot_python`,
+`test_graph_stretched_x1_python` (@tbl-ch11-graphsafe-tests).
+:::
+
+Local symbols of this section: $\Delta t$ the step size, a host FP64 number; $\Delta t_{\mathrm{dev}}$ the block's device copy of
+it, a 0-dimensional FP64 tensor; $x$ a tensor of dtype $d$; $\mathrm{rd}_d(\cdot)$ rounding to $d$.
+
+### Derivation
+
+**The rules.** Inside a captured segment, code must not:
+
+1. read a device value on the host (`item()`, a host branch on a tensor): the graph would keep the branch taken
+   at recording;
+2. copy from the host to the device: the recorded copy would replay the recording's host data;
+3. change a shape or allocate a tensor whose address the next stage needs: the replay writes the recorded
+   addresses;
+4. build a table on first use: the recording would hold the build. Such work goes in the op's `prepare`, which
+   runs before the save list and the warm-ups (@sec-ch11-capture).
+
+**The step.** $\Delta t_{\mathrm{dev}}$ holds $\Delta t$ exactly, as both are FP64. For a product, torch rounds a host scalar to the
+tensor's dtype before multiplying, and a 0-dimensional FP64 tensor is rounded the same way, so
+
+$$
+x \cdot \Delta t_{\mathrm{dev}} = x \cdot \mathrm{rd}_d(\Delta t)
+$$ {#eq-ch11-dt-mul}
+
+bit for bit, whatever $d$ is. For a quotient, torch on CUDA divides a tensor by a host scalar as a product with
+the reciprocal formed in FP64; `StepDt::divide` forms the same reciprocal from $\Delta t_{\mathrm{dev}}$, so
+
+$$
+x \,/\, \Delta t \;\equiv\; x \cdot \mathrm{rd}_d\!\left(\frac{1}{\Delta t}\right) = x \cdot \mathrm{rd}_d\!\left(\frac{1}{\Delta t_{\mathrm{dev}}}\right)
+$$ {#eq-ch11-dt-divide}
+
+bit for bit on CUDA. A scaled step $a\,\Delta t$ (the Runge–Kutta weights) is formed in FP64 on either side,
+and `axpy_` adds $a\,x$ to a sum with one fused multiply-add per element, the form torch's `add_` uses with a host
+$a$.
+
+### Numerical method
+
+**Filling the device step.** `StageExecutor::device_dt`
+({{< code src/mesh/stage_executor.cpp StageExecutor::device_dt >}}) keeps one $\Delta t_{\mathrm{dev}}$ per block on the state's
+device (a new device allocates a new one and drops the block's graphs) and fills it with $\Delta t$ on the current
+stream before each capture and replay. Each block of a Mesh has its own, so blocks replaying on their own worker
+streams never write each other's.
+
+**Reading it.** `StepDt` ({{< code src/utils/step_dt.hpp StepDt >}}) holds either a host value or $\Delta t_{\mathrm{dev}}$.
+`StepDt::value` ({{< code src/utils/step_dt.cpp StepDt::value >}}) throws for a device step ("this stage reads dt
+on the host, so it cannot replay with another dt"). `StepDt::divide`
+({{< code src/utils/step_dt.cpp StepDt::divide >}}) implements @eq-ch11-dt-divide, `StepDt::scaled`
+({{< code src/utils/step_dt.cpp StepDt::scaled >}}) the scaled step, and `axpy_`
+({{< code src/utils/step_dt.cpp axpy_ >}}) the fused update. The ops of the schedule that read the step (the
+Runge–Kutta combine's weights, the flux register's end of stage, the vertical implicit solve) take a `StepDt`.
+
+**Host-step ops.** An op that sets `Op::reads_host_dt` ({{< code src/mesh/segment.hpp Op >}}) is given the host
+value; a captured segment holding one records with that value and keeps $\Delta t$ in its graph key, so a new
+step records again. At the pin the only ops that read the host step are the user forcing and the chemistry step,
+and both run eager (@sec-ch11-eagerops); every captured segment reads $\Delta t_{\mathrm{dev}}$.
+
+**A host copy removed from the stage.** The $x_1$ well-balanced reference on a stretched grid evaluates quadrature
+rows of the grid every stage. `X1Reference` ({{< code src/recon/x1_reference.hpp X1Reference >}}) builds them once
+per grid on the grid's device, so the evaluation inside a captured segment copies nothing from the host.
+
+### Code
+
+**How to use it.** Code that runs in a stage takes the step as a `StepDt` and uses its operators:
+
+```cpp
+auto tendency = dt * du;          // x * dt, bitwise as with a host dt
+auto rate = dt.divide(dq);        // x / dt, bitwise on CUDA
+axpy_(u, du, dt.scaled(weight));  // u += weight * dt * du, one fused multiply-add
+```
+
+**What is refused, and why.** `StepDt::value` on a device step throws, and `StepDt::device` refuses a step that is
+not a 0-dimensional FP64 tensor.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| the step type | {{< code src/utils/step_dt.hpp StepDt >}} | `StepDt` | none |
+| the host read | {{< code src/utils/step_dt.cpp StepDt::value >}} | `StepDt::value` | none |
+| the quotient | {{< code src/utils/step_dt.cpp StepDt::divide >}} | `StepDt::divide` | none |
+| the block's device step | {{< code src/mesh/stage_executor.cpp StageExecutor::device_dt >}} | `StageExecutor::device_dt` | none |
+| reference rows on the device | {{< code src/recon/x1_reference.hpp X1Reference >}} | `X1Reference` | stretched $x_1$ |
+
+: Code map of the graph-safe rules. {#tbl-ch11-graphsafe-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_sk3_capture_moist_python` | a moist Straka case with H2O condensation runs its saturation adjustment inside the captured last stage and equals eager | `torch.equal` (bitwise) | {{< code tests/test_sk3_capture_moist.py >}} |
+| `test_graph_implicit_dt_python` | implicit schemes 1 and 9 with the face gravity work, strict cuda-graph against eager in FP64 and FP32 with the step changing every step and the host sync check set to error: no recapture and no eager stage on a new step, and a forced retry replays the same graphs; the six-panel sphere with the $x_1$ flux on and off | `torch.equal` (bitwise) | {{< code tests/test_graph_implicit_dt.py >}} |
+| `test_graph_chemistry_slot_python` | captured segments around the eager chemistry segment equal eager in FP64 and FP32 with a changing step (@sec-ch11-eagerops) | `torch.equal` (bitwise) | {{< code tests/test_graph_chemistry_slot.py >}} |
+| `test_graph_stretched_x1_python` | a stretched C24 cubed sphere captures and equals an eager Mesh after every step | `torch.equal` (bitwise); its `rtol=1.e-13` is the tolerance of the column solve that builds the initial state, not a comparison | {{< code tests/test_graph_stretched_x1.py >}} |
+
+: Tests of graph-safe code and the device step; each ends with the skip code when the build has no CUDA.
+{#tbl-ch11-graphsafe-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- @eq-ch11-dt-divide holds on CUDA, where torch forms the reciprocal; off CUDA a device step is read back to the
+  host, which is allowed only because no graph runs there.
+- The rules are not checked by a compiler. A kernel that breaks one is found by a graph-equals-eager test, by the
+  host sync check, or by a capture error; a case no such test runs is not checked.
+:::
+
+<!-- reader glossary notes -->
+[^rg-d34c0e1bcdff]: $\Delta t$ — the step
+<!-- end reader glossary notes -->

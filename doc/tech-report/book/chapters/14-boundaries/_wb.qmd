@@ -1,4 +1,4 @@
-## Keep wall ghosts consistent with the hydrostatic reference (`dynamics/wb-wall-clamp`) {#sec-ch11-wb}
+## Keep wall ghosts consistent with the hydrostatic reference (`dynamics/wb-wall-clamp`) {#sec-ch14-wb}
 
 <!-- PROVENANCE
 pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy)
@@ -20,7 +20,7 @@ decisions and the different face predicates they use: the continuation is gated 
 mirror on a physical face that is not outflow.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Continue the wall reference; @eq-ch11-wb-continuation.
+**Purpose.** Continue the wall reference; @eq-ch14-wb-continuation.
 
 **Data.** Cell-average density/pressure ratio and reference perturbations.
 
@@ -38,7 +38,7 @@ mirror on a physical face that is not outflow.
 All states here are cell averages; $\chi=\rho/p$ has units $\mathrm{s^2\,m^{-2}}$.
 Write the default reference smoothing with the notation-table binomial weights $B=(1,4,6,4,1)/16$.
 On a uniform grid its unit sum and zero first moment reproduce linear data. Repeating the first owned
-$\chi$[^rg-4b8844d07ce3] beyond a wall breaks that cancellation: a Taylor expansion has an uncancelled first-derivative term
+$\chi$[^rg-00be24a2b702] beyond a wall breaks that cancellation: a Taylor expansion has an uncancelled first-derivative term
 of order $h$. Continuing from two owned cells cancels it.
 
 Let owned cells start at index zero, let $l$ count continuation depth, and use positive owned values.
@@ -49,10 +49,10 @@ $$
 \chi_0(\chi_0/\chi_1)^l,&\chi_1>\chi_0,\\
 \chi_0+l(\chi_0-\chi_1),&\chi_1\le\chi_0.
 \end{cases}
-$$ {#eq-ch11-wb-continuation}
+$$ {#eq-ch14-wb-continuation}
 
 `hydro_ref_x1_wall_rop` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_wall_rop >}}) implements
-@eq-ch11-wb-continuation, with fallback to $\chi_0$ if the computed value is not positive, and
+@eq-ch14-wb-continuation, with fallback to $\chi_0$ if the computed value is not positive, and
 `hydro_ref_x1_rop_smooth` ({{< code src/hydro/hydro_ref_x1_impl.h hydro_ref_x1_rop_smooth >}}) calls it for
 the stencil points past a clamped end and repeats the wall cell when the end is not clamped. The first branch
 linearly continues $\log\chi$, the second $\chi$. Expanding the power branch about equal adjacent values
@@ -63,24 +63,24 @@ underlying note is `docs/derivations/wb-ref-wall.md@919936da07d80a310b98ab11da18
 measured values from that note are reused. Check C7 checks the binomial moments, the repeated-cell linear
 bias and the first-order agreement of the two continuations symbolically.
 
-The sweep subtracts $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$[^rg-782303cf9534], then mirrors the perturbations:
+The sweep subtracts $p_{\mathrm{ref}}$ and $\rho_{\mathrm{ref}}$[^rg-ba7ba06eae5d], then mirrors the perturbations:
 
 $$
 \begin{aligned}
 p'_{i-l}&=p'_{i+l-1},\\
 \rho'_{i-l}&=\rho'_{i+l-1}.
 \end{aligned}
-$$ {#eq-ch11-wb-parity}
+$$ {#eq-ch14-wb-parity}
 
 The well-balanced branch of `HydroImpl::forward` ({{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}})
-implements @eq-ch11-wb-parity with a `flip` of the first (last) $n_g$ owned perturbations into the ghosts,
+implements @eq-ch14-wb-parity with a `flip` of the first (last) $n_g$ owned perturbations into the ghosts,
 guarded by `is_outflow` ({{< code src/bc/bc_func.cpp is_outflow >}}) so that it acts only at physical
 non-outflow faces. If the cell state matches the discrete reference exactly, both perturbations vanish,
 their mirrors vanish, and a constant-preserving reconstruction returns zero perturbation. Restoring matched
 reference face values therefore adds no perturbation flux residual. The full pressure/gravity cancellation
 is the well-balanced scheme's identity, not a consequence of parity alone. Check C7 checks the
-zero-perturbation preservation [check `src/snapy_report/ch11/checks/boundary_check.py`, output
-`src/snapy_report/ch11/checks/boundary_check.out`]. The checks do not call a snapy kernel.
+zero-perturbation preservation [check `src/snapy_report/ch14/checks/boundary_check.py`, output
+`src/snapy_report/ch14/checks/boundary_check.out`]. The checks do not call a snapy kernel.
 
 ### Numerical method
 
@@ -103,14 +103,14 @@ The fourth-order reference variant is selected by `SNAP_WB_REF4` (`wb_ref4_enabl
 off, and the variant builds its stencils with the same clamp-and-physical flags. This section does not
 rederive their high-order stencils (@sec-ch05) or assign measured wall or seam convergence to them.
 
-@fig-ch11-wb-stencil illustrates the operations, with labelled roles independent of colour.
+@fig-ch14-wb-stencil illustrates the operations, with labelled roles independent of colour.
 
 ```{python}
-#| label: fig-ch11-wb-stencil
+#| label: fig-ch14-wb-stencil
 #| fig-cap: "Keep wall ghosts consistent with the hydrostatic reference. Schematic only; no simulation measurements."
 #| fig-alt: "Labelled schematic of the wb boundary operation; ghosts and owned cells have separate text labels."
 #| echo: false
-from snapy_report.ch11.figures.fig_wb_stencil import make_fig
+from snapy_report.ch14.figures.fig_wb_stencil import make_fig
 make_fig()
 ```
 
@@ -122,7 +122,7 @@ has no separate YAML key.
 
 This is a configuration fragment, not a standalone simulation deck.
 
-<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-ab31b442efcd], `wb-wall-clamp`[^rg-3049dc326e45].
+<!-- reader glossary keys -->Keys in this fragment: `dynamics`[^rg-7288f9e03d00], `wb-wall-clamp`[^rg-01a5b47b516e].
 ```yaml
 boundary-condition:
   external:
@@ -143,7 +143,7 @@ T e = r1 > r0 ? r0 * pow(r0 / r1, T(k)) : r0 + T(k) * (r0 - r1);
 return e > T(0) ? e : r0;
 ```
 
-`r0`, `r1` and `k` denote $\chi_0$, $\chi_1$ and continuation depth in @eq-ch11-wb-continuation. The conditional selects its two branches; the return implements the positive-value fallback.
+`r0`, `r1` and `k` denote $\chi_0$, $\chi_1$ and continuation depth in @eq-ch14-wb-continuation. The conditional selects its two branches; the return implements the positive-value fallback.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -158,14 +158,14 @@ return e > T(0) ? e : r0;
 | ref4option | {{< code src/hydro/wb_ref4.cpp wb_ref4_enabled >}} | `SNAP_WB_REF4` | `SNAP_WB_REF4` |
 | centroidoption | {{< code src/coord/x1_centroid.cpp x1_centroid_exact_enabled >}} | `SNAP_X1_CENTROID_EXACT` | `SNAP_X1_CENTROID_EXACT` |
 
-: Implementation sites for wb. {#tbl-ch11-wb-code}
+: Implementation sites for wb. {#tbl-ch14-wb-code}
 
 1. Select the gravity/pressure well-balanced branch and build its reference with the physical-face clamp
    flags. The anchor `wall_clamp` is in {{< code src/hydro/hydro.cpp HydroImpl::_hydro_ref_x1 >}}.
 2. Subtract the reference and mirror the perturbations only at physical non-outflow ends. The anchor
    `is_outflow` is in {{< code src/hydro/hydro_forward.cpp HydroImpl::forward >}}.
 3. Apply the selected mass-covariance wall treatment, reconstruct the perturbations, and restore the
-   reference at the faces; the non-WB[^rg-1f7dbd3c21f3] path revises the face pairs instead. The anchor `_revise_x1inner_lr`
+   reference at the faces; the non-WB[^rg-4109a2fda0c5] path revises the face pairs instead. The anchor `_revise_x1inner_lr`
    is in {{< code src/hydro/hydro.cpp HydroImpl::_revise_x1inner_lr >}}.
 
 ### Tests
@@ -176,7 +176,7 @@ return e > T(0) ? e : r0;
 | `test_hydro_ref_x1.release` | With the clamp, changed ghost values leave the interior reference unchanged; without it they do not | exact equality; inequality on the off arm | test assertions |
 | `boundary_check.py` (report only) | `[C7]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-test assertions and report-only checks for wb. {#tbl-ch11-wb-tests}
+: Source-test assertions and report-only checks for wb. {#tbl-ch14-wb-tests}
 
 The slope assertion `EXPECT_GE` is in
 {{< code tests/test_wb_ref_wall.cpp WbRefWall.faces_next_to_the_walls_are_second_order >}}.
@@ -195,7 +195,7 @@ These checks exercise report formulas, not the compiled boundary kernels. The so
 assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 
 [^ch11-wb-run]: [sha: snapy@c0c38593d3d3f37bebe204a590610fd7daa05a5f; deck: the deterministic fixtures in the check;
-    run: `python src/snapy_report/ch11/checks/boundary_check.py`, CPU, one process;
+    run: `python src/snapy_report/ch14/checks/boundary_check.py`, CPU, one process;
     Python 3.12.10, numpy 2.5.4, sympy 1.14.0; exact symbolic/rational and integer checks;
     7 passed, 0 failed]. Output: `boundary_check.out`, `[C7]`.
 
@@ -215,13 +215,13 @@ is claimed.
 :::
 
 <!-- reader glossary notes -->
-[^rg-4b8844d07ce3]: $\chi$ — the ratio $\rho/p$ used by the default reference and its wall continuation [s$^2$ m$^{-2}$]
+[^rg-00be24a2b702]: $\chi$ — the ratio $\rho/p$ used by the default reference and its wall continuation [s$^2$ m$^{-2}$]
 
-[^rg-782303cf9534]: $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ — cell reference density and pressure of the well-balanced $x_1$ reconstruction
+[^rg-ba7ba06eae5d]: $\rho_{\mathrm{ref}}, p_{\mathrm{ref}}$ — cell reference density and pressure of the well-balanced $x_1$ reconstruction
 
-[^rg-ab31b442efcd]: dynamics — hydrodynamic options block
+[^rg-7288f9e03d00]: dynamics — hydrodynamic options block
 
-[^rg-3049dc326e45]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
+[^rg-01a5b47b516e]: wb-wall-clamp — whether to clamp the well-balanced wall continuation
 
-[^rg-1f7dbd3c21f3]: WB — well-balanced
+[^rg-4109a2fda0c5]: WB — well-balanced
 <!-- end reader glossary notes -->

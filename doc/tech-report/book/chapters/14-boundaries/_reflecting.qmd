@@ -1,4 +1,4 @@
-## Mirror a reflecting wall (`reflecting`) {#sec-ch11-reflecting}
+## Mirror a reflecting wall (`reflecting`) {#sec-ch14-reflecting}
 
 <!-- PROVENANCE
 pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy)
@@ -14,10 +14,10 @@ The reflecting callback is the symmetry wall of the solver: a sealed boundary th
 flux vanishes by reflection symmetry of the Riemann problem. It is the default face name of the card, so a
 block without a `boundary-condition` entry has six reflecting faces. The callback is pure mirror arithmetic on
 the supplied tensor; whether that mirror is a good continuation of a stratified column is the question
-@sec-ch11-wb answers.
+@sec-ch14-wb answers.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Mirror owned cells with normal odd parity; @eq-ch11-reflecting-parity.
+**Purpose.** Mirror owned cells with normal odd parity; @eq-ch14-reflecting-parity.
 
 **Data.** Cell averages in the supplied representation; units unchanged.
 
@@ -32,7 +32,7 @@ the supplied tensor; whether that mirror is a good continuation of a stratified 
 
 ### Derivation
 
-Use only cell averages here. At a Cartesian lower wall let the first owned cell have index $i$[^rg-bc8d88b7af0b] and let
+Use only cell averages here. At a Cartesian lower wall let the first owned cell have index $i$[^rg-0a954a1e7e14] and let
 $l=1,\ldots,n_g$ count ghost depth. Integrating an even extension of a scalar over each reflected cell gives
 its matching owned-cell average. Integrating an odd extension of normal velocity gives the negative average.
 For an orthogonal wall, density is even and normal momentum is odd, so their ratio has the same odd parity.
@@ -43,38 +43,38 @@ $$
 q_{i-l}&=q_{i+l-1},\\
 v_{1,i-l}&=-v_{1,i+l-1}.
 \end{aligned}
-$$ {#eq-ch11-reflecting-parity}
+$$ {#eq-ch14-reflecting-parity}
 
 Here $q$ is any even component and $v_1$ has units $\mathrm{m\,s^{-1}}$.
 The upper-wall mapping reverses the last owned slab in the same way. `reflecting_inner`
 ([`bc_func.cpp:10-34`](https://github.com/chengcli/snapy/blob/919936da07d80a310b98ab11da184972a3203274/src/bc/bc_func.cpp#L10-L34))
-and its upper-wall twin `reflecting_outer` implement @eq-ch11-reflecting-parity with a `flip` of the adjacent
+and its upper-wall twin `reflecting_outer` implement @eq-ch14-reflecting-parity with a `flip` of the adjacent
 slab and a sign change of the row `4-dim`, which is the normal velocity row of the dimension being filled
 (`dim` 3 is x1, so row 1 is `IVX`).
 At a symmetry-preserving Riemann interface, equal densities and opposite normal velocities give zero normal
 mass flux by reflection symmetry. This argument does not supply a hydrostatic pressure continuation or a
 proof for arbitrary nonorthogonal component conventions. Check C1 verifies the exact discrete parity and the
-idempotence of a second fill [check `src/snapy_report/ch11/checks/boundary_check.py`, output
-`src/snapy_report/ch11/checks/boundary_check.out`]. The checks do not call a snapy kernel.
+idempotence of a second fill [check `src/snapy_report/ch14/checks/boundary_check.py`, output
+`src/snapy_report/ch14/checks/boundary_check.out`]. The checks do not call a snapy kernel.
 
 ### Numerical method
 
 The input stays in its supplied representation. Conserved and primitive calls negate the normal row;
 a `kScalar` call only mirrors, so a tracer density or a limiter factor keeps even parity. A collapsed
-direction (one cell) returns at once. The fill runs with the physical fills of @sec-ch11-timing, before
+direction (one cell) returns at once. The fill runs with the physical fills of @sec-ch14-timing, before
 reconstruction consumes the ghosts, and again after an exchange: once over the full extent when every tangential
-face is exchange-owned, otherwise on the exchange-owned tangential slabs (@sec-ch11-timing). The
+face is exchange-owned, otherwise on the exchange-owned tangential slabs (@sec-ch14-timing). The
 odd/even extension is exact for data that has that symmetry; no measured wall convergence order is available
 here.
 
-@fig-ch11-reflecting-stencil illustrates the operations, with labelled roles independent of colour.
+@fig-ch14-reflecting-stencil illustrates the operations, with labelled roles independent of colour.
 
 ```{python}
-#| label: fig-ch11-reflecting-stencil
+#| label: fig-ch14-reflecting-stencil
 #| fig-cap: "Mirror a reflecting wall. Schematic only; no simulation measurements."
 #| fig-alt: "Labelled schematic of the reflecting boundary operation; ghosts and owned cells have separate text labels."
 #| echo: false
-from snapy_report.ch11.figures.fig_reflecting_stencil import make_fig
+from snapy_report.ch14.figures.fig_reflecting_stencil import make_fig
 make_fig()
 ```
 
@@ -93,7 +93,7 @@ boundary-condition:
 ```
 
 **Refusals and prerequisites.** The callback has no wall-specific setup refusal and returns immediately in a
-collapsed direction. Name and key errors are refused by the parser in @sec-ch11-registry.
+collapsed direction. Name and key errors are refused by the parser in @sec-ch14-registry.
 
 **Read the implementation.** `reflecting_inner` ({{< code src/bc/bc_func.cpp >}}) contains:
 
@@ -101,7 +101,7 @@ collapsed direction. Name and key errors are refused by the parser in @sec-ch11-
 var.narrow(dim, 0, nghost) = var.narrow(dim, nghost, nghost).flip(dim);
 ```
 
-The reversed donor slab implements the even row of @eq-ch11-reflecting-parity. The subsequent normal-row multiplication by minus one implements the odd row.
+The reversed donor slab implements the even row of @eq-ch14-reflecting-parity. The subsequent normal-row multiplication by minus one implements the odd row.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -109,7 +109,7 @@ The reversed donor slab implements the even row of @eq-ch11-reflecting-parity. T
 | context | {{< code src/bc/bc.hpp BoundaryFuncOptions >}} | `BoundaryFuncOptions` | none |
 | corner | {{< code src/mesh/meshblock.cpp MeshBlockImpl::exchange_ghost_zones >}} | `refresh` | none |
 
-: Implementation sites for reflecting. {#tbl-ch11-reflecting-code}
+: Implementation sites for reflecting. {#tbl-ch14-reflecting-code}
 
 1. Return for a collapsed direction, then copy and reverse the adjacent owned slab of width $n_g$. The anchor
    `reflecting_inner` is in
@@ -129,7 +129,7 @@ The reversed donor slab implements the even row of @eq-ch11-reflecting-parity. T
 | `test_wall_saturation.release` | Energy and water are conserved through a phase change in the cell next to a wall | relative error below $10^{-12}$ | test constant |
 | `boundary_check.py` (report only) | `[C1]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-test assertions and report-only checks for reflecting. {#tbl-ch11-reflecting-tests}
+: Source-test assertions and report-only checks for reflecting. {#tbl-ch14-reflecting-tests}
 
 The rest assertions are `EXPECT_LE` on the Mach number in
 {{< code tests/test_wb_wall_corner.cpp WallCorner.x2_uniform_rest_keeps_u2_zero >}} and
@@ -149,7 +149,7 @@ assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 
 [^ch11-reflecting-run]: [sha: snapy@6fbb39750f62b83df096058a4746e77d0a634bc5; deck: the deterministic fixtures in the
     check;
-    run: `python src/snapy_report/ch11/checks/boundary_check.py`, CPU, one process;
+    run: `python src/snapy_report/ch14/checks/boundary_check.py`, CPU, one process;
     Python 3.11.13, NumPy 2.4.6, SymPy 1.14.0; exact symbolic/rational and integer checks;
     7 passed, 0 failed]. Output: `boundary_check.out`, `[C1]`.
 
@@ -158,7 +158,7 @@ assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 ::: {.callout-warning title="Limits"}
 A mirror of the total state is not a continuation of a stratified equilibrium: the mirrored pressure rises
 into the ghosts of a lower wall where the hydrostatic column would fall. The reference-state procedure of
-@sec-ch11-wb addresses that distinction for the x1 reconstruction. Reflection alone establishes neither the
+@sec-ch14-wb addresses that distinction for the x1 reconstruction. Reflection alone establishes neither the
 accuracy of wall diffusion coefficients nor a nonorthogonal momentum treatment.
 
 Untested switch combinations remain subject to @sec-ch12-matrix. No new CPU, CUDA or multi-rank solver result
@@ -166,5 +166,5 @@ is claimed.
 :::
 
 <!-- reader glossary notes -->
-[^rg-bc8d88b7af0b]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
+[^rg-0a954a1e7e14]: $i, j, k$ — cell indices in $x_1, x_2, x_3$
 <!-- end reader glossary notes -->

@@ -1,0 +1,152 @@
+## Capture, warm-up, the save list and replay {#sec-ch11-capture}
+
+<!-- PROVENANCE
+pin: snapy@73c45a7c8c991209924e1137992352c335575062 (code_pin.yml)
+sources: src/mesh/stage_executor.{hpp,cpp} (GraphKey, make_key, save_list, capture, replay, invalidate, report),
+         src/mesh/state_store.hpp (StateStore), tests/test_stage_executor_capture.py,
+         tests/test_graph_pool_recapture.py, tests/test_state_store.cpp, tests/CMakeLists.txt, all read at the pin
+status: draft
+author: Linfeng Li
+-->
+
+### Summary
+
+A CUDA graph records the kernels a segment launches, with their arguments and memory addresses, and replays them
+later as one launch. Recording it safely takes three steps. The executor first runs the segment eagerly three
+times on a side stream, so every first-call allocation and table upload happens before recording; it then puts
+back every tensor those warm-ups changed, from a copy taken beforehand (the save list); and it records the
+segment once. Each later stage of the same block, stage index and segment replays that graph, as long as nothing
+the graph depends on has moved: the state's shapes, dtypes and addresses, the implicit solver's options and the
+thermodynamics tables. A change to any of them records the segment again. Because a graph replays fixed
+addresses, the block keeps its state in fixed storage, so the caller's tensors are the graph's tensors.
+
+::: {.callout-note title="At a glance"}
+**Purpose.** Record a segment once as a CUDA graph and replay it every later stage, with no state left over from
+the recording.
+
+**Data.** Reads and writes the block's variables in their fixed storage; saves and restores the save list
+(@tbl-ch11-capture-save) around the warm-ups and the recording; keeps one graph per (block, stage, segment).
+
+**Placement.** Inside `StageExecutor::run_segments`, for every capturable segment of a stage in cuda-graph mode.
+
+**Activation.** A CUDA block whose mode is cuda-graph and whose case has no refusal (@sec-ch11-default,
+@sec-ch11-refusals). Default: on for a CUDA block, off on the CPU[^rg-0053a75b1713].
+
+**Guarantee / limits.** A replayed segment equals the eager segment bit for bit; the warm-ups leave no count in
+any meter. A capture that runs out of device memory stops the run and names `execution: eager` as the way out.
+
+**Evidence.** `test_stage_executor_capture_python`, `test_graph_pool_recapture_python`, `test_state_store.release`
+(@tbl-ch11-capture-tests).
+:::
+
+Local symbols of this section: none.
+
+### Derivation
+
+None: capture is control flow. Its correctness rests on two statements. First, a graph replays exactly the
+kernels the recording launched, on the same addresses, so a replay computes what one eager run of the segment
+computes from the same inputs. Second, the recording itself starts from the state before the warm-ups: every
+tensor a warm-up writes is on the save list and is restored before recording and again after it, so neither the
+warm-ups nor the recording leaves a trace in the state or in any meter. A tensor a segment writes that is not on
+the save list would be advanced three or four times by one stage; @sec-ch08 relies on this for the EOS[^rg-c1e78441628b]
+status slots.
+
+### Numerical method
+
+**The capture.** `StageExecutor::capture` ({{< code src/mesh/stage_executor.cpp StageExecutor::capture >}}) does,
+for one segment:
+
+1. run each op's `prepare` step outside the recording (thermodynamics tables, implicit scratch, the register's
+   storage) and refuse any further kintera table build until the recording ends;
+2. clone every tensor of the save list (`StageExecutor::save_list`,
+   {{< code src/mesh/stage_executor.cpp StageExecutor::save_list >}});
+3. run the segment eagerly three times on the block's own capture stream, with the step's device step
+   (@sec-ch11-graphsafe), then restore the save list;
+4. record the segment once on that stream, into the block's memory pool (one per block, shared by the block's
+   graphs, which replay one after another); a lone block records in global capture mode, a block of a Mesh in
+   thread-local mode, as the Mesh's other blocks launch from their own threads meanwhile;
+5. keep the graph's input and output tensors, restore the save list again, and store the graph under its key.
+
+| entry | what it holds |
+|---|---|
+| `vars.hydro_u`, `vars.scalar_s`, `vars.scalar_r`, `vars.hydro_w` | the state and the primitive variables |
+| `u0`, `s0` | the Runge–Kutta backups of `StateStore` |
+| `storage.<name>` | every tensor registered with the state store (the flux register's) |
+| `efs.<slot>` | every slot of the block's EOS status, its meters (conversion trips included), marks and flags |
+| `thermo.failures`, `thermo.reaction_set`, `thermo.nactive` | the kintera ThermoY failure counter and active-set buffers |
+
+: The save list of `StageExecutor::save_list`, restored after the warm-ups and after the recording.
+{#tbl-ch11-capture-save}
+
+**The key.** `GraphKey` ({{< code src/mesh/stage_executor.hpp GraphKey >}}), formed by `StageExecutor::make_key`
+({{< code src/mesh/stage_executor.cpp StageExecutor::make_key >}}), holds the device, every variable's name,
+dtype, shape and strides, the state store's generation (it moves when an address moves), a configuration
+generation, the block, stage and segment, the implicit correction's precision and FP64 retry flag, and the
+kintera thermodynamics allocation epoch. It holds the host step only for a segment with an op that reads it
+(@sec-ch11-graphsafe). Before each replay `run_segments` rebuilds the key and records again when it differs.
+
+**Fixed storage.** `StateStore` ({{< code src/mesh/state_store.hpp StateStore >}}) owns `hydro_u`, `scalar_s`,
+`scalar_r` and the backups in the storage dtype. Its `adopt` copies a caller's new tensor into the store and
+rebinds the caller's handle to the store's storage, so the address a graph holds stays valid; each such move
+bumps the generation, and the next stage records again.
+
+**The replay.** `StageExecutor::replay` ({{< code src/mesh/stage_executor.cpp StageExecutor::replay >}}) fills the
+block's device step, copies any input whose address differs from the recorded one, replays the graph's steps
+(graphs, and between them the host steps of an exchange cut, @sec-ch13), and rebinds the variables to the graph's
+outputs where they differ.
+
+**Counters.** `StageExecutor::report` ({{< code src/mesh/stage_executor.cpp StageExecutor::report >}}), exposed as
+`execution_report()`, counts captures, replays, eager runs, host segments, graphs held, cuts, the seam copies'
+captures and replays, and the memory pools in use.
+
+### Code
+
+**How to use it.**
+
+```python
+block.forward(vars, dt, stage)   # captures on the first stage, replays after
+r = block.execution_report()     # captures, replays, eager, ...
+```
+
+**What is refused, and why.** A kintera table build inside a warm-up or recording throws: the thermodynamics must
+be prepared first. A capture that runs out of device memory stops the run with an out-of-memory error that names
+`execution: eager`; any other error during a recording abandons the graph and is raised as it is.
+
+| what | code link | symbol | switch |
+|---|---|---|---|
+| record one segment | {{< code src/mesh/stage_executor.cpp StageExecutor::capture >}} | `StageExecutor::capture` | none |
+| the save list | {{< code src/mesh/stage_executor.cpp StageExecutor::save_list >}} | `StageExecutor::save_list` | none |
+| what a graph depends on | {{< code src/mesh/stage_executor.hpp GraphKey >}} | `GraphKey`, `make_key` | none |
+| replay one segment | {{< code src/mesh/stage_executor.cpp StageExecutor::replay >}} | `StageExecutor::replay` | none |
+| fixed state storage | {{< code src/mesh/state_store.hpp StateStore >}} | `StateStore` | none |
+| counters | {{< code src/mesh/stage_executor.cpp StageExecutor::report >}} | `StageExecutor::report` | none |
+
+: Code map of capture and replay. {#tbl-ch11-capture-code}
+
+### Tests
+
+| test (ctest name) | what it asserts | tolerance | where the tolerance comes from |
+|---|---|---|---|
+| `test_stage_executor_capture_python` | on the dry Straka case in FP64 and FP32, a cuda-graph block equals an eager block after every stage, with a changing step, rebound state tensors, an in-place edit and a forced retry; one capture per stage serves six steps at four step sizes; on CPU only the setup refusals are checked | `torch.equal` (bitwise) | `assert_equal` ({{< code tests/test_stage_executor_capture.py >}}) |
+| `test_graph_pool_recapture_python` | after every graph of a block is dropped, recording into a fresh pool works and the replay equals eager | `torch.equal` (bitwise) | {{< code tests/test_graph_pool_recapture.py >}} |
+| `test_state_store.release` | `adopt` keeps the address and the caller's handle and bumps the generation once per move; a wrong shape or dtype throws | `torch::equal` (bitwise) | {{< code tests/test_state_store.cpp >}} |
+
+: Tests of capture and replay; the Python tests end with the skip code when the build has no CUDA.
+{#tbl-ch11-capture-tests}
+
+### Limits
+
+::: {.callout-warning title="Limits"}
+- Each (block, stage, segment) holds its own graph, so a three-stage integrator holds three graphs per captured
+  segment and block, in one memory pool per block.
+- A rebound state tensor, a moved device, a new implicit precision or a reallocated thermodynamics table records
+  the segment again; a driver that rebinds the state every step records every step.
+- The first stage of a captured segment costs three eager warm-ups, the recording (which runs no kernel) and the
+  replay.
+:::
+
+<!-- reader glossary notes -->
+[^rg-0053a75b1713]: CPU — central processing unit
+
+[^rg-c1e78441628b]: EOS — equation of state
+<!-- end reader glossary notes -->

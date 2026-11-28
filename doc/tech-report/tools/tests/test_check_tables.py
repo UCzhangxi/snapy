@@ -138,4 +138,6 @@ def test_a_generated_appendix_b_fragment_is_excluded(tmp_path):
     # tools/gen_derivation_index.py writes one six-column table per chapter into _appb-chNN.qmd
     write(tmp_path, "17-appendices/_appb-ch03.qmd", SIX)
     write(tmp_path, "17-appendices/_appb-ch15.qmd", SIX)
+    # a split chapter's fragment (heading label sec-chNN[a-z], gen_derivation_index._CHAPTER) is generated too
+    write(tmp_path, "17-appendices/_appb-ch14b.qmd", SIX)
     assert check_tables.counts(check_tables.scan(tmp_path)) == {}

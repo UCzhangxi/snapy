@@ -1,4 +1,4 @@
-## Select outgoing acoustic and advected perturbations (`outflow`) {#sec-ch11-outflow}
+## Select outgoing acoustic and advected perturbations (`outflow`) {#sec-ch14-outflow}
 
 <!-- PROVENANCE
 pin: snapy@919936da07d80a310b98ab11da184972a3203274 (chengcli/snapy)
@@ -19,9 +19,9 @@ backgrounds. The conserved-variable driver converts to primitives for it, and co
 density as the tracer carrier.
 
 ::: {.callout-note title="At a glance"}
-**Purpose.** Select outgoing perturbations; @eq-ch11-outflow-modes.
+**Purpose.** Select outgoing perturbations; @eq-ch14-outflow-modes.
 
-**Data.** Primitive state, EOS and saved background; SI[^rg-55087f577bc7] units listed below.
+**Data.** Primitive state, EOS and saved background; SI[^rg-8c117ccbf00d] units listed below.
 
 **Placement.** Physical fill; excluded from tangential corner refresh.
 
@@ -32,7 +32,7 @@ density as the tracer carrier.
 **Evidence.** Report checks and source-test limits are in the Tests layer; solver ctests were not run at the pin.
 :::
 
-Local symbols, with appendix A, notation group 8a: $q_{\mathrm{bg}}$[^rg-598db203bccb] is the saved initial boundary background of a primitive $q$
+Local symbols, with appendix A, notation group 8a: $q_{\mathrm{bg}}$[^rg-b9921b5348bd] is the saved initial boundary background of a primitive $q$
 (distinct from the well-balanced reference) and $\mathbf W_{\mathrm{bg}}$ the whole background; $d_q=q-q_{\mathrm{bg}}$ is the
 interior perturbation of $q$, with $d_\rho$ [$\mathrm{kg\,m^{-3}}$], $d_v$ [$\mathrm{m\,s^{-1}}$] for the outward velocity and
 $d_p$ [$\mathrm{Pa}$]; $Z=\rho_{\mathrm{bg}}c_{s,\mathrm{bg}}$ [$\mathrm{kg\,m^{-2}\,s^{-1}}$] is the acoustic impedance and
@@ -64,15 +64,15 @@ $$
 \partial_t d_{\mathrm{ent}}+v_{\mathrm{out},\mathrm{bg}}\,\partial_1 d_{\mathrm{ent}}&=0,\qquad
 d_{\mathrm{ent}}=d_\rho-d_p/c_{s,\mathrm{bg}}^2 .
 \end{aligned}
-$$ {#eq-ch11-outflow-modes}
+$$ {#eq-ch14-outflow-modes}
 
-The combinations of @eq-ch11-outflow-modes are formed by the tensors `plus`, `minus` and `entropy` of
+The combinations of @eq-ch14-outflow-modes are formed by the tensors `plus`, `minus` and `entropy` of
 `radiating` ({{< code src/bc/bc_func.cpp radiating >}}), with `impedance` the background density times the
 background sound speed `c0`; the same function inverts them below. Each is carried along its own speed, so at an
 outer face $\mathcal J_+$ leaves the domain when $v_{\mathrm{out}}+c_s\ge0$, $\mathcal J_-$ when $v_{\mathrm{out}}-c_s\ge0$,
 and $d_{\mathrm{ent}}$ when $v_{\mathrm{out}}\ge0$. A characteristic entering from outside has no interior-determined
 perturbation: the boundary chooses zero perturbation for that incoming mode. The code uses the *current* outward
-velocity and sound speed `c` of the nearest owned cell for this selector, while @eq-ch11-outflow-modes uses the
+velocity and sound speed `c` of the nearest owned cell for this selector, while @eq-ch14-outflow-modes uses the
 background impedance and sound speed. It is therefore a locally linear characteristic prescription, not the exact
 nonlinear exterior solution.
 
@@ -86,9 +86,9 @@ d_v&=(\mathcal J_++\mathcal J_-)/2,\\
 d_p&=Z(\mathcal J_+-\mathcal J_-)/2,\\
 d_\rho&=d_{\mathrm{ent}}+d_p/c_{s,\mathrm{bg}}^2.
 \end{aligned}
-$$ {#eq-ch11-outflow-inverse}
+$$ {#eq-ch14-outflow-inverse}
 
-`radiating` ({{< code src/bc/bc_func.cpp radiating >}}) implements @eq-ch11-outflow-inverse by first
+`radiating` ({{< code src/bc/bc_func.cpp radiating >}}) implements @eq-ch14-outflow-inverse by first
 multiplying every row of the perturbation by the advection selector and then overwriting the normal
 velocity, pressure and density rows with the inverted combinations. For the lower face the sign `sign`
 reverses the coordinate normal before the split and again after the inversion, which accounts for the sign
@@ -100,23 +100,23 @@ $q_{\mathrm{bg}}+\alpha_{\mathrm{adm}}d_q\ge q_{\min}$.
 If $d_q<0$, division gives the bound $(q_{\mathrm{bg}}-q_{\min})/(-d_q)$;
 otherwise that component imposes no reduction. Start with one, take the minimum over all bounds, multiply
 each binding bound below one by $0.99$, and clamp the result to $[0,1]$. Apply this to density with the EOS
-density floor, pressure with the pressure floor, every $y_n$[^rg-ba8a61c1dc1e] with floor zero, the complement $1-\sum_n y_n$
-with floor zero, and every passive tracer ratio $r_n$[^rg-7187b999100b] with floor zero. The nonnegative complement enforces
+density floor, pressure with the pressure floor, every $y_n$[^rg-91a96c0f7810] with floor zero, the complement $1-\sum_n y_n$
+with floor zero, and every passive tracer ratio $r_n$[^rg-589b9dd4f344] with floor zero. The nonnegative complement enforces
 the composition sum. The same factor multiplies every perturbation, including the tracers:
 
 $$
 \mathbf W^{\mathrm{ghost}}=\mathbf W_{\mathrm{bg}}^{\mathrm{ghost}}+\alpha_{\mathrm{adm}}\,\mathbf d_{\mathbf W},
-$$ {#eq-ch11-outflow-admissible}
+$$ {#eq-ch14-outflow-admissible}
 
 with $\mathbf d_{\mathbf W}$ the selected perturbation of every primitive row.
 
 The tensor `alpha` of `radiating` ({{< code src/bc/bc_func.cpp radiating >}}) implements
-@eq-ch11-outflow-admissible through the closure `lower`, which folds one bound at a time into the running
+@eq-ch14-outflow-admissible through the closure `lower`, which folds one bound at a time into the running
 minimum. Convexity of these linear inequalities proves admissibility for an admissible background in exact
 arithmetic. It proves neither a positive temperature for every EOS nor nonlinear nonreflection. Check C2
 checks the invertible acoustic algebra; check C3 verifies the shared limiter against independent inequality
 bounds, including a species-complement and a tracer-limited case [check
-`src/snapy_report/ch11/checks/boundary_check.py`, output `src/snapy_report/ch11/checks/boundary_check.out`]. The checks
+`src/snapy_report/ch14/checks/boundary_check.py`, output `src/snapy_report/ch14/checks/boundary_check.out`]. The checks
 do not call a snapy kernel.
 
 ### Numerical method
@@ -147,14 +147,14 @@ written back are the ratios times the conserved dry density, as in the scalar pr
 primitive total density. The cartoon shows the mode directions and the convex contraction separately. No
 coupled wall/seam convergence or reflection measurement is reported here.
 
-@fig-ch11-outflow-stencil illustrates the operations, with labelled roles independent of colour.
+@fig-ch14-outflow-stencil illustrates the operations, with labelled roles independent of colour.
 
 ```{python}
-#| label: fig-ch11-outflow-stencil
+#| label: fig-ch14-outflow-stencil
 #| fig-cap: "Select outgoing acoustic and advected perturbations. Schematic only; no simulation measurements."
 #| fig-alt: "Labelled schematic of the outflow boundary operation; ghosts and owned cells have separate text labels."
 #| echo: false
-from snapy_report.ch11.figures.fig_outflow_stencil import make_fig
+from snapy_report.ch14.figures.fig_outflow_stencil import make_fig
 make_fig()
 ```
 
@@ -166,7 +166,7 @@ primitives; the saved background must survive a restart.
 
 This is a configuration fragment, not a standalone simulation deck.
 
-<!-- reader glossary keys -->Keys in this fragment: `forcing`[^rg-c2adbe6bd0b3], `const-gravity`[^rg-07ad360aab23], `gravity-work-fixer`[^rg-33815445b671].
+<!-- reader glossary keys -->Keys in this fragment: `forcing`[^rg-51c00aae93ad], `const-gravity`[^rg-8f4d48c36ab6], `gravity-work-fixer`[^rg-2ba7d79124f9].
 ```yaml
 boundary-condition:
   external:
@@ -191,7 +191,7 @@ auto minus = torch::where(un - c >= 0, sign * d[vn] - d[IPR] / impedance, 0.);
 auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 ```
 
-`plus`, `minus` and `entropy` are the selected $\mathcal J_+$, $\mathcal J_-$ and $d_{\mathrm{ent}}$ of @eq-ch11-outflow-modes. The following inverse gives @eq-ch11-outflow-inverse; the shared limiter gives @eq-ch11-outflow-admissible.
+`plus`, `minus` and `entropy` are the selected $\mathcal J_+$, $\mathcal J_-$ and $d_{\mathrm{ent}}$ of @eq-ch14-outflow-modes. The following inverse gives @eq-ch14-outflow-inverse; the shared limiter gives @eq-ch14-outflow-admissible.
 
 | what | code link | symbol | switch |
 |---|---|---|---|
@@ -205,7 +205,7 @@ auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 | apply | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_boundaries >}} | `apply_boundaries` | none |
 | fixer | {{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}} | `wall` | `forcing/const-gravity/gravity-work-fixer` |
 
-: Implementation sites for outflow. {#tbl-ch11-outflow-code}
+: Implementation sites for outflow. {#tbl-ch14-outflow-code}
 
 1. Take the scalar/shallow-water fallback first; otherwise require the EOS, the coordinate and a saved
    same-shape background. The anchor `radiating` is in {{< code src/bc/bc_func.cpp radiating >}}.
@@ -227,14 +227,14 @@ auto entropy = torch::where(advect, d[IDN] - d[IPR] / c0.square(), 0.);
 | `test_radiating_boundary.release` | Selected modes on all six faces for three EOS types | float32 $0.03$; float64 $10^{-8}$ | test constants |
 | `test_radiating_boundary.release` | Mixed faces keep the representation and the call order | hydro rtol $10^{-12}$, atol $10^{-9}$ | test constants |
 | `test_radiating_boundary.release` | Tracer ratios ride the dry density, dry and moist | below $10^{-12}$ | test constants |
-| `test_radiating_boundary.release` | PLM[^rg-94bb6a1dab2d] and WENO5[^rg-aeddec0575d5] pulses of both signs leave through the outflow face | reflected fraction below $0.05$ | test constant |
+| `test_radiating_boundary.release` | PLM[^rg-b87260aaaa6b] and WENO5[^rg-e9f8c3eda56e] pulses of both signs leave through the outflow face | reflected fraction below $0.05$ | test constant |
 | `test_radiating_boundary.release` | Joint composition/tracer limiter; restart continuation; missing reference throws | inequalities; exact restart equality | test assertions |
 | `test_radiating_boundary.release` | CPU and CUDA fills agree | rtol = atol = $10^{-10}$ | test constant |
 | `test_radiating_boundary_python` | A manual fill keeps the saved reference and the interior | exact equality | test assertions |
 | `test_outflow_stale_ghosts_python` | Six cubed-sphere panels with an outflow top, a balanced rest column and implicit schemes 1 and 9 at a vertical Courant number above 2: five steps run with no redo and stay at rest | $\max\lvert v\rvert/c_s\le10^{-3}$; Courant $>2$ | test constants |
 | `boundary_check.py` (report only) | `[C2]`, `[C3]` as described below | exact | symbolic, rational or integer identity |
 
-: Source-test assertions and report-only checks for outflow. {#tbl-ch11-outflow-tests}
+: Source-test assertions and report-only checks for outflow. {#tbl-ch14-outflow-tests}
 
 The all-face assertions are `EXPECT_LT` and `EXPECT_TRUE` in
 {{< code tests/test_radiating_boundary.cpp DeviceTest.radiating_modes_all_faces >}}.
@@ -274,7 +274,7 @@ assertions and tolerances, not new CPU, CUDA or multi-rank solver results.
 
 [^ch11-outflow-run]: [sha: snapy@ccf40f9565642c32be69f4b9ef0cfa6daff3f201; deck: the deterministic fixtures in the
     check;
-    run: `python src/snapy_report/ch11/checks/boundary_check.py`, CPU, one process;
+    run: `python src/snapy_report/ch14/checks/boundary_check.py`, CPU, one process;
     Python 3.13.15, numpy 2.5.3, sympy 1.14.0; exact symbolic/rational and integer checks;
     7 passed, 0 failed]. Output: `boundary_check.out`, `[C2]`, `[C3]`.
 
@@ -286,7 +286,7 @@ Outflow is skipped by the tangential corner refresh
 open-boundary energy budget: `MeshBlockImpl::apply_gravity_work_fixer`
 ({{< code src/mesh/meshblock.cpp MeshBlockImpl::apply_gravity_work_fixer >}}) refuses a step in which more
 than a round-off bound of mass crossed an x1 wall face, and the error text directs the user to
-`gravity-work-fixer: false` for open x1 boundaries. The implicit closure of @sec-ch11-solids stays
+`gravity-work-fixer: false` for open x1 boundaries. The implicit closure of @sec-ch14-solids stays
 reflecting at the column ends, so a characteristic ghost fill does not establish a characteristic implicit
 boundary. Saved backgrounds are fixed initialization data; no adaptive exterior evolution is implemented by
 this callback.
@@ -296,21 +296,21 @@ is claimed.
 :::
 
 <!-- reader glossary notes -->
-[^rg-55087f577bc7]: SI — International System of Units; notation only; see @sec-appa
+[^rg-8c117ccbf00d]: SI — International System of Units; notation only; see @sec-appa
 
-[^rg-598db203bccb]: $q_{\mathrm{bg}}$ — the saved background value of a primitive $q$ at a radiating boundary
+[^rg-b9921b5348bd]: $q_{\mathrm{bg}}$ — the saved background value of a primitive $q$ at a radiating boundary
 
-[^rg-ba8a61c1dc1e]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
+[^rg-91a96c0f7810]: $y_n$ — mass fraction of species $n$ **per unit total mass**, $\rho_n = \rho y_n$, dimensionless [-]; this is snapy's composition variable and the only one the state vector carries
 
-[^rg-7187b999100b]: $r_n$ — mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, @sec-ch08-drycarry). Never written $r$ without its species subscript, because $r$ alone is the radius (§1)
+[^rg-589b9dd4f344]: $r_n$ — mass mixing ratio of species $n$ **per unit dry mass**, $r_n = \rho_n/\rho_{\mathrm{d}}$, dimensionless [-]; used only where the code is per dry air (passive tracers, @sec-ch08-drycarry). Never written $r$ without its species subscript, because $r$ alone is the radius (§1)
 
-[^rg-c2adbe6bd0b3]: forcing — forcing options block: a map with one sub-block per forcing component
+[^rg-51c00aae93ad]: forcing — forcing options block: a map with one sub-block per forcing component
 
-[^rg-07ad360aab23]: const-gravity — constant-gravity forcing component
+[^rg-8f4d48c36ab6]: const-gravity — constant-gravity forcing component
 
-[^rg-33815445b671]: gravity-work-fixer — removed in V3: only `false` (the default) is accepted
+[^rg-2ba7d79124f9]: gravity-work-fixer — removed in V3: only `false` (the default) is accepted
 
-[^rg-94bb6a1dab2d]: PLM — piecewise-linear method
+[^rg-b87260aaaa6b]: PLM — piecewise-linear method
 
-[^rg-aeddec0575d5]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
+[^rg-e9f8c3eda56e]: WENO5 — fifth-order weighted essentially non-oscillatory reconstruction
 <!-- end reader glossary notes -->

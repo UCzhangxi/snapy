@@ -58,7 +58,7 @@ def test_boundary_recipe_drift(tmp_path):
     'src/CMakeLists.txt#L35',
     'x1-inner: zero_gradient',
     'name="zero_gradient_inner"',
-    '@sec-ch11-registry',
+    '@sec-ch14-registry',
 ])
 def test_native_selection_contract(required):
     assert required in c.generate(c.REPORT)
